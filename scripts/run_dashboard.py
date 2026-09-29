@@ -34,6 +34,7 @@ from traidingbrain.config.settings import load_secrets
 from traidingbrain.data.exchange import BybitDataSource
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import SymbolSpec
+from traidingbrain.execution.diagnose import diagnose
 from traidingbrain.execution.intent import IntentLog
 from traidingbrain.execution.order import BybitExecutor, UnsafeConfigurationError
 from traidingbrain.proposals.builder import BuildFailure
@@ -113,6 +114,18 @@ def _arm(services: Services) -> bool:
         print(f"  preflight: {executor.preflight().describe()}")
     except UnsafeConfigurationError as exc:
         print(f"  refusing to arm: {exc}", file=sys.stderr)
+        return False
+    except Exception as exc:
+        # A rejected key is a setup problem, and a traceback is indistinguishable
+        # from a crash. The dashboard still runs; it just cannot trade.
+        print("\n  Could not arm the executor.\n", file=sys.stderr)
+        print(diagnose(exc, testnet=secrets.bybit.testnet).render(), file=sys.stderr)
+        print(
+            "\n  Everything except sending orders works without this: drop --execute\n"
+            "  and the dashboard will show proposals and report what confirming\n"
+            "  would have sent.\n",
+            file=sys.stderr,
+        )
         return False
 
     services.executor = executor

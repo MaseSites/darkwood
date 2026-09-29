@@ -31,6 +31,7 @@ from traidingbrain.config.settings import load_config, load_secrets
 from traidingbrain.data.exchange import BybitDataSource
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import SymbolSpec
+from traidingbrain.execution.diagnose import diagnose
 from traidingbrain.execution.intent import IntentLog
 from traidingbrain.execution.order import BybitExecutor, UnsafeConfigurationError
 from traidingbrain.execution.reconcile import reconcile
@@ -195,6 +196,11 @@ def _arm_executor(args, config, secrets, intents, kill_switch):
         print(f"  preflight: {executor.preflight().describe()}")
     except UnsafeConfigurationError as exc:
         print(f"  refusing to start: {exc}", file=sys.stderr)
+        return False
+    except Exception as exc:
+        print("\n  Could not connect to the exchange.\n", file=sys.stderr)
+        print(diagnose(exc, testnet=secrets.bybit.testnet).render(), file=sys.stderr)
+        print("\n  Drop --execute to run the analysis without it.\n", file=sys.stderr)
         return False
     return executor
 
