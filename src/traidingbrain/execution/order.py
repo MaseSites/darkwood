@@ -64,12 +64,14 @@ class Preflight:
     clock_drift_ms: int
     open_positions: int
     testnet: bool
+    can_trade: bool = True
+    can_withdraw: bool = False
 
     def describe(self) -> str:
         return (
             f"{'testnet' if self.testnet else 'LIVE'} | {self.position_mode} mode, "
             f"{self.margin_mode} margin, clock off by {self.clock_drift_ms}ms, "
-            f"{self.open_positions} position(s) open"
+            f"{self.open_positions} position(s) open, key may trade"
         )
 
 
@@ -131,6 +133,21 @@ class BybitExecutor:
                 f"requests will fail unpredictably until it is corrected"
             )
 
+        can_trade, can_withdraw = self._key_rights()
+        if not can_trade:
+            raise UnsafeConfigurationError(
+                "this API key is read-only, so it can watch the account but never place "
+                "an order. On Bybit the trading right is the *Trade* column, not the "
+                "Read-Only one. Without this check the first sign of it would be a "
+                "rejection after someone had already held the confirm button."
+            )
+        if can_withdraw:
+            raise UnsafeConfigurationError(
+                "this API key carries withdrawal rights. Nothing here ever moves funds, "
+                "so the right only widens what a leaked key could do. Create a key "
+                "without it rather than relying on this code not to use it."
+            )
+
         positions = [p for p in self.exchange.fetch_positions() if float(p.get("contracts") or 0)]
         info = self.exchange.fetch_balance().get("info", {})
 
@@ -140,7 +157,37 @@ class BybitExecutor:
             clock_drift_ms=drift,
             open_positions=len(positions),
             testnet=self.testnet,
+            can_trade=can_trade,
+            can_withdraw=can_withdraw,
         )
+
+    def _key_rights(self) -> tuple[bool, bool]:
+        """What this key is actually allowed to do, asked of the exchange.
+
+        Bybit reports it directly, which is better than inferring it from a failed
+        order. When the endpoint is unavailable -- an older ccxt, a venue that does
+        not expose it -- both answers come back permissive, because refusing to
+        start over a missing diagnostic would be worse than the gap it closes.
+        """
+        query = getattr(self.exchange, "privateGetV5UserQueryApi", None)
+        if query is None:
+            return True, False
+        try:
+            result = query().get("result", {})
+        except Exception:
+            return True, False
+
+        # readOnly is 1 for a key that can only query. The permission map is the
+        # finer-grained view and is what names withdrawal.
+        read_only = str(result.get("readOnly", "0")) == "1"
+        permissions = result.get("permissions") or {}
+        granted = {
+            str(action).lower()
+            for actions in permissions.values()
+            if isinstance(actions, list)
+            for action in actions
+        }
+        return (not read_only), ("withdraw" in granted)
 
     def ensure_leverage(self, symbol: str, leverage: float) -> None:
         """Set leverage, refusing while a position in that symbol is open.

@@ -74,16 +74,27 @@ class FakeBybit:
         positions: list[dict[str, Any]] | None = None,
         raise_on_order: Exception | None = None,
         clock_skew_ms: int = 0,
+        key_rights: dict[str, Any] | None = None,
     ) -> None:
         self.positions = positions or []
         self.raise_on_order = raise_on_order
         self.clock_skew_ms = clock_skew_ms
+        # None means the venue does not expose the endpoint at all, which is the
+        # older-ccxt case the executor has to tolerate.
+        self.key_rights = key_rights
         self.orders: list[dict[str, Any]] = []
         self.leverage_calls: list[tuple[float, str]] = []
         self.sandbox = False
 
     def set_sandbox_mode(self, enabled: bool) -> None:
         self.sandbox = enabled
+
+    def __getattr__(self, name: str) -> Any:
+        # Only the rights endpoint exists, and only when configured. Anything else
+        # must still raise AttributeError rather than silently returning a stub.
+        if name == "privateGetV5UserQueryApi" and self.__dict__.get("key_rights") is not None:
+            return lambda: {"result": self.__dict__["key_rights"]}
+        raise AttributeError(name)
 
     def fetch_time(self) -> int:
         return int(time.time() * 1000) + self.clock_skew_ms
@@ -282,6 +293,53 @@ def test_a_drifting_clock_is_caught_before_it_causes_confusion(
 
     with pytest.raises(UnsafeConfigurationError, match="clock"):
         ex.preflight()
+
+
+def test_a_read_only_key_is_refused_at_startup(log: IntentLog, switch: KillSwitch) -> None:
+    """The failure otherwise lands after a human has already confirmed a trade.
+
+    Everything a read-only key can do -- read the clock, list positions, read the
+    balance -- is exactly what startup does, so it looks healthy right up to the
+    moment it matters. On Bybit this is the difference between the Trade column
+    and the Read-Only one, and it is easy to tick the wrong one.
+    """
+    venue = FakeBybit(key_rights={"readOnly": "1", "permissions": {"ContractTrade": ["Order"]}})
+
+    with pytest.raises(UnsafeConfigurationError, match="read-only"):
+        executor(venue, log, switch).preflight()
+
+
+def test_a_key_that_can_withdraw_is_refused(log: IntentLog, switch: KillSwitch) -> None:
+    """Nothing here moves funds, so the right is pure additional exposure."""
+    venue = FakeBybit(
+        key_rights={"readOnly": "0", "permissions": {"Wallet": ["AccountTransfer", "Withdraw"]}}
+    )
+
+    with pytest.raises(UnsafeConfigurationError, match="withdrawal"):
+        executor(venue, log, switch).preflight()
+
+
+def test_a_properly_scoped_key_starts(log: IntentLog, switch: KillSwitch) -> None:
+    venue = FakeBybit(
+        key_rights={"readOnly": "0", "permissions": {"ContractTrade": ["Order", "Position"]}}
+    )
+
+    report = executor(venue, log, switch).preflight()
+
+    assert report.can_trade is True
+    assert report.can_withdraw is False
+
+
+def test_a_venue_that_cannot_report_rights_still_starts(
+    log: IntentLog, switch: KillSwitch
+) -> None:
+    """A missing diagnostic must not become a refusal to run.
+
+    Refusing here would break every venue and every ccxt version that does not
+    expose the endpoint, in exchange for a check that was never available on them
+    anyway.
+    """
+    assert executor(FakeBybit(), log, switch).preflight().can_trade is True
 
 
 def test_preflight_reports_what_it_found(log: IntentLog, switch: KillSwitch) -> None:
