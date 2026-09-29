@@ -30,6 +30,7 @@ the account already exists.
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -91,6 +92,7 @@ class SubscriptionBrain(AnthropicBrain):
         # same run *would* have cost on the API -- worth knowing, and not a charge.
         super().__init__(config, cache, client=_NoApiClient(), model=model, budget_usd=0.0)
         self.cli = cli
+        self._resolved: str | None = None
         self._workspace = tempfile.mkdtemp(prefix="traidingbrain-brain-")
         self._system_file = Path(self._workspace) / "system.md"
         self._system_file.write_text(
@@ -131,6 +133,24 @@ class SubscriptionBrain(AnthropicBrain):
             last_error,
         )
 
+    def _executable(self) -> str:
+        """The CLI's full path, resolved once.
+
+        On Windows the CLI is `claude.CMD`, and `subprocess` does not consult
+        PATHEXT the way a shell does -- so passing the bare name fails with a
+        missing-file error on the one platform this runs on. `shutil.which` does
+        consult it, which turns a confusing failure into a resolved path.
+        """
+        if self._resolved is None:
+            found = shutil.which(self.cli)
+            if found is None:
+                raise SubscriptionUnavailableError(
+                    f"{self.cli!r} is not on PATH. Install Claude Code "
+                    "(npm install -g @anthropic-ai/claude-code), or pass cli=<full path>."
+                )
+            self._resolved = found
+        return self._resolved
+
     def _run(self, content: str) -> tuple[str | None, str | None]:
         """Invoke the CLI once, in an empty directory with no tools.
 
@@ -141,7 +161,7 @@ class SubscriptionBrain(AnthropicBrain):
         transcript behind for every bar.
         """
         command = [
-            self.cli,
+            self._executable(),
             "--print",
             "--output-format",
             "json",
