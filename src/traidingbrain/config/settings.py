@@ -271,6 +271,7 @@ class LimitsConfig(_Frozen):
     cooldown_after_consecutive_losses: int = Field(ge=1)
     cooldown_hours: int = Field(ge=0)
     min_reward_risk: float = Field(gt=0)
+    max_cost_fraction_of_risk: float = Field(gt=0, le=1.0)
 
 
 class ExecutionConfig(_Frozen):

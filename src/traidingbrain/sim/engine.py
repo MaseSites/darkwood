@@ -28,7 +28,7 @@ from traidingbrain.domain.enums import ExitReason, OrderType, Side, Timeframe
 from traidingbrain.domain.market import FundingRate, SymbolSpec
 from traidingbrain.domain.snapshot import MarketSnapshot
 from traidingbrain.risk.leverage import choose_leverage
-from traidingbrain.risk.sizing import position_size, risk_budget
+from traidingbrain.risk.sizing import costs_are_affordable, position_size, risk_budget
 from traidingbrain.sim.broker import Fill, PendingEntry, SimBroker
 from traidingbrain.sim.metrics import BacktestMetrics, compute_metrics, format_metrics
 
@@ -237,6 +237,19 @@ class BacktestEngine:
 
         size = position_size(intent.side, intent.entry, intent.stop, budget.risk_amount, self.spec)
         if not size.is_viable:
+            return None
+
+        # Costs scale with the position, risk does not. A stop tight enough to
+        # make the round trip cost a large share of what is at stake is a trade
+        # that cannot win, whatever happens next.
+        affordable, _fraction = costs_are_affordable(
+            size.notional,
+            size.risk_amount,
+            self.spec,
+            self.config.engine.simulation.slippage_bps,
+            risk_config.limits.max_cost_fraction_of_risk,
+        )
+        if not affordable:
             return None
 
         leverage = choose_leverage(

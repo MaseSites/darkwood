@@ -140,3 +140,36 @@ def position_size(
         risk_amount=qty * stop_distance,
         stop_distance=stop_distance,
     )
+
+
+def round_trip_cost(notional: float, spec: SymbolSpec, slippage_bps: float) -> float:
+    """What getting in and out will cost, before the market moves at all.
+
+    Maker on the way in -- the entry is a resting limit order -- and taker on the
+    way out, because a stop crosses the spread. Slippage is counted once, on the
+    exit, since the entry either fills at its price or does not fill.
+    """
+    return notional * (spec.maker_fee + spec.taker_fee + slippage_bps * 1e-4)
+
+
+def costs_are_affordable(
+    notional: float,
+    risk_amount: float,
+    spec: SymbolSpec,
+    slippage_bps: float,
+    max_fraction: float,
+) -> tuple[bool, float]:
+    """Would transaction costs eat too much of the risk budget?
+
+    The check that tight stops need and that stop-distance rules miss. Position
+    size is risk divided by stop distance, so halving the stop doubles the
+    position -- and fees scale with the position while the risk stays fixed. A
+    stop 0.18% from entry means a round trip costs over 40% of what is at stake,
+    and there is no win rate that recovers that.
+
+    Returns the verdict and the actual fraction, so a refusal can say by how much.
+    """
+    if risk_amount <= 0:
+        return False, 1.0
+    fraction = round_trip_cost(notional, spec, slippage_bps) / risk_amount
+    return fraction <= max_fraction, fraction

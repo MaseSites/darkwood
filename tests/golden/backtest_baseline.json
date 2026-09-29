@@ -1,8 +1,8 @@
 {
-  "equity_curve_sha256": "a2532a8ffd842e9d26710cb1578f1471246217c8c385149547b3758ea484f89f",
-  "final_equity": 9459.0484,
-  "intents": 11,
-  "snapshots": 1141,
+  "equity_curve_sha256": "6ab1232af8a92cf7e7c4b947bcfa6b00bbbea543495a0db6a35acd3e1a7dd514",
+  "final_equity": 9296.041015,
+  "intents": 14,
+  "snapshots": 1144,
   "strategy": "baseline",
   "trades": [
     {
@@ -17,45 +17,12 @@
       "side": "long"
     },
     {
-      "closed": 1704846600000,
-      "entry": 42125.537266,
-      "exit": 42581.253362,
-      "leverage": 10.0,
-      "opened": 1704842100000,
-      "qty": 0.518,
-      "r": 2.205719,
-      "reason": "target",
-      "side": "long"
-    },
-    {
-      "closed": 1704849300000,
-      "entry": 41989.124227,
-      "exit": 41995.818628,
-      "leverage": 10.0,
-      "opened": 1704848400000,
-      "qty": 0.39,
-      "r": -0.095078,
-      "reason": "stop",
-      "side": "long"
-    },
-    {
-      "closed": 1704855600000,
-      "entry": 41845.345585,
-      "exit": 41811.756888,
-      "leverage": 10.0,
-      "opened": 1704854700000,
-      "qty": 0.53,
-      "r": -0.338862,
-      "reason": "stop",
-      "side": "long"
-    },
-    {
       "closed": 1706326200000,
       "entry": 41421.217357,
       "exit": 42177.998689,
       "leverage": 10.0,
       "opened": 1706241600000,
-      "qty": 0.136,
+      "qty": 0.133,
       "r": -1.059306,
       "reason": "stop",
       "side": "short"
@@ -66,7 +33,7 @@
       "exit": 41922.997241,
       "leverage": 10.0,
       "opened": 1706476500000,
-      "qty": 0.178,
+      "qty": 0.175,
       "r": -1.078024,
       "reason": "stop",
       "side": "short"
@@ -77,7 +44,7 @@
       "exit": 42128.965706,
       "leverage": 10.0,
       "opened": 1707148800000,
-      "qty": 0.147,
+      "qty": 0.144,
       "r": -1.065363,
       "reason": "stop",
       "side": "short"
@@ -88,7 +55,7 @@
       "exit": 41894.688399,
       "leverage": 10.0,
       "opened": 1707610500000,
-      "qty": 0.175,
+      "qty": 0.172,
       "r": -1.109567,
       "reason": "stop",
       "side": "short"
@@ -99,7 +66,7 @@
       "exit": 42093.117309,
       "leverage": 10.0,
       "opened": 1707830100000,
-      "qty": 0.149,
+      "qty": 0.147,
       "r": -1.067975,
       "reason": "stop",
       "side": "short"
@@ -110,7 +77,7 @@
       "exit": 42082.826738,
       "leverage": 10.0,
       "opened": 1708056000000,
-      "qty": 0.135,
+      "qty": 0.132,
       "r": -1.062049,
       "reason": "stop",
       "side": "short"
@@ -121,7 +88,7 @@
       "exit": 41399.229623,
       "leverage": 8.0,
       "opened": 1709145000000,
-      "qty": 0.067,
+      "qty": 0.066,
       "r": -0.459967,
       "reason": "manual",
       "side": "long"

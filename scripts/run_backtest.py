@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from traidingbrain.brain.fake import FakeBrain
 from traidingbrain.config.settings import load_config
 from traidingbrain.data.exchange import BybitDataSource
 from traidingbrain.data.funding import FundingStore
@@ -27,8 +28,27 @@ from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.sim.engine import BacktestResult, load_engine
 from traidingbrain.sim.metrics import compare
 from traidingbrain.strategies.baseline import RandomEntry, StructureBaseline
+from traidingbrain.strategies.brain_strategy import BrainStrategy
 
-STRATEGIES = {"random": RandomEntry, "baseline": StructureBaseline}
+
+def _make(name: str, config):
+    """Build a strategy by name.
+
+    `fake-brain` is the sharpest of the three yardsticks: identical gate,
+    identical factors, identical sizing, with the judgement replaced by
+    arithmetic. The gap between it and the real model is the value of the
+    judgement alone.
+    """
+    if name == "random":
+        return RandomEntry()
+    if name == "baseline":
+        return StructureBaseline()
+    if name == "fake-brain":
+        return BrainStrategy(FakeBrain(config), config.engine.trigger, name="fake-brain")
+    raise ValueError(f"unknown strategy {name!r}")
+
+
+STRATEGY_NAMES = ["random", "baseline", "fake-brain"]
 
 #: Fallback instrument rules, used when running offline. Taken from Bybit's
 #: BTCUSDT perpetual; `--live-spec` fetches the real ones.
@@ -54,11 +74,11 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--symbol", default=config.engine.symbols.active[0])
-    parser.add_argument("--strategy", choices=sorted(STRATEGIES), default="baseline")
+    parser.add_argument("--strategy", choices=STRATEGY_NAMES, default="baseline")
     parser.add_argument(
         "--compare",
         nargs="+",
-        choices=sorted(STRATEGIES),
+        choices=STRATEGY_NAMES,
         help="run several and say whether the difference is real",
     )
     parser.add_argument("--max-bars", type=int, default=None, help="cut the run short")
@@ -111,9 +131,12 @@ def main(argv: list[str] | None = None) -> int:
     results: list[BacktestResult] = []
     for name in names:
         started = time.perf_counter()
-        result = engine.run(STRATEGIES[name](), max_bars=args.max_bars)
+        strategy = _make(name, config)
+        result = engine.run(strategy, max_bars=args.max_bars)
         print(f"\n{result.summary()}")
         print(f"  window          {human(result.first_ts)} .. {human(result.last_ts)}")
+        if hasattr(strategy, "summary"):
+            print(strategy.summary())
         print(f"  runtime         {time.perf_counter() - started:.1f}s")
         results.append(result)
 

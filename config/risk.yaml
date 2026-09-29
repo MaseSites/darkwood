@@ -52,6 +52,19 @@ limits:
   cooldown_hours: 24
   min_reward_risk: 1.5
 
+  # Ceiling on what a round trip may cost, as a fraction of the amount risked.
+  #
+  # This is the rule that was missing, and its absence was the single largest
+  # drag on the first backtests. Position size is risk divided by stop distance,
+  # so a tight stop buys a large position -- and fees scale with the position,
+  # not with the risk. At a stop 0.18% from entry, a round trip costs 42% of what
+  # is being risked, and no win rate recovers that.
+  #
+  # Enforcing a ratio rather than a minimum stop distance keeps the rule tied to
+  # the thing that actually matters: 0.15 means transaction costs may consume at
+  # most fifteen percent of the risk budget, whatever the volatility happens to be.
+  max_cost_fraction_of_risk: 0.15
+
 execution:
   # A confirmed proposal is re-priced before it is sent. Drift beyond this and the
   # proposal is invalidated and rebuilt rather than quietly adjusted -- a trade at
