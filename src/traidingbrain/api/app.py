@@ -25,9 +25,12 @@ longer exists.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from traidingbrain.config.settings import AppConfig, load_config
@@ -186,6 +189,14 @@ def create_app(services: Services) -> FastAPI:
         summary="Trade proposals awaiting a human decision",
         version="0.1.0",
     )
+
+    dashboard = Path(__file__).resolve().parent.parent / "dashboard"
+    if dashboard.exists():
+        app.mount("/static", StaticFiles(directory=dashboard / "static"), name="static")
+
+        @app.get("/", include_in_schema=False)
+        def index() -> FileResponse:
+            return FileResponse(dashboard / "templates" / "index.html")
 
     @app.get("/api/state", response_model=SystemState)
     def state() -> SystemState:

@@ -1,0 +1,755 @@
+/* traidingBrain — confirmation surface
+ *
+ * DECISION SHEET (written before any markup, and kept here so it does not get lost)
+ *
+ * SUBJECT    One screen for one person deciding whether to put real money on one
+ *            trade. Its only job: show a fully-specified trade clearly enough to
+ *            say yes, lower the leverage, or say no — and make the irreversible
+ *            action feel irreversible.
+ *
+ * GROUND     An exchange order ticket and a risk report, not a fintech landing
+ *            page. Figures align on the decimal; rules are hairlines; nothing is
+ *            glossy. The reference points are an order ticket and a pilot's
+ *            checklist: instruments read under pressure that must not be misread.
+ *
+ * PALETTE    Neutral biased cold and blue-black (hue ~215) — an unlit trading
+ *            screen, and not pure black, which smears text on OLED during scroll.
+ *            Three semantic price colours taken from the subject itself: green for
+ *            the side you want, red for where you are wrong, and amber for
+ *            liquidation. That third slot is the one a generic dashboard palette
+ *            does not have, because a generic dashboard does not have leverage.
+ *
+ * TYPE       Two roles, split functionally. Monospace with tabular figures for
+ *            every number, so prices align on the decimal and a mistyped digit
+ *            shows as a jag in the column. System sans for labels and reasoning.
+ *            No display face: there is no hero on an order ticket.
+ *
+ * SPACE      Two registers, deliberately different. Intra-component 4/8/12px, so
+ *            the whole trade is visible without scrolling. Section rhythm 28/44px,
+ *            so the numbers and the decision are visibly separate regions and the
+ *            confirm button never shares a neighbourhood with the data.
+ *
+ * SHAPE      One radius (4px). Elevation is a tonal step only — the panel is
+ *            lighter than the ground. No shadows anywhere; hairline and shadow
+ *            together is a defect, so this picks one.
+ *
+ * MOTION     Three animated moments, all functional: the hold-to-confirm fill
+ *            (1200ms linear on press, 180ms ease-out on release), a value-change
+ *            flash on re-price, and panel entry. No scroll reveals — nothing here
+ *            scrolls into view.
+ *
+ * SIGNATURE  The risk ladder: a vertical price axis drawn to scale, with target,
+ *            entry, stop and liquidation at their real proportional distances. It
+ *            answers the question the numbers alone cannot — how much room is
+ *            there between where I am wrong and where the exchange closes me out.
+ *            Paired with hold-to-confirm, so a real trade cannot be fat-fingered.
+ */
+
+:root {
+  --ink: #060910;
+  --panel: #0e1420;
+  --panel-high: #141c2b;
+  --rule: #1e2839;
+  --rule-strong: #2c3a52;
+  --text: #e6edf7;
+  --dim: #7c8aa3;
+  --dimmer: #4c5a72;
+
+  --long: #34d399;
+  --short: #f87171;
+  --liq: #f59e0b;
+  --caution: #fbbf24;
+
+  --radius: 4px;
+
+  /* Intra-component */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  /* Section rhythm — a different register on purpose */
+  --gap: 28px;
+  --gap-lg: 44px;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--text);
+  font: 400 14px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* States most generated pages leave untouched. */
+::selection {
+  background: color-mix(in oklab, var(--liq) 35%, transparent);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--caution);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--rule-strong);
+  border-radius: 999px;
+  border: 3px solid var(--ink);
+}
+
+/* Tabular figures everywhere a number appears. Prices must align on the decimal;
+   without this, a wrong digit is invisible in a column. */
+.num,
+.ladder text {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* ---------------------------------------------------------------- shell -- */
+
+.shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: var(--gap) var(--s4) var(--gap-lg);
+}
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: var(--gap);
+  flex-wrap: wrap;
+}
+
+.wordmark {
+  font: 600 15px/1 var(--sans);
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.wordmark span {
+  color: var(--dim);
+  font-weight: 400;
+}
+
+.status-strip {
+  display: flex;
+  gap: var(--s4);
+  align-items: center;
+  font-size: 12px;
+  color: var(--dim);
+  flex-wrap: wrap;
+}
+
+.status-strip b {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.flag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 2px var(--s2);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.flag--testnet {
+  color: var(--caution);
+  border-color: color-mix(in oklab, var(--caution) 40%, var(--rule));
+}
+
+.flag--armed {
+  color: var(--short);
+  border-color: color-mix(in oklab, var(--short) 45%, var(--rule));
+}
+
+.flag--halted {
+  color: var(--ink);
+  background: var(--short);
+  border-color: var(--short);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------- banners -- */
+
+.banner {
+  border: 1px solid var(--rule-strong);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  padding: var(--s3) var(--s4);
+  margin-bottom: var(--gap);
+  font-size: 13px;
+}
+
+.banner--halt {
+  border-left-color: var(--short);
+  background: color-mix(in oklab, var(--short) 8%, var(--panel));
+}
+
+.banner--sent {
+  border-left-color: var(--long);
+  background: color-mix(in oklab, var(--long) 8%, var(--panel));
+}
+
+.banner--blocked {
+  border-left-color: var(--caution);
+  background: color-mix(in oklab, var(--caution) 7%, var(--panel));
+}
+
+.banner h2 {
+  margin: 0 0 var(--s1);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.banner p {
+  margin: 0;
+  color: var(--dim);
+}
+
+/* --------------------------------------------------------------- cards -- */
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.ticket {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  opacity: 0;
+  transform: translateY(6px);
+  animation: settle 180ms var(--ease-out) forwards;
+}
+
+.ticket:nth-child(2) {
+  animation-delay: 40ms;
+}
+.ticket:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+@keyframes settle {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ticket__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--rule);
+  flex-wrap: wrap;
+}
+
+.side {
+  font: 600 13px/1 var(--sans);
+  letter-spacing: 0.06em;
+  padding: var(--s1) var(--s2);
+  border-radius: var(--radius);
+}
+
+.side--long {
+  color: var(--long);
+  background: color-mix(in oklab, var(--long) 12%, transparent);
+}
+
+.side--short {
+  color: var(--short);
+  background: color-mix(in oklab, var(--short) 12%, transparent);
+}
+
+.symbol {
+  font: 600 16px/1 var(--mono);
+  letter-spacing: -0.01em;
+}
+
+.head-spacer {
+  flex: 1;
+}
+
+.confidence {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.confidence b {
+  font-family: var(--mono);
+  font-size: 18px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.countdown {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.countdown[data-urgent="true"] {
+  color: var(--caution);
+}
+
+/* ------------------------------------------------------------ the body -- */
+
+.ticket__body {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  gap: var(--gap);
+  padding: var(--s4);
+}
+
+@media (max-width: 720px) {
+  .ticket__body {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* The signature element: a price axis drawn to scale. */
+.ladder {
+  width: 100%;
+  height: 260px;
+  display: block;
+}
+
+.ladder line.axis {
+  stroke: var(--rule-strong);
+  stroke-width: 1;
+}
+
+.ladder line.mark {
+  stroke-width: 1.5;
+}
+
+.ladder line.band {
+  stroke-width: 10;
+  stroke-linecap: butt;
+  opacity: 0.16;
+}
+
+.ladder text {
+  font-size: 10px;
+  fill: var(--dim);
+}
+
+.ladder text.value {
+  font-size: 11px;
+  /* No `fill` here: each label carries its own semantic colour as an attribute,
+     and a class rule would override all of them to the same neutral. */
+}
+
+/* The break mark. Drawn, not hidden: a silently compressed axis is a chart that
+   lies about proportion, and proportion is the question this drawing answers. */
+.ladder .axis-break {
+  stroke: var(--rule-strong);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.ladder .dashed {
+  stroke-dasharray: 2 4;
+  opacity: 0.6;
+}
+
+.ladder text.gap {
+  fill: var(--dimmer);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--s3) var(--s4);
+  align-content: start;
+}
+
+.figure {
+  border-top: 1px solid var(--rule);
+  padding-top: var(--s2);
+}
+
+.figure dt {
+  font-size: 11px;
+  color: var(--dim);
+  letter-spacing: 0.02em;
+  margin: 0 0 2px;
+}
+
+.figure dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+}
+
+.figure dd small {
+  display: block;
+  font-size: 11px;
+  color: var(--dimmer);
+  margin-top: 2px;
+}
+
+.figure--long dd {
+  color: var(--long);
+}
+.figure--short dd {
+  color: var(--short);
+}
+.figure--liq dd {
+  color: var(--liq);
+}
+
+/* A value that just changed, so a re-price is visible rather than silent. */
+.figure[data-changed="true"] dd {
+  animation: flash 420ms var(--ease-out);
+}
+
+@keyframes flash {
+  0% {
+    background: color-mix(in oklab, var(--caution) 30%, transparent);
+  }
+  /* deliberate-ignore round-stat — a keyframe stop, not a displayed figure */
+  100% {
+    background: transparent;
+  }
+}
+
+/* ------------------------------------------------------------ reasoning -- */
+
+.reasoning {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--rule);
+  padding-top: var(--s3);
+  margin-top: var(--s1);
+}
+
+.reasoning h3 {
+  margin: 0 0 var(--s2);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--dim);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.reasoning ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.reasoning li {
+  margin-bottom: var(--s1);
+}
+
+.invalidation {
+  margin: var(--s3) 0 0;
+  padding: var(--s2) var(--s3);
+  border-left: 2px solid var(--liq);
+  background: color-mix(in oklab, var(--liq) 6%, transparent);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.invalidation b {
+  color: var(--liq);
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------------- actions -- */
+
+.ticket__foot {
+  border-top: 1px solid var(--rule);
+  padding: var(--s4);
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+
+.dial {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.dial label {
+  white-space: nowrap;
+}
+
+.stepper {
+  display: inline-flex;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.stepper button {
+  appearance: none;
+  border: 0;
+  background: var(--panel-high);
+  color: var(--text);
+  font: 500 14px/1 var(--mono);
+  min-width: 34px;
+  min-height: 34px;
+  cursor: pointer;
+  transition: background 150ms var(--ease-out), transform 120ms var(--ease-out);
+}
+
+.stepper button:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.stepper button:disabled {
+  color: var(--dimmer);
+  cursor: not-allowed;
+  background: var(--panel);
+}
+
+.stepper output {
+  min-width: 46px;
+  display: grid;
+  place-items: center;
+  font: 500 14px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+  background: var(--panel);
+  border-inline: 1px solid var(--rule-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .stepper button:hover:not(:disabled) {
+    background: var(--rule-strong);
+  }
+}
+
+
+
+.foot-spacer {
+  flex: 1;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--rule-strong);
+  background: var(--panel-high);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 0 var(--s4);
+  min-height: 40px;
+  font: 500 13px/1 var(--sans);
+  cursor: pointer;
+  transition: background 150ms var(--ease-out), transform 120ms var(--ease-out);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn:disabled {
+  color: var(--dimmer);
+  cursor: not-allowed;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover:not(:disabled) {
+    background: var(--rule-strong);
+  }
+}
+
+/* Hold to confirm. An irreversible action should not be a click.
+   Press is slow and deliberate; release snaps back. */
+.commit {
+  position: relative;
+  overflow: hidden;
+  min-width: 190px;
+  border-color: color-mix(in oklab, var(--long) 45%, var(--rule));
+  color: var(--long);
+  font-weight: 600;
+  touch-action: none;
+}
+
+.commit__fill {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklab, var(--long) 22%, transparent);
+  /* deliberate-ignore round-stat — clip geometry: the fill starts fully hidden */
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 180ms var(--ease-out);
+  pointer-events: none;
+}
+
+.commit[data-holding="true"] .commit__fill {
+  clip-path: inset(0 0 0 0);
+  transition: clip-path 1200ms linear;
+}
+
+.commit__label {
+  position: relative;
+}
+
+.commit:disabled {
+  border-color: var(--rule-strong);
+  color: var(--dimmer);
+}
+
+/* ------------------------------------------------------- other states -- */
+
+.placeholder {
+  border: 1px dashed var(--rule-strong);
+  border-radius: var(--radius);
+  padding: var(--gap-lg) var(--s4);
+  text-align: center;
+  color: var(--dim);
+}
+
+.placeholder h2 {
+  margin: 0 0 var(--s2);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.placeholder p {
+  margin: 0;
+  font-size: 13px;
+  max-width: 46ch;
+  margin-inline: auto;
+}
+
+.pulse {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dim);
+  animation: breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%,
+  /* deliberate-ignore round-stat — a keyframe stop, not a displayed figure */
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.notice {
+  margin-top: var(--s3);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius);
+  font-size: 13px;
+  border: 1px solid var(--rule-strong);
+}
+
+.notice--error {
+  border-color: color-mix(in oklab, var(--short) 45%, var(--rule));
+  color: var(--short);
+}
+
+.notice--ok {
+  border-color: color-mix(in oklab, var(--long) 45%, var(--rule));
+  color: var(--long);
+}
+
+.footnote {
+  margin-top: var(--gap-lg);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--rule);
+  color: var(--dimmer);
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticket {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .figure[data-changed="true"] dd,
+  .pulse {
+    animation: none;
+  }
+
+  /* The hold gesture stays — it is a safety mechanism, not decoration.
+     Only the easing is flattened. */
+  .commit__fill {
+    transition-timing-function: linear;
+  }
+}
+
+/* A 34px target is comfortable with a mouse and a mis-tap risk with a thumb.
+   Density is worth keeping on a desktop and is not worth a wrong leverage on a
+   phone, so the targets grow where the pointer is coarse rather than everywhere.
+
+   Narrow viewport counts too, not just `pointer: coarse`: pointer detection is
+   unreliable across devices and emulators, and the failure mode of getting it
+   wrong here is a mis-tapped leverage control. */
+@media (pointer: coarse), (max-width: 720px) {
+  .stepper button,
+  .btn {
+    min-height: 44px;
+  }
+
+  .stepper button {
+    min-width: 44px;
+  }
+
+  .stepper output {
+    min-width: 58px;
+  }
+}
