@@ -18,9 +18,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from traidingbrain.domain.enums import (
     Bias,
+    Factor,
+    LevelKind,
     ProposalStatus,
     RiskLevel,
     Side,
+    Timeframe,
     TradeState,
 )
 
@@ -34,6 +37,46 @@ PROPOSAL_TTL_SECONDS = 15 * 60
 
 def _now_ms() -> int:
     return int(datetime.now(tz=UTC).timestamp() * 1000)
+
+
+class FactorView(BaseModel):
+    """One weighted input, with its arithmetic shown.
+
+    The confidence number is the first thing anyone questions, and "74" on its own
+    invites either blind trust or blind dismissal. Carrying the factor, the
+    model's read, its own certainty, the configured weight and the resulting
+    points makes the number checkable by hand -- which is the only kind of
+    trustworthy there is for a figure that decides position size.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    factor: Factor
+    score: float = Field(ge=-1.0, le=1.0, description="Directional read: + favours bullish")
+    certainty: float = Field(ge=0.0, le=1.0, description="How sure the model is of this read")
+    weight: float = Field(ge=0.0, le=1.0, description="Share after renormalising for gaps")
+    contribution: float = Field(description="Confidence points this factor added or removed")
+    reasoning: str = ""
+
+
+class LevelMark(BaseModel):
+    """A named level as it stood at the decision, kept for drawing.
+
+    Re-deriving these when the chart is opened would show today's analysis over
+    yesterday's trade. A proposal is an argument made at one instant, and the
+    evidence has to be preserved with it or the chart quietly becomes a different
+    claim.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str
+    kind: LevelKind
+    timeframe: Timeframe
+    price: float = Field(gt=0)
+    distance_atr: float
+    age_bars: int = Field(ge=0)
+    touches: int = Field(ge=0, default=0)
 
 
 class TradeProposal(BaseModel):
@@ -78,6 +121,22 @@ class TradeProposal(BaseModel):
     snapshot_hash: str
     decision_id: str | None = None
     status: ProposalStatus = ProposalStatus.PENDING
+
+    # -- what the analysis was looking at -------------------------------------- #
+    # Defaulted so rows written before this existed still load. A proposal without
+    # them is displayable; it simply cannot be charted, which is the honest
+    # degradation rather than a crash on old data.
+
+    snapshot_ts: int = Field(default=0, description="Open time of the bar the decision was made on")
+    signal_timeframe: Timeframe | None = None
+    price_at_build: float = Field(default=0.0, ge=0.0, description="Close of that bar")
+    atr_at_build: float = Field(default=0.0, ge=0.0)
+    factors: list[FactorView] = Field(default_factory=list)
+    levels: list[LevelMark] = Field(default_factory=list)
+
+    @property
+    def is_chartable(self) -> bool:
+        return self.snapshot_ts > 0 and self.signal_timeframe is not None
 
     @model_validator(mode="after")
     def _directions_are_coherent(self) -> TradeProposal:

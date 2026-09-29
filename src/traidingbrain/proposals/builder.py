@@ -29,10 +29,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from traidingbrain.config.settings import AppConfig
-from traidingbrain.domain.enums import Bias, ProposalStatus, RiskLevel, Side
+from traidingbrain.brain.scoring import NEUTRAL_CONFIDENCE, ScoreBreakdown, score
+from traidingbrain.config.settings import AppConfig, WeightsConfig
+from traidingbrain.domain.enums import Bias, ProposalStatus, RiskLevel, Side, Timeframe
 from traidingbrain.domain.market import SymbolSpec
-from traidingbrain.domain.proposal import ProposalAdjustment, TradeProposal
+from traidingbrain.domain.proposal import (
+    FactorView,
+    LevelMark,
+    ProposalAdjustment,
+    TradeProposal,
+)
 from traidingbrain.domain.snapshot import MarketSnapshot
 from traidingbrain.domain.verdict import BrainDecision
 from traidingbrain.risk.leverage import choose_leverage, validate_user_leverage
@@ -56,9 +62,24 @@ class Rationale:
     invalidation_note: str
     snapshot_hash: str
     decision_id: str | None
+    # The evidence, captured at the decision rather than re-derived on demand.
+    # Re-deriving would draw today's analysis over yesterday's trade, which is a
+    # different claim wearing the same chart.
+    snapshot_ts: int = 0
+    signal_timeframe: Timeframe | None = None
+    price_at_build: float = 0.0
+    atr_at_build: float = 0.0
+    factors: tuple[FactorView, ...] = ()
+    levels: tuple[LevelMark, ...] = ()
 
     @classmethod
-    def from_decision(cls, decision: BrainDecision) -> Rationale:
+    def from_decision(
+        cls,
+        decision: BrainDecision,
+        snapshot: MarketSnapshot,
+        weights: WeightsConfig,
+    ) -> Rationale:
+        breakdown = score(decision.verdict, weights, snapshot.history)
         return cls(
             bias=decision.verdict.bias,
             confidence=decision.confidence,
@@ -67,6 +88,23 @@ class Rationale:
             invalidation_note=decision.verdict.scenarios.invalidation_note,
             snapshot_hash=decision.snapshot_hash,
             decision_id=decision.request_id,
+            snapshot_ts=snapshot.ts,
+            signal_timeframe=snapshot.signal_timeframe,
+            price_at_build=snapshot.price,
+            atr_at_build=snapshot.atr,
+            factors=_factor_views(decision, breakdown),
+            levels=tuple(
+                LevelMark(
+                    id=level.id,
+                    kind=level.kind,
+                    timeframe=level.timeframe,
+                    price=level.price,
+                    distance_atr=level.distance_atr,
+                    age_bars=level.age_bars,
+                    touches=level.touches,
+                )
+                for level in snapshot.levels
+            ),
         )
 
     @classmethod
@@ -79,7 +117,39 @@ class Rationale:
             invalidation_note=proposal.invalidation_note,
             snapshot_hash=proposal.snapshot_hash,
             decision_id=proposal.decision_id,
+            snapshot_ts=proposal.snapshot_ts,
+            signal_timeframe=proposal.signal_timeframe,
+            price_at_build=proposal.price_at_build,
+            atr_at_build=proposal.atr_at_build,
+            factors=tuple(proposal.factors),
+            levels=tuple(proposal.levels),
         )
+
+
+def _factor_views(decision: BrainDecision, breakdown: ScoreBreakdown) -> tuple[FactorView, ...]:
+    """Pair each factor the model scored with the arithmetic it fed.
+
+    `contribution` is in confidence points rather than raw score, because points
+    are the unit the reader sees. A factor scoring +0.8 under a 10% weight moves
+    the number by four points, and quoting the 0.8 alone makes it look decisive
+    when it is nearly noise.
+    """
+    views = []
+    sign = {Bias.BULLISH: 1.0, Bias.BEARISH: -1.0, Bias.NEUTRAL: 0.0}[breakdown.bias]
+    for factor, value in breakdown.contributions.items():
+        reading = decision.verdict.score_for(factor)
+        weight = breakdown.weights_used.get(factor, 0.0)
+        views.append(
+            FactorView(
+                factor=factor,
+                score=reading.score if reading else 0.0,
+                certainty=reading.confidence if reading else 0.0,
+                weight=weight,
+                contribution=NEUTRAL_CONFIDENCE * weight * value * sign,
+                reasoning=reading.reasoning if reading else "",
+            )
+        )
+    return tuple(sorted(views, key=lambda view: -abs(view.contribution)))
 
 
 @dataclass(frozen=True)
@@ -155,7 +225,7 @@ class ProposalBuilder:
             risk_pct=budget.risk_pct,
             spec=spec,
             account=account,
-            rationale=Rationale.from_decision(decision),
+            rationale=Rationale.from_decision(decision, snapshot, self.config.weights),
         )
 
     def adjust(
@@ -288,6 +358,12 @@ class ProposalBuilder:
             snapshot_hash=rationale.snapshot_hash,
             decision_id=rationale.decision_id,
             status=ProposalStatus.PENDING,
+            snapshot_ts=rationale.snapshot_ts,
+            signal_timeframe=rationale.signal_timeframe,
+            price_at_build=rationale.price_at_build,
+            atr_at_build=rationale.atr_at_build,
+            factors=list(rationale.factors),
+            levels=list(rationale.levels),
         )
 
 

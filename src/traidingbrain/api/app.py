@@ -28,12 +28,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from traidingbrain.api.chart import ChartView, build_chart
 from traidingbrain.config.settings import AppConfig, load_config
+from traidingbrain.data.store import ParquetStore
+from traidingbrain.domain.enums import Timeframe
 from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.domain.proposal import ProposalAdjustment, TradeProposal
 from traidingbrain.proposals.builder import BuildFailure, ProposalBuilder, describe
@@ -47,6 +51,22 @@ class PriceSource(Protocol):
     """Whatever can say what something costs right now."""
 
     def last_price(self, symbol: str) -> float | None: ...
+
+
+class BarSource(Protocol):
+    """Whatever can supply closed candles for a symbol.
+
+    A protocol rather than the concrete store, so the chart endpoint can be tested
+    against a handful of hand-built bars instead of a parquet directory.
+    """
+
+    def read(
+        self,
+        symbol: str,
+        timeframe: Timeframe,
+        since_ms: int | None = None,
+        until_ms: int | None = None,
+    ) -> pd.DataFrame: ...
 
 
 class Executor(Protocol):
@@ -70,6 +90,7 @@ class Services:
     kill_switch: KillSwitch
     specs: dict[str, SymbolSpec] = field(default_factory=dict)
     prices: PriceSource | None = None
+    bars: BarSource | None = None
     executor: Executor | None = None
     account: AccountState | None = None
 
@@ -222,6 +243,17 @@ def create_app(services: Services) -> FastAPI:
     def one(proposal_id: str) -> ProposalView:
         return ProposalView.of(_require(services, proposal_id))
 
+    @app.get("/api/proposals/{proposal_id}/chart", response_model=ChartView)
+    def chart(proposal_id: str) -> ChartView:
+        """The bars and lines this decision was made on.
+
+        Served from stored history rather than fetched live, and trimmed to end at
+        the decision bar. A chart that runs to the present would be showing the
+        reader what happened next, which is the one thing that makes it impossible
+        to judge the argument on its own terms.
+        """
+        return _chart_for(services, proposal_id)
+
     @app.post("/api/proposals/{proposal_id}/adjust", response_model=ProposalView)
     def adjust(proposal_id: str, change: AdjustRequest) -> ProposalView:
         """Re-price after the user lowers leverage or risk.
@@ -326,6 +358,33 @@ def create_app(services: Services) -> FastAPI:
     return app
 
 
+def _chart_for(services: Services, proposal_id: str) -> ChartView:
+    """Gather the bars and lines behind one proposal.
+
+    Each refusal is a different missing piece and says which: no bar source wired,
+    a proposal from before charts existed, or a symbol with nothing backfilled.
+    Collapsing them into one error would send someone to check the wrong thing.
+    """
+    proposal = _require(services, proposal_id)
+    if services.bars is None:
+        raise HTTPException(503, "no bar source is wired, so nothing can be charted")
+    if not proposal.is_chartable:
+        raise HTTPException(
+            409,
+            "this proposal predates chart support and did not record which bar it was "
+            "made on; a newly built proposal will chart normally",
+        )
+    timeframe = proposal.signal_timeframe or services.config.engine.timeframes.signal
+    frame = services.bars.read(proposal.symbol, timeframe, until_ms=proposal.snapshot_ts)
+    if frame.empty:
+        raise HTTPException(
+            404,
+            f"no stored {timeframe.value} bars for {proposal.symbol}; "
+            f"run scripts/backfill.py {proposal.symbol}",
+        )
+    return build_chart(proposal, frame)
+
+
 def _require(services: Services, proposal_id: str) -> TradeProposal:
     proposal = services.store.get(proposal_id)
     if proposal is None:
@@ -381,6 +440,7 @@ def build_default_services(config: AppConfig | None = None) -> Services:
     return Services(
         config=settings,
         store=ProposalStore(settings.engine.paths.db_path),
+        bars=ParquetStore(settings.engine.paths.parquet_dir),
         builder=ProposalBuilder(settings, limits),
         limits=limits,
         kill_switch=kill_switch,
