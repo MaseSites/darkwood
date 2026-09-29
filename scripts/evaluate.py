@@ -30,6 +30,7 @@ from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import SymbolSpec
+from traidingbrain.history.engine import HistoryEngine
 from traidingbrain.sim.engine import BacktestEngine, load_engine
 from traidingbrain.sim.evaluate import (
     PooledResult,
@@ -77,7 +78,9 @@ def maker(name: str, config: AppConfig):
     return build
 
 
-def build_engine(symbol: str, config: AppConfig) -> BacktestEngine | None:
+def build_engine(
+    symbol: str, config: AppConfig, history: HistoryEngine | None = None
+) -> BacktestEngine | None:
     store = ParquetStore(config.engine.paths.parquet_dir)
     frames = {tf: store.read(symbol, tf) for tf in config.engine.timeframes.context}
     minutes = store.read(symbol, config.engine.timeframes.execution)
@@ -90,6 +93,7 @@ def build_engine(symbol: str, config: AppConfig) -> BacktestEngine | None:
         spec=SymbolSpec(symbol=symbol, **DEFAULT_SPEC),
         config=config,
         funding=FundingStore(config.engine.paths.funding_dir).read(symbol),
+        history=history,
     )
 
 
@@ -117,16 +121,30 @@ def main(argv: list[str] | None = None) -> int:
         "--split", action="store_true", help="fit on the first half, report on the second"
     )
     parser.add_argument("--walk-forward", type=int, default=0, metavar="FOLDS")
+    parser.add_argument(
+        "--no-history",
+        action="store_true",
+        help="run without the similarity index, to see what it is contributing",
+    )
     parser.add_argument("--train-fraction", type=float, default=0.5)
     args = parser.parse_args(argv)
 
     if not args.split and not args.walk_forward:
         args.split = True
 
+    # One index across every symbol, because one symbol does not reach the
+    # threshold a win rate may be quoted at and four pooled do.
+    #
+    # Running the symbols one after another is safe despite the shared index: a
+    # case is only admissible once its outcome resolved before the embargo window
+    # preceding the bar being decided, so BTC's 2026 trades are invisible while
+    # ETH is at 2024. The time filter does the work, not the loop order.
+    history = None if args.no_history else HistoryEngine(config.engine.history)
+
     engines: dict[str, BacktestEngine] = {}
     windows: dict[str, Window] = {}
     for symbol in args.symbols:
-        engine = build_engine(symbol, config)
+        engine = build_engine(symbol, config, history)
         if engine is None:
             print(f"  {symbol}: no data, skipping", file=sys.stderr)
             continue
@@ -161,6 +179,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.walk_forward:
         _report_walk_forward(engines, common, args, config)
+
+    if history is not None:
+        print(
+            f"\nhistory index: {history.cases:,} resolved cases, "
+            f"{history.lookups:,} lookups, "
+            f"{history.lookups_with_sample:,} of them with enough comparable cases "
+            f"to quote a rate"
+        )
 
     return 0
 
