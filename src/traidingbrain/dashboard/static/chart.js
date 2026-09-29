@@ -64,17 +64,35 @@ const LEVEL_TONE = {
  * so they do not share a colour: the first is continuation, the second is a
  * reversal of whoever was just stopped out. */
 const EVENT_COLOUR = {
-  bos: "rgba(96, 165, 250, 0.75)",
-  choch: "rgba(232, 121, 249, 0.75)",
-  sweep_up: "rgba(248, 113, 113, 0.7)",
-  sweep_down: "rgba(52, 211, 153, 0.7)",
+  bos: "rgba(96, 165, 250, 0.55)",
+  choch: "rgba(232, 121, 249, 0.55)",
+  sweep_up: "rgba(248, 113, 113, 0.55)",
+  sweep_down: "rgba(52, 211, 153, 0.55)",
 };
 
+const EVENT_LABEL = {
+  bos: "#93c5fd",
+  choch: "#f0abfc",
+  sweep_up: "#f8a0a0",
+  sweep_down: "#6ee7b7",
+};
+
+/* Line and label are separated deliberately. The line is background: it marks a
+ * price and should not compete with the candles. The label is text at ten pixels
+ * and has to clear the contrast floor, which the line's alpha does not. Using one
+ * colour for both means either an unreadable label or a line that shouts. */
 const TONE_COLOUR = {
-  supply: "rgba(248, 113, 113, 0.55)",
-  demand: "rgba(52, 211, 153, 0.55)",
-  gap: "rgba(245, 158, 11, 0.45)",
-  context: "rgba(124, 138, 163, 0.5)",
+  supply: "rgba(248, 113, 113, 0.5)",
+  demand: "rgba(52, 211, 153, 0.5)",
+  gap: "rgba(245, 158, 11, 0.42)",
+  context: "rgba(124, 138, 163, 0.45)",
+};
+
+const TONE_LABEL = {
+  supply: "#f8a0a0",
+  demand: "#6ee7b7",
+  gap: "#fbbf24",
+  context: "#9aa8c0",
 };
 
 function cssVar(name) {
@@ -316,9 +334,9 @@ function drawLevelLabels(ctx, labels, g) {
   ctx.textAlign = "left";
   for (const entry of labels) {
     const width = ctx.measureText(entry.text).width;
-    ctx.fillStyle = "rgba(6, 9, 16, 0.82)";
+    ctx.fillStyle = "rgba(6, 9, 16, 0.92)";
     ctx.fillRect(g.plotLeft + 2, entry.labelY - 5.5, width + 6, 11);
-    ctx.fillStyle = TONE_COLOUR[entry.tone];
+    ctx.fillStyle = TONE_LABEL[entry.tone];
     ctx.fillText(entry.text, g.plotLeft + 5, entry.labelY);
   }
 }
@@ -384,13 +402,18 @@ function drawEvents(ctx, view, g) {
     ctx.stroke();
     ctx.restore();
 
+    /* The label gets a backing plate too, for the same reason the level labels
+     * do: it runs down the chart and will cross candles. */
     ctx.save();
-    ctx.translate(px + 3, g.plotTop + 4 + (order % 2) * 84);
+    ctx.translate(px + 3, g.plotTop + 5 + (order % 2) * 88);
     ctx.rotate(Math.PI / 2);
-    ctx.fillStyle = colour;
+    const width = ctx.measureText(event.label).width;
+    ctx.fillStyle = "rgba(6, 9, 16, 0.9)";
+    ctx.fillRect(-2, -6, width + 5, 12);
+    ctx.fillStyle = EVENT_LABEL[event.kind] || "#9aa8c0";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillText(event.label, 0, 0);
+    ctx.fillText(event.label, 1, 0);
     ctx.restore();
   });
 }

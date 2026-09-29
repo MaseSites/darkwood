@@ -53,7 +53,12 @@ const state = {
    * DOM so the four-second poll does not throw away the one the user chose. */
   timeframe: new Map(),
   /* Which proposal's chart the pointer is over, and where. Kept out of the DOM
-   * so a re-render does not lose it mid-inspection. */
+   * so a re-render does not lose it mid-inspection.
+   *
+   * deliberate-ignore no-active-state -- the checker reads source rather than
+   * rendered CSS and matches this identifier as a `:hover` rule. Every pressable
+   * element here has an `:active`: app.css styles .stepper button, .btn and
+   * .chart__tab on press. Checked, not waived. */
   hover: null,
 };
 
