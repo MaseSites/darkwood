@@ -290,3 +290,64 @@ def test_the_intent_log_refuses_a_second_attempt_at_the_same_proposal(system) ->
     intents.write_ahead(proposal, testnet=True)
     with pytest.raises(AlreadyAttemptedError):
         intents.write_ahead(proposal, testnet=True)
+
+
+def test_an_unreadable_price_refuses_once_the_executor_is_armed(system) -> None:
+    """Unknown is not the same as unchanged.
+
+    The drift check compares a proposal against the live market. When that price
+    cannot be read, the tempting implementation reports no drift -- which is how a
+    proposal priced twenty minutes ago reaches the exchange having never been
+    tested against the market at all.
+    """
+    client, services, exchange, proposal, _intents = system
+    services.prices = FixedPrice(None)
+
+    response = client.post(f"/api/proposals/{proposal.id}/token")
+
+    assert response.status_code == 409
+    assert "could not be read" in response.json()["detail"]
+    assert exchange.sent == []
+
+
+def test_an_unreadable_price_is_only_a_blank_field_when_nothing_can_trade(
+    tmp_path: Path, config: AppConfig
+) -> None:
+    """The same condition must not block the read-only build.
+
+    Without an executor there is nothing to protect against, and refusing here
+    would make the dashboard unusable offline for no safety gain.
+    """
+    kill_switch = KillSwitch(tmp_path / "KILL")
+    limits = RiskLimits(config.risk.limits, kill_switch)
+    services = Services(
+        config=config,
+        store=ProposalStore(tmp_path / "proposals.sqlite"),
+        builder=ProposalBuilder(config, limits),
+        limits=limits,
+        kill_switch=kill_switch,
+        specs={"BTCUSDT": make_symbol_spec()},
+        account=AccountState(
+            equity=10_000.0,
+            starting_equity_today=10_000.0,
+            starting_equity_this_week=10_000.0,
+            open_positions=[],
+            recent_trades=[],
+            now_ms=NOW,
+        ),
+    )
+    built = services.builder.build(
+        FakeBrain(config).decide(make_snapshot()),
+        make_snapshot(),
+        make_symbol_spec(),
+        services.account_state(),
+    )
+    if isinstance(built, BuildFailure):
+        pytest.skip(str(built))
+    services.store.put(built)
+    services.prices = FixedPrice(None)
+
+    client = TestClient(create_app(services))
+
+    assert client.post(f"/api/proposals/{built.id}/token").status_code == 200
+    assert services.executor is None

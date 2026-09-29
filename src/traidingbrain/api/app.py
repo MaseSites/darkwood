@@ -262,16 +262,7 @@ def create_app(services: Services) -> FastAPI:
         trade nobody agreed to.
         """
         proposal = _require(services, proposal_id)
-        drift = _price_drift(services, proposal)
-        tolerance = services.config.risk.execution.max_price_drift_bps
-
-        if drift is not None and abs(drift) > tolerance:
-            raise HTTPException(
-                409,
-                f"price has moved {drift:+.1f} bps since this was priced "
-                f"(tolerance {tolerance:.0f}); the proposal needs rebuilding rather "
-                f"than confirming",
-            )
+        drift = _assert_priced_against_now(services, proposal)
 
         issued = services.store.issue_token(
             proposal, services.config.risk.execution.confirmation_token_ttl_seconds
@@ -340,6 +331,36 @@ def _require(services: Services, proposal_id: str) -> TradeProposal:
     if proposal is None:
         raise HTTPException(404, "no such proposal")
     return proposal
+
+
+def _assert_priced_against_now(services: Services, proposal: TradeProposal) -> float | None:
+    """Refuse a proposal the market has moved away from, and one it cannot check.
+
+    Unknown is not the same as unchanged. While no executor is wired a missing
+    price is merely a blank field on a screen; once one is armed, treating unknown
+    as zero drift would send a proposal priced twenty minutes ago without ever
+    testing it against the market.
+    """
+    drift = _price_drift(services, proposal)
+    tolerance = services.config.risk.execution.max_price_drift_bps
+
+    if drift is None:
+        if services.executor is not None:
+            raise HTTPException(
+                409,
+                "the current price could not be read, so this proposal cannot be "
+                "checked against the market; refusing to issue a confirmation",
+            )
+        return None
+
+    if abs(drift) > tolerance:
+        raise HTTPException(
+            409,
+            f"price has moved {drift:+.1f} bps since this was priced "
+            f"(tolerance {tolerance:.0f}); the proposal needs rebuilding rather "
+            f"than confirming",
+        )
+    return drift
 
 
 def _price_drift(services: Services, proposal: TradeProposal) -> float | None:
