@@ -20,6 +20,7 @@ from typing import Protocol
 import numpy as np
 import pandas as pd
 
+from traidingbrain.analysis.context import load_context
 from traidingbrain.analysis.pipeline import MultiFrameAnalysis
 from traidingbrain.analysis.snapshot import SnapshotBuilder
 from traidingbrain.config.settings import AppConfig
@@ -115,7 +116,16 @@ class BacktestEngine:
         self.funding = funding or []
         self.history = history
         self._fills_seen = 0
-        self.builder = SnapshotBuilder(symbol, analysis, config.engine)
+        # Positioning and the calendar if they are on disk, nothing if not.
+        # A period the venue does not cover is one fewer factor, not a failure.
+        self.context = load_context(symbol, analysis.signal.frame, config.engine)
+        self.builder = SnapshotBuilder(
+            symbol,
+            analysis,
+            config.engine,
+            positioning=self.context.positioning,
+            calendar=self.context.calendar,
+        )
 
         self.minute_ts = minute_frame["ts"].to_numpy(dtype="int64")
         self.minute_open = minute_frame["open"].to_numpy(dtype="float64")

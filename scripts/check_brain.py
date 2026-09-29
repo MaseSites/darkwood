@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from traidingbrain.analysis.context import load_context
 from traidingbrain.analysis.pipeline import MultiFrameAnalysis
 from traidingbrain.analysis.snapshot import SnapshotBuilder
 from traidingbrain.brain.factory import BRAIN_NAMES, make_brain
@@ -101,7 +102,15 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     analysis = MultiFrameAnalysis(frames, config.engine)
-    builder = SnapshotBuilder(args.symbol, analysis, config.engine)
+    context = load_context(args.symbol, analysis.signal.frame, config.engine)
+    print(f"  context: {context.description}\n")
+    builder = SnapshotBuilder(
+        args.symbol,
+        analysis,
+        config.engine,
+        positioning=context.positioning,
+        calendar=context.calendar,
+    )
     snapshot = _latest_snapshot(builder, len(analysis.signal))
     if snapshot is None:
         print(f"Could not build a snapshot for {args.symbol}.", file=sys.stderr)

@@ -27,6 +27,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from traidingbrain.analysis.context import load_context
 from traidingbrain.analysis.pipeline import MultiFrameAnalysis
 from traidingbrain.analysis.snapshot import SnapshotBuilder
 from traidingbrain.brain.trigger import Trigger
@@ -162,7 +163,14 @@ class LiveLoop:
             return None
 
         analysis = MultiFrameAnalysis(frames, self.config.engine)
-        builder = SnapshotBuilder(self.symbol, analysis, self.config.engine)
+        context = load_context(self.symbol, analysis.signal.frame, self.config.engine)
+        builder = SnapshotBuilder(
+            self.symbol,
+            analysis,
+            self.config.engine,
+            positioning=context.positioning,
+            calendar=context.calendar,
+        )
         index = len(analysis.signal) - 1
         snapshot = builder.build(index)
         if snapshot is None:
