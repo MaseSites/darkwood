@@ -52,12 +52,23 @@ DEMO_SPEC = {
 }
 
 
-def seed_demo(services: Services) -> None:
-    """Put one real proposal on the screen, built by the real pipeline.
+#: How far back --demo may look for a bar the analysis actually liked. Most bars
+#: are declined, which is the system working; a demo that only tries the newest
+#: one therefore shows an empty screen most of the time and reads as a failure.
+DEMO_SEARCH_BARS = 3000
+
+
+def seed_demo(services: Services) -> int:
+    """Put real proposals on the screen, built by the real pipeline.
 
     Built rather than hand-written, so what is displayed is genuinely what the
     system produces -- a mocked-up ticket would hide exactly the formatting and
     rounding problems this is meant to surface.
+
+    It searches backwards instead of asking about the newest bar only. Declining
+    is the normal answer on any given bar, so asking once and reporting "declined"
+    produced an empty dashboard with no visible reason, which is indistinguishable
+    from something being broken.
     """
     config = services.config
     store = ParquetStore(config.engine.paths.parquet_dir)
@@ -65,25 +76,37 @@ def seed_demo(services: Services) -> None:
     frames = {tf: store.read(symbol, tf) for tf in config.engine.timeframes.context}
     if any(frame.empty for frame in frames.values()):
         print(f"  no market data for {symbol}; the dashboard will start empty")
-        return
+        print(f"  fix with: python scripts/backfill.py {symbol} --since 2023-01-01")
+        return 0
 
     analysis = MultiFrameAnalysis(frames, config.engine)
     builder = SnapshotBuilder(symbol, analysis, config.engine)
-    snapshot = builder.build(len(analysis.signal) - 1)
-    if snapshot is None:
-        print("  not enough history to build a snapshot")
-        return
-
+    brain = FakeBrain(config)
     spec = SymbolSpec(symbol=symbol, **DEMO_SPEC)
     services.specs[symbol] = spec
-    decision = FakeBrain(config).decide(snapshot)
-    built = services.builder.build(decision, snapshot, spec, services.account_state())
 
-    if isinstance(built, BuildFailure):
-        print(f"  the analysis declined this bar: {built}")
-        return
-    services.store.put(built)
-    print(f"  seeded one proposal: {built.side.value} {symbol} at {built.entry:,.2f}")
+    last = len(analysis.signal) - 1
+    examined = 0
+    declined: dict[str, int] = {}
+    for index in range(last, max(last - DEMO_SEARCH_BARS, 0), -1):
+        snapshot = builder.build(index)
+        if snapshot is None:
+            continue
+        examined += 1
+        built = services.builder.build(
+            brain.decide(snapshot), snapshot, spec, services.account_state()
+        )
+        if isinstance(built, BuildFailure):
+            declined[str(built)] = declined.get(str(built), 0) + 1
+            continue
+        services.store.put(built)
+        print(f"  seeded {built.side.value} {symbol} at {built.entry:,.2f}")
+        return 1
+
+    print(f"  no proposal in the last {examined:,} analysable bars. Most common reasons:")
+    for reason, count in sorted(declined.items(), key=lambda item: -item[1])[:3]:
+        print(f"    {count:>5,}x  {reason}")
+    return 0
 
 
 def _arm(services: Services) -> bool:
