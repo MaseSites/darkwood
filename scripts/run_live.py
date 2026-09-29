@@ -24,7 +24,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from traidingbrain.brain.fake import FakeBrain
+from traidingbrain.brain.cache import DecisionCache
+from traidingbrain.brain.factory import BRAIN_NAMES, make_brain
 from traidingbrain.clock import SystemClock
 from traidingbrain.config.settings import load_config, load_secrets
 from traidingbrain.data.exchange import BybitDataSource
@@ -65,6 +66,12 @@ def main(argv: list[str] | None = None) -> int:
         help="arm the testnet executor so a confirmation reaches the exchange",
     )
     parser.add_argument("--equity", type=float, default=config.engine.simulation.initial_equity)
+    parser.add_argument(
+        "--brain",
+        choices=BRAIN_NAMES,
+        default="subscription",
+        help="who interprets the market (default: subscription, no API key needed)",
+    )
     args = parser.parse_args(argv)
 
     secrets = load_secrets()
@@ -116,7 +123,9 @@ def main(argv: list[str] | None = None) -> int:
         store=ParquetStore(config.engine.paths.parquet_dir),
         proposals=proposals,
         builder=ProposalBuilder(config, limits),
-        brain=FakeBrain(config),
+        brain=make_brain(
+            args.brain, config, cache=DecisionCache(config.engine.paths.cache_db_path)
+        ),
         spec=spec,
         clock=SystemClock(),
         history=HistoryEngine(config.engine.history),

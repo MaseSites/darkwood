@@ -19,7 +19,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from traidingbrain.brain.fake import FakeBrain
+from traidingbrain.brain.cache import DecisionCache
+from traidingbrain.brain.factory import BRAIN_NAMES, make_brain
 from traidingbrain.config.settings import load_config
 from traidingbrain.data.exchange import BybitDataSource
 from traidingbrain.data.funding import FundingStore
@@ -31,7 +32,7 @@ from traidingbrain.strategies.baseline import RandomEntry, StructureBaseline
 from traidingbrain.strategies.brain_strategy import BrainStrategy
 
 
-def _make(name: str, config):
+def _make(name: str, config, *, kind: str = "fake"):
     """Build a strategy by name.
 
     `fake-brain` is the sharpest of the three yardsticks: identical gate,
@@ -44,11 +45,18 @@ def _make(name: str, config):
     if name == "baseline":
         return StructureBaseline()
     if name == "fake-brain":
-        return BrainStrategy(FakeBrain(config), config.engine.trigger, name="fake-brain")
+        return BrainStrategy(make_brain("fake", config), config.engine.trigger, name="fake-brain")
+    if name == "brain":
+        # The cache is what makes a repeat run free and reproducible. Without
+        # sampling parameters it is the only reproducibility guarantee there is.
+        cache = DecisionCache(config.engine.paths.cache_db_path)
+        return BrainStrategy(
+            make_brain(kind, config, cache=cache), config.engine.trigger, name=f"brain-{kind}"
+        )
     raise ValueError(f"unknown strategy {name!r}")
 
 
-STRATEGY_NAMES = ["random", "baseline", "fake-brain"]
+STRATEGY_NAMES = ["random", "baseline", "fake-brain", "brain"]
 
 #: Fallback instrument rules, used when running offline. Taken from Bybit's
 #: BTCUSDT perpetual; `--live-spec` fetches the real ones.
@@ -80,6 +88,12 @@ def main(argv: list[str] | None = None) -> int:
         nargs="+",
         choices=STRATEGY_NAMES,
         help="run several and say whether the difference is real",
+    )
+    parser.add_argument(
+        "--brain",
+        choices=BRAIN_NAMES,
+        default="subscription",
+        help="who answers when --strategy brain is used (default: subscription)",
     )
     parser.add_argument("--max-bars", type=int, default=None, help="cut the run short")
     parser.add_argument(
@@ -131,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
     results: list[BacktestResult] = []
     for name in names:
         started = time.perf_counter()
-        strategy = _make(name, config)
+        strategy = _make(name, config, kind=args.brain)
         result = engine.run(strategy, max_bars=args.max_bars)
         print(f"\n{result.summary()}")
         print(f"  window          {human(result.first_ts)} .. {human(result.last_ts)}")
