@@ -14,7 +14,7 @@ bars had finished by the moment the decision was made?
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -48,7 +48,7 @@ def index_at_or_before(frame: pd.DataFrame, timeframe: Timeframe, as_of_ms: int)
     return int(eligible[-1])
 
 
-@dataclass(frozen=True)
+@dataclass
 class FrameAnalysis:
     """Everything computed for one timeframe, indexed the same way as its frame."""
 
@@ -58,18 +58,32 @@ class FrameAnalysis:
     structure: StructureTimeline
     liquidity: LiquidityTimeline
     regime: RegimeTimeline
+    _columns: dict[str, np.ndarray] = field(default_factory=dict, compare=False)
 
     def __len__(self) -> int:
         return len(self.frame)
 
+    def column(self, name: str) -> np.ndarray:
+        """A column as a numpy array, built once.
+
+        These are read once per bar across a whole backtest, and `Series.iloc`
+        costs about a microsecond a call. At twenty thousand bars times five
+        frames that is measurable.
+        """
+        cached = self._columns.get(name)
+        if cached is None:
+            cached = self.frame[name].to_numpy()
+            self._columns[name] = cached
+        return cached
+
     def ts_at(self, index: int) -> int:
-        return int(self.frame["ts"].iloc[index])
+        return int(self.column("ts")[index])
 
     def close_at(self, index: int) -> float:
-        return float(self.frame["close"].iloc[index])
+        return float(self.column("close")[index])
 
     def atr_at(self, index: int) -> float:
-        return float(self.indicators.atr.iloc[index])
+        return self.indicators.at("atr", index)
 
     def is_ready(self, index: int) -> bool:
         """Are all indicators warmed up, and is the ATR usable as a scale unit?

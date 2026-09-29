@@ -244,7 +244,17 @@ class BacktestEngine:
     # -- internals ---------------------------------------------------------- #
 
     def _step_minutes(self, broker: SimBroker, from_ms: int, to_ms: int) -> None:
-        """Replay one signal bar, minute by minute."""
+        """Replay one signal bar, minute by minute -- unless there is nothing to replay.
+
+        With no position and no resting order, walking sixty minutes changes
+        nothing except the funding cursor, and the broker can move that in one
+        step. The broker is flat for most of a backtest, so this is most of the
+        minute loop.
+        """
+        if broker.is_flat:
+            broker.skip_to(to_ms)
+            return
+
         lo = int(np.searchsorted(self.minute_ts, from_ms, side="left"))
         hi = int(np.searchsorted(self.minute_ts, to_ms, side="left"))
         for i in range(lo, hi):

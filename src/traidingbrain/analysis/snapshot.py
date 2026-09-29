@@ -80,11 +80,12 @@ def read_indicators(analysis: FrameAnalysis, index: int) -> list[IndicatorReadin
     bearish for the next move -- and the strength says how emphatically.
     """
     indicators = analysis.indicators
-    unit = analysis.atr_at(index)
-    close = analysis.close_at(index)
+    unit = indicators.at("atr", index)
+    frame = analysis.frame
+    close = float(frame["close"].to_numpy()[index])
     readings: list[IndicatorReading] = []
 
-    rsi_value = float(indicators.rsi.iloc[index])
+    rsi_value = indicators.at("rsi", index)
     if rsi_value >= RSI_OVERBOUGHT:
         rsi_bias = Bias.BEARISH
         rsi_strength = (rsi_value - RSI_OVERBOUGHT) / (100.0 - RSI_OVERBOUGHT)
@@ -96,9 +97,7 @@ def read_indicators(analysis: FrameAnalysis, index: int) -> list[IndicatorReadin
         rsi_strength = abs(rsi_value - 50.0) / 20.0
     readings.append(_reading("RSI", rsi_value, rsi_bias, rsi_strength))
 
-    spread = (
-        float(indicators.ema_fast.iloc[index]) - float(indicators.ema_slow.iloc[index])
-    ) / unit
+    spread = (indicators.at("ema_fast", index) - indicators.at("ema_slow", index)) / unit
     readings.append(
         _reading(
             "EMA_SPREAD_ATR",
@@ -108,7 +107,7 @@ def read_indicators(analysis: FrameAnalysis, index: int) -> list[IndicatorReadin
         )
     )
 
-    histogram = float(indicators.macd.histogram.iloc[index]) / unit
+    histogram = (indicators.at("macd_line", index) - indicators.at("macd_signal", index)) / unit
     readings.append(
         _reading(
             "MACD_HIST_ATR",
@@ -118,7 +117,9 @@ def read_indicators(analysis: FrameAnalysis, index: int) -> list[IndicatorReadin
         )
     )
 
-    percent_b = float(indicators.bollinger.percent_b(analysis.frame["close"]).iloc[index])
+    # The scalar form. Building the whole %B series to read one element was a
+    # third of the entire backtest runtime.
+    percent_b = indicators.bollinger.percent_b_at(close, index)
     if np.isnan(percent_b):
         bb_bias, bb_strength = Bias.NEUTRAL, 0.0
     elif percent_b > 1.0:
@@ -136,10 +137,9 @@ def read_indicators(analysis: FrameAnalysis, index: int) -> list[IndicatorReadin
         )
     )
 
-    average_volume = float(indicators.volume_ma.iloc[index])
-    volume_ratio = (
-        float(analysis.frame["volume"].iloc[index]) / average_volume if average_volume > 0 else 1.0
-    )
+    average_volume = indicators.at("volume_ma", index)
+    bar_volume = float(frame["volume"].to_numpy()[index])
+    volume_ratio = bar_volume / average_volume if average_volume > 0 else 1.0
     # Volume confirms whoever is already in control; on its own it points nowhere.
     readings.append(
         _reading(
@@ -151,8 +151,8 @@ def read_indicators(analysis: FrameAnalysis, index: int) -> list[IndicatorReadin
     )
 
     # Where the bar closed inside its own range: conviction without a price.
-    bar_high = float(analysis.frame["high"].iloc[index])
-    bar_low = float(analysis.frame["low"].iloc[index])
+    bar_high = float(frame["high"].to_numpy()[index])
+    bar_low = float(frame["low"].to_numpy()[index])
     span = bar_high - bar_low
     position = (close - bar_low) / span if span > 0 else 0.5
     readings.append(

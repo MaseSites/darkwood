@@ -432,3 +432,23 @@ class SimBroker:
                     -self.position.notional * rate.rate * self.position.side.sign
                 )
             self._funding_cursor += 1
+
+    def skip_to(self, ts: int) -> None:
+        """Advance the clock without walking every minute.
+
+        Only valid while nothing is working -- with no position and no resting
+        order, the minute loop's sole effect is moving the funding cursor, and it
+        does that identically in one step.
+
+        Worth having because of the scale: a two-year backtest steps roughly one
+        and a half million minutes, and the broker is flat for most of them. The
+        caller is responsible for checking `is_flat`; this asserts it rather than
+        trusting it, because a silent skip while a position was open would drop
+        every fill in that hour.
+        """
+        if not self.is_flat:
+            raise RuntimeError(
+                "skip_to called while an order or position was live; that would "
+                "discard fills rather than fast-forward past nothing"
+            )
+        self._charge_funding(ts)

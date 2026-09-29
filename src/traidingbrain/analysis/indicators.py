@@ -20,7 +20,8 @@ The rules this module holds to:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -147,6 +148,8 @@ class Bollinger:
     middle: pd.Series
     upper: pd.Series
     lower: pd.Series
+    _upper_cache: np.ndarray | None = None
+    _lower_cache: np.ndarray | None = None
 
     def percent_b(self, close: pd.Series) -> pd.Series:
         """Where price sits in the band: 0 at the lower edge, 1 at the upper.
@@ -155,6 +158,32 @@ class Bollinger:
         """
         width = self.upper - self.lower
         return ((close - self.lower) / width).where(width != 0.0)
+
+    def percent_b_at(self, close: float, index: int) -> float:
+        """The same thing for one bar, without building the whole series.
+
+        The series form was being called once per bar and indexed once -- O(n) work
+        for a single number, repeated n times. On a two-year backtest that was a
+        third of the total runtime on its own.
+        """
+        upper = float(self._upper_values[index])
+        lower = float(self._lower_values[index])
+        width = upper - lower
+        if width == 0.0 or math.isnan(width):
+            return float("nan")
+        return (close - lower) / width
+
+    @property
+    def _upper_values(self) -> np.ndarray:
+        if self.__dict__.get("_upper_cache") is None:
+            object.__setattr__(self, "_upper_cache", self.upper.to_numpy(dtype="float64"))
+        return self.__dict__["_upper_cache"]  # type: ignore[no-any-return]
+
+    @property
+    def _lower_values(self) -> np.ndarray:
+        if self.__dict__.get("_lower_cache") is None:
+            object.__setattr__(self, "_lower_cache", self.lower.to_numpy(dtype="float64"))
+        return self.__dict__["_lower_cache"]  # type: ignore[no-any-return]
 
 
 def bollinger(series: pd.Series, period: int = 20, std: float = 2.0) -> Bollinger:
@@ -213,7 +242,20 @@ def slope(series: pd.Series, window: int) -> pd.Series:
     return series.rolling(window, min_periods=window).apply(fit, raw=True)
 
 
-@dataclass(frozen=True)
+#: Series that must all carry a value before a snapshot may be built.
+_READY_SERIES = (
+    "atr",
+    "rsi",
+    "ema_fast",
+    "ema_slow",
+    "macd_line",
+    "macd_signal",
+    "bb_middle",
+    "volume_ma",
+)
+
+
+@dataclass
 class IndicatorSet:
     """Every indicator for one timeframe, aligned to the same index."""
 
@@ -224,6 +266,43 @@ class IndicatorSet:
     macd: Macd
     bollinger: Bollinger
     volume_ma: pd.Series
+
+    #: Series as numpy arrays, built once.
+    #:
+    #: Reading indicators is a per-bar operation and `Series.iloc` costs about a
+    #: microsecond each time. Over twenty thousand bars and six readings per frame
+    #: across five frames that was seconds of pure indexing overhead.
+    _arrays: dict[str, np.ndarray] = field(default_factory=dict, compare=False)
+
+    def _by_name(self) -> dict[str, pd.Series]:
+        """Flat names onto the nested structure.
+
+        Written out rather than resolved with `getattr`: a typo in a name should be
+        a KeyError here, not an AttributeError three frames away.
+        """
+        return {
+            "atr": self.atr,
+            "rsi": self.rsi,
+            "ema_fast": self.ema_fast,
+            "ema_slow": self.ema_slow,
+            "macd_line": self.macd.line,
+            "macd_signal": self.macd.signal,
+            "macd_histogram": self.macd.histogram,
+            "bb_middle": self.bollinger.middle,
+            "bb_upper": self.bollinger.upper,
+            "bb_lower": self.bollinger.lower,
+            "volume_ma": self.volume_ma,
+        }
+
+    def values(self, name: str) -> np.ndarray:
+        cached = self._arrays.get(name)
+        if cached is None:
+            cached = self._by_name()[name].to_numpy(dtype="float64")
+            self._arrays[name] = cached
+        return cached
+
+    def at(self, name: str, index: int) -> float:
+        return float(self.values(name)[index])
 
     def warmup_bars(self) -> int:
         """How many bars must pass before every series carries a value."""
@@ -247,7 +326,7 @@ class IndicatorSet:
         The snapshot builder refuses to emit before this is true. A half-warmed
         indicator set produces readings the market never actually supported.
         """
-        return all(not bool(pd.isna(s.iloc[index])) for s in self._series())
+        return all(not np.isnan(self.values(name)[index]) for name in _READY_SERIES)
 
 
 def compute_all(
