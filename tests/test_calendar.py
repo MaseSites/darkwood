@@ -13,6 +13,7 @@ the year -- and an hour is exactly the difference between before and after.
 
 from __future__ import annotations
 
+from calendar import monthrange
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -175,8 +176,6 @@ def test_every_expiry_is_the_last_friday_of_its_month() -> None:
 
 
 def _days_in_month(year: int, month: int) -> int:
-    from calendar import monthrange
-
     return monthrange(year, month)[1]
 
 

@@ -12,7 +12,6 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from tests.factories import make_symbol_spec
 from traidingbrain.api.chart import MAX_LEVELS, build_chart
 from traidingbrain.domain.enums import LevelKind, ProposalStatus, Side, Timeframe
 from traidingbrain.domain.proposal import LevelMark, TradeProposal
