@@ -440,3 +440,82 @@ def test_symbol_spec_comes_from_the_venue() -> None:
 def test_year_partitioning_helper() -> None:
     assert year_of(EPOCH) == 2024
     assert year_of(1_735_689_600_000) == 2025
+
+
+# --------------------------------------------------------------------------- #
+# 5. Filling a hole that is *before* what is already stored
+# --------------------------------------------------------------------------- #
+
+
+def test_a_request_reaching_further_back_actually_fetches(store: ParquetStore) -> None:
+    """Resume used to only move forward, so this silently fetched nothing.
+
+    It took max(requested_start, newest_stored), which for a request ending
+    before the stored data put the cursor past its own end window. The loop
+    exited immediately and the run reported a clean store and success for a
+    range it never touched -- the worst shape a bug can take, because the output
+    is indistinguishable from the work having been done.
+    """
+    recent = bars_from_rows(synthetic_rows(EPOCH + 500 * H1_MS, H1, 100))
+    store.write("BTCUSDT", H1, bars_to_frame(recent))
+    stored_before = len(store.read("BTCUSDT", H1))
+
+    older = bars_from_rows(synthetic_rows(EPOCH, H1, 500))
+    source = FakeDataSource(older + recent, page_size=200)
+    backfiller = Backfiller(source, store, clock=FixedClock(recent[-1].ts + H1_MS))
+
+    result = backfiller.run("BTCUSDT", H1, since_ms=EPOCH, until_ms=EPOCH + 500 * H1_MS)
+
+    assert result.bars_stored > 0, "the backward range was skipped again"
+    assert len(store.read("BTCUSDT", H1)) > stored_before
+
+
+def test_filling_backwards_does_not_redownload_what_is_held(store: ParquetStore) -> None:
+    """The gap stops at the existing data, not at today.
+
+    Without the stop, extending a minute series back by a year would re-fetch
+    every bar after it too -- millions of rows to add a few hundred thousand.
+    """
+    recent = bars_from_rows(synthetic_rows(EPOCH + 500 * H1_MS, H1, 300))
+    store.write("BTCUSDT", H1, bars_to_frame(recent))
+
+    older = bars_from_rows(synthetic_rows(EPOCH, H1, 500))
+    source = FakeDataSource(older + recent, page_size=200)
+    backfiller = Backfiller(source, store, clock=FixedClock(recent[-1].ts + H1_MS))
+    backfiller.run("BTCUSDT", H1, since_ms=EPOCH, until_ms=EPOCH + 500 * H1_MS)
+
+    asked_from = [call[2] for call in source.fetch_calls]
+    assert all(since <= EPOCH + 500 * H1_MS for since in asked_from), (
+        "it kept fetching past the data it already had"
+    )
+
+
+def test_the_series_is_continuous_after_filling_a_hole(store: ParquetStore) -> None:
+    """The join has to be seamless, or the analysis reads a gap as a quiet market."""
+    recent = bars_from_rows(synthetic_rows(EPOCH + 500 * H1_MS, H1, 100))
+    store.write("BTCUSDT", H1, bars_to_frame(recent))
+
+    older = bars_from_rows(synthetic_rows(EPOCH, H1, 500))
+    source = FakeDataSource(older + recent, page_size=200)
+    Backfiller(source, store, clock=FixedClock(recent[-1].ts + H1_MS)).run(
+        "BTCUSDT", H1, since_ms=EPOCH, until_ms=EPOCH + 500 * H1_MS
+    )
+
+    stored = store.read("BTCUSDT", H1)
+    stamps = stored["ts"].to_numpy()
+
+    assert stored["ts"].is_monotonic_increasing
+    assert not stored["ts"].duplicated().any()
+    assert set(pd.Series(stamps).diff().dropna().astype(int).tolist()) == {H1_MS}, "the join left a hole"
+
+
+def test_the_report_describes_the_whole_series_not_the_last_chunk(store: ParquetStore) -> None:
+    """It said "116 bars" for a store holding 259 -- believable, and wrong."""
+    bars = bars_from_rows(synthetic_rows(EPOCH, H1, 400))
+    source = FakeDataSource(bars, page_size=50)
+
+    result = Backfiller(source, store, clock=FixedClock(bars[-1].ts + H1_MS)).run(
+        "BTCUSDT", H1, since_ms=EPOCH
+    )
+
+    assert result.report.rows == len(store.read("BTCUSDT", H1))
