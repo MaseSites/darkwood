@@ -274,7 +274,7 @@ def test_funding_changes_the_result(
 # --------------------------------------------------------------------------- #
 
 
-def test_a_window_the_minutes_do_not_reach_is_refused(
+def test_a_window_the_minutes_do_not_reach_is_trimmed_and_reported(
     config: AppConfig, frames: dict[Timeframe, pd.DataFrame], minutes: pd.DataFrame
 ) -> None:
     """Missing minute data must stop the run, not quietly empty it.
@@ -297,11 +297,14 @@ def test_a_window_the_minutes_do_not_reach_is_refused(
         funding=[],
     )
 
-    with pytest.raises(MissingMinuteDataError, match="minute data only covers"):
-        engine.run(StructureBaseline())
+    result = engine.run(StructureBaseline())
+
+    assert result.window_note, "the run was trimmed and said nothing about it"
+    assert "minute data covers" in result.window_note
+    assert "WINDOW" in result.summary()
 
 
-def test_the_refusal_names_the_command_that_fixes_it(
+def test_a_trim_at_the_head_moves_the_reported_window(
     config: AppConfig, frames: dict[Timeframe, pd.DataFrame], minutes: pd.DataFrame
 ) -> None:
     late = minutes.loc[minutes["ts"] >= minutes["ts"].quantile(0.6)].reset_index(drop=True)
@@ -309,11 +312,11 @@ def test_the_refusal_names_the_command_that_fixes_it(
         "TESTUSDT", frames, minute_frame=late, spec=make_symbol_spec(), config=config, funding=[]
     )
 
-    with pytest.raises(MissingMinuteDataError) as caught:
-        engine.run(StructureBaseline())
+    result = engine.run(StructureBaseline())
 
-    assert "scripts/backfill.py" in str(caught.value)
-    assert "--tfs M1" in str(caught.value)
+    # Trimmed at the head, so the reported window starts later than asked.
+    assert result.first_ts >= int(late["ts"].min())
+    assert "days dropped" in result.window_note
 
 
 def test_no_minute_data_at_all_is_refused(

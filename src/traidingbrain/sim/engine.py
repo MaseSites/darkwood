@@ -93,6 +93,9 @@ class BacktestResult:
     intents_rejected_by_risk: int = 0
     first_ts: int = 0
     last_ts: int = 0
+    #: Non-empty when the run covered less than it was asked to. A trim that only
+    #: lived in a log would be the same silent no-op this guard exists to catch.
+    window_note: str = ""
 
     def summary(self) -> str:
         head = (
@@ -101,6 +104,8 @@ class BacktestResult:
             f"  intents         {self.intents:,} "
             f"({self.intents_rejected_by_risk:,} refused by risk rules)"
         )
+        if self.window_note:
+            head += f"\n  WINDOW          {self.window_note}"
         return head + "\n" + format_metrics(self.metrics)
 
 
@@ -160,16 +165,10 @@ class BacktestEngine:
 
         end = len(signal) - 1
         signal_ts = signal.frame["ts"].to_numpy(dtype="int64")
-        self._assert_minutes_cover(signal_ts[start], signal_ts[end])
 
-        # A time window rather than a bar count, so the same period can be asked
-        # for across symbols and timeframes without translating indices by hand.
-        if start_ts is not None:
-            start = max(start, int(np.searchsorted(signal_ts, start_ts, side="left")))
-        if end_ts is not None:
-            end = min(end, int(np.searchsorted(signal_ts, end_ts, side="right")) - 1)
-        if max_bars is not None:
-            end = min(end, start + max_bars)
+        start, end, clamp_note = self._resolve_window(
+            signal_ts, start, end, start_ts=start_ts, end_ts=end_ts, max_bars=max_bars
+        )
         if end <= start:
             return self._empty_result(strategy, broker)
 
@@ -242,39 +241,101 @@ class BacktestEngine:
             intents_rejected_by_risk=refused,
             first_ts=int(signal_ts[start]),
             last_ts=int(signal_ts[end]),
+            window_note=clamp_note,
         )
 
-    def _assert_minutes_cover(self, first_ts: int, last_ts: int) -> None:
-        """Refuse to run over signal bars the minute data does not reach.
+    def _resolve_window(
+        self,
+        signal_ts: np.ndarray,
+        start: int,
+        end: int,
+        *,
+        start_ts: int | None,
+        end_ts: int | None,
+        max_bars: int | None,
+    ) -> tuple[int, int, str]:
+        """Narrow the run to what was asked for, then to what can be resolved.
 
-        The minute series decides whether the stop or the target was hit first
-        inside an hour. Where it is missing, nothing fills, every entry expires
-        unused, and the result is a confident "no trades in that period" -- which
-        is indistinguishable from a strategy that found nothing, and is the
-        answer someone would act on.
+        A time window rather than a bar count, so the same period can be asked for
+        across symbols and timeframes without translating indices by hand. The
+        minute check comes last, because trimming to the minute data before
+        applying the caller's window would report a trim the caller never felt.
+        """
+        if start_ts is not None:
+            start = max(start, int(np.searchsorted(signal_ts, start_ts, side="left")))
+        if end_ts is not None:
+            end = min(end, int(np.searchsorted(signal_ts, end_ts, side="right")) - 1)
+        if max_bars is not None:
+            end = min(end, start + max_bars)
+        if end <= start:
+            return start, end, ""
+        return self._fit_to_minutes(signal_ts, start, end)
 
-        This is exactly the shape of failure the rest of this codebase keeps
-        turning up: a silent no-op that reads as a result. Extending the candle
-        history without extending the minute history produces it, and nothing
-        else in the pipeline would notice.
+    def _fit_to_minutes(
+        self, signal_ts: np.ndarray, start: int, end: int
+    ) -> tuple[int, int, str]:
+        """Trim the run to where intrabar order can actually be resolved.
+
+        The minute series decides whether the stop or the target came first inside
+        a signal bar. Where it is absent nothing fills, every entry expires unused,
+        and the report says "no trades" -- indistinguishable from a strategy that
+        found nothing, and the number someone would act on.
+
+        Trimming rather than refusing, because the common case is benign: the
+        minute frame is fetched separately and routinely ends an hour or two
+        earlier than the hourly one. Aborting a four-year backtest over its last
+        afternoon would be the wrong trade. What is not benign is doing it
+        silently, so any trim is returned as a sentence and travels into the
+        result.
+
+        Refusing is kept for the case where trimming would leave nothing worth
+        reporting -- there, a number would be worse than an error.
         """
         if self.minute_ts.size == 0:
             raise MissingMinuteDataError(
-                f"{self.symbol}: no minute data at all, so no order could ever fill"
+                f"{self.symbol}: no minute data at all, so no order could ever fill.\n"
+                f"  python scripts/backfill.py {self.symbol} --tfs M1"
             )
+
         have_from, have_to = int(self.minute_ts[0]), int(self.minute_ts[-1])
-        # One signal bar of slack at each end: the last bar's minutes may still be
-        # forming, and that is a normal state rather than a hole.
-        slack = timeframe_ms(self.config.engine.timeframes.signal)
-        if first_ts < have_from - slack or last_ts > have_to + slack:
+        wanted_from, wanted_to = int(signal_ts[start]), int(signal_ts[end])
+
+        fitted_start, fitted_end = start, end
+        if wanted_from < have_from:
+            fitted_start = int(np.searchsorted(signal_ts, have_from, side="left"))
+        if have_to < wanted_to:
+            # The threshold is the last bar's *open*, not its close. Minute data
+            # routinely stops partway through the newest bar because it is fetched
+            # separately, and trimming for that would fire on every ordinary run
+            # and make the note worthless. A gap that does not even reach the last
+            # bar's open is a different thing.
+            fitted_end = int(np.searchsorted(signal_ts, have_to, side="right")) - 1
+
+        fitted_start = max(start, fitted_start)
+        fitted_end = min(end, fitted_end)
+        if fitted_end <= fitted_start:
             raise MissingMinuteDataError(
-                f"{self.symbol}: the signal window runs "
-                f"{_day(first_ts)}..{_day(last_ts)} but minute data only covers "
-                f"{_day(have_from)}..{_day(have_to)}. Nothing would fill outside that, "
-                f"and the run would report no trades rather than an error.\n"
+                f"{self.symbol}: the requested window {_day(wanted_from)}..{_day(wanted_to)} "
+                f"has no minute data at all; minutes cover "
+                f"{_day(have_from)}..{_day(have_to)}. Nothing would fill, and the run "
+                f"would report no trades rather than an error.\n"
                 f"  python scripts/backfill.py {self.symbol} --tfs M1 "
-                f"--since {_day(first_ts)}"
+                f"--since {_day(wanted_from)}"
             )
+
+        if (fitted_start, fitted_end) == (start, end):
+            return start, end, ""
+
+        lost_days = (
+            (int(signal_ts[fitted_start]) - wanted_from) + (wanted_to - int(signal_ts[fitted_end]))
+        ) / 86_400_000
+        return (
+            fitted_start,
+            fitted_end,
+            f"trimmed to {_day(int(signal_ts[fitted_start]))}.."
+            f"{_day(int(signal_ts[fitted_end]))} ({lost_days:.1f} days dropped) "
+            f"because minute data covers only {_day(have_from)}..{_day(have_to)}",
+        )
 
     # -- history ------------------------------------------------------------ #
 
