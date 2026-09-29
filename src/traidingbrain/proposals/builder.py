@@ -71,6 +71,8 @@ class Rationale:
     atr_at_build: float = 0.0
     factors: tuple[FactorView, ...] = ()
     levels: tuple[LevelMark, ...] = ()
+    confidence_raw: float = 0.0
+    confidence_cap_reason: str = ""
 
     @classmethod
     def from_decision(
@@ -93,6 +95,13 @@ class Rationale:
             price_at_build=snapshot.price,
             atr_at_build=snapshot.atr,
             factors=_factor_views(decision, breakdown),
+            confidence_raw=NEUTRAL_CONFIDENCE
+            + NEUTRAL_CONFIDENCE * breakdown.directional_score * _sign(breakdown.bias),
+            confidence_cap_reason=(
+                "the history index holds too few comparable cases to support a higher number"
+                if breakdown.capped_by_history
+                else ""
+            ),
             levels=tuple(
                 LevelMark(
                     id=level.id,
@@ -117,6 +126,8 @@ class Rationale:
             invalidation_note=proposal.invalidation_note,
             snapshot_hash=proposal.snapshot_hash,
             decision_id=proposal.decision_id,
+            confidence_raw=proposal.confidence_raw,
+            confidence_cap_reason=proposal.confidence_cap_reason,
             snapshot_ts=proposal.snapshot_ts,
             signal_timeframe=proposal.signal_timeframe,
             price_at_build=proposal.price_at_build,
@@ -124,6 +135,10 @@ class Rationale:
             factors=tuple(proposal.factors),
             levels=tuple(proposal.levels),
         )
+
+
+def _sign(bias: Bias) -> float:
+    return {Bias.BULLISH: 1.0, Bias.BEARISH: -1.0, Bias.NEUTRAL: 0.0}[bias]
 
 
 def _factor_views(decision: BrainDecision, breakdown: ScoreBreakdown) -> tuple[FactorView, ...]:
@@ -135,7 +150,7 @@ def _factor_views(decision: BrainDecision, breakdown: ScoreBreakdown) -> tuple[F
     when it is nearly noise.
     """
     views = []
-    sign = {Bias.BULLISH: 1.0, Bias.BEARISH: -1.0, Bias.NEUTRAL: 0.0}[breakdown.bias]
+    sign = _sign(breakdown.bias)
     for factor, value in breakdown.contributions.items():
         reading = decision.verdict.score_for(factor)
         weight = breakdown.weights_used.get(factor, 0.0)
@@ -364,6 +379,8 @@ class ProposalBuilder:
             atr_at_build=rationale.atr_at_build,
             factors=list(rationale.factors),
             levels=list(rationale.levels),
+            confidence_raw=rationale.confidence_raw or rationale.confidence,
+            confidence_cap_reason=rationale.confidence_cap_reason,
         )
 
 

@@ -133,6 +133,16 @@ class TradeProposal(BaseModel):
     atr_at_build: float = Field(default=0.0, ge=0.0)
     factors: list[FactorView] = Field(default_factory=list)
     levels: list[LevelMark] = Field(default_factory=list)
+    confidence_raw: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=100.0,
+        description="Before any cap. Equal to confidence unless something limited it.",
+    )
+    confidence_cap_reason: str = Field(
+        default="",
+        description="Why the raw number was not used. Empty when nothing was capped.",
+    )
 
     @property
     def is_chartable(self) -> bool:

@@ -16,6 +16,8 @@
  * quietly pre-authorised while the user was reading.
  */
 
+import { drawChart, candleReadout } from "/static/chart.js";
+
 const HOLD_MS = 1200;
 const POLL_MS = 4000;
 
@@ -39,6 +41,15 @@ const state = {
    * second and then watching the ticket silently vanish is the worst possible
    * feedback for an irreversible action. */
   outcome: null,
+  /* Chart payloads, keyed by proposal id.
+   *
+   * Cached because they cannot change: the bars end at the decision and the
+   * levels were captured with it. Re-fetching on every four-second poll would
+   * re-read a parquet file to redraw an identical picture. */
+  charts: new Map(),
+  /* Which proposal's chart the pointer is over, and where. Kept out of the DOM
+   * so a re-render does not lose it mid-inspection. */
+  hover: null,
 };
 
 const fmt = {
@@ -176,6 +187,174 @@ function figure(label, value, sub, modifier, changed) {
     </div>`;
 }
 
+/* ----------------------------------------------------- the factor table -- */
+
+/**
+ * The arithmetic behind the confidence number, laid out so it can be checked.
+ *
+ * The number on its own invites either blind trust or blind dismissal. Showing
+ * the model's read on each factor, how sure it was of that read, the weight the
+ * configuration gives it, and the points that produced — and having the points
+ * sum to the number above — turns a claim into something a person can disagree
+ * with specifically.
+ *
+ * Contributions are drawn as bars from a centre line rather than printed alone,
+ * because the thing worth seeing is which factor actually moved the answer.
+ * Usually one did and the rest are noise, and that is invisible in a column of
+ * numbers.
+ */
+function factorTable(p) {
+  if (!p.factors?.length) return "";
+  const widest = Math.max(...p.factors.map((f) => Math.abs(f.contribution)), 1);
+
+  const rows = p.factors
+    .map((f) => {
+      const share = (Math.abs(f.contribution) / widest) * 50;
+      const positive = f.contribution >= 0;
+      return `
+      <tr>
+        <th scope="row">${escapeHtml(f.factor)}</th>
+        <td class="factor-bar">
+          <span class="factor-bar__track">
+            <span class="factor-bar__fill factor-bar__fill--${positive ? "for" : "against"}"
+                  style="width:${share.toFixed(1)}%; ${positive ? "left:50%" : `right:50%`}"></span>
+          </span>
+        </td>
+        <td class="num factor-points">${f.contribution >= 0 ? "+" : ""}${f.contribution.toFixed(1)}</td>
+        <td class="factor-weight num">${(f.weight * 100).toFixed(0)}%</td>
+        <td class="factor-why">${escapeHtml(f.reasoning || "")}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const total = p.factors.reduce((sum, f) => sum + f.contribution, 0);
+  const raw = p.confidence_raw || p.confidence;
+  /* The sum has to reconcile with the number shown above it, or the reader
+   * assumes they misread rather than that something intervened. When a cap
+   * changed the answer, the cap is part of the arithmetic and is stated. */
+  const capped = p.confidence_cap_reason && Math.abs(raw - p.confidence) > 0.05;
+  const sum = `50 baseline ${total >= 0 ? "+" : "−"} ${Math.abs(total).toFixed(
+    1
+  )} from the factors = <b class="num">${raw.toFixed(1)}</b>`;
+  return `
+  <table class="factors">
+    <caption>
+      ${sum}
+      ${
+        capped
+          ? `<span class="factors__cap">held down to
+             <b class="num">${p.confidence.toFixed(0)}</b> &mdash;
+             ${escapeHtml(p.confidence_cap_reason)}</span>`
+          : ""
+      }
+    </caption>
+    <thead class="sr-only">
+      <tr><th>Factor</th><th>Direction</th><th>Points</th><th>Weight</th><th>Reason</th></tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+/* ------------------------------------------------------------- the chart -- */
+
+function chartPanel(p) {
+  const view = state.charts.get(p.id);
+  if (view === "unavailable") return "";
+  if (!view) {
+    return `<div class="chart chart--loading" data-chart="${p.id}">
+      <span class="pulse"></span><p>Loading the bars this was decided on&hellip;</p>
+    </div>`;
+  }
+  const hidden = view.levels_hidden
+    ? `<span class="chart__hidden">${view.levels_hidden} more level${
+        view.levels_hidden === 1 ? "" : "s"
+      } not drawn</span>`
+    : "";
+  return `
+  <figure class="chart" data-chart="${p.id}">
+    <figcaption class="chart__head">
+      <span class="chart__tf">${escapeHtml(view.symbol)} &middot; ${escapeHtml(view.timeframe)}</span>
+      <span class="chart__readout" data-readout="${p.id}">${escapeHtml(
+        candleReadout(view, view.candles.length - 1)
+      )}</span>
+      ${hidden}
+    </figcaption>
+    <canvas class="chart__canvas" data-canvas="${p.id}"
+            role="img"
+            aria-label="Candlestick chart of ${escapeHtml(view.symbol)} ending at the bar this
+                        trade was decided on, with the entry, stop, target and the named levels
+                        the analysis used drawn on it."></canvas>
+    <figcaption class="chart__note">${escapeHtml(view.note)}</figcaption>
+  </figure>`;
+}
+
+/**
+ * Fetch each visible proposal's chart once, then redraw.
+ *
+ * Failures are recorded as "unavailable" rather than retried. A proposal built
+ * before charts existed, or a symbol with nothing backfilled, will not start
+ * working on the next poll, and retrying every four seconds would turn one
+ * missing file into a steady stream of requests.
+ */
+async function loadCharts() {
+  const missing = state.proposals.filter((p) => !state.charts.has(p.id));
+  if (!missing.length) return;
+  await Promise.all(
+    missing.map(async (p) => {
+      try {
+        state.charts.set(p.id, await api(`/api/proposals/${p.id}/chart`));
+      } catch {
+        state.charts.set(p.id, "unavailable");
+      }
+    })
+  );
+  render();
+  paintCharts();
+}
+
+/* A canvas has no intrinsic size: it learns one from CSS and has to be told to
+ * redraw when that changes, or it is drawn once at whatever width the window
+ * happened to be and stretched from then on. Re-observing an element already
+ * being watched is a no-op, so this is safe to call after every render. */
+const sizeWatcher = new ResizeObserver(() => paintCharts());
+
+function paintCharts() {
+  document.querySelectorAll("[data-canvas]").forEach((canvas) => {
+    const id = canvas.dataset.canvas;
+    const view = state.charts.get(id);
+    if (!view || view === "unavailable") return;
+    const hover = state.hover?.id === id ? state.hover : null;
+    drawChart(canvas, view, hover);
+  });
+}
+
+function wireChartHover(canvas) {
+  const id = canvas.dataset.canvas;
+  const view = state.charts.get(id);
+  if (!view || view === "unavailable") return;
+
+  const readout = document.querySelector(`[data-readout="${id}"]`);
+  const move = (event) => {
+    const box = canvas.getBoundingClientRect();
+    state.hover = { id, x: event.clientX - box.left, y: event.clientY - box.top };
+    const geometry = drawChart(canvas, view, state.hover);
+    if (geometry && readout) {
+      const index = Math.max(
+        0,
+        Math.min(view.candles.length - 1, Math.floor((state.hover.x - geometry.plotLeft) / geometry.slot))
+      );
+      readout.textContent = candleReadout(view, index);
+    }
+  };
+
+  canvas.addEventListener("pointermove", move);
+  canvas.addEventListener("pointerleave", () => {
+    state.hover = null;
+    drawChart(canvas, view, null);
+    if (readout) readout.textContent = candleReadout(view, view.candles.length - 1);
+  });
+}
+
 function ticket(p) {
   const changed = state.changed.get(p.id) ?? new Set();
   const notice = state.notices.get(p.id);
@@ -227,6 +406,7 @@ function ticket(p) {
 
         <div class="reasoning">
           <h3>Why</h3>
+          ${factorTable(p)}
           <ul>${p.reasoning.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>
           ${
             p.invalidation_note
@@ -236,6 +416,8 @@ function ticket(p) {
         </div>
       </dl>
     </div>
+
+    ${chartPanel(p)}
 
     <footer class="ticket__foot">
       <div class="dial">
@@ -476,6 +658,12 @@ async function refresh() {
     const id = button.closest(".ticket").dataset.id;
     wireHold(button, () => send(id));
   });
+  paintCharts();
+  document.querySelectorAll("[data-canvas]").forEach((canvas) => {
+    wireChartHover(canvas);
+    sizeWatcher.observe(canvas);
+  });
+  loadCharts();
 }
 
 document.getElementById("halt").addEventListener("click", async () => {

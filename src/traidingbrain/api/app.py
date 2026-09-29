@@ -39,7 +39,7 @@ from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Timeframe
 from traidingbrain.domain.market import SymbolSpec
-from traidingbrain.domain.proposal import ProposalAdjustment, TradeProposal
+from traidingbrain.domain.proposal import FactorView, ProposalAdjustment, TradeProposal
 from traidingbrain.proposals.builder import BuildFailure, ProposalBuilder, describe
 from traidingbrain.proposals.store import ProposalStore
 from traidingbrain.risk.limits import AccountState, KillSwitch, RiskLimits
@@ -143,6 +143,13 @@ class ProposalView(BaseModel):
     invalidation_note: str
     expires_ts: int
     status: str
+    # The arithmetic behind the confidence number. Sent with the proposal rather
+    # than fetched separately: it is the answer to the first question anyone asks
+    # about a confidence figure, and a second request would make it feel optional.
+    factors: list[FactorView] = Field(default_factory=list)
+    chartable: bool = False
+    confidence_raw: float = 0.0
+    confidence_cap_reason: str = ""
 
     @classmethod
     def of(cls, proposal: TradeProposal) -> ProposalView:
@@ -169,6 +176,10 @@ class ProposalView(BaseModel):
             liquidation_buffer_r=proposal.liquidation_buffer_r,
             reasoning=proposal.reasoning,
             invalidation_note=proposal.invalidation_note,
+            factors=list(proposal.factors),
+            chartable=proposal.is_chartable,
+            confidence_raw=proposal.confidence_raw or proposal.confidence,
+            confidence_cap_reason=proposal.confidence_cap_reason,
             expires_ts=proposal.expires_ts,
             status=proposal.status.value,
         )
