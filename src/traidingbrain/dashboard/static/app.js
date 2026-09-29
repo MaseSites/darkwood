@@ -41,12 +41,17 @@ const state = {
    * second and then watching the ticket silently vanish is the worst possible
    * feedback for an irreversible action. */
   outcome: null,
-  /* Chart payloads, keyed by proposal id.
+  /* Chart payloads, keyed by proposal id and timeframe.
    *
    * Cached because they cannot change: the bars end at the decision and the
    * levels were captured with it. Re-fetching on every four-second poll would
-   * re-read a parquet file to redraw an identical picture. */
+   * re-read a parquet file to redraw an identical picture -- and switching back
+   * to a timeframe already looked at should be instant, because that is what
+   * comparing two of them means. */
   charts: new Map(),
+  /* Which timeframe each proposal is currently being viewed on. Kept out of the
+   * DOM so the four-second poll does not throw away the one the user chose. */
+  timeframe: new Map(),
   /* Which proposal's chart the pointer is over, and where. Kept out of the DOM
    * so a re-render does not lose it mid-inspection. */
   hover: null,
@@ -257,8 +262,26 @@ function factorTable(p) {
 
 /* ------------------------------------------------------------- the chart -- */
 
+function chartKey(id) {
+  return `${id}@${state.timeframe.get(id) ?? ""}`;
+}
+
+function timeframeTabs(p, view) {
+  const current = view.timeframe;
+  if (!view.available_timeframes?.length) return "";
+  return `<span class="chart__tabs" role="tablist" aria-label="Timeframe">
+    ${view.available_timeframes
+      .map(
+        (tf) => `<button type="button" role="tab" data-act="tf" data-tf="${tf}"
+                   aria-selected="${tf === current}"
+                   class="chart__tab${tf === current ? " chart__tab--on" : ""}">${tf}</button>`
+      )
+      .join("")}
+  </span>`;
+}
+
 function chartPanel(p) {
-  const view = state.charts.get(p.id);
+  const view = state.charts.get(chartKey(p.id));
   if (view === "unavailable") return "";
   if (!view) {
     return `<div class="chart chart--loading" data-chart="${p.id}">
@@ -273,7 +296,8 @@ function chartPanel(p) {
   return `
   <figure class="chart" data-chart="${p.id}">
     <figcaption class="chart__head">
-      <span class="chart__tf">${escapeHtml(view.symbol)} &middot; ${escapeHtml(view.timeframe)}</span>
+      <span class="chart__tf">${escapeHtml(view.symbol)}</span>
+      ${timeframeTabs(p, view)}
       <span class="chart__readout" data-readout="${p.id}">${escapeHtml(
         candleReadout(view, view.candles.length - 1)
       )}</span>
@@ -297,19 +321,25 @@ function chartPanel(p) {
  * missing file into a steady stream of requests.
  */
 async function loadCharts() {
-  const missing = state.proposals.filter((p) => !state.charts.has(p.id));
+  const missing = state.proposals.filter((p) => !state.charts.has(chartKey(p.id)));
   if (!missing.length) return;
   await Promise.all(
     missing.map(async (p) => {
+      const tf = state.timeframe.get(p.id);
+      const key = chartKey(p.id);
       try {
-        state.charts.set(p.id, await api(`/api/proposals/${p.id}/chart`));
+        state.charts.set(
+          key,
+          await api(`/api/proposals/${p.id}/chart${tf ? `?timeframe=${tf}` : ""}`)
+        );
       } catch {
-        state.charts.set(p.id, "unavailable");
+        state.charts.set(key, "unavailable");
       }
     })
   );
   render();
   paintCharts();
+  document.querySelectorAll("[data-canvas]").forEach(wireChartHover);
 }
 
 /* A canvas has no intrinsic size: it learns one from CSS and has to be told to
@@ -318,10 +348,28 @@ async function loadCharts() {
  * being watched is a no-op, so this is safe to call after every render. */
 const sizeWatcher = new ResizeObserver(() => paintCharts());
 
+/**
+ * Show this proposal on a different timeframe.
+ *
+ * The chart is redrawn from a cached payload when there is one, so flipping back
+ * and forth between the hour and the week is instant. That matters more than it
+ * sounds: comparing two timeframes means looking at one, then the other, then
+ * the first again, and a spinner on every switch turns a comparison into three
+ * separate readings.
+ */
+async function switchTimeframe(id, timeframe) {
+  if (state.timeframe.get(id) === timeframe) return;
+  state.timeframe.set(id, timeframe);
+  state.hover = null;
+  render();
+  paintCharts();
+  await loadCharts();
+}
+
 function paintCharts() {
   document.querySelectorAll("[data-canvas]").forEach((canvas) => {
     const id = canvas.dataset.canvas;
-    const view = state.charts.get(id);
+    const view = state.charts.get(chartKey(id));
     if (!view || view === "unavailable") return;
     const hover = state.hover?.id === id ? state.hover : null;
     drawChart(canvas, view, hover);
@@ -330,7 +378,7 @@ function paintCharts() {
 
 function wireChartHover(canvas) {
   const id = canvas.dataset.canvas;
-  const view = state.charts.get(id);
+  const view = state.charts.get(chartKey(id));
   if (!view || view === "unavailable") return;
 
   const readout = document.querySelector(`[data-readout="${id}"]`);
@@ -632,6 +680,9 @@ document.addEventListener("click", (event) => {
       break;
     case "decline":
       api(`/api/proposals/${id}/reject`, { method: "POST" }).then(refresh);
+      break;
+    case "tf":
+      switchTimeframe(id, action.dataset.tf);
       break;
     default:
       break;

@@ -53,6 +53,53 @@ TARGET_R = 2.2
 MIN_AGREEMENT = 0.25
 
 
+def _liquidity_read(signal: TimeframeView, snapshot: MarketSnapshot) -> _Read | None:
+    """Sweeps and positioning, scored as one factor.
+
+    Positioning is not a sixth factor. Open interest and the crowd ratio are
+    statements about where positions sit, which is what the liquidity factor is
+    for -- and the specification fixed five factors with weights that add to one.
+    Adding a sixth would silently reweight every other one.
+
+    The two halves are combined rather than averaged: a sweep is an event, and
+    positioning is a condition. A sweep with positioning agreeing is a stronger
+    read than either alone, and the certainty rises to say so.
+    """
+    liquidity = signal.liquidity
+    sweep = (1.0 if liquidity.sweep_down else 0.0) - (1.0 if liquidity.sweep_up else 0.0)
+    positioning = snapshot.positioning
+
+    parts: list[str] = []
+    value = 0.0
+    certainty = 0.0
+
+    if sweep != 0.0:
+        value += sweep * 0.7
+        certainty = 0.6
+        parts.append("sell-side taken" if sweep > 0 else "buy-side taken")
+
+    if positioning.known and positioning.strength > 0.0:
+        direction = {Bias.BULLISH: 1.0, Bias.BEARISH: -1.0, Bias.NEUTRAL: 0.0}[positioning.bias]
+        # Scaled by strength, so a reading the data barely supports barely counts.
+        value += direction * 0.6 * positioning.strength
+        # Agreement between two independent readings is worth more than either;
+        # disagreement is worth less than one, which is the honest arithmetic.
+        agrees = sweep == 0.0 or (direction * sweep) > 0
+        certainty = max(certainty, 0.5) + (0.15 if agrees and sweep != 0.0 else 0.0)
+        if not agrees:
+            certainty = max(0.2, certainty - 0.25)
+        parts.append(positioning.reading.replace("_", " "))
+
+    if not parts:
+        return None
+    return _Read(
+        Factor.LIQUIDITY,
+        max(-1.0, min(1.0, value)),
+        min(1.0, certainty),
+        ", ".join(parts),
+    )
+
+
 def _view(snapshot: MarketSnapshot, timeframe: Timeframe) -> TimeframeView | None:
     return next((v for v in snapshot.frames if v.timeframe is timeframe), None)
 
@@ -167,18 +214,9 @@ class FakeBrain:
             )
 
         if signal is not None:
-            liquidity = signal.liquidity
-            # A sweep is fuel in the direction opposite to the side it took from.
-            value = (1.0 if liquidity.sweep_down else 0.0) - (1.0 if liquidity.sweep_up else 0.0)
-            if value != 0.0:
-                reads.append(
-                    _Read(
-                        Factor.LIQUIDITY,
-                        value * 0.7,
-                        0.6,
-                        "sell-side taken" if value > 0 else "buy-side taken",
-                    )
-                )
+            read = _liquidity_read(signal, snapshot)
+            if read is not None:
+                reads.append(read)
 
         history = snapshot.history
         if history.similar_situations_found > 0 and history.historical_winrate is not None:

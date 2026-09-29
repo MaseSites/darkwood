@@ -26,7 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pandas as pd
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from traidingbrain.data.frames import timeframe_ms
 from traidingbrain.domain.enums import LevelKind, Side, Timeframe
@@ -110,6 +110,7 @@ class ChartView(BaseModel):
 
     symbol: str
     timeframe: str
+    available_timeframes: list[str] = Field(default_factory=list)
     bar_ms: int
     decision_ts: int
     price: float
@@ -138,14 +139,21 @@ def build_chart(
     frame: pd.DataFrame,
     *,
     context_bars: int = CONTEXT_BARS,
+    timeframe: Timeframe | None = None,
+    available: list[Timeframe] | None = None,
 ) -> ChartView:
-    """Assemble the chart for one proposal.
+    """Assemble the chart for one proposal on one timeframe.
 
-    `frame` is the signal timeframe's bars for this symbol. It is trimmed to end
-    at the decision, so passing a frame that runs to the present is safe and is in
-    fact the normal case.
+    `frame` is that timeframe's bars for this symbol. It is trimmed to end at the
+    decision, so passing a frame that runs to the present is safe and is in fact
+    the normal case.
+
+    The timeframe is a parameter because the decision was made across all of
+    them. A setup that reads well on the hour and sits under a weekly supply
+    level is a different trade from one that does not, and that is exactly what
+    someone reviewing it needs to be able to check.
     """
-    timeframe = proposal.signal_timeframe or Timeframe.H1
+    timeframe = timeframe or proposal.signal_timeframe or Timeframe.H1
     bar_ms = timeframe_ms(timeframe)
 
     visible = frame.loc[frame["ts"] <= proposal.snapshot_ts].tail(context_bars)
@@ -175,6 +183,7 @@ def build_chart(
     return ChartView(
         symbol=proposal.symbol,
         timeframe=timeframe.value,
+        available_timeframes=[tf.value for tf in (available or [timeframe])],
         bar_ms=bar_ms,
         decision_ts=proposal.snapshot_ts,
         price=proposal.price_at_build or proposal.entry,

@@ -255,7 +255,7 @@ def create_app(services: Services) -> FastAPI:
         return ProposalView.of(_require(services, proposal_id))
 
     @app.get("/api/proposals/{proposal_id}/chart", response_model=ChartView)
-    def chart(proposal_id: str) -> ChartView:
+    def chart(proposal_id: str, timeframe: str | None = None) -> ChartView:
         """The bars and lines this decision was made on.
 
         Served from stored history rather than fetched live, and trimmed to end at
@@ -263,7 +263,7 @@ def create_app(services: Services) -> FastAPI:
         reader what happened next, which is the one thing that makes it impossible
         to judge the argument on its own terms.
         """
-        return _chart_for(services, proposal_id)
+        return _chart_for(services, proposal_id, timeframe)
 
     @app.post("/api/proposals/{proposal_id}/adjust", response_model=ProposalView)
     def adjust(proposal_id: str, change: AdjustRequest) -> ProposalView:
@@ -369,12 +369,13 @@ def create_app(services: Services) -> FastAPI:
     return app
 
 
-def _chart_for(services: Services, proposal_id: str) -> ChartView:
-    """Gather the bars and lines behind one proposal.
+def _chart_for(services: Services, proposal_id: str, requested: str | None = None) -> ChartView:
+    """Gather the bars and lines behind one proposal, on one timeframe.
 
     Each refusal is a different missing piece and says which: no bar source wired,
-    a proposal from before charts existed, or a symbol with nothing backfilled.
-    Collapsing them into one error would send someone to check the wrong thing.
+    a proposal from before charts existed, an unknown timeframe, or a symbol with
+    nothing backfilled. Collapsing them into one error would send someone to check
+    the wrong thing.
     """
     proposal = _require(services, proposal_id)
     if services.bars is None:
@@ -385,7 +386,25 @@ def _chart_for(services: Services, proposal_id: str) -> ChartView:
             "this proposal predates chart support and did not record which bar it was "
             "made on; a newly built proposal will chart normally",
         )
+
+    # The execution frame is minutes and exists only to resolve intrabar order;
+    # offering it here would be a wall of candles nobody reads a setup from.
+    offered = [
+        tf
+        for tf in services.config.engine.timeframes.context
+        if tf is not services.config.engine.timeframes.execution
+    ]
     timeframe = proposal.signal_timeframe or services.config.engine.timeframes.signal
+    if requested is not None:
+        match = next((tf for tf in offered if tf.value.lower() == requested.lower()), None)
+        if match is None:
+            raise HTTPException(
+                404,
+                f"{requested!r} is not a timeframe this decision was made across; "
+                f"it looked at {', '.join(tf.value for tf in offered)}",
+            )
+        timeframe = match
+
     frame = services.bars.read(proposal.symbol, timeframe, until_ms=proposal.snapshot_ts)
     if frame.empty:
         raise HTTPException(
@@ -393,7 +412,7 @@ def _chart_for(services: Services, proposal_id: str) -> ChartView:
             f"no stored {timeframe.value} bars for {proposal.symbol}; "
             f"run scripts/backfill.py {proposal.symbol}",
         )
-    return build_chart(proposal, frame)
+    return build_chart(proposal, frame, timeframe=timeframe, available=offered)
 
 
 def _require(services: Services, proposal_id: str) -> TradeProposal:

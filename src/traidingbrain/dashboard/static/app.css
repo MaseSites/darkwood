@@ -936,6 +936,48 @@ body {
   color: var(--liq);
 }
 
+/* The timeframe strip. Small, because it is a control for reading rather than a
+   control for deciding, and the two must not look equally important on a screen
+   whose only irreversible action is one button away. */
+.chart__tabs {
+  display: inline-flex;
+  gap: 1px;
+  background: var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.chart__tab {
+  appearance: none;
+  border: 0;
+  background: var(--panel);
+  color: var(--dim);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: color 120ms var(--ease-out), background 120ms var(--ease-out);
+}
+
+.chart__tab:hover {
+  color: var(--text);
+}
+
+.chart__tab--on {
+  background: var(--panel-high);
+  color: var(--text);
+}
+
+.chart__tab:focus-visible {
+  outline: 2px solid var(--caution);
+  outline-offset: -2px;
+}
+
+.chart__tab:active {
+  transform: scale(0.97);
+}
+
 /* A 34px target is comfortable with a mouse and a mis-tap risk with a thumb.
    Density is worth keeping on a desktop and is not worth a wrong leverage on a
    phone, so the targets grow where the pointer is coarse rather than everywhere.
