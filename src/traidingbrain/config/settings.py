@@ -140,9 +140,18 @@ class TriggerConfig(_Frozen):
     min_bars_between_calls: int = Field(default=4, ge=0)
 
 
+class SimulationConfig(_Frozen):
+    initial_equity: float = Field(gt=0)
+    slippage_bps: float = Field(ge=0)
+    fill_on_touch: bool = False
+    entry_expiry_bars: int = Field(gt=0)
+    pessimistic_intrabar: bool = True
+
+
 class PathsConfig(_Frozen):
     data_dir: Path
     parquet_dir: Path
+    funding_dir: Path
     db_path: Path
     cache_db_path: Path
     runs_dir: Path
@@ -151,6 +160,7 @@ class PathsConfig(_Frozen):
         return PathsConfig(
             data_dir=root / self.data_dir,
             parquet_dir=root / self.parquet_dir,
+            funding_dir=root / self.funding_dir,
             db_path=root / self.db_path,
             cache_db_path=root / self.cache_db_path,
             runs_dir=root / self.runs_dir,
@@ -168,6 +178,7 @@ class EngineConfig(_Frozen):
     history: HistoryConfig
     brain: BrainConfig
     trigger: TriggerConfig
+    simulation: SimulationConfig
     paths: PathsConfig
 
 

@@ -96,9 +96,40 @@ trigger:
   min_indicator_confluence: 2
   min_bars_between_calls: 4
 
+simulation:
+  # Starting equity for a backtest, in quote currency (USDT).
+  initial_equity: 10000.0
+
+  # Slippage applied to fills that cross the spread: market entries, stop exits and
+  # liquidations. Limit orders that get filled do not pay it -- they were sitting
+  # there waiting.
+  #
+  # 3 basis points is modest for BTC perpetuals in normal conditions and optimistic
+  # in a fast move. It is a parameter rather than a constant precisely because the
+  # honest value is only knowable after stage 10 measures real fills.
+  slippage_bps: 3.0
+
+  # Whether a limit entry counts as filled the moment price touches it.
+  #
+  # False is the conservative reading and the default: a touch means the price
+  # printed there, not that our order was at the front of the queue. Requiring the
+  # price to trade through means fewer fills, and the ones that remain are ones we
+  # would plausibly have got.
+  fill_on_touch: false
+
+  # How long a pending entry waits before it is abandoned. A setup that has not
+  # triggered within this window is a different setup.
+  entry_expiry_bars: 8
+
+  # When a single minute contains both the stop and the target, the stop wins.
+  # There is no way to know the order from OHLC alone, and guessing in our favour
+  # is how a backtest ends up profitable and a live account does not.
+  pessimistic_intrabar: true
+
 paths:
   data_dir: data
   parquet_dir: data/ohlcv
+  funding_dir: data/funding
   db_path: data/traidingbrain.sqlite
   cache_db_path: data/decisions.sqlite
   runs_dir: runs

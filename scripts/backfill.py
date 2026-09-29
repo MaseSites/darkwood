@@ -25,6 +25,7 @@ from traidingbrain.clock import SystemClock
 from traidingbrain.config.settings import load_config
 from traidingbrain.data.backfill import Backfiller
 from traidingbrain.data.exchange import BybitDataSource
+from traidingbrain.data.funding import FundingStore, backfill_funding
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Timeframe
 
@@ -59,6 +60,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--since", type=parse_date, required=True, help="UTC date, e.g. 2024-01-01")
     parser.add_argument("--until", type=parse_date, default=None)
     parser.add_argument("--verify", action="store_true", help="re-read and report afterwards")
+    parser.add_argument(
+        "--funding",
+        action="store_true",
+        help="also pull funding rate history (needed for realistic holding costs)",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -90,6 +96,15 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\r  {result.summary()}")
             if result.report.is_fatal:
                 fatal = True
+
+    if args.funding:
+        funding_store = FundingStore(config.engine.paths.funding_dir)
+        print("\nFunding rates:")
+        for symbol in symbols:
+            pulled = backfill_funding(source, funding_store, symbol, args.since, args.until)
+            print(
+                f"  {symbol}: +{len(pulled)} settlements, {len(funding_store.read(symbol))} stored"
+            )
 
     if args.verify:
         print("\nVerifying what is on disk:")
