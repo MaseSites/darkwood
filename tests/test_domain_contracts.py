@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -55,8 +56,43 @@ def test_brain_input_carries_no_identifying_information() -> None:
         "frames",
         "levels",
         "news",
+        "positioning",
         "history",
     }
+
+
+def test_positioning_reaches_the_model_as_ratios_and_never_as_a_contract_count() -> None:
+    """Open interest is a large absolute number, and that is the danger.
+
+    Fifty-six thousand contracts on one symbol and four hundred million on
+    another identifies both instantly, and the size of the number carries the era
+    as well as the asset. Only the change and the rank travel, both dimensionless
+    -- the same discipline the price itself is held to.
+    """
+    snapshot = make_snapshot()
+    positioning = snapshot.to_brain_input().positioning
+
+    for value in (
+        positioning.open_interest_change_pct,
+        positioning.open_interest_percentile,
+        positioning.crowd_long_ratio,
+    ):
+        assert value is None or -10.0 <= value <= 10.0, "an absolute contract count leaked"
+
+
+def test_a_scheduled_event_reaches_the_model_without_a_date() -> None:
+    """'FOMC in six hours' is evidence; 'FOMC on 2024-03-20' is a year and a month.
+
+    The whole normalisation argument collapses if the news block carries a date:
+    the model would know exactly when it is, and its answer would be partly
+    recollection.
+    """
+    payload = make_snapshot().to_brain_input().canonical_json()
+    parsed = json.loads(payload)
+
+    for item in parsed["news"]:
+        assert set(item) <= {"event", "impact", "sentiment", "minutes_until"}
+        assert not re.search(r"20\d\d-\d\d-\d\d", json.dumps(item))
 
 
 def test_brain_input_levels_expose_distance_but_never_price() -> None:

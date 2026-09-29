@@ -26,7 +26,7 @@ from traidingbrain.domain.snapshot import BrainInput
 
 #: Bump on any change to the text below. It is part of the decision cache key, so
 #: forgetting means serving answers to a question that is no longer being asked.
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 
 
 SYSTEM_ROLE = """\
@@ -83,6 +83,34 @@ that reasoning is not available to you here.
 - `levels` -- the ladder. Each has an `id`, a `kind`, the `timeframe` it came from,
   `distance_atr` (signed, positive is above the current price), `age_bars`, and
   `touches`. The level with `kind: current` is the current price, at distance zero.
+- `positioning` -- what open interest says about *who* moved the price. This is
+  the one thing you cannot read off a chart, so read it carefully.
+  - `known: false` means the venue has no data for this period. That is silence,
+    not balance. Do not treat it as a neutral reading; treat it as one fewer
+    factor, and say so if you score the structure factor on it.
+  - `reading` is the combination of price direction and open-interest direction:
+    - `new_longs` -- price up, open interest up. Money arriving. Supports
+      continuation.
+    - `short_covering` -- price up, open interest *down*. Positions closing, not
+      opening. A squeeze ends when the last forced buyer is out, so this argues
+      against continuation even though price is rising. This is the cell that
+      looks identical to a real rally on a chart.
+    - `new_shorts` -- price down, open interest up. The mirror of new_longs.
+    - `long_liquidation` -- price down, open interest down. A flush. Often
+      exhaustion rather than the start of something.
+    - `flat_interest` -- the change was too small to read.
+  - `open_interest_change_pct` is the change over the last few bars;
+    `open_interest_percentile` is where the current level sits against its own
+    recent history, never against the whole series.
+  - `crowd_long_ratio` is the share of *accounts* positioned long, counted by
+    head rather than by size. `crowd_is_stretched` marks the rare tails. A
+    crowded book is a mild caution, not a signal: crowds are right during trends,
+    which is most of when this fires.
+- `news` -- scheduled events already on the public calendar at this bar, with
+  `minutes_until`. Direction is always neutral because a release has none until
+  it happens; what it tells you is that volatility is scheduled. A setup that
+  needs hours to work, with a high-impact event inside that window, is a
+  different proposition from the same setup on a quiet afternoon.
 - `history` -- what a similarity search over past setups found. When
   `sample_is_sufficient` is false, there is not enough evidence to lean on, and
   `historical_winrate` may be null.

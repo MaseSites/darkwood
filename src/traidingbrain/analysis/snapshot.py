@@ -19,7 +19,10 @@ import pandas as pd
 
 from traidingbrain.analysis.levels import build_levels
 from traidingbrain.analysis.pipeline import FrameAnalysis, MultiFrameAnalysis
+from traidingbrain.analysis.positioning import PositioningTimeline
 from traidingbrain.config.settings import EngineConfig
+from traidingbrain.data.calendar import MacroCalendar
+from traidingbrain.data.frames import timeframe_ms
 from traidingbrain.domain.enums import Bias, Timeframe
 from traidingbrain.domain.snapshot import (
     NORM_PRECISION,
@@ -27,6 +30,8 @@ from traidingbrain.domain.snapshot import (
     IndicatorReading,
     LiquidityView,
     MarketSnapshot,
+    NewsItem,
+    PositioningStats,
     StructureView,
     TimeframeView,
 )
@@ -207,10 +212,23 @@ EMPTY_HISTORY = HistoryStats(similar_situations_found=0, sample_is_sufficient=Fa
 class SnapshotBuilder:
     """Builds snapshots for one symbol from a pre-computed multi-frame analysis."""
 
-    def __init__(self, symbol: str, analysis: MultiFrameAnalysis, config: EngineConfig) -> None:
+    def __init__(
+        self,
+        symbol: str,
+        analysis: MultiFrameAnalysis,
+        config: EngineConfig,
+        *,
+        positioning: PositioningTimeline | None = None,
+        calendar: MacroCalendar | None = None,
+    ) -> None:
         self.symbol = symbol
         self.analysis = analysis
         self.config = config
+        # Both optional, and absent is a supported state rather than a degraded
+        # one: neither existed when the rest of this was written, and a backtest
+        # over a period the venue does not cover has to keep working.
+        self.positioning = positioning
+        self.calendar = calendar
 
     def build(
         self, signal_index: int, history: HistoryStats | None = None
@@ -254,9 +272,52 @@ class SnapshotBuilder:
             atr=atr,
             frames=views,
             levels=levels,
-            news=[],
+            news=self._scheduled(signal.ts_at(signal_index)),
+            positioning=self._positioning(signal_index),
             history=history or EMPTY_HISTORY,
         )
+
+    def _positioning(self, signal_index: int) -> PositioningStats:
+        if self.positioning is None:
+            return PositioningStats()
+        view = self.positioning.at(signal_index)
+        return PositioningStats(
+            known=view.known,
+            reading=view.reading,
+            bias=view.bias,
+            strength=_q(view.strength),
+            open_interest_change_pct=None
+            if view.oi_change_pct is None
+            else _q(view.oi_change_pct),
+            open_interest_percentile=None
+            if view.oi_percentile is None
+            else _q(view.oi_percentile),
+            crowd_long_ratio=None if view.crowd_long_ratio is None else _q(view.crowd_long_ratio),
+            crowd_is_stretched=view.crowd_is_stretched,
+        )
+
+    def _scheduled(self, bar_ts: int) -> list[NewsItem]:
+        """Events already on the calendar at this bar, nearest first.
+
+        `minutes_until` is the only number here, and it is the one that matters:
+        a decision an hour before a rate decision is a different decision from the
+        same one a day before. The event's direction is never guessed -- sentiment
+        stays neutral, because a scheduled release has no direction until it
+        happens, and inventing one would be the exact failure the news weight was
+        set to zero to avoid.
+        """
+        if self.calendar is None:
+            return []
+        decision_ts = bar_ts + timeframe_ms(self.analysis.signal_timeframe)
+        return [
+            NewsItem(
+                event=event.name,
+                impact=event.impact,
+                sentiment=Bias.NEUTRAL,
+                minutes_until=event.minutes_until(decision_ts),
+            )
+            for event in self.calendar.upcoming(decision_ts)
+        ]
 
 
 def build_multi_frame(

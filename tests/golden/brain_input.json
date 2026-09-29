@@ -247,6 +247,16 @@
     }
   ],
   "news": [],
-  "schema_version": 1,
+  "positioning": {
+    "bias": "neutral",
+    "crowd_is_stretched": false,
+    "crowd_long_ratio": null,
+    "known": false,
+    "open_interest_change_pct": null,
+    "open_interest_percentile": null,
+    "reading": "unknown",
+    "strength": 0.0
+  },
+  "schema_version": 2,
   "signal_timeframe": "H1"
 }

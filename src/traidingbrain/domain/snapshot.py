@@ -142,6 +142,27 @@ class NewsItem(BaseModel):
     minutes_until: int | None = Field(default=None, description="Negative if already passed")
 
 
+class PositioningStats(BaseModel):
+    """What open interest and the crowd argue, or that nothing is known.
+
+    `known` is a field rather than the object being absent, because "no data" has
+    to survive all the way into the prompt. A model shown a neutral reading where
+    the truth is silence will weight the silence as evidence -- and this series
+    starts later than the candles, so early bars are all silence.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    known: bool = False
+    reading: str = "unknown"
+    bias: Bias = Bias.NEUTRAL
+    strength: float = Field(default=0.0, ge=0.0, le=1.0)
+    open_interest_change_pct: float | None = None
+    open_interest_percentile: float | None = Field(default=None, ge=0.0, le=1.0)
+    crowd_long_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
+    crowd_is_stretched: bool = False
+
+
 class HistoryStats(BaseModel):
     """What the similarity index found among *past* setups.
 
@@ -165,7 +186,9 @@ class BrainInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: int = 1
+    # 2 adds the positioning block. Part of the cache key, so an old cached
+    # answer cannot be served for a question that now carries more evidence.
+    schema_version: int = 2
     signal_timeframe: Timeframe
     atr_pct: float = Field(description="ATR as a fraction of price -- scale without the price")
     frames: list[TimeframeView]
@@ -173,6 +196,7 @@ class BrainInput(BaseModel):
         description="Level id, kind, timeframe, distance_atr, age_bars -- never the price"
     )
     news: list[NewsItem] = Field(default_factory=list)
+    positioning: PositioningStats = PositioningStats()
     history: HistoryStats
 
     def canonical_json(self) -> str:
@@ -202,6 +226,7 @@ class MarketSnapshot(BaseModel):
     frames: list[TimeframeView]
     levels: list[Level]
     news: list[NewsItem] = Field(default_factory=list)
+    positioning: PositioningStats = PositioningStats()
     history: HistoryStats
 
     @property
@@ -240,5 +265,6 @@ class MarketSnapshot(BaseModel):
                 for lvl in self.levels
             ],
             news=self.news,
+            positioning=self.positioning,
             history=self.history,
         )
