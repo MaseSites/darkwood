@@ -118,7 +118,14 @@ class BacktestEngine:
         self.minute_high = minute_frame["high"].to_numpy(dtype="float64")
         self.minute_low = minute_frame["low"].to_numpy(dtype="float64")
 
-    def run(self, strategy: Strategy, *, max_bars: int | None = None) -> BacktestResult:
+    def run(
+        self,
+        strategy: Strategy,
+        *,
+        max_bars: int | None = None,
+        start_ts: int | None = None,
+        end_ts: int | None = None,
+    ) -> BacktestResult:
         broker = SimBroker(self.spec, self.config.engine.simulation, self.funding)
         signal = self.analysis.signal
         signal_ms = timeframe_ms(self.config.engine.timeframes.signal)
@@ -129,10 +136,19 @@ class BacktestEngine:
             return self._empty_result(strategy, broker)
 
         end = len(signal) - 1
+        signal_ts = signal.frame["ts"].to_numpy(dtype="int64")
+
+        # A time window rather than a bar count, so the same period can be asked
+        # for across symbols and timeframes without translating indices by hand.
+        if start_ts is not None:
+            start = max(start, int(np.searchsorted(signal_ts, start_ts, side="left")))
+        if end_ts is not None:
+            end = min(end, int(np.searchsorted(signal_ts, end_ts, side="right")) - 1)
         if max_bars is not None:
             end = min(end, start + max_bars)
+        if end <= start:
+            return self._empty_result(strategy, broker)
 
-        signal_ts = signal.frame["ts"].to_numpy(dtype="int64")
         signal_close = signal.frame["close"].to_numpy(dtype="float64")
 
         snapshots = 0
