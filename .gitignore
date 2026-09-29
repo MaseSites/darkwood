@@ -10,15 +10,19 @@ __pycache__/
 build/
 dist/
 
-data/
-!data/.gitkeep
+# Anchored to the repository root. Without the leading slash this matches any
+# directory named `data` at any depth -- including src/traidingbrain/data/, which
+# is the exchange client, the store, the backfill and the validator. Those were
+# silently untracked for the whole project, and nothing about a commit said so.
+/data/
+!/data/.gitkeep
 
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .hypothesis/
 
-runs/
+/runs/
 *.log
 *.sqlite
 *.sqlite-wal
