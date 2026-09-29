@@ -506,7 +506,8 @@ def test_the_series_is_continuous_after_filling_a_hole(store: ParquetStore) -> N
 
     assert stored["ts"].is_monotonic_increasing
     assert not stored["ts"].duplicated().any()
-    assert set(pd.Series(stamps).diff().dropna().astype(int).tolist()) == {H1_MS}, "the join left a hole"
+    steps = set(pd.Series(stamps).diff().dropna().astype(int).tolist())
+    assert steps == {H1_MS}, f"the join left a hole: {steps}"
 
 
 def test_the_report_describes_the_whole_series_not_the_last_chunk(store: ParquetStore) -> None:

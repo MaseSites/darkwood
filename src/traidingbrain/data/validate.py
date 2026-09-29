@@ -93,14 +93,21 @@ class ValidationReport:
             head += "\n  FATAL: " + "; ".join(problems)
         if self.gaps:
             head += f"\n  {len(self.gaps)} gaps, {self.missing_bars} bars missing"
-            for gap in self.gaps[:5]:
+            for gap in self.gaps[:GAPS_LISTED]:
                 head += f"\n    {gap}"
-            if len(self.gaps) > 5:
-                head += f"\n    ... and {len(self.gaps) - 5} more"
+            if len(self.gaps) > GAPS_LISTED:
+                head += f"\n    ... and {len(self.gaps) - GAPS_LISTED} more"
         if not problems and not self.gaps:
             head += " — clean"
         return head
 
+
+#: Gaps listed in full before the rest are summarised. A wall of them is not
+#: more informative than a handful plus a count.
+GAPS_LISTED = 5
+
+#: A gap needs two bars to sit between. One bar has no interval.
+MIN_BARS_FOR_A_GAP = 2
 
 def validate_ohlcv(frame: pd.DataFrame, symbol: str, timeframe: Timeframe) -> ValidationReport:
     """Check a frame and describe what is wrong with it, without changing it."""
@@ -143,7 +150,7 @@ def find_gaps(frame: pd.DataFrame, timeframe: Timeframe) -> list[Gap]:
     invents price action, and the analysis layer would treat the invention as
     fact.
     """
-    if len(frame) < 2:
+    if len(frame) < MIN_BARS_FOR_A_GAP:
         return []
     step = timeframe_ms(timeframe)
     ts = frame["ts"].to_numpy()
