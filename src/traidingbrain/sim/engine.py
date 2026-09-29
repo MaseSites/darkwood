@@ -27,6 +27,7 @@ from traidingbrain.data.frames import timeframe_ms
 from traidingbrain.domain.enums import ExitReason, OrderType, Side, Timeframe
 from traidingbrain.domain.market import FundingRate, SymbolSpec
 from traidingbrain.domain.snapshot import MarketSnapshot
+from traidingbrain.history.engine import HistoryEngine
 from traidingbrain.risk.leverage import choose_leverage
 from traidingbrain.risk.sizing import costs_are_affordable, position_size, risk_budget
 from traidingbrain.sim.broker import Fill, PendingEntry, SimBroker
@@ -105,12 +106,15 @@ class BacktestEngine:
         spec: SymbolSpec,
         config: AppConfig,
         funding: list[FundingRate] | None = None,
+        history: HistoryEngine | None = None,
     ) -> None:
         self.symbol = symbol
         self.analysis = analysis
         self.spec = spec
         self.config = config
         self.funding = funding or []
+        self.history = history
+        self._fills_seen = 0
         self.builder = SnapshotBuilder(symbol, analysis, config.engine)
 
         self.minute_ts = minute_frame["ts"].to_numpy(dtype="int64")
@@ -154,12 +158,19 @@ class BacktestEngine:
         snapshots = 0
         intents = 0
         refused = 0
+        self._fills_seen = 0
 
         for index in range(start, end):
             # Only build a snapshot when it can actually be acted on. Building one
             # while a position is open costs milliseconds and changes nothing --
             # over twenty thousand bars that is most of the runtime.
             snapshot = self.builder.build(index) if broker.is_flat else None
+            if snapshot is not None and self.history is not None:
+                # Look up from the snapshot just built and fold the answer back in,
+                # rather than building a second one. Two builds per bar doubled the
+                # runtime of a full backtest for no extra information.
+                stats, _quality = self.history.lookup(snapshot)
+                snapshot = snapshot.model_copy(update={"history": stats})
             if snapshot is not None:
                 snapshots += 1
                 intent = strategy.propose(snapshot)
@@ -174,6 +185,9 @@ class BacktestEngine:
                     )
                     if entry is None or not broker.submit(entry):
                         refused += 1
+                    elif self.history is not None:
+                        # Held aside, not indexed: the outcome does not exist yet.
+                        self.history.remember(entry.proposal_id, snapshot)
 
             # The decision is live from the start of the next bar, never this one.
             self._step_minutes(
@@ -181,6 +195,7 @@ class BacktestEngine:
                 from_ms=int(signal_ts[index]) + signal_ms,
                 to_ms=int(signal_ts[index + 1]) + signal_ms,
             )
+            self._commit_resolved(broker)
             broker.mark(int(signal_ts[index + 1]), float(signal_close[index + 1]))
 
         # Anything still open at the end is closed at the last price rather than
@@ -208,6 +223,23 @@ class BacktestEngine:
             first_ts=int(signal_ts[start]),
             last_ts=int(signal_ts[end]),
         )
+
+    # -- history ------------------------------------------------------------ #
+
+    def _commit_resolved(self, broker: SimBroker) -> None:
+        """Move newly closed trades into the index, and drop unfilled entries.
+
+        An entry that expired without filling has no outcome; recording it as a
+        zero would put a trade that never happened into the evidence.
+        """
+        if self.history is None:
+            return
+        while self._fills_seen < len(broker.fills):
+            fill = broker.fills[self._fills_seen]
+            self._fills_seen += 1
+            self.history.resolve(
+                fill.proposal_id, outcome_r=fill.r_multiple, resolved_ts=fill.closed_ts
+            )
 
     # -- internals ---------------------------------------------------------- #
 
@@ -280,6 +312,7 @@ class BacktestEngine:
             return None
 
         return PendingEntry(
+            proposal_id=f"{self.symbol}-{created_ts}",
             side=intent.side,
             order_type=OrderType.LIMIT,
             limit_price=intent.entry,
@@ -312,6 +345,7 @@ def load_engine(
     spec: SymbolSpec,
     config: AppConfig,
     funding: list[FundingRate] | None = None,
+    history: HistoryEngine | None = None,
 ) -> BacktestEngine:
     return BacktestEngine(
         symbol,
@@ -320,4 +354,5 @@ def load_engine(
         spec=spec,
         config=config,
         funding=funding,
+        history=history,
     )

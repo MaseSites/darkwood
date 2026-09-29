@@ -73,6 +73,16 @@ history:
   # outcome that overlaps the present, so it is excluded (purging + embargo).
   outcome_horizon_hours: 48
   embargo_hours: 48
+  # Independent comparable cases needed before a win rate may be quoted.
+  #
+  # Measured consequence, not a guess: at the distance cutoff in history/stats.py
+  # a query matches roughly 4% of the index, so this threshold needs about 750
+  # resolved cases before any lookup can report a rate. One symbol over two and a
+  # half years produces around 330. Four symbols pooled get there.
+  #
+  # Until then every lookup reports "not enough", confidence stays capped, and no
+  # trade may risk more than the base tier. That is the design working, not a
+  # reason to lower this number.
   min_samples_for_stats: 30
 
 brain:
