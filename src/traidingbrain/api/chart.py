@@ -105,6 +105,22 @@ class PlanLine(BaseModel):
     detail: str
 
 
+class EventLine(BaseModel):
+    """A structural event placed on the time axis.
+
+    `bar_index` is an index into this chart's own candles, resolved here rather
+    than in the browser. The conversion from "eighteen H4 bars ago" to "this
+    hourly candle" is arithmetic with a boundary in it, and the boundary is
+    easier to get wrong than to get right.
+    """
+
+    kind: str
+    label: str
+    timeframe: str
+    bar_index: int
+    bars_ago: int
+
+
 class ChartView(BaseModel):
     """Everything one screen needs, and nothing it would have to compute."""
 
@@ -119,6 +135,7 @@ class ChartView(BaseModel):
     candles: list[Candle]
     levels: list[LevelLine]
     plan: list[PlanLine]
+    events: list[EventLine] = Field(default_factory=list)
     levels_hidden: int = 0
     note: str = ""
 
@@ -192,11 +209,47 @@ def build_chart(
         candles=candles,
         levels=levels,
         plan=_plan_lines(proposal),
+        events=_event_lines(proposal, timeframe, bar_ms, len(candles)),
         levels_hidden=hidden,
         note=(
             "Bars stop at the decision. Anything after it would be showing you the answer."
         ),
     )
+
+
+def _event_lines(
+    proposal: TradeProposal, timeframe: Timeframe, bar_ms: int, candle_count: int
+) -> list[EventLine]:
+    """Place each recorded event on this chart's own time axis.
+
+    An event confirmed on a higher timeframe still belongs on a lower-timeframe
+    chart -- that is most of the value, since a daily break of structure is the
+    reason an hourly setup is being taken at all. Its distance is converted
+    through real durations rather than bar counts, because the two only agree
+    when the chart happens to be on the timeframe the event came from.
+
+    Events older than the visible window are dropped rather than clamped to the
+    left edge, where they would claim to have happened at a moment they did not.
+    """
+    lines: list[EventLine] = []
+    for event in proposal.events:
+        age_ms = event.bars_ago * timeframe_ms(event.timeframe)
+        bars_back = round(age_ms / bar_ms)
+        index = candle_count - 1 - bars_back
+        if index < 0 or index >= candle_count:
+            continue
+        lines.append(
+            EventLine(
+                kind=event.kind,
+                label=f"{event.label} ({event.timeframe.value})",
+                timeframe=event.timeframe.value,
+                bar_index=index,
+                bars_ago=event.bars_ago,
+            )
+        )
+    # Nearest the decision last, so a later mark draws over an earlier one rather
+    # than under it: recent events are the ones being argued from.
+    return sorted(lines, key=lambda line: line.bar_index)
 
 
 def _plan_lines(proposal: TradeProposal) -> list[PlanLine]:

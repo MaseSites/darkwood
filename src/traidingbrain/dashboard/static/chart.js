@@ -60,6 +60,16 @@ const LEVEL_TONE = {
   fvg_low: "gap",
 };
 
+/* Structural events. A break of structure and a sweep argue different things,
+ * so they do not share a colour: the first is continuation, the second is a
+ * reversal of whoever was just stopped out. */
+const EVENT_COLOUR = {
+  bos: "rgba(96, 165, 250, 0.75)",
+  choch: "rgba(232, 121, 249, 0.75)",
+  sweep_up: "rgba(248, 113, 113, 0.7)",
+  sweep_down: "rgba(52, 211, 153, 0.7)",
+};
+
 const TONE_COLOUR = {
   supply: "rgba(248, 113, 113, 0.55)",
   demand: "rgba(52, 211, 153, 0.55)",
@@ -218,6 +228,7 @@ export function drawChart(canvas, view, hover) {
   });
   drawCandles(ctx, view, { x, y, bodyWidth, colours });
   drawLevelLabels(ctx, levelLabels, { plotLeft });
+  drawEvents(ctx, view, { x, plotTop, plotBottom, colours });
   drawPlan(ctx, view, { plotLeft, plotRight, plotTop, plotBottom, y, colours });
   drawTimeAxis(ctx, view, { x, count, plotBottom, plotLeft, plotRight, height, colours });
 
@@ -340,6 +351,47 @@ function drawCandles(ctx, view, g) {
       ctx.fillStyle = colour;
       ctx.fillRect(left, top, g.bodyWidth, bodyHeight);
     }
+  });
+}
+
+/**
+ * The structural events, as vertical marks on the time axis.
+ *
+ * This is what turns "bos: true" into evidence. "There was a break of structure"
+ * and "the break was here, price has not come back to it, and the setup is
+ * eighteen bars later" are different amounts of argument, and only the second is
+ * something a person can disagree with.
+ *
+ * Labels are written along the line rather than beside it, because a horizontal
+ * label at the top of a vertical mark collides with the next one as soon as two
+ * events land near each other -- which is exactly when they matter.
+ */
+function drawEvents(ctx, view, g) {
+  if (!view.events?.length) return;
+  ctx.font = '10px ui-monospace, "SF Mono", Menlo, monospace';
+
+  view.events.forEach((event, order) => {
+    const colour = EVENT_COLOUR[event.kind] || "rgba(124, 138, 163, 0.7)";
+    const px = Math.round(g.x(event.bar_index)) + 0.5;
+
+    ctx.save();
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(px, g.plotTop);
+    ctx.lineTo(px, g.plotBottom);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(px + 3, g.plotTop + 4 + (order % 2) * 84);
+    ctx.rotate(Math.PI / 2);
+    ctx.fillStyle = colour;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(event.label, 0, 0);
+    ctx.restore();
   });
 }
 

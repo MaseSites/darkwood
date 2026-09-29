@@ -79,6 +79,27 @@ class LevelMark(BaseModel):
     touches: int = Field(ge=0, default=0)
 
 
+class EventMark(BaseModel):
+    """A structural event, recorded as how long before the decision it happened.
+
+    Bars rather than a timestamp, because that is what the analysis actually
+    knows: a break of structure is confirmed `n` bars ago on a named timeframe.
+    Storing a timestamp would mean converting twice and getting the boundary
+    wrong once.
+
+    This is what turns `bos: true` from a claim into a place on the chart. "There
+    was a break of structure" and "the break was here, and price has not come
+    back to it" are different amounts of evidence.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    kind: str
+    timeframe: Timeframe
+    bars_ago: int = Field(ge=0)
+    label: str = ""
+
+
 class TradeProposal(BaseModel):
     """A fully specified trade, waiting for confirmation.
 
@@ -133,6 +154,7 @@ class TradeProposal(BaseModel):
     atr_at_build: float = Field(default=0.0, ge=0.0)
     factors: list[FactorView] = Field(default_factory=list)
     levels: list[LevelMark] = Field(default_factory=list)
+    events: list[EventMark] = Field(default_factory=list)
     confidence_raw: float = Field(
         default=0.0,
         ge=0.0,

@@ -34,6 +34,7 @@ from traidingbrain.config.settings import AppConfig, WeightsConfig
 from traidingbrain.domain.enums import Bias, ProposalStatus, RiskLevel, Side, Timeframe
 from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.domain.proposal import (
+    EventMark,
     FactorView,
     LevelMark,
     ProposalAdjustment,
@@ -71,6 +72,7 @@ class Rationale:
     atr_at_build: float = 0.0
     factors: tuple[FactorView, ...] = ()
     levels: tuple[LevelMark, ...] = ()
+    events: tuple[EventMark, ...] = ()
     confidence_raw: float = 0.0
     confidence_cap_reason: str = ""
 
@@ -95,6 +97,7 @@ class Rationale:
             price_at_build=snapshot.price,
             atr_at_build=snapshot.atr,
             factors=_factor_views(decision, breakdown),
+            events=_event_marks(snapshot),
             confidence_raw=NEUTRAL_CONFIDENCE
             + NEUTRAL_CONFIDENCE * breakdown.directional_score * _sign(breakdown.bias),
             confidence_cap_reason=(
@@ -128,6 +131,7 @@ class Rationale:
             decision_id=proposal.decision_id,
             confidence_raw=proposal.confidence_raw,
             confidence_cap_reason=proposal.confidence_cap_reason,
+            events=tuple(proposal.events),
             snapshot_ts=proposal.snapshot_ts,
             signal_timeframe=proposal.signal_timeframe,
             price_at_build=proposal.price_at_build,
@@ -135,6 +139,50 @@ class Rationale:
             factors=tuple(proposal.factors),
             levels=tuple(proposal.levels),
         )
+
+
+def _event_marks(snapshot: MarketSnapshot) -> tuple[EventMark, ...]:
+    """The structural events behind the read, as distances from the decision.
+
+    Only what the analysis actually confirmed, and only where it recorded how
+    long ago. A frame reporting `bos: true` with no distance is a frame that
+    knows a break happened and not when, and guessing a position for it would put
+    a mark on the chart that nothing supports.
+    """
+    marks: list[EventMark] = []
+    for frame in snapshot.frames:
+        structure = frame.structure
+        if structure.bos and structure.bars_since_bos is not None:
+            marks.append(
+                EventMark(
+                    kind="bos",
+                    timeframe=frame.timeframe,
+                    bars_ago=structure.bars_since_bos,
+                    label="break of structure",
+                )
+            )
+        if structure.choch and structure.bars_since_choch is not None:
+            marks.append(
+                EventMark(
+                    kind="choch",
+                    timeframe=frame.timeframe,
+                    bars_ago=structure.bars_since_choch,
+                    label="change of character",
+                )
+            )
+        liquidity = frame.liquidity
+        if liquidity.bars_since_sweep is not None and (
+            liquidity.sweep_up or liquidity.sweep_down
+        ):
+            marks.append(
+                EventMark(
+                    kind="sweep_up" if liquidity.sweep_up else "sweep_down",
+                    timeframe=frame.timeframe,
+                    bars_ago=liquidity.bars_since_sweep,
+                    label="buy-side swept" if liquidity.sweep_up else "sell-side swept",
+                )
+            )
+    return tuple(marks)
 
 
 def _sign(bias: Bias) -> float:
@@ -379,6 +427,7 @@ class ProposalBuilder:
             atr_at_build=rationale.atr_at_build,
             factors=list(rationale.factors),
             levels=list(rationale.levels),
+            events=list(rationale.events),
             confidence_raw=rationale.confidence_raw or rationale.confidence,
             confidence_cap_reason=rationale.confidence_cap_reason,
         )
