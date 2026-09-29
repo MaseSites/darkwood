@@ -10,7 +10,12 @@ advance the cursor. All three are things the production code has to survive.
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+    from traidingbrain.config.settings import EngineConfig
 
 from traidingbrain.data.frames import timeframe_ms
 from traidingbrain.domain.enums import Timeframe
@@ -171,3 +176,80 @@ def bars_from_rows(rows: list[list[float]]) -> list[Bar]:
         )
         for r in rows
     ]
+
+
+def aggregate(frame: pd.DataFrame, to_timeframe: Timeframe) -> pd.DataFrame:
+    """Roll a fine frame up to a coarser one, on the correct grid.
+
+    Used to build consistent multi-timeframe fixtures from a single series, so a
+    test's weekly candle is genuinely the weekly view of its own hourly candles
+    rather than an unrelated random walk that happens to sit beside them.
+
+    The weekly grid is offset by four days: the Unix epoch was a Thursday and
+    exchanges open the week on Monday.
+    """
+    import pandas as pd
+
+    from traidingbrain.data.frames import grid_offset_ms, normalise, timeframe_ms
+
+    step = timeframe_ms(to_timeframe)
+    offset = grid_offset_ms(to_timeframe)
+    bucket = ((frame["ts"] - offset) // step) * step + offset
+
+    rolled = (
+        frame.assign(bucket=bucket)
+        .groupby("bucket", sort=True)
+        .agg(
+            open=("open", "first"),
+            high=("high", "max"),
+            low=("low", "min"),
+            close=("close", "last"),
+            volume=("volume", "sum"),
+        )
+        .reset_index()
+        .rename(columns={"bucket": "ts"})
+    )
+    return normalise(pd.DataFrame(rolled))
+
+
+def multi_frame_fixture(
+    m15_bars: int = 3000, start_ts: int = EPOCH
+) -> dict[Timeframe, pd.DataFrame]:
+    """A consistent set of frames: one series, viewed at five resolutions."""
+    from traidingbrain.data.frames import bars_to_frame
+
+    base = bars_to_frame(bars_from_rows(synthetic_rows(start_ts, Timeframe.M15, m15_bars)))
+    return {
+        Timeframe.M15: base,
+        Timeframe.H1: aggregate(base, Timeframe.H1),
+        Timeframe.H4: aggregate(base, Timeframe.H4),
+        Timeframe.D1: aggregate(base, Timeframe.D1),
+        Timeframe.W1: aggregate(base, Timeframe.W1),
+    }
+
+
+def fast_engine_config(context: list[Timeframe] | None = None) -> EngineConfig:
+    """An engine config with short warm-up windows, for property tests.
+
+    The shipped config needs roughly a year of history before the weekly frame
+    says anything -- `ema_slow` alone is 55 bars, which on W1 is 55 weeks. That is
+    the right setting for trading and the wrong one for a test that wants to build
+    a few hundred snapshots. Shortening the windows changes how much history is
+    needed, not whether the code reaches into the future, which is what these tests
+    are about.
+    """
+    from traidingbrain.config.settings import load_config
+
+    base = load_config().engine
+    frames = context or [Timeframe.H4, Timeframe.H1, Timeframe.M15]
+    return base.model_copy(
+        update={
+            "timeframes": base.timeframes.model_copy(
+                update={"context": frames, "signal": Timeframe.H1}
+            ),
+            "indicators": base.indicators.model_copy(
+                update={"atr_period": 7, "rsi_period": 7, "ema_fast": 5, "ema_slow": 12}
+            ),
+            "regime": base.regime.model_copy(update={"volatility_window": 24, "trend_window": 12}),
+        }
+    )

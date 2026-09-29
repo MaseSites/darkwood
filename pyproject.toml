@@ -65,6 +65,9 @@ ignore = ["PLR0913"]
 # number with a named constant moves the expectation away from the assertion and
 # makes the test harder to read, not safer.
 "tests/**" = ["PLR2004"]
+# Fixture builders import inside the function so that importing `fakes` stays
+# cheap for tests that only need the tiny helpers.
+"tests/fakes.py" = ["PLR2004", "PLC0415"]
 # Scripts insert src/ on the path before importing the package.
 "scripts/**" = ["E402"]
 

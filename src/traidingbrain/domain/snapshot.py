@@ -63,6 +63,19 @@ class Level(BaseModel):
 
 
 class IndicatorReading(BaseModel):
+    """One indicator, read as a stance rather than a number.
+
+    `bias` is what the reading argues for, not what the number is: an RSI of 78 is
+    a high number, and what it argues is that buyers have already paid up.
+
+    `strength` is how emphatic the reading is, which is not the same as how
+    strongly it argues for `bias`. A neutral bias with high strength is a real and
+    useful state -- an RSI at 32 is emphatically low without having reached the
+    threshold where it flips to arguing for a bounce, and volume is never
+    directional but is often the most emphatic thing on the chart. `value` always
+    carries the detail, so nothing is lost either way.
+    """
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     name: str

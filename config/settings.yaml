@@ -48,7 +48,11 @@ structure:
 
 liquidity:
   equal_level_tolerance_atr: 0.15
-  sweep_lookback_bars: 50
+  # How long a sweep stays relevant, in bars. Counted in bars rather than hours
+  # on purpose: twelve bars is three hours on M15 and three months on W1, and in
+  # both cases that is roughly how long the market remembers a stop hunt on that
+  # timeframe. At 50 the weekly frame reports a sweep from a year ago as current.
+  sweep_lookback_bars: 12
   fvg_min_size_atr: 0.25
 
 regime:
@@ -56,7 +60,12 @@ regime:
   # a percentile computed over the whole dataset puts the future into every
   # snapshot.
   volatility_window: 200
-  trend_window: 100
+  # Bars used to measure trend slope. The same number on every timeframe, which is
+  # the point: 50 bars is two days on H1 and about a year on W1, and those are the
+  # right horizons for "short-term direction" and "macro direction" respectively.
+  # At 100 the weekly frame needs two years of history before it says anything,
+  # which costs more backtest window than the extra smoothing is worth.
+  trend_window: 50
 
 history:
   k_neighbours: 25

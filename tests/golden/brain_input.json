@@ -1,0 +1,252 @@
+{
+  "atr_pct": 0.014,
+  "frames": [
+    {
+      "indicators": [
+        {
+          "bias": "neutral",
+          "name": "RSI",
+          "strength": 0.8897,
+          "value": 32.2055
+        },
+        {
+          "bias": "bearish",
+          "name": "EMA_SPREAD_ATR",
+          "strength": 0.2259,
+          "value": -0.3388
+        },
+        {
+          "bias": "bearish",
+          "name": "MACD_HIST_ATR",
+          "strength": 0.2919,
+          "value": -0.1459
+        },
+        {
+          "bias": "neutral",
+          "name": "BB_PERCENT_B",
+          "strength": 0.462,
+          "value": 0.269
+        },
+        {
+          "bias": "neutral",
+          "name": "VOLUME_RATIO",
+          "strength": 0.0,
+          "value": 0.9722
+        },
+        {
+          "bias": "neutral",
+          "name": "CLOSE_IN_RANGE",
+          "strength": 0.0534,
+          "value": 0.4733
+        }
+      ],
+      "liquidity": {
+        "bars_since_sweep": 49,
+        "sweep_down": false,
+        "sweep_up": false,
+        "zone_level_ids": []
+      },
+      "regime": "range",
+      "structure": {
+        "bars_since_bos": null,
+        "bars_since_choch": null,
+        "bos": false,
+        "choch": false,
+        "sequence": "LL HH HL HH HL HH"
+      },
+      "timeframe": "H4",
+      "trend": "bullish",
+      "volatility": "high"
+    },
+    {
+      "indicators": [
+        {
+          "bias": "neutral",
+          "name": "RSI",
+          "strength": 0.0819,
+          "value": 48.3627
+        },
+        {
+          "bias": "bearish",
+          "name": "EMA_SPREAD_ATR",
+          "strength": 0.0167,
+          "value": -0.0251
+        },
+        {
+          "bias": "bullish",
+          "name": "MACD_HIST_ATR",
+          "strength": 0.1623,
+          "value": 0.0811
+        },
+        {
+          "bias": "neutral",
+          "name": "BB_PERCENT_B",
+          "strength": 0.0849,
+          "value": 0.4575
+        },
+        {
+          "bias": "neutral",
+          "name": "VOLUME_RATIO",
+          "strength": 0.0,
+          "value": 0.9276
+        },
+        {
+          "bias": "bearish",
+          "name": "CLOSE_IN_RANGE",
+          "strength": 0.3973,
+          "value": 0.3014
+        }
+      ],
+      "liquidity": {
+        "bars_since_sweep": 7,
+        "sweep_down": true,
+        "sweep_up": false,
+        "zone_level_ids": []
+      },
+      "regime": "range",
+      "structure": {
+        "bars_since_bos": 28,
+        "bars_since_choch": 1412,
+        "bos": false,
+        "choch": false,
+        "sequence": "HH LH HL LL LL HL"
+      },
+      "timeframe": "H1",
+      "trend": "neutral",
+      "volatility": "high"
+    },
+    {
+      "indicators": [
+        {
+          "bias": "neutral",
+          "name": "RSI",
+          "strength": 0.1819,
+          "value": 46.3629
+        },
+        {
+          "bias": "bullish",
+          "name": "EMA_SPREAD_ATR",
+          "strength": 0.0843,
+          "value": 0.1265
+        },
+        {
+          "bias": "bullish",
+          "name": "MACD_HIST_ATR",
+          "strength": 0.0971,
+          "value": 0.0485
+        },
+        {
+          "bias": "neutral",
+          "name": "BB_PERCENT_B",
+          "strength": 0.0177,
+          "value": 0.4912
+        },
+        {
+          "bias": "neutral",
+          "name": "VOLUME_RATIO",
+          "strength": 0.0,
+          "value": 0.9717
+        },
+        {
+          "bias": "neutral",
+          "name": "CLOSE_IN_RANGE",
+          "strength": 0.122,
+          "value": 0.561
+        }
+      ],
+      "liquidity": {
+        "bars_since_sweep": 0,
+        "sweep_down": true,
+        "sweep_up": false,
+        "zone_level_ids": []
+      },
+      "regime": "trend_up",
+      "structure": {
+        "bars_since_bos": 98,
+        "bars_since_choch": 98,
+        "bos": false,
+        "choch": false,
+        "sequence": "HH HL HH LL LH HL"
+      },
+      "timeframe": "M15",
+      "trend": "neutral",
+      "volatility": "extreme"
+    }
+  ],
+  "history": {
+    "historical_winrate": null,
+    "mean_r_multiple": null,
+    "regime": "unknown",
+    "sample_is_sufficient": false,
+    "similar_situations_found": 0
+  },
+  "levels": [
+    {
+      "age_bars": 98,
+      "distance_atr": 3.3058,
+      "id": "lvl_0",
+      "kind": "swing_high",
+      "timeframe": "H1",
+      "touches": 9
+    },
+    {
+      "age_bars": 224,
+      "distance_atr": 2.0021,
+      "id": "lvl_1",
+      "kind": "equal_lows",
+      "timeframe": "H1",
+      "touches": 43
+    },
+    {
+      "age_bars": 30,
+      "distance_atr": 1.8012,
+      "id": "lvl_2",
+      "kind": "equal_lows",
+      "timeframe": "H1",
+      "touches": 40
+    },
+    {
+      "age_bars": 15,
+      "distance_atr": 0.596,
+      "id": "lvl_3",
+      "kind": "swing_high",
+      "timeframe": "M15",
+      "touches": 36
+    },
+    {
+      "age_bars": 22,
+      "distance_atr": 0.4374,
+      "id": "lvl_4",
+      "kind": "swing_high",
+      "timeframe": "M15",
+      "touches": 41
+    },
+    {
+      "age_bars": 0,
+      "distance_atr": 0.0,
+      "id": "lvl_5",
+      "kind": "current",
+      "timeframe": "H1",
+      "touches": 38
+    },
+    {
+      "age_bars": 21,
+      "distance_atr": -0.685,
+      "id": "lvl_6",
+      "kind": "swing_low",
+      "timeframe": "M15",
+      "touches": 14
+    },
+    {
+      "age_bars": 49,
+      "distance_atr": -0.8952,
+      "id": "lvl_7",
+      "kind": "swing_low",
+      "timeframe": "H4",
+      "touches": 2
+    }
+  ],
+  "news": [],
+  "schema_version": 1,
+  "signal_timeframe": "H1"
+}

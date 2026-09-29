@@ -332,7 +332,7 @@ def test_backfill_pages_through_everything(store: ParquetStore) -> None:
 
     result = Backfiller(source, store, clock=FixedClock(end)).run("BTCUSDT", H1, since_ms=EPOCH)
 
-    assert result.bars_fetched == 250
+    assert result.bars_stored == 250
     assert result.pages >= 3
     assert len(store.read("BTCUSDT", H1)) == 250
     assert not result.report.is_fatal
@@ -363,7 +363,10 @@ def test_backfill_stops_when_the_venue_stalls(store: ParquetStore) -> None:
     )
 
     assert source.calls < 5, "the loop noticed the cursor was not advancing"
-    assert result.bars_fetched == 5
+    # It received the same page twice before noticing, and stored five distinct bars.
+    assert result.bars_fetched == 10
+    assert result.bars_stored == 5
+    assert len(store.read("BTCUSDT", H1)) == 5
 
 
 def test_backfill_respects_the_end_of_the_requested_range(store: ParquetStore) -> None:
