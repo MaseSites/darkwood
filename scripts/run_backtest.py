@@ -26,6 +26,7 @@ from traidingbrain.data.exchange import BybitDataSource
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import SymbolSpec
+from traidingbrain.history.engine import HistoryEngine
 from traidingbrain.sim.engine import BacktestResult, load_engine
 from traidingbrain.sim.metrics import compare
 from traidingbrain.strategies.baseline import RandomEntry, StructureBaseline
@@ -97,6 +98,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--max-bars", type=int, default=None, help="cut the run short")
     parser.add_argument(
+        "--no-history",
+        action="store_true",
+        help="run without the similarity index, to see what it is contributing",
+    )
+    parser.add_argument(
         "--live-spec", action="store_true", help="fetch instrument rules from the venue"
     )
     args = parser.parse_args(argv)
@@ -131,6 +137,9 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     started = time.perf_counter()
+    # The index fills as the run proceeds and starts empty, so this is the same
+    # walk-forward behaviour a live system would have -- not a training pass.
+    history = None if args.no_history else HistoryEngine(config.engine.history)
     engine = load_engine(
         args.symbol,
         frames,
@@ -138,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
         spec=spec,
         config=config,
         funding=funding,
+        history=history,
     )
     print(f"\nanalysis ready in {time.perf_counter() - started:.1f}s")
 
