@@ -242,3 +242,28 @@ def test_no_credentials_in_committed_config(config_dir: Path) -> None:
             elif isinstance(value, str) and len(value) >= OPAQUE_STRING_LENGTH and value.isalnum():
                 offenders.append(f"{path.name}:{dotted} holds a long opaque string")
     assert not offenders, "secrets belong in .env:\n  " + "\n  ".join(offenders)
+
+
+def test_a_threshold_a_lookup_can_never_meet_is_refused() -> None:
+    """The bug this exists to prevent shipped, and was invisible.
+
+    A lookup returns at most `k_neighbours`. With k at 25 and the threshold at 30,
+    `sample_is_sufficient` was false on every one of seventy-one thousand lookups
+    -- no error, no warning, and a symptom (the history factor silent, the
+    confidence cap never lifting) identical to a genuine shortage of data. Two
+    numbers in a YAML file will not stay consistent on their own.
+    """
+    with pytest.raises(ValidationError, match="below min_samples_for_stats"):
+        HistoryConfig(
+            k_neighbours=25,
+            outcome_horizon_hours=48,
+            embargo_hours=48,
+            min_samples_for_stats=30,
+        )
+
+
+def test_the_shipped_configuration_can_actually_reach_its_threshold() -> None:
+    """Deduplication only removes neighbours, so equality would not be enough."""
+    history = load_config().engine.history
+
+    assert history.k_neighbours > history.min_samples_for_stats

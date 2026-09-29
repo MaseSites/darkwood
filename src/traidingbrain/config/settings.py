@@ -122,6 +122,31 @@ class HistoryConfig(_Frozen):
             )
         return self
 
+    @model_validator(mode="after")
+    def _the_threshold_is_reachable(self) -> HistoryConfig:
+        """A lookup can return at most `k_neighbours`, so asking for more is asking
+        for something that cannot happen.
+
+        This shipped: k was 25 and the threshold 30, so `sample_is_sufficient` was
+        false on every one of seventy-one thousand lookups. Nothing failed, no
+        error was raised, and the symptom -- the history factor contributing
+        nothing and the confidence cap never lifting -- looked exactly like a
+        genuine shortage of data. Two numbers in a YAML file cannot be relied on
+        to stay consistent, so the relationship between them is checked here.
+
+        Deduplication only removes neighbours, so k must exceed the threshold with
+        room to spare rather than merely equal it.
+        """
+        if self.k_neighbours < self.min_samples_for_stats:
+            raise ValueError(
+                f"k_neighbours ({self.k_neighbours}) is below min_samples_for_stats "
+                f"({self.min_samples_for_stats}), so a lookup can never return enough "
+                "neighbours to quote a rate and the history factor is permanently "
+                "silent. Raise k_neighbours well above the threshold -- deduplication "
+                "removes cases from the same episode, so equality is not enough."
+            )
+        return self
+
 
 class BrainConfig(_Frozen):
     model: str = "claude-opus-5-5"

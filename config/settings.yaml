@@ -68,21 +68,27 @@ regime:
   trend_window: 50
 
 history:
-  k_neighbours: 25
+  # A lookup returns at most this many neighbours, and deduplication only removes
+  # some, so this has to sit well above min_samples_for_stats below. It did not:
+  # 25 against a threshold of 30 made the threshold unreachable, and every one of
+  # seventy-one thousand lookups reported "not enough" while looking exactly like
+  # a shortage of data. settings.py now refuses that combination outright.
+  k_neighbours: 120
   # Outcome horizon. A neighbour from within this window of the current bar has an
   # outcome that overlaps the present, so it is excluded (purging + embargo).
   outcome_horizon_hours: 48
   embargo_hours: 48
   # Independent comparable cases needed before a win rate may be quoted.
   #
-  # Measured consequence, not a guess: at the distance cutoff in history/stats.py
-  # a query matches roughly 4% of the index, so this threshold needs about 750
-  # resolved cases before any lookup can report a rate. One symbol over two and a
-  # half years produces around 330. Four symbols pooled get there.
+  # A win rate from six cases is three wins. Below this the honest answer is that
+  # there is no rate, not a noisy one -- so while it is unmet every lookup reports
+  # "not enough", confidence stays capped, and no trade may risk more than the
+  # base tier. That is the design working, not a reason to lower this number.
   #
-  # Until then every lookup reports "not enough", confidence stays capped, and no
-  # trade may risk more than the base tier. That is the design working, not a
-  # reason to lower this number.
+  # Whether it is *met* depends on how many resolved cases the index holds and how
+  # many of them fall inside the distance cutoff in history/stats.py. Four symbols
+  # over the current window produce about 250 cases in total, which is not enough;
+  # a longer window is the fix, not a smaller threshold.
   min_samples_for_stats: 30
 
 brain:
