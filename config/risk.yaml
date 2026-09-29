@@ -1,0 +1,64 @@
+# Risk and position sizing.
+#
+# The order of reasoning is: risk budget first, then position size, then leverage.
+#
+#   size     = risk_amount / stop_distance
+#   leverage = chosen so that liquidation sits far beyond the stop
+#
+# This is what makes "invest more when the read is strong" safe. A 5,000 CHF
+# position with a 3% stop risks 150 CHF, not 5,000. The position can be large;
+# the loss cannot.
+
+sizing:
+  # Fraction of equity lost if the stop is hit, by confidence band.
+  # Below min_confidence there is no trade at all.
+  min_confidence: 60
+  tiers:
+    - { min_confidence: 60, risk_pct: 0.005 }
+    - { min_confidence: 70, risk_pct: 0.010 }
+    - { min_confidence: 80, risk_pct: 0.020 }
+    - { min_confidence: 90, risk_pct: 0.030 }
+
+  # Until the history engine has demonstrated that high-confidence setups actually
+  # perform better, no tier above this is reachable -- the tiers above are capped
+  # down to it. A model's confidence is not a calibrated probability on day one,
+  # and an uncalibrated number must not be allowed to size a position.
+  #
+  # Raise this only once `history.min_samples_for_uncap` non-overlapping cases
+  # show a real edge for the upper bands.
+  uncalibrated_cap_risk_pct: 0.010
+  min_samples_for_uncap: 200
+
+  # Hard ceiling regardless of confidence, calibration or manual override.
+  absolute_max_risk_pct: 0.030
+
+leverage:
+  # Liquidation must sit at least this many stop-distances beyond the stop.
+  # The stop is where the plan says the trade is wrong; liquidation is where the
+  # exchange says the trade is over. The second must never arrive first.
+  min_liquidation_buffer_r: 2.5
+  max: 10.0
+  # Leverage is derived, never taken from the model. The user may lower it in the
+  # dashboard -- lowering only widens the liquidation buffer, so it is always safe.
+  allow_user_increase: false
+
+limits:
+  max_open_positions: 2
+  max_positions_per_symbol: 1
+  max_daily_loss_pct: 0.05
+  max_weekly_loss_pct: 0.10
+  # After this many consecutive losses, stop proposing until a human resets it.
+  cooldown_after_consecutive_losses: 3
+  cooldown_hours: 24
+  min_reward_risk: 1.5
+
+execution:
+  # A confirmed proposal is re-priced before it is sent. Drift beyond this and the
+  # proposal is invalidated and rebuilt rather than quietly adjusted -- a trade at
+  # a different price is a different trade.
+  max_price_drift_bps: 15
+  confirmation_token_ttl_seconds: 60
+  proposal_ttl_seconds: 900
+  # Seconds after a fill within which a stop must exist on the exchange.
+  # The watchdog closes the position if it does not.
+  stop_watchdog_deadline_seconds: 2

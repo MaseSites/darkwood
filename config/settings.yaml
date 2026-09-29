@@ -1,0 +1,95 @@
+# Engine configuration.
+#
+# Secrets never live here -- they come from .env via pydantic-settings. This file
+# is committed; .env is not.
+
+exchange:
+  # Bybit, chosen after checking reachability: testnet.binancefuture.com does not
+  # resolve from here, testnet.bybit.com does, and api.bybit.com serves all four
+  # symbols cleanly. Everything runs behind the DataSource/Broker protocols, so
+  # switching venue is a config change rather than a rewrite.
+  name: bybit
+  market_type: linear      # USDT perpetuals
+  testnet: true            # the only sane setting before stage 10
+  rate_limit_ms: 120
+
+symbols:
+  # Stages 1-5 are validated on BTCUSDT alone: one symbol, fast iteration, small
+  # LLM bill. The other three are a config change once the engine has been shown
+  # to work.
+  active: [BTCUSDT]
+  available: [BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT]
+
+timeframes:
+  # W1 and D1 give the macro read, H4 the intermediate structure, H1 the setup,
+  # M15 the entry timing. M1 is not analysed -- it exists so the simulator can tell
+  # whether stop or target was hit first inside an H1 candle. Without it, every
+  # backtest has to guess, and guessing optimistically is how a strategy looks
+  # profitable on paper and is not.
+  context: [W1, D1, H4, H1, M15]
+  signal: H1
+  execution: M1
+
+indicators:
+  atr_period: 14
+  rsi_period: 14
+  ema_fast: 21
+  ema_slow: 55
+  macd: { fast: 12, slow: 26, signal: 9 }
+  bb: { period: 20, std: 2.0 }
+  volume_ma: 20
+
+structure:
+  # A swing needs this many bars on each side before it counts. The right-hand
+  # bars are why a swing is only knowable in arrears -- structure objects record
+  # the bar that confirmed them, never the bar that formed them.
+  swing_lookback: 3
+  max_sequence_length: 6
+
+liquidity:
+  equal_level_tolerance_atr: 0.15
+  sweep_lookback_bars: 50
+  fvg_min_size_atr: 0.25
+
+regime:
+  # Volatility buckets are rolling percentiles over this window. Never global:
+  # a percentile computed over the whole dataset puts the future into every
+  # snapshot.
+  volatility_window: 200
+  trend_window: 100
+
+history:
+  k_neighbours: 25
+  # Outcome horizon. A neighbour from within this window of the current bar has an
+  # outcome that overlaps the present, so it is excluded (purging + embargo).
+  outcome_horizon_hours: 48
+  embargo_hours: 48
+  min_samples_for_stats: 30
+
+brain:
+  model: claude-opus-5-5
+  # Prompt iteration runs on the cheaper model; the measured run does not mix them,
+  # because caches are scoped per model.
+  iteration_model: claude-sonnet-5-5
+  effort: medium            # default on Opus 5.5; raise only if measurement earns it
+  max_tokens: 8000
+  prompt_version: v1
+  # Backtests go through the Batch API: half price, no rate-limit juggling, and a
+  # backtest is by definition not latency-sensitive.
+  use_batch_api_for_backtest: true
+  max_usd_per_backtest: 25.0
+
+trigger:
+  # The deterministic gate that decides *when* the model is asked at all. Without
+  # it a multi-year backtest costs a fortune to produce mostly "no setup here".
+  require_bos_or_choch: true
+  require_sweep: false
+  min_indicator_confluence: 2
+  min_bars_between_calls: 4
+
+paths:
+  data_dir: data
+  parquet_dir: data/ohlcv
+  db_path: data/traidingbrain.sqlite
+  cache_db_path: data/decisions.sqlite
+  runs_dir: runs

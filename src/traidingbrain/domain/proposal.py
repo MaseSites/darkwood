@@ -1,0 +1,239 @@
+"""Trade proposals, confirmation tokens, and the write-ahead record of an intent.
+
+This is where the system's hardest rule lives. Everything upstream analyses; this
+module is the last thing before money. A proposal is a complete, ready-to-send
+trade -- entry, stop, target, leverage, size, the cash at risk and the price at
+which the position would be liquidated -- that sits and waits for a human.
+
+Nothing here sends an order. `execution` does, and only against a
+`ConfirmationToken` this module issued.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from traidingbrain.domain.enums import (
+    Bias,
+    ProposalStatus,
+    RiskLevel,
+    Side,
+    TradeState,
+)
+
+#: How long a confirmation token stays valid. A proposal priced minutes ago is a
+#: proposal priced at a stale market; past this the user must look again.
+TOKEN_TTL_SECONDS = 60
+
+#: How long a proposal stays on the dashboard before it expires unseen.
+PROPOSAL_TTL_SECONDS = 15 * 60
+
+
+def _now_ms() -> int:
+    return int(datetime.now(tz=UTC).timestamp() * 1000)
+
+
+class TradeProposal(BaseModel):
+    """A fully specified trade, waiting for confirmation.
+
+    Every number here is computed by Python: the model chose the levels, the risk
+    module chose the size, and the leverage was derived from the requirement that
+    liquidation sit well beyond the stop. The user may lower leverage or risk in
+    the dashboard; any change re-runs sizing and the guard before it is offered
+    again.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_ts: int = Field(default_factory=_now_ms)
+    expires_ts: int = Field(default_factory=lambda: _now_ms() + PROPOSAL_TTL_SECONDS * 1000)
+
+    symbol: str
+    side: Side
+
+    entry: float = Field(gt=0)
+    stop: float = Field(gt=0)
+    target: float = Field(gt=0)
+
+    qty: float = Field(gt=0, description="Contracts/base units, rounded to the exchange step")
+    leverage: float = Field(gt=0)
+    notional: float = Field(gt=0, description="qty * entry -- the size of the position")
+    margin: float = Field(gt=0, description="notional / leverage -- the capital tied up")
+    liquidation_price: float = Field(gt=0)
+
+    risk_amount: float = Field(gt=0, description="Loss in quote currency if the stop is hit")
+    risk_pct: float = Field(gt=0, le=0.05, description="risk_amount as a fraction of equity")
+    equity_at_build: float = Field(gt=0)
+
+    bias: Bias
+    confidence: float = Field(ge=0.0, le=100.0)
+    risk_level: RiskLevel
+    reasoning: list[str] = Field(default_factory=list)
+    invalidation_note: str = ""
+
+    snapshot_hash: str
+    decision_id: str | None = None
+    status: ProposalStatus = ProposalStatus.PENDING
+
+    @model_validator(mode="after")
+    def _directions_are_coherent(self) -> TradeProposal:
+        """Stop below entry below target for a long, and the mirror for a short.
+
+        Cheap to check, and it makes an inverted plan impossible to represent
+        rather than merely unlikely.
+        """
+        if self.side is Side.LONG:
+            if not (self.stop < self.entry < self.target):
+                raise ValueError(
+                    f"long requires stop < entry < target, got "
+                    f"{self.stop} / {self.entry} / {self.target}"
+                )
+            if self.liquidation_price >= self.stop:
+                raise ValueError(
+                    f"long liquidation {self.liquidation_price} must sit below the stop "
+                    f"{self.stop}; otherwise the position dies before the plan says it should"
+                )
+        else:
+            if not (self.target < self.entry < self.stop):
+                raise ValueError(
+                    f"short requires target < entry < stop, got "
+                    f"{self.target} / {self.entry} / {self.stop}"
+                )
+            if self.liquidation_price <= self.stop:
+                raise ValueError(
+                    f"short liquidation {self.liquidation_price} must sit above the stop "
+                    f"{self.stop}; otherwise the position dies before the plan says it should"
+                )
+        return self
+
+    @property
+    def stop_distance(self) -> float:
+        return abs(self.entry - self.stop)
+
+    @property
+    def reward_risk(self) -> float:
+        if self.stop_distance == 0:
+            return 0.0
+        return abs(self.target - self.entry) / self.stop_distance
+
+    @property
+    def liquidation_buffer_r(self) -> float:
+        """How far past the stop liquidation sits, measured in stop distances."""
+        if self.stop_distance == 0:
+            return 0.0
+        return abs(self.liquidation_price - self.stop) / self.stop_distance
+
+    def is_expired(self, now_ms: int | None = None) -> bool:
+        return (now_ms if now_ms is not None else _now_ms()) >= self.expires_ts
+
+
+class ProposalAdjustment(BaseModel):
+    """What the user is allowed to change before confirming.
+
+    Leverage and risk may only be lowered. Lowering is always safe; raising is a
+    different trade and has to be proposed as one, because the sizing, the
+    liquidation price and the guard all depend on it.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    leverage: float | None = Field(default=None, gt=0)
+    risk_pct: float | None = Field(default=None, gt=0, le=0.05)
+    entry: float | None = Field(default=None, gt=0)
+    stop: float | None = Field(default=None, gt=0)
+    target: float | None = Field(default=None, gt=0)
+
+
+class ConfirmationToken(BaseModel):
+    """Single-use, short-lived permission to send exactly one proposal.
+
+    Possession is not sufficient on its own: `execution.confirm` still performs a
+    compare-and-swap on the proposal row, so two holders of the same token race
+    and exactly one wins.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    token: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    proposal_id: str
+    issued_ts: int = Field(default_factory=_now_ms)
+    expires_ts: int = Field(default_factory=lambda: _now_ms() + TOKEN_TTL_SECONDS * 1000)
+    proposal_fingerprint: str = Field(
+        description="Hash of the proposal's numbers; a token does not survive an edit"
+    )
+
+    def is_expired(self, now_ms: int | None = None) -> bool:
+        return (now_ms if now_ms is not None else _now_ms()) >= self.expires_ts
+
+
+class ExecutionIntent(BaseModel):
+    """The write-ahead record, persisted *before* anything is sent.
+
+    Without it, a crash between "sent" and "recorded" leaves a position nobody
+    knows about. With it, reconciliation has a key -- `client_order_id` -- to ask
+    the exchange what actually happened.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    proposal_id: str
+    client_order_id: str = Field(
+        description="Deterministic from the proposal id, so a retry cannot open a second position"
+    )
+    symbol: str
+    side: Side
+    qty: float = Field(gt=0)
+    entry: float = Field(gt=0)
+    stop: float = Field(gt=0)
+    target: float = Field(gt=0)
+    leverage: float = Field(gt=0)
+    testnet: bool
+    created_ts: int = Field(default_factory=_now_ms)
+
+
+class Position(BaseModel):
+    """An open position, as the system understands it.
+
+    Reconciliation compares this against the exchange. Any divergence is a bug
+    worth stopping for, not a rounding difference to shrug at.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    symbol: str
+    side: Side
+    qty: float = Field(gt=0)
+    entry_price: float = Field(gt=0)
+    leverage: float = Field(gt=0)
+    liquidation_price: float = Field(gt=0)
+    stop_order_id: str | None = Field(
+        default=None, description="None means the position is unprotected -- the watchdog acts"
+    )
+    target_order_id: str | None = None
+    opened_ts: int
+
+
+class ClosedTrade(BaseModel):
+    """A finished trade. The unit the history engine and the metrics both work on."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    proposal_id: str
+    symbol: str
+    side: Side
+    state: TradeState
+    entry_price: float = Field(gt=0)
+    exit_price: float = Field(gt=0)
+    qty: float = Field(gt=0)
+    opened_ts: int
+    closed_ts: int
+    gross_pnl: float
+    fees: float = Field(ge=0)
+    funding: float = Field(description="Signed; negative means the position paid")
+    net_pnl: float
+    r_multiple: float = Field(description="net_pnl divided by the cash that was at risk")
+    snapshot_hash: str

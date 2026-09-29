@@ -1,0 +1,72 @@
+[project]
+name = "traidingbrain"
+version = "0.1.0"
+description = "Trading intelligence engine — Claude as interpretation layer, human confirms every trade"
+requires-python = ">=3.12"
+
+dependencies = [
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "pyarrow>=16.0",
+    "duckdb>=1.0",
+    "ccxt>=4.4",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "anthropic>=1.0",
+    "pyyaml>=6.0",
+    "httpx>=0.27",
+    "structlog>=24.1",
+]
+
+[project.optional-dependencies]
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "jinja2>=3.1",
+]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-socket>=0.7",
+    "hypothesis>=6.112",
+    "syrupy>=4.7",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "pandas-stubs",
+    "types-PyYAML",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/traidingbrain"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers -m 'not live and not costs_money'"
+markers = [
+    "live: hits a real network endpoint (deselected by default via -m 'not live')",
+    "costs_money: calls the Anthropic API and spends real budget",
+]
+filterwarnings = ["error::DeprecationWarning:traidingbrain.*"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "PL", "N"]
+ignore = ["PLR0913"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["traidingbrain"]
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["ccxt.*", "duckdb.*", "structlog.*"]
+ignore_missing_imports = true
