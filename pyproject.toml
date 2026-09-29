@@ -49,6 +49,7 @@ addopts = "-q --strict-markers -m 'not live and not costs_money'"
 markers = [
     "live: hits a real network endpoint (deselected by default via -m 'not live')",
     "costs_money: calls the Anthropic API and spends real budget",
+    "allow_hosts: permit loopback so an in-process test client can run",
 ]
 filterwarnings = ["error::DeprecationWarning:traidingbrain.*"]
 

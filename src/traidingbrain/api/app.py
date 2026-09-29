@@ -1,0 +1,355 @@
+"""The HTTP surface the dashboard talks to.
+
+Deliberately, there is no endpoint here that sends an order. Confirming a proposal
+claims it and hands back exactly what would be sent; the thing that talks to an
+exchange arrives separately and is injected. Until then this whole service can be
+run against a real account's data with no possibility of it placing a trade, which
+is the right default for the stage where the interface is still being shaped.
+
+The confirmation flow is three steps, and the split matters:
+
+1. **Ask for a token.** The server re-prices the proposal against the current
+   market first. If price has drifted past the tolerance, there is no token -- the
+   trade you were looking at is not the trade that would be sent.
+2. **Confirm with it.** The token is single-use and bound to the proposal's exact
+   numbers, so adjusting anything invalidates it.
+3. **Claim.** A compare-and-swap decides who actually proceeds. Two tabs, a
+   double-click and a retried request all end here, and exactly one wins.
+
+Adjusting a proposal returns a new one rather than editing in place. Changing the
+leverage moves the liquidation price; changing the risk moves the size, which moves
+the cost ratio. A patched field would leave the rest describing a trade that no
+longer exists.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Protocol
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+from traidingbrain.config.settings import AppConfig, load_config
+from traidingbrain.domain.market import SymbolSpec
+from traidingbrain.domain.proposal import ProposalAdjustment, TradeProposal
+from traidingbrain.proposals.builder import BuildFailure, ProposalBuilder, describe
+from traidingbrain.proposals.store import ProposalStore
+from traidingbrain.risk.limits import AccountState, KillSwitch, RiskLimits
+
+BPS = 1e-4
+
+
+class PriceSource(Protocol):
+    """Whatever can say what something costs right now."""
+
+    def last_price(self, symbol: str) -> float | None: ...
+
+
+class Executor(Protocol):
+    """Whatever can actually place the order.
+
+    A protocol with no implementation in this stage, on purpose. The service runs
+    fully without one, and a confirmation then reports what would have been sent.
+    """
+
+    def send(self, proposal: TradeProposal) -> str: ...
+
+
+@dataclass
+class Services:
+    """Everything the endpoints need, gathered so it can be swapped in tests."""
+
+    config: AppConfig
+    store: ProposalStore
+    builder: ProposalBuilder
+    limits: RiskLimits
+    kill_switch: KillSwitch
+    specs: dict[str, SymbolSpec] = field(default_factory=dict)
+    prices: PriceSource | None = None
+    executor: Executor | None = None
+    account: AccountState | None = None
+
+    def spec_for(self, symbol: str) -> SymbolSpec:
+        spec = self.specs.get(symbol)
+        if spec is None:
+            raise HTTPException(404, f"no instrument rules loaded for {symbol}")
+        return spec
+
+    def account_state(self) -> AccountState:
+        if self.account is None:
+            raise HTTPException(503, "no account state available yet")
+        return self.account
+
+
+# --------------------------------------------------------------------------- #
+# Wire types
+# --------------------------------------------------------------------------- #
+
+
+class ProposalView(BaseModel):
+    """A proposal as the dashboard shows it.
+
+    Everything pre-computed. The interface should never be doing arithmetic that
+    the risk layer has already done, because then there are two versions of the
+    number and one of them is wrong.
+    """
+
+    id: str
+    symbol: str
+    side: str
+    entry: float
+    stop: float
+    target: float
+    qty: float
+    leverage: float
+    notional: float
+    margin: float
+    liquidation_price: float
+    risk_amount: float
+    risk_pct: float
+    equity: float
+    confidence: float
+    bias: str
+    risk_level: str
+    reward_risk: float
+    stop_distance_pct: float
+    liquidation_buffer_r: float
+    reasoning: list[str]
+    invalidation_note: str
+    expires_ts: int
+    status: str
+
+    @classmethod
+    def of(cls, proposal: TradeProposal) -> ProposalView:
+        return cls(
+            id=proposal.id,
+            symbol=proposal.symbol,
+            side=proposal.side.value,
+            entry=proposal.entry,
+            stop=proposal.stop,
+            target=proposal.target,
+            qty=proposal.qty,
+            leverage=proposal.leverage,
+            notional=proposal.notional,
+            margin=proposal.margin,
+            liquidation_price=proposal.liquidation_price,
+            risk_amount=proposal.risk_amount,
+            risk_pct=proposal.risk_pct,
+            equity=proposal.equity_at_build,
+            confidence=proposal.confidence,
+            bias=proposal.bias.value,
+            risk_level=proposal.risk_level.value,
+            reward_risk=proposal.reward_risk,
+            stop_distance_pct=abs(proposal.entry - proposal.stop) / proposal.entry,
+            liquidation_buffer_r=proposal.liquidation_buffer_r,
+            reasoning=proposal.reasoning,
+            invalidation_note=proposal.invalidation_note,
+            expires_ts=proposal.expires_ts,
+            status=proposal.status.value,
+        )
+
+
+class AdjustRequest(BaseModel):
+    leverage: float | None = Field(default=None, gt=0)
+    risk_pct: float | None = Field(default=None, gt=0, le=0.05)
+
+
+class ConfirmRequest(BaseModel):
+    token: str
+
+
+class KillRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=200)
+
+
+class SystemState(BaseModel):
+    equity: float
+    open_positions: int
+    pending_proposals: int
+    kill_switch_engaged: bool
+    kill_switch_reason: str
+    limits_allow_trading: bool
+    limit_blockers: list[str]
+    execution_connected: bool
+    testnet: bool
+
+
+# --------------------------------------------------------------------------- #
+# The app
+# --------------------------------------------------------------------------- #
+
+
+def create_app(services: Services) -> FastAPI:
+    app = FastAPI(
+        title="traidingBrain",
+        summary="Trade proposals awaiting a human decision",
+        version="0.1.0",
+    )
+
+    @app.get("/api/state", response_model=SystemState)
+    def state() -> SystemState:
+        account = services.account
+        verdict = services.limits.check(account, symbol="") if account is not None else None
+        return SystemState(
+            equity=account.equity if account else 0.0,
+            open_positions=len(account.open_positions) if account else 0,
+            pending_proposals=len(services.store.list_pending()),
+            kill_switch_engaged=services.kill_switch.is_engaged(),
+            kill_switch_reason=services.kill_switch.reason(),
+            limits_allow_trading=verdict.allowed if verdict else False,
+            limit_blockers=verdict.blockers if verdict else ["no account state"],
+            execution_connected=services.executor is not None,
+            testnet=services.config.engine.exchange.testnet,
+        )
+
+    @app.get("/api/proposals", response_model=list[ProposalView])
+    def pending() -> list[ProposalView]:
+        return [ProposalView.of(p) for p in services.store.list_pending()]
+
+    @app.get("/api/proposals/{proposal_id}", response_model=ProposalView)
+    def one(proposal_id: str) -> ProposalView:
+        return ProposalView.of(_require(services, proposal_id))
+
+    @app.post("/api/proposals/{proposal_id}/adjust", response_model=ProposalView)
+    def adjust(proposal_id: str, change: AdjustRequest) -> ProposalView:
+        """Re-price after the user lowers leverage or risk.
+
+        Returns a fresh proposal with a new fingerprint, so any token issued for
+        the previous version stops working. That is the mechanism that makes it
+        impossible to look at one trade, adjust it, and confirm the first.
+        """
+        proposal = _require(services, proposal_id)
+        rebuilt = services.builder.adjust(
+            proposal,
+            ProposalAdjustment(leverage=change.leverage, risk_pct=change.risk_pct),
+            services.spec_for(proposal.symbol),
+            services.account_state(),
+        )
+        if isinstance(rebuilt, BuildFailure):
+            raise HTTPException(422, str(rebuilt))
+
+        # The id and the clock carry over: this is the same opportunity, re-priced.
+        # A new id would leave the original sitting on the dashboard alongside it,
+        # and a reset expiry would let an adjustment quietly extend a stale offer.
+        replacement = rebuilt.model_copy(
+            update={
+                "id": proposal.id,
+                "created_ts": proposal.created_ts,
+                "expires_ts": proposal.expires_ts,
+            }
+        )
+        services.store.put(replacement)
+        return ProposalView.of(replacement)
+
+    @app.post("/api/proposals/{proposal_id}/token")
+    def token(proposal_id: str) -> dict[str, Any]:
+        """Issue a short-lived confirmation, after checking the price still holds.
+
+        The drift check is the point. A proposal built minutes ago was priced
+        against a market that has since moved; sending it would be executing a
+        trade nobody agreed to.
+        """
+        proposal = _require(services, proposal_id)
+        drift = _price_drift(services, proposal)
+        tolerance = services.config.risk.execution.max_price_drift_bps
+
+        if drift is not None and abs(drift) > tolerance:
+            raise HTTPException(
+                409,
+                f"price has moved {drift:+.1f} bps since this was priced "
+                f"(tolerance {tolerance:.0f}); the proposal needs rebuilding rather "
+                f"than confirming",
+            )
+
+        issued = services.store.issue_token(
+            proposal, services.config.risk.execution.confirmation_token_ttl_seconds
+        )
+        return {
+            "token": issued.token,
+            "expires_ts": issued.expires_ts,
+            "price_drift_bps": drift,
+        }
+
+    @app.post("/api/proposals/{proposal_id}/confirm")
+    def confirm(proposal_id: str, request: ConfirmRequest) -> dict[str, Any]:
+        """Spend the token, claim the proposal, and send -- if anything can send."""
+        proposal = _require(services, proposal_id)
+
+        if services.kill_switch.is_engaged():
+            raise HTTPException(423, f"kill switch engaged: {services.kill_switch.reason()}")
+
+        objection = services.store.consume_token(request.token, proposal)
+        if objection is not None:
+            raise HTTPException(409, objection)
+
+        # The token was valid; this is what decides who actually proceeds.
+        if not services.store.claim_for_execution(proposal.id):
+            raise HTTPException(409, "this proposal is no longer pending")
+
+        if services.executor is None:
+            services.store.finish(
+                proposal.id, ok=False, note="no execution connected; nothing was sent"
+            )
+            return {
+                "sent": False,
+                "reason": "execution is not connected in this build",
+                "would_have_sent": describe(proposal),
+            }
+
+        try:
+            reference = services.executor.send(proposal)
+        except Exception as exc:
+            services.store.finish(proposal.id, ok=False, note=f"send failed: {exc}")
+            raise HTTPException(502, f"the exchange rejected the order: {exc}") from exc
+
+        services.store.finish(proposal.id, ok=True, note=f"sent as {reference}")
+        return {"sent": True, "reference": reference}
+
+    @app.post("/api/proposals/{proposal_id}/reject")
+    def reject(proposal_id: str) -> dict[str, bool]:
+        return {"rejected": services.store.reject(proposal_id, "declined by the user")}
+
+    @app.post("/api/kill")
+    def kill(request: KillRequest) -> dict[str, str]:
+        """Stop everything. Cleared only by hand."""
+        services.kill_switch.engage(request.reason)
+        return {"status": "engaged", "reason": request.reason}
+
+    @app.delete("/api/kill")
+    def release() -> dict[str, str]:
+        services.kill_switch.release()
+        return {"status": "released"}
+
+    return app
+
+
+def _require(services: Services, proposal_id: str) -> TradeProposal:
+    proposal = services.store.get(proposal_id)
+    if proposal is None:
+        raise HTTPException(404, "no such proposal")
+    return proposal
+
+
+def _price_drift(services: Services, proposal: TradeProposal) -> float | None:
+    """How far the market has moved from the proposed entry, in basis points."""
+    if services.prices is None:
+        return None
+    current = services.prices.last_price(proposal.symbol)
+    if current is None or proposal.entry <= 0:
+        return None
+    return (current - proposal.entry) / proposal.entry / BPS
+
+
+def build_default_services(config: AppConfig | None = None) -> Services:
+    """Wire the service together from configuration, with nothing that can trade."""
+    settings = config or load_config()
+    kill_switch = KillSwitch(settings.engine.paths.data_dir / "KILL_SWITCH")
+    limits = RiskLimits(settings.risk.limits, kill_switch)
+    return Services(
+        config=settings,
+        store=ProposalStore(settings.engine.paths.db_path),
+        builder=ProposalBuilder(settings, limits),
+        limits=limits,
+        kill_switch=kill_switch,
+    )

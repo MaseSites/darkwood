@@ -24,10 +24,20 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Cut the network for every test that has not explicitly asked for it."""
+    """Cut the network for every test that has not explicitly asked for it.
+
+    `allow_hosts` is the narrow exception, used by the API tests: FastAPI's test
+    client runs the app in-process and makes no external request, but asyncio
+    still needs a local socket pair for its own event loop. Permitting loopback
+    keeps the guarantee that matters -- nothing reaches an exchange or an API --
+    while letting those tests run.
+    """
     for item in items:
-        if "live" not in item.keywords and "costs_money" not in item.keywords:
-            item.add_marker(pytest.mark.disable_socket)
+        if "live" in item.keywords or "costs_money" in item.keywords:
+            continue
+        if "allow_hosts" in item.keywords:
+            continue
+        item.add_marker(pytest.mark.disable_socket)
 
 
 @pytest.fixture(scope="session")
