@@ -15,6 +15,7 @@ indexed positionally, rather than queried per hour.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Protocol
 
 import numpy as np
@@ -33,6 +34,14 @@ from traidingbrain.risk.leverage import choose_leverage
 from traidingbrain.risk.sizing import costs_are_affordable, position_size, risk_budget
 from traidingbrain.sim.broker import Fill, PendingEntry, SimBroker
 from traidingbrain.sim.metrics import BacktestMetrics, compute_metrics, format_metrics
+
+
+class MissingMinuteDataError(RuntimeError):
+    """The backtest was asked to run where it cannot resolve intrabar order."""
+
+
+def _day(ts_ms: int) -> str:
+    return datetime.fromtimestamp(ts_ms / 1000, tz=UTC).date().isoformat()
 
 
 @dataclass(frozen=True)
@@ -151,6 +160,7 @@ class BacktestEngine:
 
         end = len(signal) - 1
         signal_ts = signal.frame["ts"].to_numpy(dtype="int64")
+        self._assert_minutes_cover(signal_ts[start], signal_ts[end])
 
         # A time window rather than a bar count, so the same period can be asked
         # for across symbols and timeframes without translating indices by hand.
@@ -233,6 +243,38 @@ class BacktestEngine:
             first_ts=int(signal_ts[start]),
             last_ts=int(signal_ts[end]),
         )
+
+    def _assert_minutes_cover(self, first_ts: int, last_ts: int) -> None:
+        """Refuse to run over signal bars the minute data does not reach.
+
+        The minute series decides whether the stop or the target was hit first
+        inside an hour. Where it is missing, nothing fills, every entry expires
+        unused, and the result is a confident "no trades in that period" -- which
+        is indistinguishable from a strategy that found nothing, and is the
+        answer someone would act on.
+
+        This is exactly the shape of failure the rest of this codebase keeps
+        turning up: a silent no-op that reads as a result. Extending the candle
+        history without extending the minute history produces it, and nothing
+        else in the pipeline would notice.
+        """
+        if self.minute_ts.size == 0:
+            raise MissingMinuteDataError(
+                f"{self.symbol}: no minute data at all, so no order could ever fill"
+            )
+        have_from, have_to = int(self.minute_ts[0]), int(self.minute_ts[-1])
+        # One signal bar of slack at each end: the last bar's minutes may still be
+        # forming, and that is a normal state rather than a hole.
+        slack = timeframe_ms(self.config.engine.timeframes.signal)
+        if first_ts < have_from - slack or last_ts > have_to + slack:
+            raise MissingMinuteDataError(
+                f"{self.symbol}: the signal window runs "
+                f"{_day(first_ts)}..{_day(last_ts)} but minute data only covers "
+                f"{_day(have_from)}..{_day(have_to)}. Nothing would fill outside that, "
+                f"and the run would report no trades rather than an error.\n"
+                f"  python scripts/backfill.py {self.symbol} --tfs M1 "
+                f"--since {_day(first_ts)}"
+            )
 
     # -- history ------------------------------------------------------------ #
 

@@ -29,7 +29,7 @@ from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.frames import timeframe_ms
 from traidingbrain.domain.enums import Timeframe
 from traidingbrain.domain.market import FundingRate
-from traidingbrain.sim.engine import BacktestResult, load_engine
+from traidingbrain.sim.engine import BacktestResult, MissingMinuteDataError, load_engine
 from traidingbrain.sim.metrics import compare
 from traidingbrain.strategies.baseline import RandomEntry, StructureBaseline
 
@@ -267,3 +267,91 @@ def test_funding_changes_the_result(
 
     assert with_funding.metrics.funding != 0.0
     assert with_funding.metrics.final_equity != pytest.approx(without.metrics.final_equity)
+
+
+# --------------------------------------------------------------------------- #
+# Minute coverage
+# --------------------------------------------------------------------------- #
+
+
+def test_a_window_the_minutes_do_not_reach_is_refused(
+    config: AppConfig, frames: dict[Timeframe, pd.DataFrame], minutes: pd.DataFrame
+) -> None:
+    """Missing minute data must stop the run, not quietly empty it.
+
+    The minute series decides whether the stop or the target came first inside an
+    hour. Where it is absent nothing fills, every entry expires, and the report
+    reads "no trades" -- indistinguishable from a strategy that found nothing,
+    and the number someone would act on.
+
+    This is reachable by ordinary use: extending the candle history further back
+    without extending the minute history produces exactly this state.
+    """
+    half = minutes.loc[minutes["ts"] >= minutes["ts"].quantile(0.6)].reset_index(drop=True)
+    engine = load_engine(
+        "TESTUSDT",
+        frames,
+        minute_frame=half,
+        spec=make_symbol_spec(),
+        config=config,
+        funding=[],
+    )
+
+    with pytest.raises(MissingMinuteDataError, match="minute data only covers"):
+        engine.run(StructureBaseline())
+
+
+def test_the_refusal_names_the_command_that_fixes_it(
+    config: AppConfig, frames: dict[Timeframe, pd.DataFrame], minutes: pd.DataFrame
+) -> None:
+    late = minutes.loc[minutes["ts"] >= minutes["ts"].quantile(0.6)].reset_index(drop=True)
+    engine = load_engine(
+        "TESTUSDT", frames, minute_frame=late, spec=make_symbol_spec(), config=config, funding=[]
+    )
+
+    with pytest.raises(MissingMinuteDataError) as caught:
+        engine.run(StructureBaseline())
+
+    assert "scripts/backfill.py" in str(caught.value)
+    assert "--tfs M1" in str(caught.value)
+
+
+def test_no_minute_data_at_all_is_refused(
+    config: AppConfig, frames: dict[Timeframe, pd.DataFrame], minutes: pd.DataFrame
+) -> None:
+    engine = load_engine(
+        "TESTUSDT",
+        frames,
+        minute_frame=minutes.iloc[0:0],
+        spec=make_symbol_spec(),
+        config=config,
+        funding=[],
+    )
+
+    with pytest.raises(MissingMinuteDataError, match="no minute data at all"):
+        engine.run(StructureBaseline())
+
+
+def test_minutes_ending_inside_the_last_signal_bar_are_tolerated(
+    config: AppConfig, frames: dict[Timeframe, pd.DataFrame], minutes: pd.DataFrame
+) -> None:
+    """The newest hour's minutes may still be forming. That is normal, not a hole.
+
+    Trimmed by time rather than by row count: this fixture's "minutes" are
+    fifteen-minute bars, so dropping thirty rows removes seven and a half hours
+    and is a real gap, which is what the first version of this test accidentally
+    asserted was fine.
+    """
+    signal_ms = timeframe_ms(config.engine.timeframes.signal)
+    cutoff = int(minutes["ts"].max()) - signal_ms // 2
+    trimmed = minutes.loc[minutes["ts"] <= cutoff].reset_index(drop=True)
+    engine = load_engine(
+        "TESTUSDT",
+        frames,
+        minute_frame=trimmed,
+        spec=make_symbol_spec(),
+        config=config,
+        funding=[],
+    )
+
+    engine.run(StructureBaseline())
