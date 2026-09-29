@@ -151,12 +151,19 @@ def main(argv: list[str] | None = None) -> int:
         now_ms=0,
     )
 
+    if args.execute and not _arm(services):
+        return 2
+
     if args.demo:
         print("Seeding a demo proposal:")
         seed_demo(services)
 
     print(f"\n  http://{args.host}:{args.port}")
-    print("  no exchange is connected; confirming reports what would have been sent\n")
+    if services.executor is None:
+        print("  no exchange is connected; confirming reports what would have been sent\n")
+    else:
+        network = "testnet" if load_secrets().bybit.testnet else "MAINNET -- REAL MONEY"
+        print(f"  armed against Bybit {network}; a held confirmation places a real order\n")
     uvicorn.run(create_app(services), host=args.host, port=args.port, log_level="warning")
     return 0
 
