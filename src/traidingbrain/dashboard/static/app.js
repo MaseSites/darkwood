@@ -304,7 +304,9 @@ function setupPanel(setups) {
   if (!setups?.length) return "";
   const rows = setups
     .map(
-      (s) => `<li class="setup setup--${escapeHtml(s.side)}">
+      (s) => `<li class="setup setup--${escapeHtml(s.side)}${
+        s.economic === false ? " setup--costly" : ""
+      }">
         <span class="setup__key">${escapeHtml(s.key)}</span>
         <span class="setup__name">${escapeHtml(s.name)}
           <span class="setup__source">${escapeHtml(s.source)}</span></span>
@@ -315,6 +317,12 @@ function setupPanel(setups) {
           <div><dt>Ziel</dt><dd class="num up">${fmt.price(s.target)}</dd></div>
           <div><dt>CRV</dt><dd class="num">${s.reward_risk.toFixed(2)}</dd></div>
         </dl>
+        ${
+          s.economic === false
+            ? `<p class="setup__block">Stop nur ${(s.stop_distance * 100).toFixed(2)} % entfernt
+                 &mdash; Gebühren fressen mehr vom Risiko als erlaubt. Wird nicht gehandelt.</p>`
+            : ""
+        }
         <ul class="setup__why">${(s.reasons ?? [])
           .map((r) => `<li>${escapeHtml(r)}</li>`)
           .join("")}</ul>

@@ -49,6 +49,7 @@ from traidingbrain.domain.proposal import FactorView, ProposalAdjustment, TradeP
 from traidingbrain.proposals.builder import BuildFailure, ProposalBuilder, describe
 from traidingbrain.proposals.store import ProposalStore
 from traidingbrain.risk.limits import AccountState, KillSwitch, RiskLimits
+from traidingbrain.risk.sizing import min_economic_stop_fraction
 
 BPS = 1e-4
 
@@ -459,6 +460,11 @@ def _market_for(services: Services, symbol: str, requested: str | None) -> Marke
         available=offered,
         trigger=services.config.engine.trigger,
         setups=setups_at(analysis, snapshot.ts),
+        min_stop=min_economic_stop_fraction(
+            services.spec_for(symbol),
+            services.config.engine.simulation.slippage_bps,
+            services.config.risk.limits.max_cost_fraction_of_risk,
+        ),
     )
 
 

@@ -1169,6 +1169,35 @@ body {
   color: var(--text);
 }
 
+/* A setup that fired and cannot be afforded.
+ *
+ * Its own state rather than hiding the row: the rule did fire, and knowing that
+ * it fired and was priced out is different from never seeing it. The left rule
+ * goes neutral so it stops reading as an opportunity. */
+.setup--costly {
+  border-left-color: var(--rule-strong);
+}
+
+.setup--costly .setup__side,
+.setup--costly .setup__plan dd,
+.setup--costly .setup__name {
+  color: var(--dim);
+}
+
+.setup__block {
+  grid-area: why;
+  margin: 0;
+  padding-top: var(--s1);
+  border-top: 1px solid var(--rule);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--caution);
+}
+
+.setup--costly .setup__why {
+  display: none;
+}
+
 .setup__why {
   grid-area: why;
   display: flex;

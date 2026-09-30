@@ -94,6 +94,14 @@ class SetupRead(BaseModel):
     stop: float
     target: float
     reward_risk: float
+    #: How far the stop sits from entry, as a fraction of price.
+    stop_distance: float = 0.0
+    #: Whether a round trip on this stop fits inside the cost rule.
+    #:
+    #: Shown because it is otherwise an invisible refusal. Half the guide's
+    #: signals are stopped here, and a screen that lists a setup without saying
+    #: it cannot be afforded is offering a trade that will not be placed.
+    economic: bool = True
     reasons: list[str] = Field(default_factory=list)
 
 
@@ -260,6 +268,7 @@ def build_market_view(
     available: list[Timeframe],
     trigger: TriggerConfig | None = None,
     setups: list[SetupSignal] | None = None,
+    min_stop: float = 0.0,
     context_bars: int = CONTEXT_BARS,
 ) -> MarketView:
     """Assemble the market view for one symbol on one timeframe.
@@ -339,7 +348,7 @@ def build_market_view(
             if trigger is not None
             else None
         ),
-        setups=[_setup_read(signal) for signal in (setups or [])],
+        setups=[_setup_read(signal, min_stop) for signal in (setups or [])],
         note="No trade is proposed here. This is the market, drawn the way the analysis reads it.",
     )
 
@@ -389,8 +398,11 @@ def _gate_read(reading: GateReading) -> GateRead:
     )
 
 
-def _setup_read(signal: SetupSignal) -> SetupRead:
+def _setup_read(signal: SetupSignal, min_stop: float) -> SetupRead:
+    distance = signal.risk / signal.entry if signal.entry > 0 else 0.0
     return SetupRead(
+        stop_distance=round(distance, 5),
+        economic=distance >= min_stop,
         key=signal.setup,
         name=signal.name,
         source=signal.source,

@@ -22,7 +22,12 @@ from tests.factories import make_symbol_spec
 from traidingbrain.config.settings import LeverageConfig, SizingConfig, load_config
 from traidingbrain.domain.enums import Side
 from traidingbrain.risk.leverage import choose_leverage, liquidation_price, validate_user_leverage
-from traidingbrain.risk.sizing import position_size, risk_budget
+from traidingbrain.risk.sizing import (
+    costs_are_affordable,
+    min_economic_stop_fraction,
+    position_size,
+    risk_budget,
+)
 
 EQUITY = 10_000.0
 
@@ -249,3 +254,52 @@ def test_the_liquidation_formula_is_symmetric(leverage: float) -> None:
     assert long_liq < entry < short_liq
     assert entry - long_liq == pytest.approx(short_liq - entry)
     assert (entry - long_liq) / entry == pytest.approx(1.0 / leverage - mmr)
+
+
+# --------------------------------------------------------------------------- #
+# The stop distance below which nothing can be afforded
+# --------------------------------------------------------------------------- #
+
+
+def test_the_minimum_economic_stop_is_the_cost_rule_solved_backwards() -> None:
+    """The same rule as `costs_are_affordable`, read the other way round.
+
+    Worth its own function because it depends on nothing about the strategy: at
+    a given fee schedule and cap there is a stop distance below which no trade
+    is affordable, whatever the idea behind it. It is what most of a rule set
+    gets refused for, and it is invisible until someone writes it down.
+    """
+    spec = make_symbol_spec()
+    slippage = 3.0
+    cap = 0.15
+
+    minimum = min_economic_stop_fraction(spec, slippage, cap)
+
+    # A stop a hair wider than the minimum is affordable; a hair tighter is not.
+    risk = 100.0
+    for distance, expected in ((minimum * 1.001, True), (minimum * 0.999, False)):
+        notional = risk / distance
+        affordable, _fraction = costs_are_affordable(notional, risk, spec, slippage, cap)
+
+        assert affordable is expected, f"a stop {distance:.4%} away should be {expected}"
+
+
+def test_a_cap_of_zero_makes_every_stop_too_tight() -> None:
+    """Not a division by zero, and not silently permissive. A cap of zero says
+    no cost at all is acceptable, and the honest answer is that no finite stop
+    distance satisfies it."""
+    assert min_economic_stop_fraction(make_symbol_spec(), 3.0, 0.0) == float("inf")
+
+
+def test_looser_caps_permit_tighter_stops() -> None:
+    """The direction of the relationship, pinned so a sign error cannot hide.
+
+    Inverted, the rule would refuse wide stops and wave tight ones through --
+    which is exactly backwards, and would look like a working filter.
+    """
+    spec = make_symbol_spec()
+
+    strict = min_economic_stop_fraction(spec, 3.0, 0.10)
+    loose = min_economic_stop_fraction(spec, 3.0, 0.50)
+
+    assert strict > loose

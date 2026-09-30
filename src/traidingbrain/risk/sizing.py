@@ -173,3 +173,31 @@ def costs_are_affordable(
         return False, 1.0
     fraction = round_trip_cost(notional, spec, slippage_bps) / risk_amount
     return fraction <= max_fraction, fraction
+
+
+def min_economic_stop_fraction(
+    spec: SymbolSpec, slippage_bps: float, max_fraction: float
+) -> float:
+    """How far the stop must sit from entry for the trade to be affordable at all.
+
+    The same rule as `costs_are_affordable`, solved the other way round, and the
+    single number that explains most of what a rule set is refused for.
+
+    The derivation is two lines. Position size is risk divided by stop distance,
+    so a stop `d` (as a fraction of price) buys a notional of `risk / d`. A round
+    trip costs `notional * c` where `c` is fees plus slippage. Costs as a share
+    of risk are therefore `c / d`, and the cap `f` gives `d >= c / f` -- the
+    stop distance drops out of everything else entirely.
+
+    What makes this worth having as a function rather than a comment: it depends
+    on nothing about the strategy. At Binance perpetual fees and a fifteen
+    percent cap it is about 1.1%, which means *any* rule placing its stop closer
+    than that is refused before anyone asks whether the idea was right. The
+    guide's setups place stops at structure -- a zone edge, the candle that made
+    a gap -- and on hourly crypto that structure is frequently thinner than 1.1%.
+    That is a fact about the instrument and the fee schedule, not about the rule.
+    """
+    if max_fraction <= 0:
+        return float("inf")
+    cost_fraction = spec.maker_fee + spec.taker_fee + slippage_bps * 1e-4
+    return cost_fraction / max_fraction
