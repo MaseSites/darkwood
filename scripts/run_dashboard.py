@@ -19,6 +19,7 @@ dashboard can trade without being able to check the market first.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -51,6 +52,14 @@ DEMO_SPEC = {
     "maintenance_margin_rate": 0.005,
 }
 
+
+#: The port to serve on when nothing says otherwise.
+#:
+#: Read from the environment first, because a launcher that assigns ports needs a
+#: way to tell the process which one it got. Nothing here depends on a particular
+#: number -- there are no OAuth callbacks and no webhooks pointing at it -- so a
+#: hardcoded port only ever means a collision with whatever else is already on it.
+DEFAULT_PORT = int(os.environ.get("PORT") or 8787)
 
 #: How far back --demo may look for a bar the analysis actually liked. Most bars
 #: are declined, which is the system working; a demo that only tries the newest
@@ -168,7 +177,12 @@ def _arm(services: Services) -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8787)
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=DEFAULT_PORT,
+        help=f"default {DEFAULT_PORT}, or $PORT when the launcher assigns one",
+    )
     parser.add_argument("--demo", action="store_true", help="seed one real proposal to look at")
     parser.add_argument(
         "--execute",
