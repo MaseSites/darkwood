@@ -52,6 +52,14 @@ const state = {
   /* Which timeframe each proposal is currently being viewed on. Kept out of the
    * DOM so the four-second poll does not throw away the one the user chose. */
   timeframe: new Map(),
+  /* The market view: which symbol and timeframe, and the payload.
+   *
+   * Kept beside the proposals rather than inside them, because it outlives
+   * them -- the market is there whether or not anything was proposed. */
+  symbols: null,
+  symbol: null,
+  marketTimeframe: null,
+  market: null,
   /* Which proposal's chart the pointer is over, and where. Kept out of the DOM
    * so a re-render does not lose it mid-inspection.
    *
@@ -195,6 +203,169 @@ function figure(label, value, sub, modifier, changed) {
       <dt>${label}</dt>
       <dd>${value}${sub ? `<small>${sub}</small>` : ""}</dd>
     </div>`;
+}
+
+
+/* ------------------------------------------------------- the market view -- */
+
+/**
+ * The market, drawn whether or not there is a trade in it.
+ *
+ * The ticket below answers "is this a good trade". This answers "what is
+ * happening", which is the question someone actually spends time with -- most
+ * hours have no setup, and a screen only worth opening when one appears is a
+ * screen nobody learns the market on.
+ *
+ * It reuses the same renderer as the proposal chart on purpose. Two drawings of
+ * one market would disagree eventually, and the disagreement would be invisible:
+ * both would look plausible, and this screen would quietly teach a different
+ * reading than the one the trades are made on.
+ */
+function marketPanel() {
+  const view = state.market;
+  if (view === "unavailable") {
+    return `<div class="placeholder"><h2>No market data</h2>
+      <p>Nothing is backfilled for the followed symbols yet.</p></div>`;
+  }
+  if (!view) {
+    return `<div class="placeholder"><span class="pulse"></span><p>Reading the market&hellip;</p></div>`;
+  }
+
+  const change =
+    view.candles.length > 1
+      ? ((view.candles.at(-1).close - view.candles[0].open) / view.candles[0].open) * 100
+      : 0;
+
+  return `
+  <header class="market__head">
+    <span class="market__symbols" role="tablist" aria-label="Symbol">
+      ${(state.symbols ?? [])
+        .map(
+          (s) => `<button type="button" role="tab" data-act="sym" data-sym="${s}"
+                    aria-selected="${s === view.symbol}"
+                    class="chart__tab${s === view.symbol ? " chart__tab--on" : ""}">${s}</button>`
+        )
+        .join("")}
+    </span>
+
+    <span class="market__price num">${fmt.price(view.price)}</span>
+    <span class="market__change num ${change >= 0 ? "up" : "down"}">
+      ${change >= 0 ? "+" : ""}${change.toFixed(2)}%
+    </span>
+    <span class="market__atr">ATR ${(view.atr_pct * 100).toFixed(2)}%</span>
+
+    <span class="head-spacer"></span>
+
+    <span class="chart__tabs" role="tablist" aria-label="Timeframe">
+      ${(view.available_timeframes ?? [])
+        .map(
+          (tf) => `<button type="button" role="tab" data-act="mtf" data-tf="${tf}"
+                     aria-selected="${tf === view.timeframe}"
+                     class="chart__tab${tf === view.timeframe ? " chart__tab--on" : ""}">${tf}</button>`
+        )
+        .join("")}
+    </span>
+  </header>
+
+  <figure class="chart chart--market">
+    <figcaption class="chart__head">
+      <span class="chart__readout" data-readout="market">${escapeHtml(
+        candleReadout(view, view.candles.length - 1)
+      )}</span>
+      ${view.levels_hidden ? `<span class="chart__hidden">${view.levels_hidden} more not drawn</span>` : ""}
+    </figcaption>
+    <canvas class="chart__canvas" data-canvas="market"
+            role="img"
+            aria-label="Candlestick chart of ${escapeHtml(view.symbol)} on ${escapeHtml(
+              view.timeframe
+            )}, with the levels and structural events the analysis found."></canvas>
+  </figure>
+
+  ${frameTable(view)}
+
+  <p class="chart__note">${escapeHtml(view.note)}</p>`;
+}
+
+/**
+ * What each timeframe says, side by side.
+ *
+ * The single most useful thing on this screen, and the reason a chart alone is
+ * not enough: a setup that reads well on the hour while the week is in a
+ * downtrend is a different proposition, and a row of regimes shows that in one
+ * glance where four charts would take four readings.
+ */
+function frameTable(view) {
+  if (!view.frames?.length) return "";
+  const marks = (f) =>
+    [
+      f.bos ? "BOS" : "",
+      f.choch ? "CHoCH" : "",
+      f.sweep_up ? "swept high" : "",
+      f.sweep_down ? "swept low" : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+  return `
+  <table class="frames">
+    <thead>
+      <tr><th>Frame</th><th>Regime</th><th>Trend</th><th>Vol</th><th>Swings</th><th>Events</th></tr>
+    </thead>
+    <tbody>
+      ${view.frames
+        .map(
+          (f) => `<tr>
+        <th scope="row">${escapeHtml(f.timeframe)}</th>
+        <td class="frames__regime frames__regime--${escapeHtml(f.regime)}">${escapeHtml(
+          f.regime.replace("_", " ")
+        )}</td>
+        <td class="frames__trend frames__trend--${escapeHtml(f.trend)}">${escapeHtml(f.trend)}</td>
+        <td>${escapeHtml(f.volatility)}</td>
+        <td class="num frames__swings">${escapeHtml(f.sequence || "—")}</td>
+        <td class="frames__events">${escapeHtml(marks(f))}</td>
+      </tr>`
+        )
+        .join("")}
+    </tbody>
+  </table>
+  ${marketContext(view)}`;
+}
+
+function marketContext(view) {
+  const bits = [];
+  if (view.positioning) bits.push(`positioning <b>${escapeHtml(view.positioning.replace("_", " "))}</b>`);
+  if (view.sentiment) bits.push(`sentiment <b>${escapeHtml(view.sentiment)}</b>`);
+  for (const item of view.upcoming ?? []) bits.push(escapeHtml(item));
+  return bits.length ? `<p class="market__context">${bits.join(" &middot; ")}</p>` : "";
+}
+
+async function loadMarket() {
+  if (!state.symbols) {
+    try {
+      state.symbols = await api("/api/market");
+    } catch {
+      state.symbols = [];
+    }
+  }
+  const symbol = state.symbol ?? state.symbols[0];
+  if (!symbol) {
+    state.market = "unavailable";
+    return;
+  }
+  state.symbol = symbol;
+  const tf = state.marketTimeframe ? `?timeframe=${state.marketTimeframe}` : "";
+  try {
+    state.market = await api(`/api/market/${symbol}/chart${tf}`);
+  } catch {
+    state.market = "unavailable";
+  }
+}
+
+function paintMarket() {
+  const canvas = document.querySelector('[data-canvas="market"]');
+  const view = state.market;
+  if (!canvas || !view || view === "unavailable") return;
+  drawChart(canvas, view, state.hover?.id === "market" ? state.hover : null);
 }
 
 /* ----------------------------------------------------- the factor table -- */
@@ -694,6 +865,67 @@ document.addEventListener("click", (event) => {
   }
 });
 
+document.addEventListener("click", (event) => {
+  const action = event.target.closest('[data-act="sym"], [data-act="mtf"]');
+  if (!action) return;
+  if (action.dataset.act === "sym") {
+    if (state.symbol === action.dataset.sym) return;
+    state.symbol = action.dataset.sym;
+  } else {
+    if (state.marketTimeframe === action.dataset.tf) return;
+    state.marketTimeframe = action.dataset.tf;
+  }
+  state.market = null;
+  state.hover = null;
+  renderMarket();
+  loadMarket().then(renderMarket);
+});
+
+function renderMarket() {
+  const host = document.getElementById("market");
+  if (!host) return;
+  host.innerHTML = marketPanel();
+  paintMarket();
+  const canvas = host.querySelector("[data-canvas]");
+  if (canvas) {
+    wireMarketHover(canvas);
+    sizeWatcher.observe(canvas);
+  }
+}
+
+/* The market canvas keeps its own hover wiring: it is redrawn on its own
+ * schedule, and reusing the ticket path would look up a proposal id that does
+ * not exist. */
+function wireMarketHover(canvas) {
+  const readout = document.querySelector('[data-readout="market"]');
+  const move = (event) => {
+    const view = state.market;
+    if (!view || view === "unavailable") return;
+    const box = canvas.getBoundingClientRect();
+    state.hover = { id: "market", x: event.clientX - box.left, y: event.clientY - box.top };
+    const geometry = drawChart(canvas, view, state.hover);
+    if (geometry && readout) {
+      const index = Math.max(
+        0,
+        Math.min(
+          view.candles.length - 1,
+          Math.floor((state.hover.x - geometry.plotLeft) / geometry.slot)
+        )
+      );
+      readout.textContent = candleReadout(view, index);
+    }
+  };
+  canvas.addEventListener("pointermove", move);
+  canvas.addEventListener("pointerleave", () => {
+    const view = state.market;
+    state.hover = null;
+    if (view && view !== "unavailable") {
+      drawChart(canvas, view, null);
+      if (readout) readout.textContent = candleReadout(view, view.candles.length - 1);
+    }
+  });
+}
+
 async function refresh() {
   // Never re-render underneath a hold in progress.
   if (state.holding) return;
@@ -715,11 +947,14 @@ async function refresh() {
     wireHold(button, () => send(id));
   });
   paintCharts();
-  document.querySelectorAll("[data-canvas]").forEach((canvas) => {
+  document.querySelectorAll("[data-canvas]:not([data-canvas='market'])").forEach((canvas) => {
     wireChartHover(canvas);
     sizeWatcher.observe(canvas);
   });
   loadCharts();
+  /* The market is refreshed on the same poll but rendered separately: it has no
+   * hold gesture to interrupt, so it never has to wait for one. */
+  loadMarket().then(renderMarket);
 }
 
 document.getElementById("halt").addEventListener("click", async () => {
@@ -735,6 +970,7 @@ document.getElementById("halt").addEventListener("click", async () => {
 
 state.proposals = null;
 render();
+renderMarket();
 refresh();
 setInterval(refresh, POLL_MS);
 setInterval(tickCountdowns, 1000);

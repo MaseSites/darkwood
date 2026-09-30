@@ -35,6 +35,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from traidingbrain.api.chart import ChartView, build_chart
+from traidingbrain.api.market import MarketAnalysisCache, MarketView, build_market_view
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Timeframe
@@ -91,6 +92,9 @@ class Services:
     specs: dict[str, SymbolSpec] = field(default_factory=dict)
     prices: PriceSource | None = None
     bars: BarSource | None = None
+    # Built lazily on the first market request: constructing it eagerly would
+    # make every start-up pay for a page nobody may open.
+    market: MarketAnalysisCache | None = None
     executor: Executor | None = None
     account: AccountState | None = None
 
@@ -254,6 +258,8 @@ def create_app(services: Services) -> FastAPI:
     def one(proposal_id: str) -> ProposalView:
         return ProposalView.of(_require(services, proposal_id))
 
+    _register_market_routes(app, services)
+
     @app.get("/api/proposals/{proposal_id}/chart", response_model=ChartView)
     def chart(proposal_id: str, timeframe: str | None = None) -> ChartView:
         """The bars and lines this decision was made on.
@@ -369,6 +375,81 @@ def create_app(services: Services) -> FastAPI:
     return app
 
 
+def _register_market_routes(app: FastAPI, services: Services) -> None:
+    """The browsing half of the surface, kept out of the confirmation half.
+
+    Grouped rather than inlined because create_app is a route table, and a route
+    table stops being readable once it is also a collection of handlers.
+    """
+
+    @app.get("/api/market", response_model=list[str])
+    def symbols() -> list[str]:
+        return _followed_symbols(services)
+
+    @app.get("/api/market/{symbol}/chart", response_model=MarketView)
+    def market(symbol: str, timeframe: str | None = None) -> MarketView:
+        """The market right now, drawn the way the analysis reads it.
+
+        No trade attached. Most hours have no setup, and a screen only worth
+        opening when one appears is a screen nobody learns the market on.
+        """
+        return _market_for(services, symbol, timeframe)
+
+
+def _followed_symbols(services: Services) -> list[str]:
+    return list(services.config.engine.symbols.active)
+
+
+def _offered_timeframes(services: Services) -> list[Timeframe]:
+    """The frames worth charting: every context frame except the execution one.
+
+    Minutes exist to resolve intrabar order, not to read a setup from, and a wall
+    of them is not a timeframe anyone browses.
+    """
+    return [
+        tf
+        for tf in services.config.engine.timeframes.context
+        if tf is not services.config.engine.timeframes.execution
+    ]
+
+
+def _market_for(services: Services, symbol: str, requested: str | None) -> MarketView:
+    """Build the market view, saying which piece is missing when one is."""
+    if services.bars is None or services.market is None:
+        raise HTTPException(503, "no bar source is wired, so nothing can be charted")
+    if symbol not in services.config.engine.symbols.active:
+        raise HTTPException(
+            404,
+            f"{symbol} is not a symbol this build follows; "
+            f"it watches {', '.join(services.config.engine.symbols.active)}",
+        )
+
+    offered = _offered_timeframes(services)
+    timeframe = services.config.engine.timeframes.signal
+    if requested is not None:
+        match = next((tf for tf in offered if tf.value.lower() == requested.lower()), None)
+        if match is None:
+            raise HTTPException(
+                404,
+                f"{requested!r} is not a timeframe this analysis covers; "
+                f"it reads {', '.join(tf.value for tf in offered)}",
+            )
+        timeframe = match
+
+    built = services.market.latest_snapshot(symbol)
+    if built is None:
+        raise HTTPException(
+            404,
+            f"no analysable data for {symbol}; "
+            f"run scripts/backfill.py {symbol} --since 2023-01-01",
+        )
+    snapshot, _analysis = built
+    frame = services.bars.read(symbol, timeframe, until_ms=snapshot.ts)
+    if frame.empty:
+        raise HTTPException(404, f"no stored {timeframe.value} bars for {symbol}")
+    return build_market_view(snapshot, frame, timeframe=timeframe, available=offered)
+
+
 def _chart_for(services: Services, proposal_id: str, requested: str | None = None) -> ChartView:
     """Gather the bars and lines behind one proposal, on one timeframe.
 
@@ -465,12 +546,14 @@ def _price_drift(services: Services, proposal: TradeProposal) -> float | None:
 def build_default_services(config: AppConfig | None = None) -> Services:
     """Wire the service together from configuration, with nothing that can trade."""
     settings = config or load_config()
+    store = ParquetStore(settings.engine.paths.parquet_dir)
     kill_switch = KillSwitch(settings.engine.paths.data_dir / "KILL_SWITCH")
     limits = RiskLimits(settings.risk.limits, kill_switch)
     return Services(
         config=settings,
         store=ProposalStore(settings.engine.paths.db_path),
-        bars=ParquetStore(settings.engine.paths.parquet_dir),
+        bars=store,
+        market=MarketAnalysisCache(store, settings.engine),
         builder=ProposalBuilder(settings, limits),
         limits=limits,
         kill_switch=kill_switch,

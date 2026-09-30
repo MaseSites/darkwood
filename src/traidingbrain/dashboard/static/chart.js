@@ -130,7 +130,8 @@ function formatTime(ms, barMs) {
 /* ----------------------------------------------------------------- scale -- */
 
 function priceRange(view) {
-  /* Candles set the range; the plan extends it. Liquidation is excluded on
+  /* Candles set the range; the plan extends it when there is one -- the market
+   * view has no trade attached, so `plan` is absent there rather than empty. Liquidation is excluded on
    * purpose — it sits ten stop-distances away and would compress the price
    * action into an unreadable ribbon. It is drawn pinned instead. */
   let low = Infinity;
@@ -139,7 +140,7 @@ function priceRange(view) {
     if (candle.low < low) low = candle.low;
     if (candle.high > high) high = candle.high;
   }
-  for (const line of view.plan) {
+  for (const line of view.plan ?? []) {
     if (line.role === "liquidation") continue;
     low = Math.min(low, line.price);
     high = Math.max(high, line.price);
@@ -280,7 +281,7 @@ function drawBands(ctx, view, g) {
   /* The point of the whole picture: how much you lose against how much you make,
    * as two areas you can compare at a glance instead of two numbers you have to
    * divide. */
-  const byRole = Object.fromEntries(view.plan.map((line) => [line.role, line.price]));
+  const byRole = Object.fromEntries((view.plan ?? []).map((line) => [line.role, line.price]));
   if (byRole.entry === undefined) return;
 
   const band = (from, to, colour) => {
@@ -422,7 +423,7 @@ function drawPlan(ctx, view, g) {
   ctx.font = '11px ui-monospace, "SF Mono", Menlo, monospace';
   ctx.textBaseline = "middle";
 
-  for (const line of view.plan) {
+  for (const line of view.plan ?? []) {
     const colour = g.colours[
       { entry: "text", stop: "short", target: "long", liquidation: "liq" }[line.role] || "text"
     ];

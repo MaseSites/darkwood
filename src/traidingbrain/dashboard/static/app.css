@@ -978,6 +978,155 @@ body {
   transform: scale(0.97);
 }
 
+/* --------------------------------------------------------- market view -- */
+/* Above the tickets, because it is what is true most of the time. A ticket is
+   an event; this is the room the events happen in. */
+
+.market {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: var(--s3) var(--s4) var(--s4);
+  margin-bottom: var(--gap);
+}
+
+.market__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  margin-bottom: var(--s3);
+}
+
+.market__symbols {
+  display: inline-flex;
+  gap: 1px;
+  background: var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* The price is the one figure on this screen read at a glance rather than
+   studied, so it gets the size and everything around it stays quiet. */
+.market__price {
+  font-size: 20px;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.market__change {
+  font-size: 13px;
+}
+
+.market__change.up {
+  color: var(--long);
+}
+
+.market__change.down {
+  color: var(--short);
+}
+
+.market__atr,
+.market__context {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.market__context {
+  margin: var(--s2) 0 0;
+}
+
+.market__context b {
+  color: var(--text);
+  font-weight: 400;
+}
+
+.chart--market {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.chart--market .chart__canvas {
+  height: 380px;
+}
+
+/* ------------------------------------------------------ frame readings -- */
+/* The most useful thing here, and why a chart alone is not enough: a setup that
+   reads well on the hour while the week is falling is a different proposition,
+   and one row per frame shows that in a glance where four charts take four
+   readings. */
+
+.frames {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--s3);
+  font-size: 12px;
+}
+
+.frames th,
+.frames td {
+  text-align: left;
+  padding: 4px var(--s3) 4px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.frames thead th {
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dimmer);
+  border-bottom-color: var(--rule-strong);
+}
+
+.frames tbody th {
+  font-weight: 500;
+  color: var(--text);
+  width: 44px;
+}
+
+.frames__regime--trend_up,
+.frames__trend--bullish {
+  color: var(--long);
+}
+
+.frames__regime--trend_down,
+.frames__trend--bearish {
+  color: var(--short);
+}
+
+.frames__regime--manipulation {
+  color: var(--liq);
+}
+
+.frames__regime--range,
+.frames__regime--unknown,
+.frames__trend--neutral {
+  color: var(--dim);
+}
+
+.frames__swings {
+  color: var(--dim);
+  letter-spacing: 0.08em;
+}
+
+.frames__events {
+  color: var(--caution);
+  font-size: 11px;
+}
+
+@media (max-width: 720px) {
+  .chart--market .chart__canvas {
+    height: 260px;
+  }
+
+  .frames__swings,
+  .market__atr {
+    display: none;
+  }
+}
+
 /* A 34px target is comfortable with a mouse and a mis-tap risk with a thumb.
    Density is worth keeping on a desktop and is not worth a wrong leverage on a
    phone, so the targets grow where the pointer is coarse rather than everywhere.

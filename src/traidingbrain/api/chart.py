@@ -23,6 +23,7 @@ so, rather than quietly disappearing.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import pandas as pd
@@ -30,7 +31,8 @@ from pydantic import BaseModel, Field
 
 from traidingbrain.data.frames import timeframe_ms
 from traidingbrain.domain.enums import LevelKind, Side, Timeframe
-from traidingbrain.domain.proposal import TradeProposal
+from traidingbrain.domain.proposal import LevelMark, TradeProposal
+from traidingbrain.domain.snapshot import Level
 
 #: Bars of context. Enough to see the structure the decision rests on, few enough
 #: that a candle is still wide enough to read on a laptop.
@@ -140,6 +142,14 @@ class ChartView(BaseModel):
     note: str = ""
 
 
+#: A snapshot's `Level` and a proposal's `LevelMark` carry the same seven fields,
+#: for the same reason: the second is captured from the first. Spelled as a union
+#: of the two rather than a protocol, because a protocol with mutable attributes
+#: is invariant and would reject both -- and naming the two real types says more
+#: than a structural shape would.
+LevelLike = Level | LevelMark
+
+
 @dataclass(frozen=True)
 class _Scored:
     price: float
@@ -195,7 +205,7 @@ def build_chart(
     ]
 
     atr = proposal.atr_at_build or abs(proposal.entry - proposal.stop)
-    levels, hidden = _choose_levels(proposal, atr)
+    levels, hidden = choose_levels(proposal.levels, atr)
 
     return ChartView(
         symbol=proposal.symbol,
@@ -296,16 +306,20 @@ def _plan_lines(proposal: TradeProposal) -> list[PlanLine]:
     ]
 
 
-def _choose_levels(proposal: TradeProposal, atr: float) -> tuple[list[LevelLine], int]:
+def choose_levels(levels: Sequence[LevelLike], atr: float) -> tuple[list[LevelLine], int]:
     """Pick the lines worth drawing, and count what was left out.
 
-    Three passes, in this order: drop what is off-chart, merge what is duplicated,
-    then keep the most informative of what remains. Merging before ranking matters
-    -- otherwise a cluster of four near-identical swing highs consumes half the
-    budget and the chart loses everything else.
+    Takes anything level-shaped rather than a proposal, because the market view
+    draws the same lines from a live snapshot and there is no reason for two
+    implementations of "which ten of these forty are worth the screen".
+
+    Three passes, in this order: drop what is off-chart, merge what is
+    duplicated, then keep the most informative of what remains. Merging before
+    ranking matters -- otherwise a cluster of four near-identical swing highs
+    consumes half the budget and the chart loses everything else.
     """
     candidates: list[_Scored] = []
-    for mark in proposal.levels:
+    for mark in levels:
         if mark.kind is LevelKind.CURRENT:
             continue
         if abs(mark.distance_atr) > MAX_DISTANCE_ATR:
