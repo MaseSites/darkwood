@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import socket
 import sys
 from pathlib import Path
 
@@ -176,6 +177,31 @@ def _arm(services: Services) -> bool:
     return True
 
 
+def _free_port(host: str, preferred: int) -> int:
+    """The preferred port, or the next free one.
+
+    A second dashboard on a taken port fails with winerror 10048 and a sentence
+    of Windows socket prose -- which reads like a broken program rather than
+    "something is already listening there". Nothing here needs a particular
+    number: no OAuth callback and no webhook points at it, so moving aside is
+    strictly better than refusing to start.
+
+    The banner says which port was used, because a dashboard on a port nobody
+    was told about is the same as no dashboard.
+    """
+    for candidate in range(preferred, preferred + 20):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                probe.bind((host, candidate))
+            except OSError:
+                continue
+            return candidate
+    # Zero asks the OS for any free port. Reaching here means twenty in a row
+    # were taken, which is worth not failing over.
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
@@ -210,13 +236,19 @@ def main(argv: list[str] | None = None) -> int:
         print("Seeding a demo proposal:")
         seed_demo(services)
 
-    print(f"\n  http://{args.host}:{args.port}")
+    # Resolved before the banner, or the banner names a port nothing listens on.
+    port = _free_port(args.host, args.port)
+    if port != args.port:
+        print(f"\n  port {args.port} was already in use, so this one is on {port}")
+
+    print(f"\n  http://{args.host}:{port}")
     if services.executor is None:
         print("  no exchange is connected; confirming reports what would have been sent\n")
     else:
         network = "testnet" if load_secrets().bybit.testnet else "MAINNET -- REAL MONEY"
         print(f"  armed against Bybit {network}; a held confirmation places a real order\n")
-    uvicorn.run(create_app(services), host=args.host, port=args.port, log_level="warning")
+
+    uvicorn.run(create_app(services), host=args.host, port=port, log_level="warning")
     return 0
 
 
