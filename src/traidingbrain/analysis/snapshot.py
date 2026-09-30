@@ -20,6 +20,7 @@ import pandas as pd
 from traidingbrain.analysis.levels import build_levels
 from traidingbrain.analysis.pipeline import FrameAnalysis, MultiFrameAnalysis
 from traidingbrain.analysis.positioning import PositioningTimeline
+from traidingbrain.analysis.sessions import SessionTimeline
 from traidingbrain.config.settings import EngineConfig
 from traidingbrain.data.calendar import MacroCalendar
 from traidingbrain.data.frames import timeframe_ms
@@ -34,6 +35,7 @@ from traidingbrain.domain.snapshot import (
     NewsItem,
     PositioningStats,
     SentimentStats,
+    SessionStats,
     StructureView,
     TimeframeView,
 )
@@ -233,6 +235,10 @@ class SnapshotBuilder:
         self.positioning = positioning
         self.calendar = calendar
         self.sentiment = sentiment
+        # Built here rather than passed in: it depends only on the signal frame's
+        # timestamps, so there is nothing for a caller to find on disk and
+        # nothing that can be forgotten.
+        self.sessions = SessionTimeline(analysis.signal.frame)
 
     def build(
         self, signal_index: int, history: HistoryStats | None = None
@@ -279,7 +285,17 @@ class SnapshotBuilder:
             news=self._scheduled(signal.ts_at(signal_index)),
             positioning=self._positioning(signal_index),
             sentiment=self._sentiment(signal.ts_at(signal_index)),
+            session=self._session(signal_index),
             history=history or EMPTY_HISTORY,
+        )
+
+    def _session(self, signal_index: int) -> SessionStats:
+        view = self.sessions.at(signal_index)
+        return SessionStats(
+            active=list(view.active),
+            is_overlap=view.is_overlap,
+            bars_since_open=view.bars_since_open,
+            position_in_range=view.position_in_range,
         )
 
     def _sentiment(self, bar_ts: int) -> SentimentStats:

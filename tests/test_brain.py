@@ -24,7 +24,12 @@ from traidingbrain.brain.scoring import NEUTRAL_CONFIDENCE, score
 from traidingbrain.brain.trigger import Trigger
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.domain.enums import Bias, Decision, Factor, RegimeKind, Side
-from traidingbrain.domain.snapshot import HistoryStats
+from traidingbrain.domain.snapshot import (
+    HistoryStats,
+    MarketSnapshot,
+    NewsItem,
+    SessionStats,
+)
 from traidingbrain.domain.verdict import Anchor, BrainVerdict, FactorScore
 
 
@@ -426,3 +431,126 @@ def test_the_verdict_schema_is_acceptable_to_a_strict_api() -> None:
             assert set(definition.get("properties", {})) == set(definition.get("required", [])), (
                 name
             )
+
+
+# --------------------------------------------------------------------------- #
+# The gate's newer refusals
+# --------------------------------------------------------------------------- #
+
+
+def _gate(config: AppConfig, **overrides: object) -> Trigger:
+    return Trigger(config.engine.trigger.model_copy(update=overrides))
+
+
+def _passing_snapshot(**overrides: object) -> MarketSnapshot:
+    """A snapshot the default gate already accepts, so a refusal is attributable.
+
+    Without this every one of these tests could pass because some unrelated
+    check fired first, which is the way a filter test quietly stops testing
+    anything.
+    """
+    snapshot = make_snapshot()
+    assert Trigger(load_config().engine.trigger).should_ask(snapshot, 100), (
+        "the fixture no longer passes the default gate, so these tests prove nothing"
+    )
+    return snapshot.model_copy(update=overrides) if overrides else snapshot
+
+
+def test_a_high_impact_release_inside_the_window_stops_the_ask(config: AppConfig) -> None:
+    """Both halves of the window are the same problem.
+
+    Before a release the book thins as market makers step back; after it the
+    first move is frequently reversed. A stop placed on a swing low means
+    nothing to either.
+    """
+    gate = _gate(config, news_blackout_minutes=30)
+    snapshot = _passing_snapshot(
+        news=[NewsItem(event="CPI", impact="high", sentiment=Bias.NEUTRAL, minutes_until=20)]
+    )
+
+    assert gate.should_ask(snapshot, 100) is False
+    assert gate.stats.news_blackout == 1
+
+
+def test_the_blackout_is_symmetric(config: AppConfig) -> None:
+    gate = _gate(config, news_blackout_minutes=30)
+    snapshot = _passing_snapshot(
+        news=[NewsItem(event="CPI", impact="high", sentiment=Bias.NEUTRAL, minutes_until=-20)]
+    )
+
+    assert gate.should_ask(snapshot, 100) is False
+
+
+def test_an_event_outside_the_window_does_not_stop_anything(config: AppConfig) -> None:
+    gate = _gate(config, news_blackout_minutes=30)
+    snapshot = _passing_snapshot(
+        news=[NewsItem(event="CPI", impact="high", sentiment=Bias.NEUTRAL, minutes_until=200)]
+    )
+
+    assert gate.should_ask(snapshot, 100) is True
+
+
+def test_only_high_impact_counts(config: AppConfig) -> None:
+    """Treating every scheduled item as a blackout would close most of the week.
+
+    The restriction would then never be tested against anything, because there
+    would be almost nothing left to test it on.
+    """
+    gate = _gate(config, news_blackout_minutes=30)
+    snapshot = _passing_snapshot(
+        news=[NewsItem(event="minor", impact="low", sentiment=Bias.NEUTRAL, minutes_until=5)]
+    )
+
+    assert gate.should_ask(snapshot, 100) is True
+
+
+def test_the_blackout_is_off_unless_configured(config: AppConfig) -> None:
+    """A restriction nobody measured only narrows the sample."""
+    assert config.engine.trigger.news_blackout_minutes == 0
+
+    gate = _gate(config)
+    snapshot = _passing_snapshot(
+        news=[NewsItem(event="CPI", impact="high", sentiment=Bias.NEUTRAL, minutes_until=1)]
+    )
+
+    assert gate.should_ask(snapshot, 100) is True
+
+
+def test_a_quiet_hour_can_be_refused(config: AppConfig) -> None:
+    """Thin books move further on the same order."""
+    gate = _gate(config, require_active_session=True)
+    snapshot = _passing_snapshot(session=SessionStats(active=[]))
+
+    assert gate.should_ask(snapshot, 100) is False
+    assert gate.stats.wrong_session == 1
+
+
+def test_a_session_allowlist_refuses_everything_outside_it(config: AppConfig) -> None:
+    gate = _gate(config, allowed_sessions=["london", "new_york"])
+    snapshot = _passing_snapshot(session=SessionStats(active=["tokyo"]))
+
+    assert gate.should_ask(snapshot, 100) is False
+
+
+def test_one_allowed_desk_among_several_is_enough(config: AppConfig) -> None:
+    """Sessions overlap by construction, so requiring all of them means none."""
+    gate = _gate(config, allowed_sessions=["london"])
+    snapshot = _passing_snapshot(session=SessionStats(active=["tokyo", "london"]))
+
+    assert gate.should_ask(snapshot, 100) is True
+
+
+def test_an_empty_allowlist_allows_every_session(config: AppConfig) -> None:
+    gate = _gate(config, allowed_sessions=[])
+    snapshot = _passing_snapshot(session=SessionStats(active=["tokyo"]))
+
+    assert gate.should_ask(snapshot, 100) is True
+
+
+def test_the_summary_stays_quiet_about_filters_nobody_enabled(config: AppConfig) -> None:
+    """A line of permanent zeroes reads as a filter that never fires."""
+    gate = _gate(config)
+    gate.should_ask(_passing_snapshot(), 100)
+
+    assert "news blackout" not in gate.stats.summary()
+    assert "wrong session" not in gate.stats.summary()

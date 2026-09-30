@@ -39,6 +39,8 @@ class TriggerStats:
     too_little_confluence: int = 0
     too_soon: int = 0
     unknown_regime: int = 0
+    news_blackout: int = 0
+    wrong_session: int = 0
 
     @property
     def fire_rate(self) -> float:
@@ -50,6 +52,10 @@ class TriggerStats:
             f"    skipped: {self.no_structure_event:,} no break, {self.no_sweep:,} no sweep, "
             f"{self.too_little_confluence:,} thin confluence, {self.too_soon:,} too soon, "
             f"{self.unknown_regime:,} regime unknown"
+            # Only mentioned when switched on. A line of permanent zeroes reads
+            # as a filter that never fires rather than one nobody enabled.
+            + (f", {self.news_blackout:,} news blackout" if self.news_blackout else "")
+            + (f", {self.wrong_session:,} wrong session" if self.wrong_session else "")
         )
 
 
@@ -75,36 +81,84 @@ class Trigger:
     def _first_objection(self, snapshot: MarketSnapshot, bar_index: int) -> str | None:
         """The first reason not to ask, as the counter name to increment.
 
-        Ordered by cost, cheapest first. Spacing leads because it is a subtraction
-        and because it is what stops a single developing setup from being priced
-        again on every bar of its formation.
-        """
-        if (
-            self._last_fired_index is not None
-            and bar_index - self._last_fired_index < self.config.min_bars_between_calls
-        ):
-            return "too_soon"
+        A list rather than a chain, because the order is the design and a chain
+        hides it. Cheapest first: spacing leads because it is a subtraction, and
+        because it is what stops one developing setup from being priced again on
+        every bar of its formation.
 
+        Every entry names its counter, so a skipped bar is always attributable.
+        A gate nobody can explain is a gate nobody trusts.
+        """
         signal = _view(snapshot, snapshot.signal_timeframe)
-        if signal is None or signal.regime is RegimeKind.UNKNOWN:
+
+        checks: list[tuple[str, bool]] = [
+            (
+                "too_soon",
+                self._last_fired_index is not None
+                and bar_index - self._last_fired_index < self.config.min_bars_between_calls,
+            ),
             # Not warmed up. There is nothing to judge, and the model would be
             # reasoning about absence rather than about the market.
-            return "unknown_regime"
+            ("unknown_regime", signal is None or signal.regime is RegimeKind.UNKNOWN),
+        ]
+        if signal is not None:
+            checks += [
+                (
+                    "no_structure_event",
+                    self.config.require_bos_or_choch
+                    and not (signal.structure.bos or signal.structure.choch),
+                ),
+                (
+                    "no_sweep",
+                    self.config.require_sweep
+                    and not (signal.liquidity.sweep_up or signal.liquidity.sweep_down),
+                ),
+                (
+                    "too_little_confluence",
+                    _confluence(signal) < self.config.min_indicator_confluence,
+                ),
+                ("news_blackout", self._inside_news_blackout(snapshot)),
+                ("wrong_session", self._wrong_session(snapshot)),
+            ]
 
-        if self.config.require_bos_or_choch and not (
-            signal.structure.bos or signal.structure.choch
-        ):
-            return "no_structure_event"
+        return next((reason for reason, failed in checks if failed), None)
 
-        if self.config.require_sweep and not (
-            signal.liquidity.sweep_up or signal.liquidity.sweep_down
-        ):
-            return "no_sweep"
+    def _inside_news_blackout(self, snapshot: MarketSnapshot) -> bool:
+        """Is a high-impact release close enough to make structure meaningless?
 
-        if _confluence(signal) < self.config.min_indicator_confluence:
-            return "too_little_confluence"
+        Symmetric, because both halves are the same problem. Before a release
+        the book thins as market makers step back; after it the first move is
+        frequently reversed. A stop placed on a swing low means nothing to
+        either, and a setup that needs hours is a setup that runs into it.
 
-        return None
+        Only high impact counts. Treating every scheduled item as a blackout
+        would close most of the week and the restriction would never be tested
+        against anything.
+        """
+        window = self.config.news_blackout_minutes
+        if window <= 0:
+            return False
+        return any(
+            item.impact == "high"
+            and item.minutes_until is not None
+            and abs(item.minutes_until) <= window
+            for item in snapshot.news
+        )
+
+    def _wrong_session(self, snapshot: MarketSnapshot) -> bool:
+        """Is this hour outside the desks the configuration allows?
+
+        Both checks are off by default. A restriction nobody measured only
+        narrows the sample, and a smaller sample of the same edge looks like a
+        better edge without being one.
+        """
+        session = snapshot.session
+        if self.config.require_active_session and session.is_quiet:
+            return True
+        allowed = self.config.allowed_sessions
+        if not allowed:
+            return False
+        return not any(name in allowed for name in session.active)
 
     def reset(self) -> None:
         self.stats = TriggerStats()

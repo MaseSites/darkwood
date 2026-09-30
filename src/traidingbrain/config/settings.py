@@ -164,6 +164,24 @@ class TriggerConfig(_Frozen):
     min_indicator_confluence: int = Field(default=2, ge=0)
     min_bars_between_calls: int = Field(default=4, ge=0)
 
+    #: Minutes either side of a high-impact scheduled event during which no
+    #: setup is taken. Zero disables it.
+    #:
+    #: The window is symmetric because both halves are the same problem: before
+    #: a release the book thins as market makers step back, and after it the
+    #: first move is frequently reversed. A stop placed on structure means
+    #: nothing to either.
+    news_blackout_minutes: int = Field(default=0, ge=0)
+
+    #: Sessions during which setups may be taken. Empty means all of them, which
+    #: is the honest default for a market that never closes -- a restriction
+    #: nobody measured is a restriction that only narrows the sample.
+    allowed_sessions: list[str] = Field(default_factory=list)
+
+    #: Refuse setups when no desk is staffed. Thin books move further on the same
+    #: order, so a break at 03:00 UTC is not the same evidence as one at 14:00.
+    require_active_session: bool = False
+
 
 class SimulationConfig(_Frozen):
     initial_equity: float = Field(gt=0)

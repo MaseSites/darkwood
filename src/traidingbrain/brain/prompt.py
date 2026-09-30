@@ -26,7 +26,7 @@ from traidingbrain.domain.snapshot import BrainInput
 
 #: Bump on any change to the text below. It is part of the decision cache key, so
 #: forgetting means serving answers to a question that is no longer being asked.
-PROMPT_VERSION = "v3"
+PROMPT_VERSION = "v4"
 
 
 SYSTEM_ROLE = """\
@@ -126,6 +126,20 @@ that reasoning is not available to you here.
     holding. When the two disagree -- greed with open interest falling, fear
     with new longs arriving -- that disagreement is worth more than either
     reading alone, and worth saying out loud in your reasoning.
+- `session` -- which trading desks are staffed at this bar.
+  - Crypto never closes, so this is not an opening bell. It is how many people
+    are watching, and it shows up as liquidity rather than as a gap: the same
+    break at 03:00 UTC and at 14:00 UTC is the same picture drawn by very
+    different numbers of participants. A thin book moves further on the same
+    order, so a move made while `active` is empty is weaker evidence than the
+    identical move during the overlap.
+  - `is_overlap` marks London and New York both staffed, which carries most of
+    the day's volume.
+  - `position_in_range` is where price sits inside what the current session has
+    made so far, 0 at its low and 1 at its high. It is a running range, not the
+    session's eventual one -- there is nothing here you could not have known.
+  - Say so in your reasoning when a setup depends on a break that happened in a
+    quiet hour. It does not make the setup wrong; it makes it thinner evidence.
 - `history` -- what a similarity search over past setups found. When
   `sample_is_sufficient` is false, there is not enough evidence to lean on, and
   `historical_winrate` may be null.

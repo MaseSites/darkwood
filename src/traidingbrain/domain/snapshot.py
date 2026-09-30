@@ -163,6 +163,27 @@ class PositioningStats(BaseModel):
     crowd_is_stretched: bool = False
 
 
+class SessionStats(BaseModel):
+    """Which desks are staffed, and where price sits in what they have done.
+
+    Crypto never closes, so this is not an opening bell -- it is how many people
+    are watching. The same break at 03:00 UTC and at 14:00 is the same picture
+    drawn by very different numbers of participants, and a thin book moves
+    further on the same order.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    active: list[str] = Field(default_factory=list)
+    is_overlap: bool = False
+    bars_since_open: int | None = None
+    position_in_range: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @property
+    def is_quiet(self) -> bool:
+        return not self.active
+
+
 class SentimentStats(BaseModel):
     """The crowd's published mood, or the absence of a reading.
 
@@ -203,9 +224,10 @@ class BrainInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    # 3 adds the sentiment block; 2 added positioning. Part of the cache key, so an old cached
+    # 4 adds the session block; 3 added sentiment, 2 positioning.
+    # Part of the cache key, so an old cached
     # answer cannot be served for a question that now carries more evidence.
-    schema_version: int = 3
+    schema_version: int = 4
     signal_timeframe: Timeframe
     atr_pct: float = Field(description="ATR as a fraction of price -- scale without the price")
     frames: list[TimeframeView]
@@ -215,6 +237,7 @@ class BrainInput(BaseModel):
     news: list[NewsItem] = Field(default_factory=list)
     positioning: PositioningStats = PositioningStats()
     sentiment: SentimentStats = SentimentStats()
+    session: SessionStats = SessionStats()
     history: HistoryStats
 
     def canonical_json(self) -> str:
@@ -246,6 +269,7 @@ class MarketSnapshot(BaseModel):
     news: list[NewsItem] = Field(default_factory=list)
     positioning: PositioningStats = PositioningStats()
     sentiment: SentimentStats = SentimentStats()
+    session: SessionStats = SessionStats()
     history: HistoryStats
 
     @property
@@ -286,5 +310,6 @@ class MarketSnapshot(BaseModel):
             news=self.news,
             positioning=self.positioning,
             sentiment=self.sentiment,
+            session=self.session,
             history=self.history,
         )

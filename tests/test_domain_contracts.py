@@ -58,6 +58,7 @@ def test_brain_input_carries_no_identifying_information() -> None:
         "news",
         "positioning",
         "sentiment",
+        "session",
         "history",
     }
 

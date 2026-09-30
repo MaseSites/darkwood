@@ -257,12 +257,20 @@
     "reading": "unknown",
     "strength": 0.0
   },
-  "schema_version": 3,
+  "schema_version": 4,
   "sentiment": {
     "is_extreme": false,
     "known": false,
     "label": "unknown",
     "value": 50
+  },
+  "session": {
+    "active": [
+      "london"
+    ],
+    "bars_since_open": 2,
+    "is_overlap": false,
+    "position_in_range": 0.4617
   },
   "signal_timeframe": "H1"
 }
