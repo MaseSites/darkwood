@@ -23,6 +23,7 @@ from traidingbrain.analysis.positioning import PositioningTimeline
 from traidingbrain.config.settings import EngineConfig
 from traidingbrain.data.calendar import MacroCalendar
 from traidingbrain.data.frames import timeframe_ms
+from traidingbrain.data.sentiment import SentimentTimeline
 from traidingbrain.domain.enums import Bias, Timeframe
 from traidingbrain.domain.snapshot import (
     NORM_PRECISION,
@@ -32,6 +33,7 @@ from traidingbrain.domain.snapshot import (
     MarketSnapshot,
     NewsItem,
     PositioningStats,
+    SentimentStats,
     StructureView,
     TimeframeView,
 )
@@ -220,6 +222,7 @@ class SnapshotBuilder:
         *,
         positioning: PositioningTimeline | None = None,
         calendar: MacroCalendar | None = None,
+        sentiment: SentimentTimeline | None = None,
     ) -> None:
         self.symbol = symbol
         self.analysis = analysis
@@ -229,6 +232,7 @@ class SnapshotBuilder:
         # over a period the venue does not cover has to keep working.
         self.positioning = positioning
         self.calendar = calendar
+        self.sentiment = sentiment
 
     def build(
         self, signal_index: int, history: HistoryStats | None = None
@@ -274,7 +278,19 @@ class SnapshotBuilder:
             levels=levels,
             news=self._scheduled(signal.ts_at(signal_index)),
             positioning=self._positioning(signal_index),
+            sentiment=self._sentiment(signal.ts_at(signal_index)),
             history=history or EMPTY_HISTORY,
+        )
+
+    def _sentiment(self, bar_ts: int) -> SentimentStats:
+        if self.sentiment is None:
+            return SentimentStats()
+        reading = self.sentiment.at(bar_ts + timeframe_ms(self.analysis.signal_timeframe))
+        return SentimentStats(
+            known=reading.known,
+            value=reading.value,
+            label=reading.label,
+            is_extreme=reading.is_extreme,
         )
 
     def _positioning(self, signal_index: int) -> PositioningStats:

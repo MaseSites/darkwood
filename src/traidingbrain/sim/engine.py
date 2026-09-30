@@ -139,6 +139,7 @@ class BacktestEngine:
             config.engine,
             positioning=self.context.positioning,
             calendar=self.context.calendar,
+            sentiment=self.context.sentiment,
         )
 
         self.minute_ts = minute_frame["ts"].to_numpy(dtype="int64")

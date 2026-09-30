@@ -208,6 +208,7 @@ class LiveLoop:
             self.config.engine,
             positioning=context.positioning,
             calendar=context.calendar,
+            sentiment=context.sentiment,
         )
         index = len(analysis.signal) - 1
         snapshot = builder.build(index)

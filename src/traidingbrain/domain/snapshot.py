@@ -163,6 +163,23 @@ class PositioningStats(BaseModel):
     crowd_is_stretched: bool = False
 
 
+class SentimentStats(BaseModel):
+    """The crowd's published mood, or the absence of a reading.
+
+    Separate from `positioning` because the two measure different things through
+    different instruments: positioning is derived from what the book is actually
+    holding, this is a published index. Folding them together would hide which
+    one a reading came from, and they disagree often enough for that to matter.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    known: bool = False
+    value: int = Field(default=50, ge=0, le=100)
+    label: str = "unknown"
+    is_extreme: bool = False
+
+
 class HistoryStats(BaseModel):
     """What the similarity index found among *past* setups.
 
@@ -186,9 +203,9 @@ class BrainInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    # 2 adds the positioning block. Part of the cache key, so an old cached
+    # 3 adds the sentiment block; 2 added positioning. Part of the cache key, so an old cached
     # answer cannot be served for a question that now carries more evidence.
-    schema_version: int = 2
+    schema_version: int = 3
     signal_timeframe: Timeframe
     atr_pct: float = Field(description="ATR as a fraction of price -- scale without the price")
     frames: list[TimeframeView]
@@ -197,6 +214,7 @@ class BrainInput(BaseModel):
     )
     news: list[NewsItem] = Field(default_factory=list)
     positioning: PositioningStats = PositioningStats()
+    sentiment: SentimentStats = SentimentStats()
     history: HistoryStats
 
     def canonical_json(self) -> str:
@@ -227,6 +245,7 @@ class MarketSnapshot(BaseModel):
     levels: list[Level]
     news: list[NewsItem] = Field(default_factory=list)
     positioning: PositioningStats = PositioningStats()
+    sentiment: SentimentStats = SentimentStats()
     history: HistoryStats
 
     @property
@@ -266,5 +285,6 @@ class MarketSnapshot(BaseModel):
             ],
             news=self.news,
             positioning=self.positioning,
+            sentiment=self.sentiment,
             history=self.history,
         )

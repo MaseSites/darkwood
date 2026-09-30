@@ -257,6 +257,12 @@
     "reading": "unknown",
     "strength": 0.0
   },
-  "schema_version": 2,
+  "schema_version": 3,
+  "sentiment": {
+    "is_extreme": false,
+    "known": false,
+    "label": "unknown",
+    "value": 50
+  },
   "signal_timeframe": "H1"
 }

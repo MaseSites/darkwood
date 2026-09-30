@@ -57,8 +57,22 @@ def test_brain_input_carries_no_identifying_information() -> None:
         "levels",
         "news",
         "positioning",
+        "sentiment",
         "history",
     }
+
+
+def test_sentiment_reaches_the_model_as_an_index_and_nothing_else() -> None:
+    """The index is a bounded number, and that is the whole reason it is safe.
+
+    Unlike open interest there is no absolute quantity to leak here -- 0 to 100
+    carries no asset and no era. What would leak is a date, so the block has no
+    timestamp and no age: the model is told the mood, not when it was measured.
+    """
+    sentiment = make_snapshot().to_brain_input().sentiment
+
+    assert 0 <= sentiment.value <= 100
+    assert set(sentiment.model_dump()) == {"known", "value", "label", "is_extreme"}
 
 
 def test_positioning_reaches_the_model_as_ratios_and_never_as_a_contract_count() -> None:

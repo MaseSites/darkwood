@@ -110,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         config.engine,
         positioning=context.positioning,
         calendar=context.calendar,
+        sentiment=context.sentiment,
     )
     snapshot = _latest_snapshot(builder, len(analysis.signal))
     if snapshot is None:

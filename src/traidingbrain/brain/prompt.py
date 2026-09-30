@@ -26,7 +26,7 @@ from traidingbrain.domain.snapshot import BrainInput
 
 #: Bump on any change to the text below. It is part of the decision cache key, so
 #: forgetting means serving answers to a question that is no longer being asked.
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v3"
 
 
 SYSTEM_ROLE = """\
@@ -111,6 +111,21 @@ that reasoning is not available to you here.
   it happens; what it tells you is that volatility is scheduled. A setup that
   needs hours to work, with a high-impact event inside that window, is a
   different proposition from the same setup on a quiet afternoon.
+- `sentiment` -- the published Fear & Greed index for crypto, 0 to 100.
+  - `known: false` means no reading for this date. The index begins in 2018 and
+    is published daily; a gap is a gap, not a calm market.
+  - The value you see is always at least a day old. A decision is not shown the
+    reading for its own day, because how much of that day the index already
+    knows is undocumented, and a day of staleness is cheaper than a question
+    nobody can answer.
+  - `is_extreme` marks the tails. It means unusual, not actionable. Crowds are
+    right for most of a trend and wrong at its ends, and this number cannot tell
+    you which of the two you are looking at -- so treat a reading of 15 or 85 as
+    a fact about the crowd, never as a signal to fade it.
+  - It measures mood, while `positioning` measures what the book is actually
+    holding. When the two disagree -- greed with open interest falling, fear
+    with new longs arriving -- that disagreement is worth more than either
+    reading alone, and worth saying out loud in your reasoning.
 - `history` -- what a similarity search over past setups found. When
   `sample_is_sufficient` is false, there is not enough evidence to lean on, and
   `historical_winrate` may be null.

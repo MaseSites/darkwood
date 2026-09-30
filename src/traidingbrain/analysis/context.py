@@ -22,9 +22,13 @@ from traidingbrain.analysis.positioning import PositioningTimeline
 from traidingbrain.config.settings import EngineConfig
 from traidingbrain.data.calendar import CALENDAR_FILENAME, MacroCalendar
 from traidingbrain.data.derivatives import DerivativesStore
+from traidingbrain.data.sentiment import SentimentStore, SentimentTimeline
 
 #: Subdirectory of the data root holding the positioning series.
 DERIVATIVES_DIR = "derivatives"
+
+#: One file, because a daily index over eight years is a few thousand rows.
+SENTIMENT_FILE = "sentiment.parquet"
 
 
 @dataclass(frozen=True)
@@ -39,11 +43,12 @@ class SnapshotContext:
 
     positioning: PositioningTimeline | None
     calendar: MacroCalendar | None
+    sentiment: SentimentTimeline | None
     description: str
 
     @property
     def is_complete(self) -> bool:
-        return self.positioning is not None and self.calendar is not None
+        return all((self.positioning, self.calendar, self.sentiment))
 
 
 def load_context(symbol: str, frame: pd.DataFrame, config: EngineConfig) -> SnapshotContext:
@@ -81,12 +86,20 @@ def load_context(symbol: str, frame: pd.DataFrame, config: EngineConfig) -> Snap
         found.append(f"{len(calendar):,} calendar events (rules only)")
         missing.append("no FOMC dates (run scripts/fetch_fomc.py)")
 
+    sentiment_frame = SentimentStore(data_root / SENTIMENT_FILE).read()
+    sentiment = SentimentTimeline(sentiment_frame) if not sentiment_frame.empty else None
+    if sentiment is not None:
+        found.append(f"{len(sentiment_frame):,} sentiment readings")
+    else:
+        missing.append("no sentiment index (run scripts/backfill_sentiment.py)")
+
     parts = [", ".join(found) or "nothing"]
     if missing:
         parts.append("; ".join(missing))
     return SnapshotContext(
         positioning=positioning,
         calendar=calendar,
+        sentiment=sentiment,
         description=" -- ".join(parts),
     )
 
