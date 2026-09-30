@@ -30,3 +30,6 @@ dist/
 *.parquet
 
 .claude-flow/
+
+# Local tool state from the claude-flow swarm, not project source.
+/.swarm/
