@@ -285,3 +285,46 @@ class DerivativesStore:
             return pd.DataFrame({name: pd.Series(dtype="float64") for name in schema.names})
         loaded: pd.DataFrame = pq.read_table(path).to_pandas()
         return loaded
+
+
+class LivePositioning:
+    """Keeps a symbol's positioning series current while a live loop runs.
+
+    The backfill fetches years; this fetches the last day and stops. They write to
+    the same store, so a long-running session drifts no further from the venue
+    than one interval.
+
+    It exists because the staleness rule in `analysis.positioning` is unforgiving
+    by design: a reading older than a few hours is reported as unknown rather than
+    carried forward, since a venue that stopped reporting is not a market that
+    stopped moving. Correct -- and it means that without something topping the
+    series up, every reading goes unknown a few hours after the last backfill and
+    stays that way. Silent, permanent, and indistinguishable from a period the
+    venue genuinely does not cover.
+    """
+
+    def __init__(
+        self,
+        source: DerivativesSource,
+        store: DerivativesStore,
+        *,
+        interval: str = "1h",
+        lookback_hours: int = 24,
+    ) -> None:
+        self.source = source
+        self.store = store
+        self.interval = interval
+        self.lookback_hours = lookback_hours
+
+    def refresh(self, symbol: str, now_ms: int) -> int:
+        """Top up both series. Returns how many rows were written."""
+        since = now_ms - self.lookback_hours * 3_600_000
+        written = 0
+        for kind, fetch in (
+            ("open_interest", self.source.open_interest),
+            ("account_ratio", self.source.account_ratio),
+        ):
+            frame = fetch(symbol, interval=self.interval, since_ms=since, until_ms=now_ms)
+            if not frame.empty:
+                written += self.store.write(symbol, kind, frame)
+        return written

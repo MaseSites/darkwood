@@ -203,3 +203,61 @@ def test_the_next_close_lands_on_the_grid(timeframe: Timeframe, minutes: int) ->
     closes = next_close(timeframe, mid_bar)
 
     assert int(closes.timestamp() * 1000) == EPOCH + step
+
+
+# --------------------------------------------------------------------------- #
+# Keeping positioning current
+# --------------------------------------------------------------------------- #
+
+
+class CountingRefresher:
+    """Stands where the open-interest fetcher would, and counts."""
+
+    def __init__(self, fail: bool = False) -> None:
+        self.calls: list[tuple[str, int]] = []
+        self.fail = fail
+
+    def refresh(self, symbol: str, now_ms: int) -> int:
+        self.calls.append((symbol, now_ms))
+        if self.fail:
+            raise RuntimeError("the venue is having a moment")
+        return 24
+
+
+def test_the_loop_tops_up_positioning_when_it_pulls_bars(wired) -> None:
+    """Otherwise the series ages while the candles advance.
+
+    The staleness rule in analysis.positioning reports anything older than a few
+    hours as unknown -- correct, because a venue that stopped reporting is not a
+    market that stopped moving. It also means that without something feeding the
+    series, every reading goes unknown a few hours after the last backfill and
+    stays that way: silent, permanent, and indistinguishable from a period the
+    venue genuinely does not cover.
+    """
+    loop, _proposals, _source = wired
+    refresher = CountingRefresher()
+    loop.positioning = refresher
+
+    loop.refresh_data()
+
+    assert len(refresher.calls) == 1
+    assert refresher.calls[0][0] == "TESTUSDT"
+
+
+def test_a_failing_refresh_costs_a_reading_not_the_cycle(wired) -> None:
+    """Positioning is one factor of five. Losing it must not lose the proposal."""
+    loop, _proposals, _source = wired
+    loop.positioning = CountingRefresher(fail=True)
+
+    newest = loop.refresh_data()
+
+    assert newest > 0, "the bar pull was abandoned because a side fetch failed"
+    assert loop.stats.positioning_refresh_failures == 1
+
+
+def test_no_refresher_is_a_supported_state(wired) -> None:
+    """A deployment without positioning data passes nothing and still runs."""
+    loop, _proposals, _source = wired
+    loop.positioning = None
+
+    assert loop.refresh_data() > 0

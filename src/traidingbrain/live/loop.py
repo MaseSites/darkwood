@@ -26,6 +26,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Protocol
 
 from traidingbrain.analysis.context import load_context
 from traidingbrain.analysis.pipeline import MultiFrameAnalysis
@@ -52,6 +53,17 @@ POLL_SECONDS = 20
 REFRESH_BARS = 12
 
 
+class PositioningRefresher(Protocol):
+    """Whatever can top up the open-interest series for a symbol.
+
+    A protocol rather than the concrete fetcher, so the loop can be tested
+    without a venue -- and so a deployment that has no positioning data simply
+    passes nothing instead of stubbing a class.
+    """
+
+    def refresh(self, symbol: str, now_ms: int) -> int: ...
+
+
 @dataclass
 class LiveStats:
     cycles: int = 0
@@ -61,6 +73,7 @@ class LiveStats:
     proposed: int = 0
     declined: int = 0
     refused_by_risk: int = 0
+    positioning_refresh_failures: int = 0
     errors: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
@@ -88,6 +101,7 @@ class LiveLoop:
         spec: SymbolSpec,
         clock: Clock,
         history: HistoryEngine | None = None,
+        positioning: PositioningRefresher | None = None,
         account: Callable[[], AccountState],
     ) -> None:
         self.symbol = symbol
@@ -102,6 +116,9 @@ class LiveLoop:
         self.history = history
         self.account = account
 
+        # Optional, and absent means the positioning factor reports unknown rather
+        # than failing -- which is correct, but only while it is genuinely absent.
+        self.positioning = positioning
         self.trigger = Trigger(config.engine.trigger)
         self.stats = LiveStats()
         self._last_decided_ts: int | None = None
@@ -125,7 +142,28 @@ class LiveLoop:
             self.store.write(self.symbol, timeframe, bars_to_frame(bars))
             if timeframe is self.config.engine.timeframes.signal:
                 newest = max(newest, bars[-1].ts)
+        self._refresh_positioning()
         return newest
+
+    def _refresh_positioning(self) -> None:
+        """Pull recent open interest alongside the candles.
+
+        Without this the positioning series ages while the candles advance, and
+        six hours after the last backfill every reading is stale and the factor
+        reports unknown for good. That is the staleness rule doing its job on data
+        nobody is feeding -- silent, permanent, and indistinguishable from a venue
+        that has no data for the period.
+
+        Failures here are swallowed on purpose. Positioning is one factor of five;
+        losing it should cost a reading, not the cycle that would have produced a
+        proposal.
+        """
+        if self.positioning is None:
+            return
+        try:
+            self.positioning.refresh(self.symbol, self.clock.now_ms())
+        except Exception:
+            self.stats.positioning_refresh_failures += 1
 
     def step(self) -> str | None:
         """One cycle. Returns a proposal id if one was created.

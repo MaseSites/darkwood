@@ -28,6 +28,11 @@ from traidingbrain.brain.cache import DecisionCache
 from traidingbrain.brain.factory import BRAIN_NAMES, make_brain
 from traidingbrain.clock import SystemClock
 from traidingbrain.config.settings import load_config, load_secrets
+from traidingbrain.data.derivatives import (
+    DerivativesSource,
+    DerivativesStore,
+    LivePositioning,
+)
 from traidingbrain.data.exchange import BybitDataSource
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import SymbolSpec
@@ -130,6 +135,10 @@ def main(argv: list[str] | None = None) -> int:
         spec=spec,
         clock=SystemClock(),
         history=HistoryEngine(config.engine.history),
+        positioning=LivePositioning(
+            DerivativesSource(source.exchange),
+            DerivativesStore(config.engine.paths.data_dir / "derivatives"),
+        ),
         account=account,
     )
     watchdog = (
