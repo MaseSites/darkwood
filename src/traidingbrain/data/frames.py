@@ -13,8 +13,35 @@ from __future__ import annotations
 
 import pandas as pd
 
+from traidingbrain.data.grid import (
+    close_time_ms,
+    grid_offset_ms,
+    is_aligned,
+    is_closed,
+    timeframe_ms,
+)
 from traidingbrain.domain.enums import Timeframe
 from traidingbrain.domain.market import OHLCV_COLUMNS, Bar
+
+#: The first five moved to `grid` because they need no pandas and the collector
+#: on the Pi cannot afford it. They are re-exported here so that every existing
+#: caller is unchanged -- where they are imported from is not the interesting
+#: part, and a mechanical rewrite of a dozen call sites would only obscure what
+#: actually changed.
+__all__ = [
+    "bars_to_frame",
+    "close_time_ms",
+    "drop_forming",
+    "empty_frame",
+    "frame_to_bars",
+    "grid_offset_ms",
+    "is_aligned",
+    "is_closed",
+    "merge",
+    "normalise",
+    "slice_until",
+    "timeframe_ms",
+]
 
 _DTYPES: dict[str, str] = {
     "ts": "int64",
@@ -24,46 +51,6 @@ _DTYPES: dict[str, str] = {
     "close": "float64",
     "volume": "float64",
 }
-
-
-#: The Unix epoch fell on a Thursday, but exchanges open the weekly candle on
-#: Monday. So the weekly grid is offset by four days; every other frame divides
-#: the epoch evenly because 1970-01-01 was midnight UTC.
-#: 1970-01-05T00:00:00Z, the first Monday.
-_WEEKLY_GRID_OFFSET_MS = 4 * 24 * 60 * 60 * 1000
-
-
-def timeframe_ms(timeframe: Timeframe) -> int:
-    return timeframe.minutes * 60_000
-
-
-def grid_offset_ms(timeframe: Timeframe) -> int:
-    """Where this timeframe's grid starts, relative to the epoch."""
-    return _WEEKLY_GRID_OFFSET_MS if timeframe is Timeframe.W1 else 0
-
-
-def is_aligned(ts: int, timeframe: Timeframe) -> bool:
-    """Does this timestamp sit on a candle boundary for the timeframe?
-
-    A misaligned timestamp means the pipeline mixed frames or mangled a value --
-    worth refusing a write over, which is why it has to be right for every frame
-    rather than only the convenient ones.
-    """
-    return (ts - grid_offset_ms(timeframe)) % timeframe_ms(timeframe) == 0
-
-
-def close_time_ms(open_ts: int, timeframe: Timeframe) -> int:
-    """When the candle that opened at `open_ts` finishes."""
-    return open_ts + timeframe_ms(timeframe)
-
-
-def is_closed(open_ts: int, timeframe: Timeframe, now_ms: int) -> bool:
-    """A candle is usable only once its close time has passed.
-
-    Strictly `<=`: at exactly the close time the candle is complete, and the next
-    one has just opened.
-    """
-    return close_time_ms(open_ts, timeframe) <= now_ms
 
 
 def drop_forming(frame: pd.DataFrame, timeframe: Timeframe, now_ms: int) -> pd.DataFrame:

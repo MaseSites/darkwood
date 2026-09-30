@@ -25,7 +25,7 @@ from typing import Any
 import ccxt
 
 from traidingbrain.clock import SystemClock
-from traidingbrain.data.frames import is_closed
+from traidingbrain.data.grid import is_closed
 from traidingbrain.data.venue import venue
 from traidingbrain.domain.enums import Timeframe
 from traidingbrain.domain.market import Bar, FundingRate, SymbolSpec
