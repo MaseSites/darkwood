@@ -281,9 +281,43 @@ function marketPanel() {
             )}, with the levels and structural events the analysis found."></canvas>
   </figure>
 
+  ${gatePanel(view.gate)}
   ${frameTable(view)}
 
   <p class="chart__note">${escapeHtml(view.note)}</p>`;
+}
+
+/**
+ * Why there is no trade right now.
+ *
+ * The point of the whole screen. Most hours have no setup, and a screen that
+ * simply stays quiet through them cannot be told apart from a broken one — so
+ * the conditions are read out on every poll, with the numbers behind each.
+ *
+ * Passing conditions are stated as plainly as failing ones. A panel that only
+ * listed what refused would make the gate look like an obstacle course rather
+ * than a description of the market, and the useful information is usually how
+ * close the bar came.
+ */
+function gatePanel(gate) {
+  if (!gate) return "";
+  const rows = (gate.checks ?? [])
+    .map(
+      (c) => `<li class="gate__check${c.passed ? "" : " gate__check--no"}${
+        c.blocking ? " gate__check--stop" : ""
+      }">
+        <span class="gate__mark" aria-hidden="true"></span>
+        <span class="gate__label">${escapeHtml(c.label)}</span>
+        <span class="gate__detail">${escapeHtml(c.detail)}</span>
+      </li>`
+    )
+    .join("");
+
+  return `
+  <section class="gate${gate.would_ask ? " gate--on" : ""}" aria-live="polite">
+    <p class="gate__headline">${escapeHtml(gate.headline)}</p>
+    <ul class="gate__checks">${rows}</ul>
+  </section>`;
 }
 
 /**
@@ -523,7 +557,26 @@ async function loadCharts() {
  * redraw when that changes, or it is drawn once at whatever width the window
  * happened to be and stretched from then on. Re-observing an element already
  * being watched is a no-op, so this is safe to call after every render. */
-const sizeWatcher = new ResizeObserver(() => paintCharts());
+/* The market canvas is painted from its own state, so a resize has to call
+ * both — `paintCharts` looks proposals up by id and finds nothing for it, which
+ * left the market chart drawn at whatever width the window opened at and
+ * stretched from then on. */
+const sizeWatcher = new ResizeObserver(() => {
+  paintCharts();
+  paintMarket();
+});
+
+/* Re-point the watcher at the canvases that exist now.
+ *
+ * Both renders replace their markup wholesale, so every four seconds the old
+ * canvas elements are discarded and new ones take their place. A ResizeObserver
+ * keeps a strong reference to what it observes, so observing the new ones
+ * without dropping the old leaves the detached nodes alive — a few thousand of
+ * them over a day at the desk, each one firing a repaint as it is removed. */
+function watchCanvases() {
+  sizeWatcher.disconnect();
+  document.querySelectorAll("[data-canvas]").forEach((canvas) => sizeWatcher.observe(canvas));
+}
 
 /**
  * Show this proposal on a different timeframe.
@@ -888,10 +941,8 @@ function renderMarket() {
   host.innerHTML = marketPanel();
   paintMarket();
   const canvas = host.querySelector("[data-canvas]");
-  if (canvas) {
-    wireMarketHover(canvas);
-    sizeWatcher.observe(canvas);
-  }
+  if (canvas) wireMarketHover(canvas);
+  watchCanvases();
 }
 
 /* The market canvas keeps its own hover wiring: it is redrawn on its own
@@ -948,10 +999,10 @@ async function refresh() {
     wireHold(button, () => send(id));
   });
   paintCharts();
-  document.querySelectorAll("[data-canvas]:not([data-canvas='market'])").forEach((canvas) => {
-    wireChartHover(canvas);
-    sizeWatcher.observe(canvas);
-  });
+  document
+    .querySelectorAll("[data-canvas]:not([data-canvas='market'])")
+    .forEach(wireChartHover);
+  watchCanvases();
   loadCharts();
   /* The market is refreshed on the same poll but rendered separately: it has no
    * hold gesture to interrupt, so it never has to wait for one. */

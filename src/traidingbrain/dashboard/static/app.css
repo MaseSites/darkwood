@@ -1051,6 +1051,98 @@ body {
   height: 380px;
 }
 
+/* ------------------------------------------------------- the gate ------ */
+/* The screen's standing answer to "is this a good trade". It is on view during
+   the hours when nothing is happening, which is almost all of them, so it is
+   built to be read at a glance and then ignored — a filled mark means the
+   condition is met, and the row's own numbers say how close the rest came.
+
+   Deliberately not alarming. A refused condition is the ordinary state of the
+   market, not a loss, so red is reserved for where a trade is wrong and this
+   uses the neutral ink instead. */
+
+.gate {
+  margin-top: var(--s3);
+  padding: var(--s3) var(--s4);
+  background: var(--panel-high);
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--rule-strong);
+  border-radius: var(--radius);
+}
+
+.gate--on {
+  border-left-color: var(--long);
+}
+
+/* The answer, so it is read at full contrast whichever way it went. The state
+   is carried by the left rule and the marks; dimming the sentence would make
+   "no setup" harder to read than "setup", which is backwards — the quiet hours
+   are the ones somebody is staring at. */
+.gate__headline {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.gate__checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: var(--s1) var(--s4);
+  margin: var(--s3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gate__check {
+  display: grid;
+  grid-template-columns: 10px 68px 1fr;
+  align-items: baseline;
+  gap: var(--s2);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+/* Filled means met. The mark carries the state on its own, so the row still
+   reads without colour — the label and the numbers never move. */
+.gate__mark {
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: var(--long);
+  opacity: 0.75;
+  align-self: center;
+}
+
+.gate__check--no .gate__mark {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--dimmer);
+}
+
+.gate__label {
+  color: var(--dim);
+}
+
+.gate__detail {
+  color: var(--dimmer);
+  font-variant-numeric: tabular-nums;
+}
+
+.gate__check--no .gate__detail {
+  color: var(--dim);
+}
+
+/* The one refusal that decided it. No new colour: it is the same row, read at
+   the contrast of something that is being said rather than listed. */
+.gate__check--stop .gate__label,
+.gate__check--stop .gate__detail {
+  color: var(--text);
+}
+
+.gate__check--stop .gate__mark {
+  box-shadow: inset 0 0 0 1px var(--caution);
+}
+
 /* ------------------------------------------------------ frame readings -- */
 /* The most useful thing here, and why a chart alone is not enough: a setup that
    reads well on the hour while the week is falling is a different proposition,

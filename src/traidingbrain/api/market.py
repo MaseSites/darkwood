@@ -12,14 +12,28 @@ disagree eventually, and the disagreement would be invisible: both would look
 plausible, and the market view would quietly teach a different reading of the
 chart than the one the trades are made on.
 
+**Why the gate is on this screen.** Most hours have no setup, and a screen that
+says nothing during them is a screen that cannot be trusted when it does speak --
+silence is indistinguishable from a broken pipeline. So every poll shows which of
+the named conditions the bar meets and which it does not. That is the same list
+the backtest applies, read out in full rather than stopped at the first
+objection.
+
 **Why this is cached.** Building a multi-timeframe analysis takes about twenty
 seconds -- five timeframes, indicators, structure, liquidity and regime over four
 years of bars. Per request that is unusable. The cache is keyed on the newest
 stored bar, so it rebuilds exactly when new data arrives and not otherwise.
+
+**And why one build at a time.** The dashboard polls every four seconds. On a
+cold cache that is six overlapping twenty-second builds before the first one
+finishes, each one slowing the rest, and the screen never arrives -- a failure
+that reports nothing at all, because every request is still legitimately working.
+So the first caller builds and the others wait for its result.
 """
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -37,7 +51,8 @@ from traidingbrain.api.chart import (
     LevelLine,
     choose_levels,
 )
-from traidingbrain.config.settings import EngineConfig
+from traidingbrain.brain.trigger import GateReading, evaluate
+from traidingbrain.config.settings import EngineConfig, TriggerConfig
 from traidingbrain.data.frames import timeframe_ms
 from traidingbrain.domain.enums import Timeframe
 from traidingbrain.domain.snapshot import MarketSnapshot
@@ -62,6 +77,35 @@ class FrameRead(BaseModel):
     sweep_down: bool
 
 
+class GateCheckRead(BaseModel):
+    """One of the gate's conditions, as the screen shows it."""
+
+    name: str
+    passed: bool
+    detail: str
+    label: str
+    #: The one refusal that decided the bar. Several conditions can read as
+    #: unmet while only the first is the reason -- the gate stops there, and a
+    #: panel that gave them equal weight would suggest a distance from a setup
+    #: that nothing measures.
+    blocking: bool = False
+
+
+class GateRead(BaseModel):
+    """Whether this bar would be put to the model, and what decided that.
+
+    `would_ask` is deliberately not called "would trade". The gate only decides
+    whether the bar is worth the model's attention; the model still answers WAIT
+    on most of what reaches it, and conflating the two would put a number on the
+    screen that promises more than it measures.
+    """
+
+    would_ask: bool
+    blocking: str | None = None
+    checks: list[GateCheckRead] = Field(default_factory=list)
+    headline: str = ""
+
+
 class MarketView(BaseModel):
     """The chart plus the reading, for a symbol at this moment."""
 
@@ -82,6 +126,7 @@ class MarketView(BaseModel):
     sentiment: str = ""
     session: str = ""
     upcoming: list[str] = Field(default_factory=list)
+    gate: GateRead | None = None
     note: str = ""
 
 
@@ -105,23 +150,51 @@ class MarketAnalysisCache:
         self.store = store
         self.config = config
         self._cache: dict[str, _Cached] = {}
+        self._builds: dict[str, threading.Lock] = {}
+        self._builds_guard = threading.Lock()
 
     def _newest_ts(self, symbol: str) -> int:
         stamp = self.store.last_ts(symbol, self.config.timeframes.signal)
         return int(stamp or 0)
 
     def for_symbol(self, symbol: str) -> _Cached | None:
-        """The analysis for a symbol, rebuilt if the data has moved on."""
-        cached = self._cache.get(symbol)
-        now = time.monotonic()
-        if cached is not None and now - cached.checked_at < FRESHNESS_SECONDS:
-            return cached
+        """The analysis for a symbol, rebuilt if the data has moved on.
 
-        newest = self._newest_ts(symbol)
-        if cached is not None and cached.newest_ts == newest:
+        Only one build per symbol runs at a time. Everything else about this is
+        a plain cache; that one rule is what makes it usable from a screen that
+        polls faster than the work takes.
+        """
+        reusable = self._reusable(symbol)
+        if reusable is not None:
+            return reusable
+
+        with self._build_lock(symbol):
+            # Whoever held the lock has just finished a build. Checking again is
+            # the whole point of waiting -- without it, every queued caller
+            # would rebuild what it was waiting for.
+            reusable = self._reusable(symbol)
+            return reusable if reusable is not None else self._build(symbol)
+
+    def _reusable(self, symbol: str) -> _Cached | None:
+        """A cached analysis still worth serving, or None to rebuild."""
+        cached = self._cache.get(symbol)
+        if cached is None:
+            return None
+        now = time.monotonic()
+        if now - cached.checked_at < FRESHNESS_SECONDS:
+            return cached
+        if cached.newest_ts == self._newest_ts(symbol):
             cached.checked_at = now
             return cached
+        return None
 
+    def _build_lock(self, symbol: str) -> threading.Lock:
+        """One lock per symbol, so BTC waiting does not hold ETH up."""
+        with self._builds_guard:
+            return self._builds.setdefault(symbol, threading.Lock())
+
+    def _build(self, symbol: str) -> _Cached | None:
+        newest = self._newest_ts(symbol)
         frames = {tf: self.store.read(symbol, tf) for tf in self.config.timeframes.context}
         if any(frame.empty for frame in frames.values()):
             return None
@@ -136,7 +209,7 @@ class MarketAnalysisCache:
             calendar=context.calendar,
             sentiment=context.sentiment,
         )
-        built = _Cached(analysis, builder, newest, now)
+        built = _Cached(analysis, builder, newest, time.monotonic())
         self._cache[symbol] = built
         return built
 
@@ -164,6 +237,7 @@ def build_market_view(
     *,
     timeframe: Timeframe,
     available: list[Timeframe],
+    trigger: TriggerConfig | None = None,
     context_bars: int = CONTEXT_BARS,
 ) -> MarketView:
     """Assemble the market view for one symbol on one timeframe.
@@ -235,7 +309,60 @@ def build_market_view(
             for item in snapshot.news
             if item.minutes_until is not None and item.minutes_until >= 0
         ][:3],
+        gate=(
+            # No spacing state here: the dashboard is not the thing that spends
+            # money on calls, and reporting "too soon" against a live loop the
+            # screen cannot see would be an objection nobody could act on.
+            _gate_read(evaluate(snapshot, trigger))
+            if trigger is not None
+            else None
+        ),
         note="No trade is proposed here. This is the market, drawn the way the analysis reads it.",
+    )
+
+
+#: What each condition is called on screen. The counter names are the engine's
+#: vocabulary and they are kept as the identifier, because a label that drifted
+#: from the counter would make the statistics unreadable next to the screen.
+GATE_LABELS = {
+    "too_soon": "Spacing",
+    "unknown_regime": "Regime",
+    "no_structure_event": "Structure",
+    "no_sweep": "Liquidity",
+    "too_little_confluence": "Confluence",
+    "news_blackout": "News",
+    "wrong_session": "Session",
+}
+
+
+def _gate_read(reading: GateReading) -> GateRead:
+    """The gate as a panel: every condition, and one sentence for the top.
+
+    The headline names the first objection rather than counting failures. A bar
+    that misses on three conditions is not three times further from a setup than
+    one that misses on one -- the gate stops at the first, and saying otherwise
+    would invent a distance the engine never measures.
+    """
+    checks = [
+        GateCheckRead(
+            name=check.name,
+            passed=check.passed,
+            detail=check.detail,
+            label=GATE_LABELS.get(check.name, check.name),
+            blocking=check.name == reading.blocking,
+        )
+        for check in reading.checks
+    ]
+    if reading.passed:
+        headline = "This bar would be put to the model."
+    else:
+        blocking = next(check for check in checks if check.blocking)
+        headline = f"No setup: {blocking.label.lower()} — {blocking.detail}."
+    return GateRead(
+        would_ask=reading.passed,
+        blocking=reading.blocking,
+        checks=checks,
+        headline=headline,
     )
 
 

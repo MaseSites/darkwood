@@ -447,7 +447,13 @@ def _market_for(services: Services, symbol: str, requested: str | None) -> Marke
     frame = services.bars.read(symbol, timeframe, until_ms=snapshot.ts)
     if frame.empty:
         raise HTTPException(404, f"no stored {timeframe.value} bars for {symbol}")
-    return build_market_view(snapshot, frame, timeframe=timeframe, available=offered)
+    return build_market_view(
+        snapshot,
+        frame,
+        timeframe=timeframe,
+        available=offered,
+        trigger=services.config.engine.trigger,
+    )
 
 
 def _chart_for(services: Services, proposal_id: str, requested: str | None = None) -> ChartView:
