@@ -93,6 +93,12 @@ def evaluate(
     return GateReading(tuple(checks))
 
 
+def _bars(count: int) -> str:
+    """"1 bar", not "1 bars". Small, and the kind of small that makes a screen
+    look like nobody read it."""
+    return f"{count} bar{'' if count == 1 else 's'}"
+
+
 def _spacing(config: TriggerConfig, bars_since: int | None) -> GateCheck:
     minimum = config.min_bars_between_calls
     if bars_since is None:
@@ -100,7 +106,7 @@ def _spacing(config: TriggerConfig, bars_since: int | None) -> GateCheck:
     return GateCheck(
         "too_soon",
         bars_since >= minimum,
-        f"{bars_since} of {minimum} bars since the last call",
+        f"{bars_since} of {_bars(minimum)} since the last call",
     )
 
 
@@ -121,7 +127,7 @@ def _structure_event(config: TriggerConfig, signal: TimeframeView) -> GateCheck:
     if present:
         which = "break of structure" if structure.bos else "change of character"
         bars = structure.bars_since_bos if structure.bos else structure.bars_since_choch
-        detail = f"{which} {bars} bars ago" if bars is not None else which
+        detail = f"{which} {_bars(bars)} ago" if bars is not None else which
     else:
         detail = f"no break, sequence {structure.sequence or 'unread'}"
     return GateCheck(
@@ -135,7 +141,7 @@ def _sweep(config: TriggerConfig, signal: TimeframeView) -> GateCheck:
     if present:
         side = "buy-side" if liquidity.sweep_up else "sell-side"
         bars = liquidity.bars_since_sweep
-        detail = f"{side} swept{f' {bars} bars ago' if bars is not None else ''}"
+        detail = f"{side} swept{f' {_bars(bars)} ago' if bars is not None else ''}"
     else:
         detail = "no sweep" + ("" if config.require_sweep else " (not required)")
     return GateCheck("no_sweep", present or not config.require_sweep, detail)
