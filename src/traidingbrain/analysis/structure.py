@@ -93,6 +93,17 @@ class StructureState:
     last_swing_high: Swing | None
     last_swing_low: Swing | None
 
+    break_direction: Bias = Bias.NEUTRAL
+    """Which way the most recent break went, or neutral before the first one.
+
+    Distinct from `trend`, which is read off the sequence of swing labels and is
+    frequently neutral at exactly the bar a break lands -- the labels have not
+    caught up yet. Anything that needs to know which side of the market broke
+    has to ask this: a rule that reads `trend` at a break bar gets "unclear" on
+    the bar it most needs an answer, and whichever way it then guesses is a
+    silent coin flip inside the setup.
+    """
+
     def sequence_text(self) -> str:
         return " ".join(self.sequence)
 
@@ -279,6 +290,7 @@ class StructureTimeline:
                     ),
                     last_swing_high=_last(cursor.highs),
                     last_swing_low=_last(cursor.lows),
+                    break_direction=cursor.last_bos_direction,
                 )
             )
         return states
