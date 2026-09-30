@@ -20,12 +20,15 @@ import pytest
 
 from tests.factories import make_snapshot, make_symbol_spec
 from traidingbrain.brain.fake import FakeBrain
-from traidingbrain.config.settings import AppConfig, load_config
+from traidingbrain.config.settings import AppConfig, load_config, load_secrets
 from traidingbrain.domain.enums import Decision, ProposalStatus, Side, TradeState
 from traidingbrain.domain.proposal import ClosedTrade, Position, ProposalAdjustment
 from traidingbrain.proposals.builder import BuildFailure, ProposalBuilder, describe
-from traidingbrain.proposals.store import ProposalStore, fingerprint
+from traidingbrain.proposals.postgres_store import PostgresProposalStore
+from traidingbrain.proposals.rules import fingerprint
+from traidingbrain.proposals.store import ProposalStore
 from traidingbrain.risk.limits import AccountState, KillSwitch, RiskLimits
+from traidingbrain.storage.postgres import PostgresUnavailableError
 
 NOW = 1_700_000_000_000
 HOUR = 3_600_000
@@ -49,9 +52,33 @@ def account() -> AccountState:
     )
 
 
-@pytest.fixture
-def store(tmp_path: Path) -> ProposalStore:
-    return ProposalStore(tmp_path / "proposals.sqlite")
+@pytest.fixture(params=["sqlite", "postgres"])
+def store(request: pytest.FixtureRequest, tmp_path: Path):
+    """Every test in this file runs against both stores.
+
+    This is the whole safety argument for having two. They are meant to behave
+    identically while both exist, and the only way to believe that is to put the
+    same twenty-four assertions to each -- including the concurrency ones, which
+    are where an implementation difference would actually cost something.
+
+    Postgres is skipped rather than failed when there is no database configured,
+    because the suite has to stay runnable on a machine that has never installed
+    one.
+    """
+    if request.param == "sqlite":
+        return ProposalStore(tmp_path / "proposals.sqlite")
+
+    url = load_secrets().postgres_url.get_secret_value()
+    if not url:
+        pytest.skip("no TB_POSTGRES_URL configured")
+    try:
+        store = PostgresProposalStore(url)
+    except PostgresUnavailableError as error:
+        pytest.skip(f"postgres not reachable: {error}")
+    # A shared database, so each test starts from empty rather than inheriting
+    # whatever the last one left behind.
+    store.truncate()
+    return store
 
 
 def closed(pnl: float, hours_ago: float) -> ClosedTrade:

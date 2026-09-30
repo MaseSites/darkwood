@@ -19,15 +19,13 @@ while a dashboard reads is the normal case here, not an edge one.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import sqlite3
 from contextlib import closing
-from datetime import UTC, datetime
 from pathlib import Path
 
 from traidingbrain.domain.enums import ProposalStatus
 from traidingbrain.domain.proposal import ConfirmationToken, TradeProposal
+from traidingbrain.proposals.rules import fingerprint, token_objection, utc_now_ms
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS proposals (
@@ -54,28 +52,6 @@ CREATE INDEX IF NOT EXISTS tokens_by_proposal ON tokens (proposal_id);
 """
 
 
-def fingerprint(proposal: TradeProposal) -> str:
-    """A hash of the numbers a confirmation is agreeing to.
-
-    Only the numbers that change what gets sent. If any of them moves, the token
-    stops matching -- so it is never possible to look at one trade, adjust it, and
-    confirm the version you were shown first.
-    """
-    material = json.dumps(
-        {
-            "id": proposal.id,
-            "side": proposal.side.value,
-            "entry": round(proposal.entry, 8),
-            "stop": round(proposal.stop, 8),
-            "target": round(proposal.target, 8),
-            "qty": round(proposal.qty, 8),
-            "leverage": round(proposal.leverage, 4),
-        },
-        sort_keys=True,
-    )
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
-
-
 def _hydrate(row: tuple[str, str]) -> TradeProposal:
     """Rebuild a proposal, taking the status from the column and not the payload.
 
@@ -91,30 +67,6 @@ def _hydrate(row: tuple[str, str]) -> TradeProposal:
     return TradeProposal.model_validate_json(payload).model_copy(
         update={"status": ProposalStatus(status)}
     )
-
-
-def _token_objection(
-    row: tuple[str, str, int, int | None], proposal: TradeProposal, now: int
-) -> str | None:
-    """Why this token cannot be spent, or None.
-
-    Separated from the spending so the reasons read as a list rather than as
-    control flow, and so each one can be tested on its own.
-    """
-    proposal_id, stored_fingerprint, expires_ts, used_ts = row
-    if used_ts is not None:
-        return "that confirmation has already been used"
-    if proposal_id != proposal.id:
-        return "the confirmation belongs to a different proposal"
-    if now >= expires_ts:
-        return "the confirmation expired; the market has moved on since"
-    if stored_fingerprint != fingerprint(proposal):
-        return "the proposal changed after this confirmation was issued"
-    return None
-
-
-def _now_ms() -> int:
-    return int(datetime.now(tz=UTC).timestamp() * 1000)
 
 
 class ProposalStore:
@@ -164,7 +116,7 @@ class ProposalStore:
         A stale proposal on a dashboard is an invitation to confirm a trade at
         yesterday's prices.
         """
-        now = now_ms if now_ms is not None else _now_ms()
+        now = now_ms if now_ms is not None else utc_now_ms()
         self.expire_stale(now)
         with closing(self._connect()) as conn:
             rows = conn.execute(
@@ -174,7 +126,7 @@ class ProposalStore:
         return [_hydrate(row) for row in rows]
 
     def expire_stale(self, now_ms: int | None = None) -> int:
-        now = now_ms if now_ms is not None else _now_ms()
+        now = now_ms if now_ms is not None else utc_now_ms()
         with closing(self._connect()) as conn:
             cursor = conn.execute(
                 "UPDATE proposals SET status = ?, finished_ts = ?, note = 'expired unseen' "
@@ -210,7 +162,7 @@ class ProposalStore:
                 (
                     (ProposalStatus.EXECUTED if ok else ProposalStatus.FAILED).value,
                     note,
-                    _now_ms(),
+                    utc_now_ms(),
                     proposal_id,
                 ),
             )
@@ -223,7 +175,7 @@ class ProposalStore:
                 (
                     ProposalStatus.REJECTED.value,
                     note,
-                    _now_ms(),
+                    utc_now_ms(),
                     proposal_id,
                     ProposalStatus.PENDING.value,
                 ),
@@ -233,7 +185,7 @@ class ProposalStore:
     # -- tokens ------------------------------------------------------------- #
 
     def issue_token(self, proposal: TradeProposal, ttl_seconds: int) -> ConfirmationToken:
-        now = _now_ms()
+        now = utc_now_ms()
         token = ConfirmationToken(
             proposal_id=proposal.id,
             issued_ts=now,
@@ -260,7 +212,7 @@ class ProposalStore:
         Single use, enforced by `used_ts IS NULL` in the same statement that marks
         it used -- so two simultaneous attempts cannot both succeed here either.
         """
-        now = _now_ms()
+        now = utc_now_ms()
         with closing(self._connect()) as conn:
             row = conn.execute(
                 "SELECT proposal_id, fingerprint, expires_ts, used_ts FROM tokens WHERE token = ?",
@@ -269,7 +221,7 @@ class ProposalStore:
             if row is None:
                 return "no such confirmation token"
 
-            objection = _token_objection(row, proposal, now)
+            objection = token_objection(row, proposal, now)
             if objection is not None:
                 return objection
 

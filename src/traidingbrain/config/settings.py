@@ -362,6 +362,14 @@ class Secrets(BaseSettings):
         validation_alias=AliasChoices("CLAUDE_CODE_OAUTH_TOKEN", "TB_CLAUDE_CODE_OAUTH_TOKEN"),
     )
     bybit: BybitCredentials = BybitCredentials()
+    #: Where Postgres lives, as a libpq URL. Empty means "not configured", which
+    #: is a supported state: the SQLite stores work standalone and are what a
+    #: single machine needs. Postgres earns its place when the collector, the
+    #: engine and the dashboard stop being the same process.
+    postgres_url: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("TB_POSTGRES_URL", "POSTGRES_URL", "DATABASE_URL"),
+    )
     kill_switch_file: Path = Path("data/KILL_SWITCH")
 
 
