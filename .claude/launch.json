@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["scripts/run_dashboard.py", "--demo", "--port", "8787"],
+      "port": 8787
+    },
+    {
+      "name": "dashboard-empty",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["scripts/run_dashboard.py", "--port", "8787"],
+      "port": 8787
+    }
+  ]
+}
