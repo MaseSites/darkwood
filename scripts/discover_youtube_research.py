@@ -7,7 +7,6 @@ from pathlib import Path
 
 import yt_dlp
 
-
 QUERIES = {
     "grundlagen_market_structure": "day trading complete course price action market structure",
     "candlesticks": "candlestick patterns day trading complete guide",

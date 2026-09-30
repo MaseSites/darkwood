@@ -13,7 +13,6 @@ from pathlib import Path
 
 from youtube_transcript_api import YouTubeTranscriptApi
 
-
 PLAYLIST_VIDEOS = [
     {
         "id": "W9rc0RQvf0s",

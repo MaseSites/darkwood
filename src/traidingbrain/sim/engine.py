@@ -81,6 +81,29 @@ class Strategy(Protocol):
     def propose(self, snapshot: MarketSnapshot) -> TradeIntent | None: ...
 
 
+class AnalysisStrategy(Protocol):
+    """A strategy that reads the chart directly rather than the snapshot.
+
+    The snapshot is normalised for the model: no absolute prices, distances in
+    ATR, levels by opaque id. That is exactly right for something being asked to
+    *judge* a situation and exactly wrong for a rule that says "stop at the low
+    of the candle that created the gap". Those rules need the bars.
+
+    Both kinds run through the same engine, the same broker, the same sizing and
+    the same costs -- which is the only way their results can be put in one
+    table. What differs is what they are shown.
+    """
+
+    name: str
+
+    def propose_at(self, analysis: MultiFrameAnalysis, index: int) -> TradeIntent | None: ...
+
+
+def wants_analysis(strategy: Strategy | AnalysisStrategy) -> bool:
+    """Does this strategy read bars rather than a snapshot?"""
+    return hasattr(strategy, "propose_at")
+
+
 @dataclass
 class BacktestResult:
     symbol: str
@@ -149,7 +172,7 @@ class BacktestEngine:
 
     def run(
         self,
-        strategy: Strategy,
+        strategy: Strategy | AnalysisStrategy,
         *,
         max_bars: int | None = None,
         start_ts: int | None = None,
@@ -179,35 +202,48 @@ class BacktestEngine:
         intents = 0
         refused = 0
         self._fills_seen = 0
+        reads_bars = wants_analysis(strategy)
 
         for index in range(start, end):
-            # Only build a snapshot when it can actually be acted on. Building one
-            # while a position is open costs milliseconds and changes nothing --
-            # over twenty thousand bars that is most of the runtime.
-            snapshot = self.builder.build(index) if broker.is_flat else None
-            if snapshot is not None and self.history is not None:
-                # Look up from the snapshot just built and fold the answer back in,
-                # rather than building a second one. Two builds per bar doubled the
-                # runtime of a full backtest for no extra information.
-                stats, _quality = self.history.lookup(snapshot)
-                snapshot = snapshot.model_copy(update={"history": stats})
-            if snapshot is not None:
+            # Only ask when the answer can be acted on. Asking while a position
+            # is open costs milliseconds and changes nothing -- over twenty
+            # thousand bars that is most of the runtime.
+            #
+            # Which question gets asked depends on what the strategy reads. A
+            # bar-reading strategy needs no snapshot, and building one for it
+            # would be most of the run spent on something never looked at.
+            snapshot = None
+            intent = None
+            if broker.is_flat and reads_bars:
                 snapshots += 1
-                intent = strategy.propose(snapshot)
-                if intent is not None and intent.is_coherent:
-                    intents += 1
-                    entry = self._to_entry(
-                        intent,
-                        snapshot,
-                        equity=broker.equity,
-                        created_ts=int(signal_ts[index]) + signal_ms,
-                        expires_ts=int(signal_ts[index]) + signal_ms + expiry_ms,
-                    )
-                    if entry is None or not broker.submit(entry):
-                        refused += 1
-                    elif self.history is not None:
-                        # Held aside, not indexed: the outcome does not exist yet.
-                        self.history.remember(entry.proposal_id, snapshot)
+                intent = strategy.propose_at(self.analysis, index)  # type: ignore[union-attr]
+            elif broker.is_flat:
+                snapshot = self.builder.build(index)
+                if snapshot is not None and self.history is not None:
+                    # Look up from the snapshot just built and fold the answer back
+                    # in, rather than building a second one. Two builds per bar
+                    # doubled the runtime of a full backtest for no extra
+                    # information.
+                    stats, _quality = self.history.lookup(snapshot)
+                    snapshot = snapshot.model_copy(update={"history": stats})
+                if snapshot is not None:
+                    snapshots += 1
+                    intent = strategy.propose(snapshot)  # type: ignore[union-attr]
+
+            if intent is not None and intent.is_coherent:
+                intents += 1
+                entry = self._to_entry(
+                    intent,
+                    snapshot,
+                    equity=broker.equity,
+                    created_ts=int(signal_ts[index]) + signal_ms,
+                    expires_ts=int(signal_ts[index]) + signal_ms + expiry_ms,
+                )
+                if entry is None or not broker.submit(entry):
+                    refused += 1
+                elif self.history is not None and snapshot is not None:
+                    # Held aside, not indexed: the outcome does not exist yet.
+                    self.history.remember(entry.proposal_id, snapshot)
 
             # The decision is live from the start of the next bar, never this one.
             self._step_minutes(
@@ -382,7 +418,7 @@ class BacktestEngine:
     def _to_entry(
         self,
         intent: TradeIntent,
-        snapshot: MarketSnapshot,
+        snapshot: MarketSnapshot | None,
         *,
         equity: float,
         created_ts: int,
@@ -398,11 +434,16 @@ class BacktestEngine:
         if intent.reward_risk < risk_config.limits.min_reward_risk:
             return None
 
+        # No snapshot means no history lookup, so no evidence that confidence
+        # is calibrated -- and the sizing ladder stays capped. That is the right
+        # answer rather than a missing feature: a rule-based strategy states a
+        # fixed confidence, and a fixed number is not evidence about itself.
+        samples = snapshot.history.similar_situations_found if snapshot is not None else 0
         budget = risk_budget(
             intent.confidence,
             equity,
             risk_config.sizing,
-            history_samples=snapshot.history.similar_situations_found,
+            history_samples=samples,
         )
         if budget is None:
             return None
@@ -447,10 +488,18 @@ class BacktestEngine:
             created_ts=created_ts,
             expires_ts=expires_ts,
             risk_amount=size.risk_amount,
-            snapshot_hash=snapshot.to_brain_input().content_hash(),
+            # Empty for a bar-reading strategy, which has no normalised view
+            # to hash. The field identifies the situation a model was shown, and
+            # inventing one here would make two different things look alike in
+            # the record.
+            snapshot_hash=(
+                snapshot.to_brain_input().content_hash() if snapshot is not None else ""
+            ),
         )
 
-    def _empty_result(self, strategy: Strategy, broker: SimBroker) -> BacktestResult:
+    def _empty_result(
+        self, strategy: Strategy | AnalysisStrategy, broker: SimBroker
+    ) -> BacktestResult:
         return BacktestResult(
             symbol=self.symbol,
             strategy=strategy.name,

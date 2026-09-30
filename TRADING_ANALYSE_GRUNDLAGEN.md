@@ -190,6 +190,62 @@ verwandt:
 8. **Risiko/Ausführung:** Geldrisiko, Notional, Korrelation, Stop-/Gap-/Slippage-Szenario, Orderspezifikation, Gebühren und technische Ausfallwege.
 9. **Nachkontrolle:** Planqualität getrennt vom Ergebnis bewerten, Daten und Screenshot speichern, Regelversion und Abweichungen protokollieren.
 
+## J. Marktübergreifende Beziehungen und Übertragungskanäle
+
+- **Zinsen und Anleihen:** Steigt die geforderte Rendite, fällt bei sonst gleichen Bedingungen der Preis einer bestehenden Festzinsanleihe. Längere Duration reagiert stärker auf Renditeänderungen. Aktienbewertung kann über höhere Diskontsätze belastet werden, doch Gewinnwachstum, Inflation, Risikoprämie und Positionierung können den Effekt überlagern. Deshalb ist „Yield hoch = Aktien runter“ nur eine bedingte Hypothese.
+- **Währungen:** Ein FX-Kurs bewertet eine Währung relativ zu einer anderen. Relevant sind nicht nur heimische Daten, sondern die Differenz der erwarteten Zins-, Inflations-, Wachstums- und Risikopfade beider Länder. Carry erhält die Zinsdifferenz, trägt aber Wechselkurs-, Liquiditäts- und Crowdingrisiko. `[Z27]`
+- **Dollar und globale Assets:** Ein Dollarindex ist ein gewichteter Währungskorb und nicht „der Dollar gegen alles“. Dollar, Gold, Rohstoffe und Emerging Markets zeigen häufig Beziehungen über Finanzierung, Preisnotierung und Risikoappetit, aber keine unveränderliche inverse Korrelation. `[Z26]`
+- **Rohstoffe:** Spot-, Frontmonat- und länger laufender Future sind unterschiedliche Preise. Inventar, Produktion, Wetter, Geopolitik, Qualität, Transport und Convenience Yield wirken auf die Kurve; ein Spot-Chart allein erklärt Rollkosten eines Futures-/ETF-Produkts nicht. `[Z23]`
+- **Indizes und Einzeltitel:** Ein kapitalisierungsgewichteter Index kann von wenigen großen Komponenten bewegt werden. Marktbreite, Sektorrotation und gleichgewichtete Varianten helfen zu unterscheiden, ob ein Move breit oder konzentriert ist; sie sind Kontext, kein automatisches Reversalsignal.
+- **Korrelation und Beta:** Korrelation misst gemeinsame standardisierte Bewegung in einem Fenster, Beta relative Sensitivität zu einer Benchmark. Beide ändern sich mit Zeitraum und Regime, sagen keine Kausalität und können in Stressphasen zusammenlaufen. Hedge-Verhältnisse benötigen deshalb aktuelle Exposures und Stressszenarien.
+
+## K. Nicht-charttechnische Ereignisse, Datenbrüche und operative Risiken
+
+- Aktiencharts müssen Splits, Sonderdividenden, Rechte, Spin-offs, Fusionen, Delistings und Handelsunterbrüche korrekt behandeln. Adjusted OHLC ist für Renditehistorie hilfreich, kann aber historische handelbare Preise verändern; Roh- und adjustierte Daten mit klarer Methode getrennt speichern.
+- Futures benötigen Kontraktidentität und Rollmethode. Ein Continuous Contract kann Sprünge entfernen oder Renditen verzerren; Back-/Ratio-Adjustment ist Analysekonvention, kein historisch handelbarer Einzelkontrakt. `[Z22][Z23]`
+- Makrodaten werden revidiert. Ein Backtest darf nicht den heute bekannten revidierten Wert so verwenden, als sei er bei der Erstveröffentlichung bekannt gewesen. Kalenderzeit, Release-Vintage und Zeitzone gehören in das Eventobjekt. `[Z10][Z11]`
+- Krypto handelt rund um die Uhr, doch Wartungen, Oracle-/Indexausfälle, Depegs, Chain Congestion, Exchange Insolvency und unterschiedliche Markpreise sind eigenständige Risiken. Ein Liquidationslevel hängt von Börse, Marginmodus, Gebühren und Markpreisformel ab. `[Z15][Z20]`
+- Plattformausfall, Internet-/Stromausfall, API-Duplikat, falsche Positionsseite, Zeitzonen-/DST-Fehler, stale Quote und nicht synchronisierte Uhr sind reale Ausführungsrisiken. Schutzobjekte: eindeutige Order-ID, Idempotenz, Positionsabgleich, Kill Switch, maximale Notional-/Orderrate und unabhängiger Broker-/Venue-Check.
+- Spoofing, Layering, Wash Trading und Pump-and-Dump sind mögliche missbräuchliche Praktiken; ein einzelnes verschwundenes Limit oder ein langer Docht beweist sie nicht. Sichtbare Orderbuchliquidität ist Absicht bis zur Ausführung und kann legitim storniert werden. Regulatorische und venue-spezifische Definitionen müssen separat geprüft werden.
+
+## L. Kompaktglossar der professionellen Grundbegriffe
+
+| Begriff | Präzise Kurzdefinition |
+|---|---|
+| Ask/Offer | niedrigster aktuell angebotener Verkaufspreis auf der betrachteten Venue |
+| Bid | höchster aktuell angebotener Kaufpreis auf der betrachteten Venue |
+| Spread | Ask minus Bid; unmittelbarer Reibungsanteil einer Hin-und-zurück-Ausführung |
+| Depth | sichtbare Quotegrößen über mehrere Preisstufen; nicht gleich garantiert verfügbarer Fill |
+| Liquidity | Fähigkeit, Größe zeitnah mit geringer Preiswirkung zu handeln; umfasst Spread, Tiefe und Erneuerung |
+| Volatility | Größe/Streuung von Preisänderungen; sagt allein keine Richtung |
+| Volume | ausgeführte Menge in definierter Venue/Periode, nicht offene Auftragsmenge |
+| Orderflow | Abfolge/Klassifikation ausgeführter und teils quotierter Orders; feed- und venueabhängig |
+| Slippage | Differenz zwischen erwartetem und realisiertem Ausführungspreis |
+| Gap | Preisbereich zwischen Referenzkursen ohne bzw. mit wenig Handel in der betrachteten Darstellung |
+| Return | relative Preis-/Total-Return-Veränderung über ein definiertes Intervall |
+| Notional | wirtschaftlicher Positionswert vor Berücksichtigung der hinterlegten Margin |
+| Margin | hinterlegte Sicherheit zur Deckung eines gehebelten Kontraktrisikos |
+| Leverage | Exposure relativ zu Kapital/Margin; vervielfacht Wirkung, nicht Vorhersagequalität |
+| Mark Price | von der Venue berechnete faire Referenz für P&L/Liquidation; nicht zwingend letzter Trade |
+| Index Price | externe/zusammengesetzte Spotreferenz eines Derivats |
+| Basis | Differenz zwischen Derivat-/Futurepreis und Spot-/Referenzpreis |
+| Carry | Halteertrag/-kosten aus Zins, Funding, Dividende, Lagerung, Borrow oder Convenience Yield |
+| Open Interest | offene, noch nicht glattgestellte Derivatekontrakte/Positionseinheiten |
+| Expiry | Zeitpunkt, an dem ein befristeter Vertrag ausläuft/abgerechnet wird |
+| Roll | Schließen/Übertragen aus einer Laufzeit in eine spätere |
+| Settlement | finanzielle oder physische Erfüllung eines Geschäfts/Derivats |
+| Drawdown | Rückgang vom bisherigen Equity-Hoch zum späteren Tief/aktuellen Wert |
+| MAE/MFE | größte ungünstige/günstige Bewegung während eines Trades |
+| Expectancy | durchschnittlich erwarteter Nettoertrag pro Versuch unter der geschätzten Verteilung |
+| Tail Risk | seltene, extreme Verluste außerhalb typischer Schwankung |
+| Regime | Zustand aus Trend/Balance, Volatilität, Liquidität, Korrelation und Makroumfeld |
+| Acceptance | anhaltender Handel/Zeit/Volumen jenseits einer Referenz nach definierter Schwelle |
+| Rejection | fehlende Akzeptanz und schnelle Rückkehr aus einem getesteten Preisbereich |
+| Absorption | große aggressive Ausführung mit wenig Preisfortschritt; Gegenliquidität nimmt Flow auf |
+| Exhaustion | nachlassender Fortschritt/Teilnahme eines Moves; erst über definierte Daten feststellbar |
+| Confluence | mehrere möglichst unabhängige Informationsfamilien stützen dieselbe Hypothese |
+| Invalidation | vorab definierte Beobachtung, die eine Hypothese aufhebt; nicht identisch mit garantiertem Fill |
+
 ## 1. Datenfundament und Objektmodell
 ### 1.1 Primäre Marktdaten
 
@@ -469,6 +525,26 @@ Quellen: `[P03][P06][P08][Z01][Z02]`.
 - SMA, EMA, MACD und Supertrend sind stark preis- und glättungsbasiert; sie reagieren verzögert auf dieselbe Historie.
 - ATR, Bollinger und Keltner beschreiben verschiedene Formen von Volatilität/Abstand, nicht Orderflow.
 - VWAP, Volume Profile, OBV/CMF und CVD verwenden Volumen unterschiedlich: Durchschnittspreis, Volumen je Preis, Bar-Proxy und Aggressor-Flow dürfen nicht vermischt werden.
+
+### 12.7 Erweiterte Indikator- und Darstellungsinventur
+
+| Familie | Weitere Werkzeuge | Was sie tatsächlich transformieren | Hauptgrenze |
+|---|---|---|---|
+| Moving Averages | WMA, VWMA, HMA, DEMA, TEMA, KAMA | Preis/Volumen mit anderer Gewichtung und Verzögerung | neue Glättung ist keine neue Informationsquelle |
+| Trend/Momentum | PPO, TRIX, Aroon, Vortex, Mass Index, Elder Impulse | geglättete Preisänderung, Zeit seit Extrem oder Range-Ausweitung | Parameter- und Regimeabhängigkeit; Whipsaw |
+| Oszillatoren | Ultimate Oscillator, KDJ, Fisher Transform, Coppock, Chande Momentum | normierte Lage/Änderung über einen oder mehrere Lookbacks | Extremwert und Divergenz sind keine zeitgenauen Trigger |
+| Volatilität | Standardabweichung, Chaikin Volatility, Choppiness Index, Ulcer Index | Renditestreuung, Rangeänderung, Trendigkeit oder Drawdownschmerz | unterschiedliche Definitionen nicht austauschbar |
+| Volumenfluss | Accumulation/Distribution, Chaikin Oscillator, Force Index, Ease of Movement, Klinger, NVI/PVI | Barpreisposition/-änderung kombiniert mit Volumenproxy | keine direkte Identifikation institutioneller Käufer/Verkäufer |
+| Marktbreite | Advance/Decline, Up/Down Volume, New High-Low, McClellan, Prozent über MA | Beteiligung vieler Komponenten eines Universums | Universums-, Gewichtungs- und Survivorship-Bias |
+| Relative Stärke | Ratio-Chart, Relative Rotation, Beta, Rolling Correlation | Verhältnis oder gemeinsame Bewegung zweier Reihen | Fensterwechsel und Korrelation ≠ Kausalität |
+| Derivate | Put/Call, IV Rank/Percentile, Skew, Term Structure, Max-Pain-Darstellung | Optionspreise, Volumen/OI und Laufzeitstruktur | Datenlatenz, Hedgingrichtung und „Max Pain“ nicht als Magnet beweisen |
+| Sentiment/Positionierung | COT, Long/Short Ratio, Funding, Short Interest | meldepflichtige/venue-spezifische Bestände oder Finanzierung | Veröffentlichung verzögert; Gegenpartei und Motivation unklar |
+| Alternative Bars | Heikin-Ashi, Renko, Kagi, Point-and-Figure, Range/Tick/Volume Bars | gefilterte oder ereignisbasierte Preisaggregation | synthetische OHLC-Werte können nicht direkt handelbar sein |
+| Geometrie/Zeit | Gann, Andrews Pitchfork, Regression Channel, Standard Deviation Channel | gewählte Anker und mathematische Linien | hohe Freiheitsgrade erzeugen rückblickende Passform |
+| Pivotvarianten | Classic, Woodie, Camarilla, Fibonacci, DeMark | vorige Perioden-OHLC nach unterschiedlicher Formel | konkurrierende Levels; keine Variante universell überlegen |
+
+- Eine „vollständige Indikatorliste“ ist prinzipiell offen, weil beliebige Transformationen programmiert werden können. Das Gehirn speichert daher für jeden Indikator die universellen Felder `input_series`, `venue`, `lookback`, `formula_version`, `output_unit`, `lag`, `family`, `failure_modes` und `source`, statt Namen als eigenständige Wahrheiten zu behandeln.
+- Vor Verwendung prüfen: repaintet das Skript, nutzt es höhere Timeframes mit noch offenen Bars, enthält es Zukunftsdaten, wechselt der Anbieter die Formel, sind Splits/Rolls angepasst, und ist der angezeigte Wert historisch reproduzierbar?
 
 ## 13. Multi-Timeframe-Analyse
 

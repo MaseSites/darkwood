@@ -71,6 +71,11 @@ ignore = ["PLR0913"]
 "tests/fakes.py" = ["PLR2004", "PLC0415"]
 # Scripts insert src/ on the path before importing the package.
 "scripts/**" = ["E402"]
+# The YouTube research scripts came in with the guide as one-off tooling for
+# fetching and curating transcripts. They are kept as they arrived so the
+# provenance of the source material stays checkable; their shape is not the
+# codebase's to argue with.
+"scripts/*youtube*.py" = ["E402", "PLR0912", "PLR0915", "PLR2004"]
 
 [tool.mypy]
 python_version = "3.12"

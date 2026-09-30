@@ -79,10 +79,41 @@ Playlist: https://youtube.com/playlist?list=PLK8g_u70zjYP1fhJL2ExzGVu9MpgkE_Kd
 
 Für 14 Themencluster wurden YouTube-Suchen mit jeweils bis zu 25 Treffern durchgeführt. Nach Deduplizierung liegen **329 einzigartige Kandidaten** vor. Darunter befinden sich ausführliche Education-Videos von u. a. The Trading Channel, Wysetrade, Smart Risk, Photon Trading, JeaFx, TTrades, Tradeciety, SMB Capital, TJR, Inner Circle Trader, Umar Ashraf, Rande Howell/Words of Rizdom und TheChartGuys.
 
-Die Zusatzvideos sind noch nicht als „analysiert“ in dieser Datei geführt. Grund: Nach dem vollständigen Abruf der 13 Primärvideos beantwortete YouTube die weiteren Caption-Endpunkte mit einem automatisierten Traffic-/Rate-Limit. Auch bei einem im Browser geöffneten Zusatzvideo war „Transkript anzeigen“ sichtbar, die eigentliche Spur wurde aber nicht ausgeliefert. Entsprechend wurden aus Titeln, Beschreibungen oder Erinnerungswissen **keine Regeln übernommen**.
+Die große Kandidatenliste ist noch nicht als „analysiert“ geführt. Grund: Nach dem vollständigen Abruf der 13 Primärvideos beantwortete YouTube die weiteren Caption-Endpunkte mit einem automatisierten Traffic-/Rate-Limit. Auch bei einem im Browser geöffneten Zusatzvideo war „Transkript anzeigen“ sichtbar, die eigentliche Spur wurde aber nicht ausgeliefert. Entsprechend werden Kandidatentitel nicht wie Volltranskriptquellen behandelt.
+
+### Ergänzende Grundlagenvideos mit begrenzter Evidenz
+
+Die folgende Tabelle enthält Videos, bei denen veröffentlichter Volltext, umfangreiche sichtbare Kapitel-/Beschreibungstexte oder offizielle Begleittexte ausgewertet wurden. `Nein/B` bedeutet ausdrücklich: **kein vollständig ausgeliefertes YouTube-Transkript**; übernommen wurden nur die direkt sichtbaren Definitionen. Die Kennungen entsprechen `TRADING_ANALYSE_GRUNDLAGEN.md`.
+
+| ID | Videotitel | Creator | URL | Thema | vollständiges Transkript | entstandene Grundlagenkapitel |
+|---|---|---|---|---|---|---|
+| Z01 | The Only Technical Analysis Video You Will Ever Need | The Trading Channel | https://www.youtube.com/watch?v=eynxyoKgpng | technische Analyse | Nein/B; substantieller Transkriptmirror | Struktur, Candles, Trends, S/R, Indikatorgrenzen |
+| Z02 | Technical Analysis Was Hard Till I Discovered This SECRET | Rayner Teo | https://www.youtube.com/watch?v=bQZ_hhg6gmE | Price Action/TA | Ja/A; veröffentlichtes Volltranskript | Charttypen, Struktur, S/R, Candles, ATR, MTF |
+| Z03 | Complete Trading Indicators: RSI, MACD, VWAP & More | PhyZan | https://www.youtube.com/watch?v=mAkqhKtDXf4 | Indikatoren | Nein/B; ausführliche Kapitelbeschreibung | Indikatorfamilien und Grenzen |
+| Z05 | Volume Profile Trading Strategy: Value Area, POC | Chart Padhna Sikho | https://www.youtube.com/watch?v=qQdyTEo0Ft8 | Volume Profile | Nein/B; sichtbare Definitionen | POC, Value Area, HVN/LVN |
+| Z06 | Day Trading With Anchored VWAP & Volume Profile | Trader Dale | https://www.youtube.com/watch?v=nbdLCKBGv7k | AVWAP/Profile | Nein/B; Themen-/Kapitelevidenz | VWAP/AVWAP und Ankerabhängigkeit |
+| Z09 | Inversion Fair Value Gaps (IFVG) — ICT Concepts | TTrades | https://www.youtube.com/watch?v=uDJI2AbyyCs | IFVG | Nein/B; Themen-/Kapitelevidenz | IFVG-Definition/Invalidierung |
+| Z10 | How to trade High-Impact Fundamentals (NFP, CPI, FOMC) | Live Trade Videos | https://www.youtube.com/watch?v=kT4eU_kOCGs | Wirtschaftsdaten | Nein/B; Beschreibung | Kalenderfelder und Newsvolatilität |
+| Z11 | ICT 2026 Smart Money Concepts Lecture — Jan 29 | Inner Circle Trader | https://www.youtube.com/watch?v=8wHewi6N6dg | Kalender/News | Nein/B; Transkriptauszug | Eventkontext und Marktreaktion |
+| Z12 | Orderflow: How to read Cumulative Delta the RIGHT way | Axia Futures | https://www.youtube.com/watch?v=TIeSFhLrK2U | CVD/Orderflow | Teilweise A/B; umfangreicher Text | Aggressor, Delta, Absorption, Divergenz |
+| Z13 | How to Use Volume Profile: LVN, HVN & POC | Keshav Jindal | https://www.youtube.com/watch?v=9Qv6rYttZsU | Volume Profile | Nein/B; ausführliche Kapitelbeschreibung | Preisakzeptanz und Profilzonen |
+| Z14 | Learn Market Profile from Scratch: TPO, POC, Value Area & IB | Orderflowtalks | https://www.youtube.com/watch?v=R-ueIHMLI7w | Market Profile | Nein/B; ausführliche Kapitelbeschreibung | TPO, POC, Value Area, Initial Balance |
+| Z15 | Funding Rates Explained | FinTools | https://www.youtube.com/watch?v=nkazrGjuisE | Perpetual Funding | Nein/B; sichtbare Definitionen | Funding, Positionierung, Haltekosten |
+| Z16 | Ichimoku Cloud + Parabolic SAR | Trading Master | https://www.youtube.com/watch?v=gN9E3hcc0Q0 | Trendindikatoren | Nein/B; Beschreibung | Ichimoku und SAR |
+| Z17 | Keltner Channel Explained for Beginners | Soheil PKO | https://www.youtube.com/watch?v=ylmMOcYPtQw | Volatilität | Nein/B; Beschreibung | Keltner Channel |
+| Z18 | On Balance Volume Indicator Explained | Soheil PKO | https://www.youtube.com/watch?v=sSxBpt61Qfo | Volumenindikator | Nein/B; Beschreibung | OBV |
+| Z19 | Chaikin Money Flow Indicator Explained | David Moadel | https://www.youtube.com/watch?v=FXmokJtK2Vs | Money Flow | Nein/B; Transkript-/Beschreibungstext | CMF |
+| Z20 | Liquidation Heatmap + Open Interest Masterclass | The Finance School | https://www.youtube.com/watch?v=cMoC4wreQHU | Derivatedaten | Nein/B; Beschreibung | OI, Liquidation, Heatmapgrenzen |
+| Z21 | Order Types Explained: Market, Limit & Stop Orders for Beginners | Interactive Brokers | https://www.youtube.com/watch?v=Zf37t7njppg | Ordertypen | Nein/B; offizielle Bildungsbeschreibung | Matching, Market/Limit/Stop, Fills |
+| Z22 | Getting Started with Futures | CME Group | https://www.cmegroup.com/education/videos/cme-group-getting-started-with-futures-class | Futures | Nein/B; offizielles Video/Begleittext | Vertrag, Margin, Settlement, Verfall |
+| Z23 | What is Contango and Backwardation? | CME Group | https://www.youtube.com/watch?v=B3V7Go_CNkQ | Terminkurve | Nein/B; offizielles Video/Begleittext | Basis, Contango, Backwardation, Roll |
+| Z24 | Option Greeks Explained for Beginners | projectfinance | https://www.youtube.com/watch?v=SFebmSYSZA8 | Optionen | Nein/B; Kapitel-/Beschreibungsevidenz | Delta, Gamma, Theta, Vega |
+| Z25 | Implied Volatility and the IV Crush | Options Industry Council | https://www.optionseducation.org/videolibrary/implied-volatility-and-the-iv-crush | Optionen/IV | Nein/B; offizielles Video/Begleittext | IV, Eventvolatilität, IV Crush |
+| Z26 | US Dollar Index (DXY) Explained | 3-Minute Explanation | https://www.youtube.com/watch?v=By3rxDk1ox4 | Cross Asset/DXY | Nein/B; Beschreibung; Behauptungen vorsichtig behandelt | bedingte Dollar-/Asset-Korrelationen |
+| Z27 | Carry Trade Basics | Khan Academy | https://www.khanacademy.org/economics-finance-domain/core-finance/money-and-banking/currency-tutorial/v/carry-trade-basics | FX/Carry | Nein/B; Bildungsbegleittext | Zinsdifferenz, Carry und Crowding |
 
 Damit bleibt die Trennung eindeutig:
 
-- Die Tabelle oben enthält jedes tatsächlich ausgewertete Video.
+- Die Primärtabelle enthält jedes vollständig bzw. zeitlich unvollständig transkribierte Playlistvideo; die Ergänzungstabelle trennt begrenzte B-Evidenz davon.
 - Die 329 Kandidaten sind eine Recherchewarteschlange, keine Quellenbasis des aktuellen Guides.
 - Erst nach erfolgreichem vollständigem Transcript-Abruf darf ein Kandidat als analysiert ergänzt und in fachliche Kapitel zitiert werden.

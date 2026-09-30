@@ -31,6 +31,8 @@ from traidingbrain.sim.engine import BacktestResult, load_engine
 from traidingbrain.sim.metrics import compare
 from traidingbrain.strategies.baseline import RandomEntry, StructureBaseline
 from traidingbrain.strategies.brain_strategy import BrainStrategy
+from traidingbrain.strategies.guide import GuidePool, GuideSetupStrategy
+from traidingbrain.strategy.setups import TRADEABLE
 
 
 def _make(name: str, config, *, kind: str = "fake"):
@@ -41,6 +43,17 @@ def _make(name: str, config, *, kind: str = "fake"):
     arithmetic. The gap between it and the real model is the value of the
     judgement alone.
     """
+    if name.startswith("guide-"):
+        key = name.removeprefix("guide-")
+        if key == "all":
+            return GuidePool()
+        setup = next((item for item in TRADEABLE if item.key == key), None)
+        if setup is None:
+            raise ValueError(
+                f"unknown guide setup {key!r}; this build trades "
+                f"{', '.join(item.key for item in TRADEABLE)}"
+            )
+        return GuideSetupStrategy(setup)
     if name == "random":
         return RandomEntry()
     if name == "baseline":
@@ -57,7 +70,19 @@ def _make(name: str, config, *, kind: str = "fake"):
     raise ValueError(f"unknown strategy {name!r}")
 
 
-STRATEGY_NAMES = ["random", "baseline", "fake-brain", "brain"]
+#: Every strategy the comparison can run.
+#:
+#: The guide setups are listed one by one rather than only as a pool, because
+#: chapter 30 of the guide asks for them to be measured apart -- a single pooled
+#: number cannot say which rule earned it.
+STRATEGY_NAMES = [
+    "random",
+    "baseline",
+    "fake-brain",
+    "brain",
+    *(f"guide-{setup.key}" for setup in TRADEABLE),
+    "guide-all",
+]
 
 #: Fallback instrument rules, used when running offline. Taken from Bybit's
 #: BTCUSDT perpetual; `--live-spec` fetches the real ones.
