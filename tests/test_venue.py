@@ -95,3 +95,25 @@ def test_testnet_actually_changes_where_requests_go(name: str) -> None:
     sandbox = venue(name).build(testnet=True, rate_limit_ms=100)
 
     assert live.urls["api"] != sandbox.urls["api"]
+
+
+def test_each_venue_enters_practice_mode_its_own_way() -> None:
+    """ccxt deprecated set_sandbox_mode for Binance futures; Bybit still uses it.
+
+    Not a detail worth hiding behind one call. Binance now raises on sandbox mode
+    with a link to the deprecation announcement, while enable_demo_trading routes
+    to demo-dapi.binance.com and works -- and the difference only surfaces at the
+    first call that touches an account, because public data answers on either
+    setting.
+    """
+    assert venue("bybit").practice_mode == "set_sandbox_mode"
+    assert venue("binance").practice_mode == "enable_demo_trading"
+
+
+@pytest.mark.parametrize("name", SUPPORTED)
+def test_practice_mode_is_a_method_the_client_actually_has(name: str) -> None:
+    """A typo here would be a venue that silently stays on real money."""
+    chosen = venue(name)
+    client = chosen.build(testnet=False, rate_limit_ms=100)
+
+    assert callable(getattr(client, chosen.practice_mode, None))

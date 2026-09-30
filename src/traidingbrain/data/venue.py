@@ -51,6 +51,18 @@ class Venue:
     symbol_suffix: str
     #: True when the venue exposes a way to read an API key's own permissions.
     reports_key_rights: bool
+    #: Which ccxt call puts the client into play money.
+    #:
+    #: Not the same on both, and getting it wrong is not a small difference. ccxt
+    #: has deprecated `set_sandbox_mode` for Binance futures -- it now raises with
+    #: a link to the announcement rather than switching hosts -- while
+    #: `enable_demo_trading` routes to demo-dapi.binance.com and works. Bybit
+    #: still uses sandbox mode for its testnet.
+    #:
+    #: Found by running the connection check, which is the only way it surfaces:
+    #: public data answers on both settings, so the failure waits for the first
+    #: call that touches an account.
+    practice_mode: str = "set_sandbox_mode"
 
     def symbol(self, symbol: str) -> str:
         """`BTCUSDT` in this venue's unified spelling.
@@ -90,7 +102,7 @@ class Venue:
 
         client = getattr(ccxt, self.ccxt_id)(settings)
         if testnet:
-            client.set_sandbox_mode(True)
+            getattr(client, self.practice_mode)(True)
         return client
 
 
@@ -101,6 +113,7 @@ VENUES: dict[str, Venue] = {
         market_options={"defaultType": "swap", "defaultSubType": "linear"},
         symbol_suffix=":USDT",
         reports_key_rights=True,
+        practice_mode="set_sandbox_mode",
     ),
     "binance": Venue(
         name="binance",
@@ -114,6 +127,9 @@ VENUES: dict[str, Venue] = {
         # The check is skipped rather than faked: a permissive guess would be a
         # safety check that reports success without having run.
         reports_key_rights=False,
+        # ccxt refuses set_sandbox_mode on Binance futures now; demo trading is
+        # the supported replacement and routes to demo-dapi.binance.com.
+        practice_mode="enable_demo_trading",
     ),
 }
 

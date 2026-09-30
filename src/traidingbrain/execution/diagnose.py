@@ -21,7 +21,12 @@ from dataclasses import dataclass
 
 #: Bybit puts a numeric code in the body of every rejection. It survives ccxt's
 #: wrapping because the raw JSON is appended to the exception message.
-_RET_CODE = re.compile(r'"retCode"\s*:\s*(\d+)')
+_BYBIT_CODE = re.compile(r'"retCode"\s*:\s*(\d+)')
+
+#: Binance uses a negative number under a different key. The two schemes do not
+#: overlap, which matters: a wrapped exception carries one or the other and never
+#: says which venue produced it.
+_BINANCE_CODE = re.compile(r'"code"\s*:\s*(-\d+)')
 
 
 @dataclass(frozen=True)
@@ -53,7 +58,11 @@ def _environment_note(testnet: bool) -> str:
 def diagnose(error: Exception, *, testnet: bool = True) -> Diagnosis:
     """Read an exchange failure and say what to do about it."""
     text = str(error)
-    match = _RET_CODE.search(text)
+    binance = _BINANCE_CODE.search(text)
+    if binance is not None:
+        return _BINANCE_BY_CODE.get(binance.group(1)) or _unrecognised(text)
+
+    match = _BYBIT_CODE.search(text)
     code = match.group(1) if match else ""
 
     if code == "10003":
@@ -78,9 +87,18 @@ def diagnose(error: Exception, *, testnet: bool = True) -> Diagnosis:
             fixable_by_user=False,
         )
 
+    return _unrecognised(text)
+
+
+def _unrecognised(text: str) -> Diagnosis:
+    """Quote the venue verbatim rather than inventing an explanation.
+
+    An unknown code with a confident-sounding cause attached is worse than the
+    raw message: the raw message is at least true.
+    """
     return Diagnosis(
-        "Bybit rejected the connection.",
-        f"No specific cause recognised. The exchange said:\n\n{text[:400]}",
+        "The exchange rejected the connection.",
+        f"No specific cause recognised. It said:\n\n{text[:400]}",
         fixable_by_user=False,
     )
 
@@ -139,3 +157,56 @@ def _build_table() -> dict[str, Diagnosis]:
 
 
 _BY_CODE = _build_table()
+
+
+def _build_binance_table() -> dict[str, Diagnosis]:
+    """Binance's setup-time rejections, by the code it returns.
+
+    Only the ones that come up while connecting an account for the first time.
+    Guessing at the rest would produce confident wrong advice, and the fallback
+    already quotes the venue verbatim, which is at least true.
+    """
+    return {
+        "-2015": Diagnosis(
+            "Binance will not accept this API key.",
+            "One of three things, and the message does not distinguish them:\n"
+            "  * the key belongs to the other environment -- the futures testnet\n"
+            "    at testnet.binancefuture.com has its own accounts and its own\n"
+            "    keys, and a mainnet key fails here exactly like a typo\n"
+            "  * Futures permission is not enabled on the key\n"
+            "  * an IP restriction is set and this machine is not on the list",
+        ),
+        "-2014": Diagnosis(
+            "The API key is malformed.",
+            "Binance rejected the key's shape rather than its permissions, so this\n"
+            "is a copy that lost or gained a character. Paste it again, without\n"
+            "surrounding quotes and without a trailing space.",
+        ),
+        "-1022": Diagnosis(
+            "Binance rejected the signature on the request.",
+            "The key was found, so the key is right and the secret is not --\n"
+            "typically a copy that lost a character. Binance shows the secret only\n"
+            "once at creation; if it was not saved, create a new key.",
+        ),
+        "-1021": Diagnosis(
+            "This machine's clock is too far from Binance's.",
+            "Every request is signed with a timestamp and refused outside a narrow\n"
+            "window, so a clock off by seconds fails sporadically rather than\n"
+            "consistently. Turn on automatic time synchronisation and retry.",
+        ),
+        "-1003": Diagnosis(
+            "Too many requests.",
+            "A rate limit rather than anything about this setup. Waiting is the\n"
+            "whole fix.",
+            fixable_by_user=False,
+        ),
+        "-1121": Diagnosis(
+            "Binance does not know that symbol.",
+            "On USD-M futures a USDT perpetual is spelled BTC/USDT. The form\n"
+            "BTC/USDT:USDT is Bybit's. Seeing this after a venue change means\n"
+            "something is still converting symbols the old way.",
+        ),
+    }
+
+
+_BINANCE_BY_CODE = _build_binance_table()
