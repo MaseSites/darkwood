@@ -38,11 +38,11 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from traidingbrain.config.settings import load_config, load_secrets  # noqa: E402
-from traidingbrain.data.exchange import MarketData  # noqa: E402
-from traidingbrain.data.grid import timeframe_ms  # noqa: E402
-from traidingbrain.domain.enums import Timeframe  # noqa: E402
-from traidingbrain.storage.postgres import connect  # noqa: E402
+from traidingbrain.config.settings import load_config, load_secrets
+from traidingbrain.data.exchange import MarketData
+from traidingbrain.data.grid import timeframe_ms
+from traidingbrain.domain.enums import Timeframe
+from traidingbrain.storage.postgres import connect
 
 #: How far back to re-fetch beyond what the database already holds.
 #:
@@ -122,7 +122,7 @@ def collect_ohlcv(market: MarketData, conn: Any, symbol: str, timeframe: Timefra
 
     try:
         bars = market.fetch_ohlcv(symbol, timeframe, since_ms=since)
-    except Exception as error:  # noqa: BLE001 -- recorded, then re-raised
+    except Exception as error:
         with conn.cursor() as cur:
             _note(cur, series, 0, str(error)[:500])
         conn.commit()
@@ -160,7 +160,7 @@ def collect_funding(market: MarketData, conn: Any, symbol: str) -> int:
 
     try:
         rates = market.fetch_funding(symbol, since_ms=since)
-    except Exception as error:  # noqa: BLE001 -- recorded, then re-raised
+    except Exception as error:
         with conn.cursor() as cur:
             _note(cur, series, 0, str(error)[:500])
         conn.commit()
@@ -222,7 +222,7 @@ def main() -> int:
                 try:
                     count = collect_ohlcv(market, conn, symbol, frame)
                     print(f"ohlcv   {symbol:9s} {frame.value:4s} {count:5d} bars")
-                except Exception as error:  # noqa: BLE001 -- one series failing is not all of them
+                except Exception as error:
                     failures += 1
                     print(
                         f"ohlcv   {symbol:9s} {frame.value:4s} FAILED: {error}",
@@ -232,7 +232,7 @@ def main() -> int:
                 try:
                     count = collect_funding(market, conn, symbol)
                     print(f"funding {symbol:9s}      {count:5d} settlements")
-                except Exception as error:  # noqa: BLE001
+                except Exception as error:
                     failures += 1
                     print(f"funding {symbol:9s}      FAILED: {error}", file=sys.stderr)
 

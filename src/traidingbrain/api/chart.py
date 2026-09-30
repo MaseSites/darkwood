@@ -157,8 +157,31 @@ class _Scored:
     payload: LevelLine
 
 
+#: What each level is called on the chart.
+#:
+#: A lookup rather than a prettified enum value, because the enum is the
+#: engine's vocabulary and the chart is read by a person. A missing entry falls
+#: back to the raw name, which is visible and fixable rather than silent.
+LEVEL_LABELS: dict[LevelKind, str] = {
+    LevelKind.SWING_HIGH: "Swing-Hoch",
+    LevelKind.SWING_LOW: "Swing-Tief",
+    LevelKind.EQUAL_HIGHS: "gleiche Hochs",
+    LevelKind.EQUAL_LOWS: "gleiche Tiefs",
+    LevelKind.FVG_HIGH: "FVG oben",
+    LevelKind.FVG_MID: "FVG Mitte",
+    LevelKind.FVG_LOW: "FVG unten",
+    LevelKind.RANGE_HIGH: "Range-Hoch",
+    LevelKind.RANGE_LOW: "Range-Tief",
+    LevelKind.PREV_DAY_HIGH: "Vortageshoch",
+    LevelKind.PREV_DAY_LOW: "Vortagestief",
+    LevelKind.PREV_WEEK_HIGH: "Vorwochenhoch",
+    LevelKind.PREV_WEEK_LOW: "Vorwochentief",
+    LevelKind.CURRENT: "aktuell",
+}
+
+
 def _label(kind: LevelKind) -> str:
-    return kind.value.replace("_", " ")
+    return LEVEL_LABELS.get(kind, kind.value.replace("_", " "))
 
 
 def build_chart(
@@ -276,7 +299,7 @@ def _plan_lines(proposal: TradeProposal) -> list[PlanLine]:
         PlanLine(
             role="entry",
             price=proposal.entry,
-            label="Entry",
+            label="Einstieg",
             detail=f"{proposal.qty:g} at {proposal.leverage:g}x, {proposal.notional:,.0f} notional",
         ),
         PlanLine(
@@ -291,7 +314,7 @@ def _plan_lines(proposal: TradeProposal) -> list[PlanLine]:
         PlanLine(
             role="target",
             price=proposal.target,
-            label="Target",
+            label="Ziel",
             detail=f"+{reward:,.0f} at {proposal.reward_risk:.2f}R",
         ),
         PlanLine(

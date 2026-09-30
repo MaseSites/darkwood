@@ -57,6 +57,10 @@ const state = {
    * Kept beside the proposals rather than inside them, because it outlives
    * them -- the market is there whether or not anything was proposed. */
   symbols: null,
+  /* When the current analysis started, or null when nothing is loading.
+   * Only used to print elapsed seconds: a wait somebody can see the length of
+   * is a different wait from one that might be broken. */
+  loadingSince: null,
   symbol: null,
   marketTimeframe: null,
   market: null,
@@ -224,11 +228,24 @@ function figure(label, value, sub, modifier, changed) {
 function marketPanel() {
   const view = state.market;
   if (view === "unavailable") {
-    return `<div class="placeholder"><h2>No market data</h2>
-      <p>Nothing is backfilled for the followed symbols yet.</p></div>`;
+    return `<div class="placeholder"><h2>Keine Marktdaten</h2>
+      <p>Für die verfolgten Märkte ist noch nichts geladen.</p>
+      <p class="placeholder__fix">Holen mit: <code>python scripts/backfill.py BTCUSDT --since 2023-01-01</code></p></div>`;
   }
   if (!view) {
-    return `<div class="placeholder"><span class="pulse"></span><p>Reading the market&hellip;</p></div>`;
+    // A wait somebody can see the length of is a different wait. The first read
+    // of a symbol builds five timeframes of structure, zones and gaps, and
+    // saying so turns twenty silent seconds into twenty explained ones.
+    const seconds = state.loadingSince
+      ? Math.round((Date.now() - state.loadingSince) / 1000)
+      : 0;
+    return `<div class="placeholder">
+      <span class="pulse"></span>
+      <p>Analysiere ${escapeHtml(short(state.symbol ?? ""))} über fünf Zeitebenen&hellip;</p>
+      <p class="placeholder__fix">Struktur, Zonen, Fair Value Gaps und Liquidität.
+        Beim ersten Mal pro Markt etwa 25 Sekunden &mdash; danach sofort.
+        ${seconds > 2 ? `<b>${seconds}s</b>` : ""}</p>
+    </div>`;
   }
 
   const change =
@@ -238,16 +255,6 @@ function marketPanel() {
 
   return `
   <header class="market__head">
-    <span class="market__symbols" role="tablist" aria-label="Symbol">
-      ${(state.symbols ?? [])
-        .map(
-          (s) => `<button type="button" role="tab" data-act="sym" data-sym="${s}"
-                    aria-selected="${s === view.symbol}"
-                    class="chart__tab${s === view.symbol ? " chart__tab--on" : ""}">${s}</button>`
-        )
-        .join("")}
-    </span>
-
     <span class="market__price num">${fmt.price(view.price)}</span>
     <span class="market__change num ${change >= 0 ? "up" : "down"}">
       ${change >= 0 ? "+" : ""}${change.toFixed(2)}%
@@ -272,7 +279,7 @@ function marketPanel() {
       <span class="chart__readout" data-readout="market">${escapeHtml(
         candleReadout(view, view.candles.length - 1)
       )}</span>
-      ${view.levels_hidden ? `<span class="chart__hidden">${view.levels_hidden} more not drawn</span>` : ""}
+      ${view.levels_hidden ? `<span class="chart__hidden">${view.levels_hidden} weitere nicht gezeichnet</span>` : ""}
     </figcaption>
     <canvas class="chart__canvas" data-canvas="market"
             role="img"
@@ -332,7 +339,7 @@ function setupPanel(setups) {
 
   return `
   <section class="setups" aria-live="polite">
-    <h2 class="setups__head">${setups.length === 1 ? "Ein Setup" : `${setups.length} Setups`} nach den Regeln</h2>
+    <h2 class="setups__head">${setups.length === 1 ? "Ein Setup" : `${setups.length} Setups`} nach deinen Regeln</h2>
     <ul class="setups__list">${rows}</ul>
   </section>`;
 }
@@ -378,14 +385,45 @@ function gatePanel(gate) {
  * downtrend is a different proposition, and a row of regimes shows that in one
  * glance where four charts would take four readings.
  */
+/* Engine vocabulary onto reading vocabulary.
+ *
+ * A lookup rather than a translation of the enum values themselves: the enum is
+ * what the backtest reports, the log records and the tests assert on, and
+ * renaming it to suit a screen would make every stored result unreadable. A
+ * missing entry falls through to the raw value, which is visible and fixable. */
+const WORDS = {
+  trend_up: "Aufwärtstrend",
+  trend_down: "Abwärtstrend",
+  range: "Seitwärts",
+  manipulation: "Manipulation",
+  unknown: "unklar",
+  bullish: "bullisch",
+  bearish: "bärisch",
+  neutral: "neutral",
+  low: "tief",
+  normal: "normal",
+  high: "hoch",
+  extreme: "extrem",
+  new_longs: "neue Longs",
+  new_shorts: "neue Shorts",
+  greed: "Gier",
+  fear: "Angst",
+  extreme_greed: "extreme Gier",
+  extreme_fear: "extreme Angst",
+};
+
+function word(value) {
+  return WORDS[value] ?? String(value ?? "").replace(/_/g, " ");
+}
+
 function frameTable(view) {
   if (!view.frames?.length) return "";
   const marks = (f) =>
     [
       f.bos ? "BOS" : "",
       f.choch ? "CHoCH" : "",
-      f.sweep_up ? "swept high" : "",
-      f.sweep_down ? "swept low" : "",
+      f.sweep_up ? "Hoch geholt" : "",
+      f.sweep_down ? "Tief geholt" : "",
     ]
       .filter(Boolean)
       .join(" · ");
@@ -393,7 +431,7 @@ function frameTable(view) {
   return `
   <table class="frames">
     <thead>
-      <tr><th>Frame</th><th>Regime</th><th>Trend</th><th>Vol</th><th>Swings</th><th>Events</th></tr>
+      <tr><th>Ebene</th><th>Regime</th><th>Trend</th><th>Vola</th><th>Swings</th><th>Ereignisse</th></tr>
     </thead>
     <tbody>
       ${view.frames
@@ -401,10 +439,12 @@ function frameTable(view) {
           (f) => `<tr>
         <th scope="row">${escapeHtml(f.timeframe)}</th>
         <td class="frames__regime frames__regime--${escapeHtml(f.regime)}">${escapeHtml(
-          f.regime.replace("_", " ")
+          word(f.regime)
         )}</td>
-        <td class="frames__trend frames__trend--${escapeHtml(f.trend)}">${escapeHtml(f.trend)}</td>
-        <td>${escapeHtml(f.volatility)}</td>
+        <td class="frames__trend frames__trend--${escapeHtml(f.trend)}">${escapeHtml(
+          word(f.trend)
+        )}</td>
+        <td>${escapeHtml(word(f.volatility))}</td>
         <td class="num frames__swings">${escapeHtml(f.sequence || "—")}</td>
         <td class="frames__events">${escapeHtml(marks(f))}</td>
       </tr>`
@@ -417,20 +457,25 @@ function frameTable(view) {
 
 function marketContext(view) {
   const bits = [];
-  if (view.session) bits.push(`session <b>${escapeHtml(view.session)}</b>`);
-  if (view.positioning) bits.push(`positioning <b>${escapeHtml(view.positioning.replace("_", " "))}</b>`);
-  if (view.sentiment) bits.push(`sentiment <b>${escapeHtml(view.sentiment)}</b>`);
+  if (view.session) bits.push(`Sitzung <b>${escapeHtml(view.session)}</b>`);
+  if (view.positioning) bits.push(`Positionierung <b>${escapeHtml(word(view.positioning))}</b>`);
+  if (view.sentiment) bits.push(`Stimmung <b>${escapeHtml(view.sentiment)}</b>`);
   for (const item of view.upcoming ?? []) bits.push(escapeHtml(item));
   return bits.length ? `<p class="market__context">${bits.join(" &middot; ")}</p>` : "";
 }
 
 async function loadMarket() {
+  // The symbol list is one cheap call and the chart is a slow one. Awaiting
+  // both before drawing anything meant the asset rail did not appear for the
+  // twenty-odd seconds a cold analysis takes -- so the first thing anybody
+  // wants to do was the last thing that became possible.
   if (!state.symbols) {
     try {
       state.symbols = await api("/api/market");
     } catch {
       state.symbols = [];
     }
+    renderRail();
   }
   const symbol = state.symbol ?? state.symbols[0];
   if (!symbol) {
@@ -438,12 +483,16 @@ async function loadMarket() {
     return;
   }
   state.symbol = symbol;
+  state.loadingSince = state.loadingSince ?? Date.now();
+  renderMarket();
+
   const tf = state.marketTimeframe ? `?timeframe=${state.marketTimeframe}` : "";
   try {
     state.market = await api(`/api/market/${symbol}/chart${tf}`);
   } catch {
     state.market = "unavailable";
   }
+  state.loadingSince = null;
 }
 
 function paintMarket() {
@@ -546,7 +595,7 @@ function chartPanel(p) {
   if (view === "unavailable") return "";
   if (!view) {
     return `<div class="chart chart--loading" data-chart="${p.id}">
-      <span class="pulse"></span><p>Loading the bars this was decided on&hellip;</p>
+      <span class="pulse"></span><p>Lade die Kerzen, auf denen das entschieden wurde&hellip;</p>
     </div>`;
   }
   const hidden = view.levels_hidden
@@ -698,7 +747,7 @@ function ticket(p) {
       <span class="head-spacer"></span>
       <span class="confidence">confidence <b class="num">${p.confidence.toFixed(0)}</b></span>
       <span class="countdown num" data-urgent="${secondsLeft < 120}"
-            data-expires="${p.expires_ts}">${secondsLeft}s left</span>
+            data-expires="${p.expires_ts}">${secondsLeft}s übrig</span>
     </header>
 
     <div class="ticket__body">
@@ -709,36 +758,36 @@ function ticket(p) {
         ${figure(
           "Stop",
           fmt.price(p.stop),
-          `${fmt.pct(p.stop_distance_pct)} away`,
+          `${fmt.pct(p.stop_distance_pct)} entfernt`,
           "short",
           changed.has("stop")
         )}
-        ${figure("Target", fmt.price(p.target), `R:R ${p.reward_risk.toFixed(2)}`, "long", changed.has("target"))}
+        ${figure("Ziel", fmt.price(p.target), `CRV ${p.reward_risk.toFixed(2)}`, "long", changed.has("target"))}
         ${figure(
           "Liquidation",
           fmt.price(p.liquidation_price),
-          `${p.liquidation_buffer_r.toFixed(1)}× the stop distance beyond it`,
+          `${p.liquidation_buffer_r.toFixed(1)}× Stop-Abstand dahinter`,
           "liq",
           changed.has("liquidation_price")
         )}
-        ${figure("Size", fmt.qty(p.qty), `${fmt.money(p.notional)} notional`, null, changed.has("qty"))}
-        ${figure("Leverage", `${p.leverage}×`, `${fmt.money(p.margin)} margin`, null, changed.has("leverage"))}
+        ${figure("Grösse", fmt.qty(p.qty), `${fmt.money(p.notional)} Volumen`, null, changed.has("qty"))}
+        ${figure("Hebel", `${p.leverage}×`, `${fmt.money(p.margin)} Margin`, null, changed.has("leverage"))}
         ${figure(
-          "At risk",
+          "Im Risiko",
           fmt.money(p.risk_amount),
-          `${fmt.pct(p.risk_pct)} of ${fmt.money(p.equity)}`,
+          `${fmt.pct(p.risk_pct)} von ${fmt.money(p.equity)}`,
           null,
           changed.has("risk_amount")
         )}
-        ${figure("Assessed risk", p.risk_level, p.bias, null, false)}
+        ${figure("Eingeschätztes Risiko", p.risk_level, p.bias, null, false)}
 
         <div class="reasoning">
-          <h3>Why</h3>
+          <h3>Warum</h3>
           ${factorTable(p)}
           <ul>${p.reasoning.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>
           ${
             p.invalidation_note
-              ? `<p class="invalidation"><b>Wrong if</b> ${escapeHtml(p.invalidation_note)}</p>`
+              ? `<p class="invalidation"><b>Falsch, wenn</b> ${escapeHtml(p.invalidation_note)}</p>`
               : ""
           }
         </div>
@@ -749,35 +798,35 @@ function ticket(p) {
 
     <footer class="ticket__foot">
       <div class="dial">
-        <label for="lev-${p.id}">Leverage</label>
+        <label for="lev-${p.id}">Hebel</label>
         <span class="stepper">
-          <button type="button" data-act="lev-down" aria-label="Lower leverage"
+          <button type="button" data-act="lev-down" aria-label="Hebel senken"
                   ${p.leverage <= 1 ? "disabled" : ""}>&minus;</button>
           <output id="lev-${p.id}">${p.leverage}×</output>
           <button type="button" data-act="lev-up" disabled
-                  title="Raising leverage moves liquidation closer to the stop; that is a different trade"
-                  aria-label="Raising leverage is not permitted">+</button>
+                  title="Hebel erhöhen rückt die Liquidation näher an den Stop — das ist ein anderer Trade"
+                  aria-label="Hebel erhöhen ist nicht erlaubt">+</button>
         </span>
       </div>
 
       <div class="dial">
-        <label>Risk</label>
+        <label>Risiko</label>
         <span class="stepper">
-          <button type="button" data-act="risk-down" aria-label="Halve the risk">&frac12;</button>
+          <button type="button" data-act="risk-down" aria-label="Risiko halbieren">&frac12;</button>
           <output>${fmt.pct(p.risk_pct)}</output>
         </span>
       </div>
 
       <span class="foot-spacer"></span>
 
-      <button class="btn" type="button" data-act="decline">Decline</button>
+      <button class="btn" type="button" data-act="decline">Ablehnen</button>
       <button class="btn commit" type="button" data-act="commit"
               ${halted ? "disabled" : ""}
               aria-describedby="commit-help-${p.id}">
         <span class="commit__fill"></span>
-        <span class="commit__label">${halted ? "Halted" : "Hold to send"}</span>
+        <span class="commit__label">${halted ? "Angehalten" : "Zum Senden halten"}</span>
       </button>
-      <span id="commit-help-${p.id}" hidden>Press and hold for just over a second to send this order.</span>
+      <span id="commit-help-${p.id}" hidden>Etwas über eine Sekunde gedrückt halten, um diese Order zu senden.</span>
 
       ${notice ? `<div class="notice notice--${notice.kind}">${escapeHtml(notice.text)}</div>` : ""}
     </footer>
@@ -796,13 +845,13 @@ function render() {
   const sys = state.system;
   document.getElementById("strip").innerHTML = sys
     ? `
-      <span>equity <b class="num">${fmt.money(sys.equity)}</b></span>
-      <span>open <b class="num">${sys.open_positions}</b></span>
+      <span>Kapital <b class="num">${fmt.money(sys.equity)}</b></span>
+      <span>offen <b class="num">${sys.open_positions}</b></span>
       <span class="flag ${sys.testnet ? "flag--testnet" : "flag--armed"}">
-        ${sys.testnet ? "testnet" : "live money"}
+        ${sys.testnet ? "Testnetz" : "echtes Geld"}
       </span>
-      ${sys.execution_connected ? "" : '<span class="flag">no exchange connected</span>'}
-      ${sys.kill_switch_engaged ? '<span class="flag flag--halted">halted</span>' : ""}`
+      ${sys.execution_connected ? "" : '<span class="flag">keine Börse verbunden</span>'}
+      ${sys.kill_switch_engaged ? '<span class="flag flag--halted">angehalten</span>' : ""}`
     : '<span class="pulse"></span>';
 
   const banners = document.getElementById("banners");
@@ -810,14 +859,14 @@ function render() {
   if (state.outcome) {
     html += `<div class="banner banner--${state.outcome.kind === "ok" ? "sent" : "blocked"}"
                   role="status">
-      <h2>${state.outcome.kind === "ok" ? "Sent" : "Not sent"}</h2>
+      <h2>${state.outcome.kind === "ok" ? "Gesendet" : "Nicht gesendet"}</h2>
       <p>${escapeHtml(state.outcome.text)}</p>
     </div>`;
   }
   if (sys?.kill_switch_engaged) {
     html += `<div class="banner banner--halt">
-      <h2>Trading is halted</h2>
-      <p>${escapeHtml(sys.kill_switch_reason)} &mdash; nothing will be sent until this is cleared by hand.</p>
+      <h2>Handel ist angehalten</h2>
+      <p>${escapeHtml(sys.kill_switch_reason)} &mdash; es wird nichts gesendet, bis das von Hand aufgehoben wird.</p>
     </div>`;
   } else if (sys && !sys.limits_allow_trading && sys.limit_blockers.length) {
     html += `<div class="banner banner--blocked">
@@ -829,14 +878,14 @@ function render() {
 
   const list = document.getElementById("list");
   if (state.proposals === null) {
-    list.innerHTML = `<div class="placeholder"><span class="pulse"></span><p>Loading&hellip;</p></div>`;
+    list.innerHTML = `<div class="placeholder"><span class="pulse"></span><p>Lade&hellip;</p></div>`;
     return;
   }
   if (!state.proposals.length) {
     list.innerHTML = `<div class="placeholder">
-      <h2>Nothing to decide</h2>
-      <p>Most bars are not setups. This screen stays empty until the analysis finds
-         something worth putting money on, which is the normal state.</p>
+      <h2>Nichts zu entscheiden</h2>
+      <p>Die meisten Kerzen sind kein Setup. Dieser Bereich bleibt leer, bis die
+         Analyse etwas findet, das Geld wert ist &mdash; und das ist der Normalzustand.</p>
     </div>`;
     return;
   }
@@ -985,9 +1034,48 @@ document.addEventListener("click", (event) => {
   loadMarket().then(renderMarket);
 });
 
+/**
+ * The asset rail in the masthead.
+ *
+ * Rendered separately from the market panel and on its own schedule, because it
+ * must stay clickable while the panel behind it is rebuilding. A rail that
+ * disappears for twenty seconds during a cold analysis is a rail you cannot use
+ * to escape a slow asset.
+ */
+function renderRail() {
+  const rail = document.getElementById("rail");
+  if (!rail) return;
+  // Not loaded yet and loaded-and-empty are different answers. Saying "no
+  // markets configured" during the first second of a cold start is a lie that
+  // sends somebody to edit a config file that is fine.
+  if (state.symbols === null || state.symbols === undefined) {
+    rail.innerHTML = `<span class="rail__loading">Märkte&hellip;</span>`;
+    return;
+  }
+  const symbols = state.symbols;
+  if (!symbols.length) {
+    rail.innerHTML = `<span class="rail__loading">keine Märkte konfiguriert</span>`;
+    return;
+  }
+  const current = state.symbol ?? symbols[0];
+  rail.innerHTML = symbols
+    .map(
+      (s) => `<button type="button" data-act="sym" data-sym="${s}"
+                aria-current="${s === current ? "true" : "false"}"
+                class="rail__tab${s === current ? " rail__tab--on" : ""}">${short(s)}</button>`
+    )
+    .join("");
+}
+
+/** BTCUSDT reads as BTC on a tab. The pair is in the chart header anyway. */
+function short(symbol) {
+  return symbol.replace(/USDT$|USD$/, "");
+}
+
 function renderMarket() {
   const host = document.getElementById("market");
   if (!host) return;
+  renderRail();
   host.innerHTML = marketPanel();
   paintMarket();
   const canvas = host.querySelector("[data-canvas]");
@@ -1076,3 +1164,8 @@ renderMarket();
 refresh();
 setInterval(refresh, POLL_MS);
 setInterval(tickCountdowns, 1000);
+/* The elapsed seconds in the analysis placeholder only move if something
+ * redraws it. One second is the resolution it is printed at. */
+setInterval(() => {
+  if (state.loadingSince) renderMarket();
+}, 1000);

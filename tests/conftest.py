@@ -20,6 +20,8 @@ from typing import Any
 
 import pytest
 
+from traidingbrain.config.settings import load_secrets
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -86,3 +88,42 @@ def golden() -> Callable[[str, Any], None]:
         )
 
     return compare
+
+
+# --------------------------------------------------------------------------- #
+# The test database
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture(scope="session")
+def pg_test_url() -> str:
+    """The test database URL, as a fixture so no test file has to import this."""
+    return postgres_test_url()
+
+
+def postgres_test_url() -> str:
+    """The URL the Postgres tests may use, or a skip.
+
+    **Why this is not just `postgres_url`.** The proposal tests truncate before
+    every case, which is the right way to run them against a shared server and
+    the wrong thing to do to the database the live loop writes proposals into.
+    While no Postgres was reachable, every one of those tests skipped and the
+    hazard was invisible. The first working database made it real.
+
+    So the tests get their own database, and pointing them at the production one
+    is refused rather than permitted with a warning. A warning in a test suite is
+    read once.
+    """
+    secrets = load_secrets()
+    test_url = secrets.postgres_test_url.get_secret_value()
+    if not test_url:
+        pytest.skip("no TB_POSTGRES_TEST_URL configured")
+
+    live_url = secrets.postgres_url.get_secret_value()
+    if live_url and test_url == live_url:
+        pytest.fail(
+            "TB_POSTGRES_TEST_URL is the same database as TB_POSTGRES_URL. These "
+            "tests truncate; running them here would delete real proposals. Point "
+            "the test URL at a separate database (e.g. traidingbrain_test)."
+        )
+    return test_url

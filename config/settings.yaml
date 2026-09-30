@@ -18,10 +18,13 @@ exchange:
   rate_limit_ms: 120
 
 symbols:
-  # Stages 1-5 are validated on BTCUSDT alone: one symbol, fast iteration, small
-  # LLM bill. The other three are a config change once the engine has been shown
-  # to work.
-  active: [BTCUSDT]
+  # All four are followed now. The single-symbol phase was for validating the
+  # engine cheaply; the comparison runs have since been done on all four, and a
+  # screen that offers one asset to look at is a screen with nothing to choose.
+  #
+  # Only the analysis runs on all of them -- the model is still asked per asset,
+  # on demand, so this costs bars and CPU rather than money.
+  active: [BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT]
   available: [BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT]
 
 timeframes:

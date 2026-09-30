@@ -349,7 +349,7 @@ def build_market_view(
             else None
         ),
         setups=[_setup_read(signal, min_stop) for signal in (setups or [])],
-        note="No trade is proposed here. This is the market, drawn the way the analysis reads it.",
+        note="Hier wird kein Trade vorgeschlagen. Das ist der Markt, so wie die Analyse ihn liest.",
     )
 
 
@@ -357,13 +357,13 @@ def build_market_view(
 #: vocabulary and they are kept as the identifier, because a label that drifted
 #: from the counter would make the statistics unreadable next to the screen.
 GATE_LABELS = {
-    "too_soon": "Spacing",
+    "too_soon": "Abstand",
     "unknown_regime": "Regime",
-    "no_structure_event": "Structure",
-    "no_sweep": "Liquidity",
-    "too_little_confluence": "Confluence",
+    "no_structure_event": "Struktur",
+    "no_sweep": "Liquidität",
+    "too_little_confluence": "Konfluenz",
     "news_blackout": "News",
-    "wrong_session": "Session",
+    "wrong_session": "Sitzung",
 }
 
 
@@ -386,10 +386,10 @@ def _gate_read(reading: GateReading) -> GateRead:
         for check in reading.checks
     ]
     if reading.passed:
-        headline = "This bar would be put to the model."
+        headline = "Diese Kerze würde dem Modell vorgelegt."
     else:
         blocking = next(check for check in checks if check.blocking)
-        headline = f"No setup: {blocking.label.lower()} — {blocking.detail}."
+        headline = f"Kein Setup: {blocking.label.lower()} — {blocking.detail}."
     return GateRead(
         would_ask=reading.passed,
         blocking=reading.blocking,
@@ -424,9 +424,9 @@ def _session_line(snapshot: MarketSnapshot) -> str:
     """
     session = snapshot.session
     if not session.active:
-        return "no desk staffed"
+        return "kein Desk besetzt"
     names = " + ".join(session.active)
-    return f"{names}{' overlap' if session.is_overlap else ''}"
+    return f"{names}{' Überschneidung' if session.is_overlap else ''}"
 
 
 def _events(
@@ -444,13 +444,13 @@ def _events(
         structure = view.structure
         liquidity = view.liquidity
         candidates = [
-            ("bos", structure.bos, structure.bars_since_bos, "break of structure"),
-            ("choch", structure.choch, structure.bars_since_choch, "change of character"),
+            ("bos", structure.bos, structure.bars_since_bos, "Strukturbruch"),
+            ("choch", structure.choch, structure.bars_since_choch, "Charakterwechsel"),
             (
                 "sweep_up" if liquidity.sweep_up else "sweep_down",
                 liquidity.sweep_up or liquidity.sweep_down,
                 liquidity.bars_since_sweep,
-                "buy-side swept" if liquidity.sweep_up else "sell-side swept",
+                "Kaufseite geholt" if liquidity.sweep_up else "Verkaufsseite geholt",
             ),
         ]
         for kind, present, bars_ago, label in candidates:

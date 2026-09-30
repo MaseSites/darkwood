@@ -388,6 +388,21 @@ class Secrets(BaseSettings):
         default=SecretStr(""),
         validation_alias=AliasChoices("TB_POSTGRES_URL", "POSTGRES_URL", "DATABASE_URL"),
     )
+    #: A *separate* database for the test suite, and the reason it has to exist.
+    #:
+    #: The Postgres proposal tests truncate `proposals` before each case. That
+    #: was harmless while no database was reachable and every run skipped. It
+    #: stopped being harmless the moment one was: `postgres_url` is what the
+    #: live loop writes real proposals into, and a test run against it is a
+    #: delete.
+    #:
+    #: Empty means the Postgres cases skip, exactly as they did before. Pointing
+    #: it at the same database as `postgres_url` is refused rather than allowed
+    #: -- see `tests/conftest.py`.
+    postgres_test_url: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("TB_POSTGRES_TEST_URL", "POSTGRES_TEST_URL"),
+    )
     kill_switch_file: Path = Path("data/KILL_SWITCH")
 
 

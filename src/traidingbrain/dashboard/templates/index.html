@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>traidingBrain — awaiting decision</title>
+    <title>traidingBrain</title>
     <link rel="stylesheet" href="/static/app.css" />
     <link
       rel="icon"
@@ -15,7 +15,13 @@
   <body>
     <div class="shell">
       <header class="masthead">
-        <h1 class="wordmark">traidingBrain <span>/ awaiting decision</span></h1>
+        <h1 class="wordmark">traidingBrain</h1>
+        <!-- The asset rail sits in the masthead because picking one is the first
+             thing anybody does here, and a control you have to look for is a
+             control that gets missed. -->
+        <nav class="rail" id="rail" aria-label="Markt wählen">
+          <span class="rail__loading">Märkte&hellip;</span>
+        </nav>
         <div class="status-strip" id="strip"><span class="pulse"></span></div>
       </header>
 
@@ -23,22 +29,28 @@
 
       <!-- The market, always. Most hours have no setup, and a screen only worth
            opening when one appears is a screen nobody learns the market on. -->
-      <section class="market" id="market" aria-label="Market view">
-        <div class="placeholder"><span class="pulse"></span><p>Reading the market&hellip;</p></div>
+      <section class="market panel" id="market" aria-label="Marktansicht">
+        <div class="placeholder"><span class="pulse"></span><p>Lese den Markt&hellip;</p></div>
       </section>
 
       <!-- The proposals. One screen, no scrolling into view: everything that
            matters for a decision should be visible at the moment it is made. -->
-      <main class="stack" id="list" aria-live="polite">
-        <div class="placeholder"><span class="pulse"></span><p>Loading&hellip;</p></div>
-      </main>
+      <section class="panel" aria-labelledby="decision-head">
+        <h2 class="panel__head" id="decision-head">
+          Entscheidung
+          <span class="panel__hint">Hier erscheint ein Trade, wenn einer vorbereitet ist</span>
+        </h2>
+        <main class="stack" id="list" aria-live="polite">
+          <div class="placeholder"><span class="pulse"></span><p>Lade&hellip;</p></div>
+        </main>
+      </section>
 
       <footer class="footnote">
         <span>
-          Nothing is sent without a held confirmation. The engine proposes; the
-          decision is yours.
+          Nichts wird ohne gehaltene Bestätigung gesendet. Das System schlägt
+          vor &mdash; entschieden wird von dir.
         </span>
-        <button class="btn" type="button" id="halt">Halt / resume trading</button>
+        <button class="btn" type="button" id="halt">Handel anhalten / fortsetzen</button>
       </footer>
     </div>
 

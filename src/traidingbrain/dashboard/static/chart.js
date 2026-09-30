@@ -472,7 +472,7 @@ function drawTimeAxis(ctx, view, g) {
 
   ctx.textAlign = "right";
   ctx.fillStyle = g.colours.dim;
-  ctx.fillText("decision →", g.plotRight - 2, g.plotBottom + 7);
+  ctx.fillText("Entscheidung →", g.plotRight - 2, g.plotBottom + 7);
 }
 
 function drawCrosshair(ctx, view, hover, g, colours) {

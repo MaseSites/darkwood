@@ -1051,6 +1051,106 @@ body {
   height: 380px;
 }
 
+/* ------------------------------------------------------- the rail ------ */
+/* Picking an asset is the first thing anybody does here, so it sits in the
+   masthead rather than inside the panel it controls. It also renders on its own
+   schedule: a cold analysis takes twenty seconds, and a rail that vanishes
+   during it is the one control you cannot use to escape a slow asset. */
+
+.rail {
+  display: flex;
+  gap: var(--s1);
+  align-items: center;
+}
+
+.rail__loading {
+  font-size: 11px;
+  color: var(--dimmer);
+}
+
+.rail__tab {
+  appearance: none;
+  padding: 6px 12px;
+  min-height: 32px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--dim);
+  font: inherit;
+  font-size: 12px;
+  font-family: var(--mono);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.rail__tab:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+
+.rail__tab:active {
+  transform: scale(0.97);
+}
+
+.rail__tab:focus-visible {
+  outline: 2px solid var(--caution);
+  outline-offset: 1px;
+}
+
+.rail__tab--on {
+  color: var(--text);
+  background: var(--panel-high);
+  border-color: var(--rule-strong);
+}
+
+/* -------------------------------------------------- panel headings ------ */
+/* Two unlabelled boxes was the complaint, and it was fair: nothing said what
+   either one was or why one of them was empty. A heading and one line of
+   explanation cost almost no space and answer both. */
+
+.panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2) var(--s3);
+  margin: 0 0 var(--s3);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.panel__hint {
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--dimmer);
+}
+
+.panel + .panel {
+  margin-top: var(--gap-lg);
+}
+
+/* A placeholder that tells you the command to run is a placeholder that ends
+   the problem rather than describing it. */
+.placeholder__fix {
+  margin-top: var(--s3);
+  font-size: 11px;
+  color: var(--dimmer);
+}
+
+.placeholder__fix code {
+  padding: 2px 6px;
+  background: var(--panel-high);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  color: var(--dim);
+}
+
 /* ----------------------------------------------------- the setups ------ */
 /* When a rule fires this is the answer and the gate below is the working, so it
    sits above and is the one thing on the market screen allowed to be loud --

@@ -15,10 +15,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from tests.factories import make_snapshot, make_symbol_spec
-from traidingbrain.api.app import Services, create_app
+from traidingbrain.api.app import Services, _cost_floor, create_app
 from traidingbrain.brain.fake import FakeBrain
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.domain.proposal import TradeProposal
@@ -314,3 +315,44 @@ def test_the_kill_switch_releases_only_when_asked(client: TestClient) -> None:
 
     client.delete("/api/kill")
     assert client.get("/api/state").json()["kill_switch_engaged"] is False
+
+
+# --------------------------------------------------------------------------- #
+# The market view without an exchange, which is the ordinary state
+# --------------------------------------------------------------------------- #
+
+
+def test_the_market_view_survives_having_no_instrument_rules(
+    services: Services, config: AppConfig
+) -> None:
+    """The bug this pins took the whole chart down with a 404.
+
+    The market panel annotates each setup with whether its stop is wide enough
+    to be affordable, which needs the venue's fees. Asking for them strictly
+    meant that with no exchange connected -- the ordinary state of this build --
+    every chart request returned "no instrument rules loaded" and the screen
+    showed two empty boxes.
+
+    An optional annotation must never be able to fail the page it decorates.
+    """
+    services.specs = {}
+
+    assert services.optional_spec("BTCUSDT") is None
+    with pytest.raises(HTTPException):
+        services.spec_for("BTCUSDT")
+
+
+def test_the_cost_floor_is_zero_rather_than_guessed_when_fees_are_unknown(
+    services: Services,
+) -> None:
+    """Zero means unknown, and the panel then shows no affordability note.
+
+    Substituting typical fees would put a number on the screen that looks
+    measured and is not -- and this particular number decides whether a setup
+    is shown as untradeable.
+    """
+    services.specs = {}
+
+    assert _cost_floor(services, "BTCUSDT") == 0.0
+    services.specs = {"BTCUSDT": make_symbol_spec()}
+    assert _cost_floor(services, "BTCUSDT") > 0.0

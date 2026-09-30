@@ -157,7 +157,7 @@ def test_a_quiet_bar_reports_no_session_rather_than_a_stale_one() -> None:
     for view in quiet:
         assert view.active == ()
         assert view.bars_since_open is None
-        assert "none staffed" in view.describe()
+        assert "kein Desk besetzt" in view.describe()
 
 
 # --------------------------------------------------------------------------- #

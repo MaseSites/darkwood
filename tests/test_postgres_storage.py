@@ -15,7 +15,6 @@ from threading import Lock
 
 import pytest
 
-from traidingbrain.config.settings import load_secrets
 from traidingbrain.storage.postgres import (
     MAX_POOL_SIZE,
     PostgresUnavailableError,
@@ -25,14 +24,6 @@ from traidingbrain.storage.postgres import (
     pool_for,
     status,
 )
-
-
-def url_or_skip() -> str:
-    value = load_secrets().postgres_url.get_secret_value()
-    if not value:
-        pytest.skip("no TB_POSTGRES_URL configured")
-    return value
-
 
 # --------------------------------------------------------------------------- #
 # Discovery
@@ -72,16 +63,16 @@ def test_two_migrations_sharing_a_version_are_refused(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_migrating_twice_applies_nothing_the_second_time() -> None:
+def test_migrating_twice_applies_nothing_the_second_time(pg_test_url: str) -> None:
     """Every start-up runs this. One that has to remember will forget."""
-    url = url_or_skip()
+    url = pg_test_url
     migrate(url)
 
     assert migrate(url) == []
 
 
-def test_the_shipped_schema_is_fully_applied() -> None:
-    url = url_or_skip()
+def test_the_shipped_schema_is_fully_applied(pg_test_url: str) -> None:
+    url = pg_test_url
     migrate(url)
     applied, pending = status(url)
 
@@ -89,8 +80,8 @@ def test_the_shipped_schema_is_fully_applied() -> None:
     assert pending == []
 
 
-def test_the_tables_the_store_needs_exist() -> None:
-    url = url_or_skip()
+def test_the_tables_the_store_needs_exist(pg_test_url: str) -> None:
+    url = pg_test_url
     migrate(url)
     with connect(url) as conn, conn.cursor() as cur:
         cur.execute(
@@ -101,13 +92,13 @@ def test_the_tables_the_store_needs_exist() -> None:
     assert {"proposals", "tokens", "schema_migrations"} <= tables
 
 
-def test_the_payload_is_queryable_json_not_text() -> None:
+def test_the_payload_is_queryable_json_not_text(pg_test_url: str) -> None:
     """jsonb, so a field in the proposal can be filtered on without parsing rows.
 
     Stored as text it would still work and would quietly rule out every query
     anyone will eventually want.
     """
-    url = url_or_skip()
+    url = pg_test_url
     migrate(url)
     with connect(url) as conn, conn.cursor() as cur:
         cur.execute(
@@ -153,19 +144,19 @@ def test_an_unreachable_server_is_reported_not_swallowed() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_the_pool_is_shared_per_url_not_per_store() -> None:
+def test_the_pool_is_shared_per_url_not_per_store(pg_test_url: str) -> None:
     """A pool per store object puts the exhaustion back where it started.
 
     Two stores in one process -- the dashboard's and the live loop's -- must
     draw from the same handful of connections, or four per store becomes eight
     and then twelve.
     """
-    url = url_or_skip()
+    url = pg_test_url
 
     assert pool_for(url) is pool_for(url)
 
 
-def test_a_hundred_callers_share_a_bounded_number_of_connections() -> None:
+def test_a_hundred_callers_share_a_bounded_number_of_connections(pg_test_url: str) -> None:
     """The failure this pool exists for, reproduced.
 
     Every store method used to open its own connection. Sixteen worker threads
@@ -177,7 +168,7 @@ def test_a_hundred_callers_share_a_bounded_number_of_connections() -> None:
     a guarantee whose test falls over under the concurrency it exists to survive
     is one nobody is checking any more.
     """
-    url = url_or_skip()
+    url = pg_test_url
 
     pool = pool_for(url)
     seen: set[int] = set()

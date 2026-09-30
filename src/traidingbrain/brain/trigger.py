@@ -27,6 +27,20 @@ from traidingbrain.domain.snapshot import MarketSnapshot, TimeframeView
 #: Strength at which an indicator counts as taking a side.
 MIN_INDICATOR_STRENGTH = 0.3
 
+#: What each indicator is called on screen.
+#:
+#: A lookup rather than a rename: the names are what the snapshot carries, the
+#: history index keys on and the tests assert against. A missing entry falls
+#: through to the raw name, which is visible rather than silent.
+INDICATOR_WORDS = {
+    "CLOSE_IN_RANGE": "Lage in der Range",
+    "RSI": "RSI",
+    "MACD": "MACD",
+    "EMA_STACK": "EMA-Reihenfolge",
+    "BOLLINGER": "Bollinger",
+    "VOLUME": "Volumen",
+}
+
 
 @dataclass(frozen=True)
 class GateCheck:
@@ -96,28 +110,28 @@ def evaluate(
 def _bars(count: int) -> str:
     """"1 bar", not "1 bars". Small, and the kind of small that makes a screen
     look like nobody read it."""
-    return f"{count} bar{'' if count == 1 else 's'}"
+    return f"{count} Kerze{'' if count == 1 else 'n'}"
 
 
 def _spacing(config: TriggerConfig, bars_since: int | None) -> GateCheck:
     minimum = config.min_bars_between_calls
     if bars_since is None:
-        return GateCheck("too_soon", True, "no call yet on this run")
+        return GateCheck("too_soon", True, "noch kein Aufruf")
     return GateCheck(
         "too_soon",
         bars_since >= minimum,
-        f"{bars_since} of {_bars(minimum)} since the last call",
+        f"{bars_since} von {_bars(minimum)} seit dem letzten Aufruf",
     )
 
 
 def _warmed_up(signal: TimeframeView | None) -> GateCheck:
     if signal is None:
-        return GateCheck("unknown_regime", False, "signal timeframe missing")
+        return GateCheck("unknown_regime", False, "Signal-Zeitebene fehlt")
     known = signal.regime is not RegimeKind.UNKNOWN
     return GateCheck(
         "unknown_regime",
         known,
-        signal.regime.value if known else "not enough bars to read a regime",
+        signal.regime.value if known else "zu wenige Kerzen für ein Regime",
     )
 
 
@@ -125,11 +139,11 @@ def _structure_event(config: TriggerConfig, signal: TimeframeView) -> GateCheck:
     structure = signal.structure
     present = structure.bos or structure.choch
     if present:
-        which = "break of structure" if structure.bos else "change of character"
+        which = "Strukturbruch" if structure.bos else "Charakterwechsel"
         bars = structure.bars_since_bos if structure.bos else structure.bars_since_choch
-        detail = f"{which} {_bars(bars)} ago" if bars is not None else which
+        detail = f"{which} vor {_bars(bars)}" if bars is not None else which
     else:
-        detail = f"no break, sequence {structure.sequence or 'unread'}"
+        detail = f"kein Bruch, Folge {structure.sequence or 'ungelesen'}"
     return GateCheck(
         "no_structure_event", present or not config.require_bos_or_choch, detail
     )
@@ -139,11 +153,11 @@ def _sweep(config: TriggerConfig, signal: TimeframeView) -> GateCheck:
     liquidity = signal.liquidity
     present = liquidity.sweep_up or liquidity.sweep_down
     if present:
-        side = "buy-side" if liquidity.sweep_up else "sell-side"
+        side = "Kaufseite" if liquidity.sweep_up else "Verkaufsseite"
         bars = liquidity.bars_since_sweep
-        detail = f"{side} swept{f' {_bars(bars)} ago' if bars is not None else ''}"
+        detail = f"{side} geholt{f' vor {_bars(bars)}' if bars is not None else ''}"
     else:
-        detail = "no sweep" + ("" if config.require_sweep else " (not required)")
+        detail = "kein Sweep" + ("" if config.require_sweep else " (nicht verlangt)")
     return GateCheck("no_sweep", present or not config.require_sweep, detail)
 
 
@@ -151,11 +165,11 @@ def _confluence_check(config: TriggerConfig, signal: TimeframeView) -> GateCheck
     count = _confluence(signal)
     minimum = config.min_indicator_confluence
     taking = [
-        reading.name.lower().replace("_", " ")
+        INDICATOR_WORDS.get(reading.name, reading.name.lower().replace("_", " "))
         for reading in signal.indicators
         if reading.bias is not Bias.NEUTRAL and reading.strength >= MIN_INDICATOR_STRENGTH
     ]
-    detail = f"{count} of {minimum} indicators taking a side"
+    detail = f"{count} von {minimum} Indikatoren beziehen Stellung"
     if taking:
         detail += f" ({', '.join(taking)})"
     return GateCheck("too_little_confluence", count >= minimum, detail)
@@ -164,7 +178,7 @@ def _confluence_check(config: TriggerConfig, signal: TimeframeView) -> GateCheck
 def _news(config: TriggerConfig, snapshot: MarketSnapshot) -> GateCheck:
     window = config.news_blackout_minutes
     if window <= 0:
-        return GateCheck("news_blackout", True, "blackout off")
+        return GateCheck("news_blackout", True, "Sperre aus")
     close = [
         item
         for item in snapshot.news
@@ -173,22 +187,22 @@ def _news(config: TriggerConfig, snapshot: MarketSnapshot) -> GateCheck:
         and abs(item.minutes_until) <= window
     ]
     if not close:
-        return GateCheck("news_blackout", True, f"nothing high-impact within {window} min")
+        return GateCheck("news_blackout", True, f"nichts Wichtiges in {window} min")
     nearest = min(close, key=lambda item: abs(item.minutes_until or 0))
-    return GateCheck("news_blackout", False, f"{nearest.event} within {window} min")
+    return GateCheck("news_blackout", False, f"{nearest.event} in {window} min")
 
 
 def _session(config: TriggerConfig, snapshot: MarketSnapshot) -> GateCheck:
     session = snapshot.session
     staffed = " + ".join(session.active) if session.active else "none staffed"
     if config.require_active_session and session.is_quiet:
-        return GateCheck("wrong_session", False, "no desk staffed")
+        return GateCheck("wrong_session", False, "kein Desk besetzt")
     allowed = config.allowed_sessions
     if not allowed:
         return GateCheck("wrong_session", True, staffed)
     permitted = any(name in allowed for name in session.active)
     return GateCheck(
-        "wrong_session", permitted, f"{staffed}; allowed {', '.join(allowed)}"
+        "wrong_session", permitted, f"{staffed}; erlaubt {', '.join(allowed)}"
     )
 
 

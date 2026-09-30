@@ -87,9 +87,9 @@ class SessionView:
 
     def describe(self) -> str:
         if self.is_quiet:
-            return "session: none staffed"
+            return "Sitzung: kein Desk besetzt"
         names = " + ".join(self.active)
-        return f"session: {names}{' (overlap)' if self.is_overlap else ''}"
+        return f"Sitzung: {names}{' (Überschneidung)' if self.is_overlap else ''}"
 
 
 def sessions_at(ts_ms: int) -> tuple[str, ...]:

@@ -20,7 +20,7 @@ import pytest
 
 from tests.factories import make_snapshot, make_symbol_spec
 from traidingbrain.brain.fake import FakeBrain
-from traidingbrain.config.settings import AppConfig, load_config, load_secrets
+from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.domain.enums import Decision, ProposalStatus, Side, TradeState
 from traidingbrain.domain.proposal import ClosedTrade, Position, ProposalAdjustment
 from traidingbrain.proposals.builder import BuildFailure, ProposalBuilder, describe
@@ -53,7 +53,7 @@ def account() -> AccountState:
 
 
 @pytest.fixture(params=["sqlite", "postgres"])
-def store(request: pytest.FixtureRequest, tmp_path: Path):
+def store(request: pytest.FixtureRequest, tmp_path: Path, pg_test_url: str):
     """Every test in this file runs against both stores.
 
     This is the whole safety argument for having two. They are meant to behave
@@ -68,9 +68,9 @@ def store(request: pytest.FixtureRequest, tmp_path: Path):
     if request.param == "sqlite":
         return ProposalStore(tmp_path / "proposals.sqlite")
 
-    url = load_secrets().postgres_url.get_secret_value()
-    if not url:
-        pytest.skip("no TB_POSTGRES_URL configured")
+    # Deliberately the *test* database, never the one the live loop writes to.
+    # `truncate()` below is why: see the note on `postgres_test_url`.
+    url = pg_test_url
     try:
         store = PostgresProposalStore(url)
     except PostgresUnavailableError as error:

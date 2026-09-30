@@ -154,7 +154,7 @@ def test_the_spacing_check_says_so_when_it_has_nothing_to_measure(
     )
 
     assert spacing.passed is True
-    assert "no call yet" in spacing.detail
+    assert "noch kein Aufruf" in spacing.detail
 
 
 def test_every_detail_carries_its_measurement(config: AppConfig) -> None:
@@ -177,7 +177,7 @@ def test_every_detail_carries_its_measurement(config: AppConfig) -> None:
     )
 
     assert confluence.passed is False
-    assert f"of {config.engine.trigger.min_indicator_confluence}" in confluence.detail
+    assert f"von {config.engine.trigger.min_indicator_confluence}" in confluence.detail
 
 
 # --------------------------------------------------------------------------- #
@@ -211,7 +211,7 @@ def test_the_headline_names_the_first_refusal_only(config: AppConfig) -> None:
 
     assert panel.would_ask is False
     assert panel.blocking == "unknown_regime"
-    assert panel.headline.lower().startswith("no setup: regime")
+    assert panel.headline.lower().startswith("kein setup: regime")
 
 
 def test_a_passing_bar_says_it_would_be_put_to_the_model(config: AppConfig) -> None:
@@ -220,7 +220,7 @@ def test_a_passing_bar_says_it_would_be_put_to_the_model(config: AppConfig) -> N
     panel = _gate_read(_reading(make_snapshot(), config))
 
     assert panel.would_ask is True
-    assert "model" in panel.headline
+    assert "Modell" in panel.headline
     assert all(check.passed for check in panel.checks)
 
 

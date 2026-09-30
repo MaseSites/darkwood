@@ -105,10 +105,28 @@ class Services:
     account: AccountState | None = None
 
     def spec_for(self, symbol: str) -> SymbolSpec:
+        """Instrument rules, or a 404 -- for the paths that cannot work without them.
+
+        Sizing and order placement genuinely need tick size and fees, and a
+        guess there would produce a rejected order or a wrong position. This
+        raises for those.
+        """
         spec = self.specs.get(symbol)
         if spec is None:
             raise HTTPException(404, f"no instrument rules loaded for {symbol}")
         return spec
+
+    def optional_spec(self, symbol: str) -> SymbolSpec | None:
+        """The same rules, for a caller that can live without them.
+
+        The market view is one: it uses fees only to annotate whether a setup's
+        stop is wide enough to be affordable, which is useful and not essential.
+        Asking for the strict version there took the whole chart down with a
+        404 whenever no exchange was connected -- which is the ordinary state of
+        this build. An optional annotation must never be able to fail the page
+        it decorates.
+        """
+        return self.specs.get(symbol)
 
     def account_state(self) -> AccountState:
         if self.account is None:
@@ -419,6 +437,23 @@ def _offered_timeframes(services: Services) -> list[Timeframe]:
     ]
 
 
+def _cost_floor(services: Services, symbol: str) -> float:
+    """The stop distance below which a trade cannot be afforded, or zero.
+
+    Zero means "unknown", and the panel then shows no affordability note at
+    all -- which is honest. Substituting typical fees would put a number on the
+    screen that looks measured and is not.
+    """
+    spec = services.optional_spec(symbol)
+    if spec is None:
+        return 0.0
+    return min_economic_stop_fraction(
+        spec,
+        services.config.engine.simulation.slippage_bps,
+        services.config.risk.limits.max_cost_fraction_of_risk,
+    )
+
+
 def _market_for(services: Services, symbol: str, requested: str | None) -> MarketView:
     """Build the market view, saying which piece is missing when one is."""
     if services.bars is None or services.market is None:
@@ -460,11 +495,7 @@ def _market_for(services: Services, symbol: str, requested: str | None) -> Marke
         available=offered,
         trigger=services.config.engine.trigger,
         setups=setups_at(analysis, snapshot.ts),
-        min_stop=min_economic_stop_fraction(
-            services.spec_for(symbol),
-            services.config.engine.simulation.slippage_bps,
-            services.config.risk.limits.max_cost_fraction_of_risk,
-        ),
+        min_stop=_cost_floor(services, symbol),
     )
 
 
