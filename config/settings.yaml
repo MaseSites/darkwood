@@ -4,11 +4,15 @@
 # is committed; .env is not.
 
 exchange:
-  # Bybit, chosen after checking reachability: testnet.binancefuture.com does not
-  # resolve from here, testnet.bybit.com does, and api.bybit.com serves all four
-  # symbols cleanly. Everything runs behind the DataSource/Broker protocols, so
-  # switching venue is a config change rather than a rewrite.
-  name: bybit
+  # bybit or binance. This is read -- for a long time it was not, and `ccxt.bybit`
+  # was built directly in two places while this line sat here describing a choice
+  # the code did not offer. data/venue.py is now the only place that knows.
+  #
+  # Both were re-checked from this machine: Binance USD-M and its futures testnet
+  # both answer, and ccxt serves candles, funding, open interest and the
+  # long/short ratio through unified methods on either. The original note said
+  # testnet.binancefuture.com did not resolve; that is no longer true.
+  name: binance
   market_type: linear      # USDT perpetuals
   testnet: true            # the only sane setting before stage 10
   rate_limit_ms: 120

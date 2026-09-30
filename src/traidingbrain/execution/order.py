@@ -36,7 +36,8 @@ from typing import Any
 
 import ccxt
 
-from traidingbrain.data.exchange import BybitDataSource
+from traidingbrain.data.exchange import MarketData
+from traidingbrain.data.venue import venue
 from traidingbrain.domain.enums import Side
 from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.domain.proposal import ExecutionIntent, Position, TradeProposal
@@ -87,6 +88,8 @@ class BybitExecutor:
         *,
         testnet: bool = True,
         allow_live: bool = False,
+        venue_name: str = "bybit",
+        rate_limit_ms: int = 120,
         exchange: Any | None = None,
     ) -> None:
         if not testnet and not allow_live:
@@ -103,19 +106,16 @@ class BybitExecutor:
         self.kill_switch = kill_switch
         self._leverage_set: dict[str, float] = {}
 
+        self.venue = venue(venue_name)
         if exchange is not None:
             self.exchange = exchange
         else:
-            self.exchange = ccxt.bybit(
-                {
-                    "apiKey": api_key,
-                    "secret": api_secret,
-                    "enableRateLimit": True,
-                    "options": {"defaultType": "swap", "defaultSubType": "linear"},
-                }
+            self.exchange = self.venue.build(
+                testnet=testnet,
+                rate_limit_ms=rate_limit_ms,
+                api_key=api_key,
+                api_secret=api_secret,
             )
-            if testnet:
-                self.exchange.set_sandbox_mode(True)
 
     # -- before anything is sent -------------------------------------------- #
 
@@ -169,6 +169,11 @@ class BybitExecutor:
         not expose it -- both answers come back permissive, because refusing to
         start over a missing diagnostic would be worse than the gap it closes.
         """
+        if not self.venue.reports_key_rights:
+            # Binance has no equivalent endpoint. Skipped rather than faked: a
+            # permissive guess would be a safety check that reports success
+            # without having run, which is worse than an absent one.
+            return True, False
         query = getattr(self.exchange, "privateGetV5UserQueryApi", None)
         if query is None:
             return True, False
@@ -201,7 +206,7 @@ class BybitExecutor:
 
         held = [
             p
-            for p in self.exchange.fetch_positions([_ccxt_symbol(symbol)])
+            for p in self.exchange.fetch_positions([self.venue.symbol(symbol)])
             if float(p.get("contracts") or 0)
         ]
         if held:
@@ -211,7 +216,7 @@ class BybitExecutor:
                 f"liquidation price"
             )
 
-        self.exchange.set_leverage(leverage, _ccxt_symbol(symbol))
+        self.exchange.set_leverage(leverage, self.venue.symbol(symbol))
         self._leverage_set[symbol] = leverage
 
     # -- sending ------------------------------------------------------------ #
@@ -258,7 +263,7 @@ class BybitExecutor:
         """
         side = "buy" if intent.side is Side.LONG else "sell"
         order: dict[str, Any] = self.exchange.create_order(
-            _ccxt_symbol(intent.symbol),
+            self.venue.symbol(intent.symbol),
             "limit",
             side,
             intent.qty,
@@ -300,18 +305,18 @@ class BybitExecutor:
         """Conditional orders resting on a symbol, for the watchdog to count."""
         return [
             order
-            for order in self.exchange.fetch_open_orders(_ccxt_symbol(symbol))
+            for order in self.exchange.fetch_open_orders(self.venue.symbol(symbol))
             if order.get("stopPrice") or (order.get("info") or {}).get("stopLoss")
         ]
 
     def cancel_all(self, symbol: str) -> None:
-        self.exchange.cancel_all_orders(_ccxt_symbol(symbol))
+        self.exchange.cancel_all_orders(self.venue.symbol(symbol))
 
     def close_position(self, symbol: str) -> str | None:
         """Flatten a symbol at market. Used by the watchdog and the kill switch."""
         held = [
             p
-            for p in self.exchange.fetch_positions([_ccxt_symbol(symbol)])
+            for p in self.exchange.fetch_positions([self.venue.symbol(symbol)])
             if float(p.get("contracts") or 0)
         ]
         if not held:
@@ -319,7 +324,7 @@ class BybitExecutor:
         position = held[0]
         closing_side = "sell" if str(position.get("side")) == "long" else "buy"
         order = self.exchange.create_order(
-            _ccxt_symbol(symbol),
+            self.venue.symbol(symbol),
             "market",
             closing_side,
             float(position["contracts"]),
@@ -329,15 +334,13 @@ class BybitExecutor:
         return str(order.get("id"))
 
     def symbol_spec(self, symbol: str) -> SymbolSpec:
-        return BybitDataSource(testnet=self.testnet, exchange=self.exchange).fetch_symbol_spec(
-            symbol
-        )
-
-
-def _ccxt_symbol(symbol: str) -> str:
-    if "/" in symbol:
-        return symbol
-    return f"{symbol[:-4]}/USDT:USDT"
+        # Reuses the already-authenticated client rather than opening a second
+        # one: instrument rules are public, but a duplicate connection would also
+        # duplicate the rate limit budget.
+        spec: SymbolSpec = MarketData(
+            venue_name=self.venue.name, testnet=self.testnet, exchange=self.exchange
+        ).fetch_symbol_spec(symbol)
+        return spec
 
 
 def _plain_symbol(ccxt_name: str) -> str:

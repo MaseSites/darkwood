@@ -25,6 +25,7 @@ from traidingbrain.config.settings import (
     WeightsConfig,
     load_config,
 )
+from traidingbrain.data.venue import SUPPORTED
 from traidingbrain.domain import Factor, Timeframe
 
 
@@ -34,7 +35,9 @@ def app_config(config_dir: Path) -> AppConfig:
 
 
 def test_shipped_config_loads(app_config: AppConfig) -> None:
-    assert app_config.engine.exchange.name == "bybit"
+    # Which venue is a choice and may change; that it is one the code can build
+    # is the invariant. test_venue.py checks the name resolves.
+    assert app_config.engine.exchange.name in SUPPORTED
     assert app_config.engine.exchange.testnet is True, (
         "testnet must stay the default; live trading is a stage 10 decision"
     )

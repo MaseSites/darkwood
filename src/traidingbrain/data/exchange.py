@@ -26,6 +26,7 @@ import ccxt
 
 from traidingbrain.clock import SystemClock
 from traidingbrain.data.frames import is_closed
+from traidingbrain.data.venue import venue
 from traidingbrain.domain.enums import Timeframe
 from traidingbrain.domain.market import Bar, FundingRate, SymbolSpec
 from traidingbrain.domain.protocols import Clock
@@ -74,12 +75,19 @@ def to_ccxt_symbol(symbol: str) -> str:
     return f"{base}/USDT:USDT"
 
 
-class BybitDataSource:
-    """Read-only market data. Holds no credentials and places no orders."""
+class MarketData:
+    """Read-only market data. Holds no credentials and places no orders.
+
+    The venue comes from configuration rather than being built in. It used to be
+    `ccxt.bybit` here and again in the executor, while settings.yaml carried an
+    `exchange.name` nothing read -- so the config described a choice the code did
+    not offer.
+    """
 
     def __init__(
         self,
         *,
+        venue_name: str = "bybit",
         testnet: bool = False,
         rate_limit_ms: int = 120,
         clock: Clock | None = None,
@@ -89,19 +97,12 @@ class BybitDataSource:
         self.clock: Clock = clock or SystemClock()
         self.max_retries = max_retries
         self._markets_loaded = False
+        self.venue = venue(venue_name)
 
         if exchange is not None:
             self.exchange = exchange
         else:
-            self.exchange = ccxt.bybit(
-                {
-                    "enableRateLimit": True,
-                    "rateLimit": rate_limit_ms,
-                    "options": {"defaultType": "swap", "defaultSubType": "linear"},
-                }
-            )
-            if testnet:
-                self.exchange.set_sandbox_mode(True)
+            self.exchange = self.venue.build(testnet=testnet, rate_limit_ms=rate_limit_ms)
 
     # -- plumbing ----------------------------------------------------------- #
 
@@ -148,7 +149,7 @@ class BybitDataSource:
         raw = self._with_retry(
             f"fetch_ohlcv({symbol}, {timeframe})",
             self.exchange.fetch_ohlcv,
-            to_ccxt_symbol(symbol),
+            self.venue.symbol(symbol),
             timeframe.ccxt_timeframe,
             since_ms,
             min(limit, MAX_PAGE),
@@ -181,7 +182,7 @@ class BybitDataSource:
         self._load_markets()
         try:
             ticker = self._with_retry(
-                f"ticker for {symbol}", self.exchange.fetch_ticker, to_ccxt_symbol(symbol)
+                f"ticker for {symbol}", self.exchange.fetch_ticker, self.venue.symbol(symbol)
             )
         except Exception:
             return None
@@ -201,7 +202,7 @@ class BybitDataSource:
         raw = self._with_retry(
             f"fetch_funding_rate_history({symbol})",
             self.exchange.fetch_funding_rate_history,
-            to_ccxt_symbol(symbol),
+            self.venue.symbol(symbol),
             since_ms,
             limit,
         )
@@ -218,7 +219,7 @@ class BybitDataSource:
         never showed up in a test.
         """
         self._load_markets()
-        market = self.exchange.market(to_ccxt_symbol(symbol))
+        market = self.exchange.market(self.venue.symbol(symbol))
         limits = market.get("limits") or {}
         precision = market.get("precision") or {}
         amount_limits = limits.get("amount") or {}

@@ -33,7 +33,7 @@ from traidingbrain.data.derivatives import (
     DerivativesStore,
     LivePositioning,
 )
-from traidingbrain.data.exchange import BybitDataSource
+from traidingbrain.data.exchange import MarketData
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.execution.diagnose import diagnose
@@ -88,7 +88,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # Prices come from mainnet and need no credentials; only trading touches an
     # account, and that one defaults to testnet.
-    source = BybitDataSource(testnet=False, rate_limit_ms=config.engine.exchange.rate_limit_ms)
+    source = MarketData(
+        venue_name=config.engine.exchange.name,
+        testnet=False,
+        rate_limit_ms=config.engine.exchange.rate_limit_ms,
+    )
 
     executor = _arm_executor(args, config, secrets, intents, kill_switch)
     if executor is False:
@@ -136,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
         clock=SystemClock(),
         history=HistoryEngine(config.engine.history),
         positioning=LivePositioning(
-            DerivativesSource(source.exchange),
+            DerivativesSource(source.exchange, config.engine.exchange.name),
             DerivativesStore(config.engine.paths.data_dir / "derivatives"),
         ),
         account=account,

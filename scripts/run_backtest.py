@@ -21,8 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from traidingbrain.brain.cache import DecisionCache
 from traidingbrain.brain.factory import BRAIN_NAMES, make_brain
-from traidingbrain.config.settings import load_config
-from traidingbrain.data.exchange import BybitDataSource
+from traidingbrain.config.settings import AppConfig, load_config
+from traidingbrain.data.exchange import MarketData
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import SymbolSpec
@@ -173,9 +173,11 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _symbol_spec(symbol: str, *, use_live: bool, config: object) -> SymbolSpec:
+def _symbol_spec(symbol: str, *, use_live: bool, config: AppConfig) -> SymbolSpec:
     if use_live:
-        return BybitDataSource(testnet=False).fetch_symbol_spec(symbol)
+        return MarketData(
+            venue_name=config.engine.exchange.name, testnet=False
+        ).fetch_symbol_spec(symbol)
     return SymbolSpec(symbol=symbol, **DEFAULT_SPEC)
 
 

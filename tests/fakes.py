@@ -49,7 +49,7 @@ def synthetic_rows(
 
 
 class FakeCcxtExchange:
-    """Enough of the ccxt surface for `BybitDataSource` to run against."""
+    """Enough of the ccxt surface for `MarketData` to run against."""
 
     def __init__(
         self,

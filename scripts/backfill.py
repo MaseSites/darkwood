@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from traidingbrain.clock import SystemClock
 from traidingbrain.config.settings import load_config
 from traidingbrain.data.backfill import Backfiller
-from traidingbrain.data.exchange import BybitDataSource
+from traidingbrain.data.exchange import MarketData
 from traidingbrain.data.funding import FundingStore, backfill_funding
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Timeframe
@@ -78,7 +78,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"unknown symbols: {sorted(unknown)}")
 
     store = ParquetStore(config.engine.paths.parquet_dir)
-    source = BybitDataSource(testnet=False, rate_limit_ms=config.engine.exchange.rate_limit_ms)
+    source = MarketData(
+        venue_name=config.engine.exchange.name,
+        testnet=False,
+        rate_limit_ms=config.engine.exchange.rate_limit_ms,
+    )
     backfiller = Backfiller(source, store, clock=SystemClock())
 
     def progress(symbol: str, timeframe: Timeframe, bars: int, newest_ts: int) -> None:

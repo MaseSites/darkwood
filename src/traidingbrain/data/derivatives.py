@@ -37,7 +37,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from traidingbrain.data.exchange import to_ccxt_symbol
+from traidingbrain.data.venue import venue
 
 #: Bybit returns at most this many rows per request.
 MAX_PAGE = 200
@@ -96,16 +96,22 @@ def _day(ts: int | None) -> str:
 
 
 class DerivativesSource:
-    """Open interest and account ratio, read-only and credential-free.
+    """Open interest and crowd positioning, read-only and credential-free.
 
-    Separate from `BybitDataSource` because these are different endpoints with
-    different pagination rules and a different history horizon, and folding them
-    into the candle fetcher would mean one class whose failure modes are unrelated
-    to each other.
+    Through ccxt's unified methods rather than a venue's raw endpoints. The first
+    version called Bybit's `/v5/market/open-interest` directly, which worked and
+    quietly made the whole positioning factor Bybit-only -- a decision nobody
+    made, buried in a URL. Both methods used here exist on Bybit and Binance and
+    return the same two fields, which is exactly what unification is for.
+
+    Separate from `MarketData` because these page differently and have a shorter
+    history horizon, and folding them together would make one class whose failure
+    modes have nothing to do with each other.
     """
 
-    def __init__(self, exchange: Any, *, max_retries: int = 4) -> None:
+    def __init__(self, exchange: Any, venue_name: str = "bybit", *, max_retries: int = 4) -> None:
         self.exchange = exchange
+        self.venue = venue(venue_name)
         self.max_retries = max_retries
 
     def open_interest(
@@ -114,47 +120,52 @@ class DerivativesSource:
         """Total contracts outstanding, one row per interval."""
         rows = self._paged(
             "open interest",
-            self.exchange.publicGetV5MarketOpenInterest,
+            self.exchange.fetch_open_interest_history,
             symbol,
-            interval_key="intervalTime",
             interval=interval,
             since_ms=since_ms,
             until_ms=until_ms,
         )
-        frame = pd.DataFrame(
-            {
-                "ts": [int(row["timestamp"]) for row in rows],
-                "open_interest": [float(row["openInterest"]) for row in rows],
-            }
+        return _tidy(
+            pd.DataFrame(
+                {
+                    "ts": [int(r["timestamp"]) for r in rows],
+                    "open_interest": [float(r["openInterestAmount"] or 0.0) for r in rows],
+                }
+            )
         )
-        return _tidy(frame)
 
     def account_ratio(
         self, symbol: str, *, interval: str = "1h", since_ms: int, until_ms: int
     ) -> pd.DataFrame:
         """The share of accounts positioned each way.
 
+        Stored as a share rather than the ratio the venues report, because a share
+        is bounded and a ratio is not: 0.6 and 1.5 say the same thing, but only one
+        of them can be averaged, compared across venues, or shown on a bar.
+
         Accounts, not size -- a thousand small longs and one large short both read
-        as crowded to the long side here. That is the intended reading: this is a
-        sentiment measure, and the crowd is counted by head.
+        as crowded to the long side. That is the intended reading: this is a
+        sentiment measure and the crowd is counted by head.
         """
         rows = self._paged(
-            "account ratio",
-            self.exchange.publicGetV5MarketAccountRatio,
+            "long/short ratio",
+            self.exchange.fetch_long_short_ratio_history,
             symbol,
-            interval_key="period",
             interval=interval,
             since_ms=since_ms,
             until_ms=until_ms,
         )
-        frame = pd.DataFrame(
-            {
-                "ts": [int(row["timestamp"]) for row in rows],
-                "buy_ratio": [float(row["buyRatio"]) for row in rows],
-                "sell_ratio": [float(row["sellRatio"]) for row in rows],
-            }
+        shares = [_share_long(float(r["longShortRatio"] or 1.0)) for r in rows]
+        return _tidy(
+            pd.DataFrame(
+                {
+                    "ts": [int(r["timestamp"]) for r in rows],
+                    "buy_ratio": shares,
+                    "sell_ratio": [1.0 - share for share in shares],
+                }
+            )
         )
-        return _tidy(frame)
 
     # -- plumbing ----------------------------------------------------------- #
 
@@ -164,55 +175,54 @@ class DerivativesSource:
         call: Any,
         symbol: str,
         *,
-        interval_key: str,
         interval: str,
         since_ms: int,
         until_ms: int,
     ) -> list[dict[str, Any]]:
-        """Walk backwards in windows until the range is covered.
+        """Walk forward in windows until the range is covered.
 
-        These endpoints page from newest to oldest and stop at their horizon
-        without saying so, so the loop ends on an empty page or on a window that
-        returns nothing new -- never on a row count, which would spin forever
-        once the venue runs out of history.
+        These endpoints stop at their own history horizon without saying so, so
+        the loop ends on a page that returns nothing new -- never on a row count,
+        which would spin forever once the venue runs out of history.
         """
         if interval not in INTERVALS:
             raise ValueError(f"{interval!r} is not an interval this endpoint accepts: {INTERVALS}")
 
+        step = _interval_ms(interval)
         collected: list[dict[str, Any]] = []
         seen: set[int] = set()
-        cursor_end = until_ms
+        cursor = since_ms
 
-        while cursor_end > since_ms:
-            params = {
-                "category": "linear",
-                "symbol": _venue_symbol(symbol),
-                interval_key: interval,
-                "startTime": since_ms,
-                "endTime": cursor_end,
-                "limit": MAX_PAGE,
-            }
-            page = self._with_retry(description, call, params)
-            rows = (page.get("result") or {}).get("list") or []
-            fresh = [row for row in rows if int(row["timestamp"]) not in seen]
+        while cursor < until_ms:
+            page = self._with_retry(
+                description, call, self.venue.symbol(symbol), interval, cursor, MAX_PAGE
+            )
+            fresh = [
+                row
+                for row in page
+                if row.get("timestamp") is not None
+                and int(row["timestamp"]) not in seen
+                and int(row["timestamp"]) <= until_ms
+            ]
             if not fresh:
                 break
             for row in fresh:
                 seen.add(int(row["timestamp"]))
             collected.extend(fresh)
-            oldest = min(int(row["timestamp"]) for row in fresh)
-            if oldest >= cursor_end:
+            newest = max(int(row["timestamp"]) for row in fresh)
+            if newest <= cursor:
                 break
-            cursor_end = oldest - 1
+            cursor = newest + step
 
         return collected
 
-    def _with_retry(self, description: str, call: Any, params: dict[str, Any]) -> Any:
+    def _with_retry(self, description: str, call: Any, *args: Any) -> list[dict[str, Any]]:
         delay = 1.0
         last: Exception | None = None
         for attempt in range(self.max_retries):
             try:
-                return call(params)
+                result: list[dict[str, Any]] = call(*args)
+                return result
             except Exception as exc:
                 last = exc
                 if attempt == self.max_retries - 1:
@@ -220,20 +230,28 @@ class DerivativesSource:
                 time.sleep(delay)
                 delay *= 2
         raise DerivativesUnavailableError(
-            f"{description} for {params.get('symbol')} failed after "
-            f"{self.max_retries} attempts: {last}"
+            f"{description} failed after {self.max_retries} attempts: {last}"
         )
 
 
-def _venue_symbol(symbol: str) -> str:
-    """The plain exchange name these raw v5 endpoints expect.
+def _share_long(ratio: float) -> float:
+    """Longs-to-shorts, as a share of accounts that are long.
 
-    ccxt's unified `BTC/USDT:USDT` is for its own methods; these are direct calls
-    and take `BTCUSDT`. Round-tripping through the unified form first is not
-    pedantry -- it rejects a spot or inverse symbol here rather than at the venue,
-    where the error is a generic parameter complaint.
+    A ratio of 1.5 means three longs for every two shorts, which is a 0.6 share.
+    Clamped, because a venue reporting an absurd ratio should produce a bounded
+    number rather than one that fails a model constraint three layers later.
     """
-    return to_ccxt_symbol(symbol).split(":")[0].replace("/", "")
+    if ratio <= 0:
+        return 0.5
+    return max(0.0, min(1.0, ratio / (1.0 + ratio)))
+
+
+def _interval_ms(interval: str) -> int:
+    units = {"min": 60_000, "h": 3_600_000, "d": 86_400_000}
+    for suffix, size in units.items():
+        if interval.endswith(suffix):
+            return int(interval[: -len(suffix)]) * size
+    raise ValueError(f"cannot size the interval {interval!r}")
 
 
 def _tidy(frame: pd.DataFrame) -> pd.DataFrame:

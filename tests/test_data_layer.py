@@ -27,7 +27,7 @@ from tests.fakes import (
 )
 from traidingbrain.clock import FixedClock
 from traidingbrain.data.backfill import Backfiller
-from traidingbrain.data.exchange import BybitDataSource, to_ccxt_symbol
+from traidingbrain.data.exchange import MarketData, to_ccxt_symbol
 from traidingbrain.data.frames import (
     bars_to_frame,
     close_time_ms,
@@ -91,7 +91,7 @@ def test_exchange_adapter_never_returns_a_forming_candle() -> None:
     rows = synthetic_rows(EPOCH, H1, 24)
     last_open = int(rows[-1][0])
     exchange = FakeCcxtExchange(rows, timeframe=H1)
-    source = BybitDataSource(exchange=exchange, clock=FixedClock(last_open + 60_000), testnet=True)
+    source = MarketData(exchange=exchange, clock=FixedClock(last_open + 60_000), testnet=True)
 
     bars = source.fetch_ohlcv("BTCUSDT", H1, since_ms=EPOCH, limit=1000)
 
@@ -427,7 +427,7 @@ def test_non_usdt_symbols_are_refused() -> None:
 
 def test_symbol_spec_comes_from_the_venue() -> None:
     exchange = FakeCcxtExchange(synthetic_rows(EPOCH, H1, 2))
-    source = BybitDataSource(exchange=exchange, clock=FixedClock(EPOCH))
+    source = MarketData(exchange=exchange, clock=FixedClock(EPOCH))
 
     spec = source.fetch_symbol_spec("BTCUSDT")
 

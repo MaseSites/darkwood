@@ -32,7 +32,7 @@ from traidingbrain.analysis.snapshot import SnapshotBuilder
 from traidingbrain.api.app import Services, build_default_services, create_app
 from traidingbrain.brain.fake import FakeBrain
 from traidingbrain.config.settings import load_secrets
-from traidingbrain.data.exchange import BybitDataSource
+from traidingbrain.data.exchange import MarketData
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.execution.diagnose import diagnose
@@ -163,8 +163,10 @@ def _arm(services: Services) -> bool:
     services.executor = executor
     # Read-only and credential-free: the price this checks against must come from
     # the public market, not from the account that is about to trade.
-    services.prices = BybitDataSource(
-        testnet=secrets.bybit.testnet, rate_limit_ms=config.engine.exchange.rate_limit_ms
+    services.prices = MarketData(
+        venue_name=config.engine.exchange.name,
+        testnet=secrets.bybit.testnet,
+        rate_limit_ms=config.engine.exchange.rate_limit_ms,
     )
     for symbol in config.engine.symbols.active:
         try:
