@@ -34,7 +34,7 @@ here would put the strategy on a rule nobody in the sources ever gave.
 
 from __future__ import annotations
 
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -276,6 +276,12 @@ class ZoneTimeline:
     The accessor is `known_at` rather than a list, because a list invites a
     filter written once correctly and copied somewhere without the filter. The
     zones exist; reaching one early does not.
+
+    **Touches are precomputed.** Answering "has price been back into this zone
+    yet" by scanning the bars on every call is quadratic in the length of the
+    run -- a setup asking it once per zone per bar turns a four-year backtest
+    into an afternoon. One forward pass per zone at construction gives every
+    later question an array lookup.
     """
 
     def __init__(
@@ -294,6 +300,18 @@ class ZoneTimeline:
         zones.sort(key=lambda zone: zone.confirmed_index)
         self._zones = zones
         self._confirmed = [zone.confirmed_index for zone in zones]
+        self._touches: list[npt.NDArray[np.int64]] = [self._touch_indices(z) for z in zones]
+        self._first_touch = [int(t[0]) if t.size else -1 for t in self._touches]
+
+    def _touch_indices(self, zone: StructuralZone) -> npt.NDArray[np.int64]:
+        """Every bar after confirmation whose range overlaps the zone."""
+        start = zone.confirmed_index + 1
+        if start >= len(self._highs):
+            return np.empty(0, dtype="int64")
+        lows = self._lows[start:]
+        highs = self._highs[start:]
+        hits = np.nonzero((lows <= zone.high) & (highs >= zone.low))[0]
+        return (hits + start).astype("int64")
 
     def __len__(self) -> int:
         return len(self._zones)
@@ -305,15 +323,16 @@ class ZoneTimeline:
     def unmitigated_at(self, index: int) -> list[StructuralZone]:
         """Known zones price has not traded back into yet.
 
-        Mitigation is recomputed from the bars rather than cached on the zone,
-        so a zone object is a statement about the past that never changes. A
-        mutable `mitigated` flag would make the same zone mean different things
-        at different points in one backtest.
+        Mitigation is read from the precomputed touches rather than stored on
+        the zone, so a zone object stays a statement about the past that never
+        changes. A mutable `mitigated` flag would make the same zone mean
+        different things at different points in one backtest.
         """
+        upto = bisect_right(self._confirmed, index)
         return [
             zone
-            for zone in self.known_at(index)
-            if not self._touched_between(zone, zone.confirmed_index + 1, index)
+            for position, zone in enumerate(self._zones[:upto])
+            if not (0 <= self._first_touch[position] <= index)
         ]
 
     def touch_at(self, zone: StructuralZone, index: int) -> ZoneTouch | None:
@@ -324,27 +343,32 @@ class ZoneTimeline:
         way to say "aggressive" that means the same thing in a quiet week and a
         violent one.
         """
-        if index <= zone.confirmed_index or not self._touched(zone, index):
+        position = self._position_of(zone)
+        if position is None or index <= zone.confirmed_index:
             return None
-        first = not self._touched_between(zone, zone.confirmed_index + 1, index - 1)
+        touches = self._touches[position]
+        if touches.size == 0 or not bool(np.any(touches == index)):
+            return None
         return ZoneTouch(
             zone=zone,
             index=index,
-            is_first=first,
+            is_first=index == self._first_touch[position],
             approach_atr_per_bar=self._approach_speed(zone, index),
         )
 
-    def _touched(self, zone: StructuralZone, index: int) -> bool:
-        if index < 0 or index >= len(self._highs):
-            return False
-        return bool(self._lows[index] <= zone.high and self._highs[index] >= zone.low)
+    def _position_of(self, zone: StructuralZone) -> int | None:
+        """Where this zone sits in the list, found by its confirmation index.
 
-    def _touched_between(self, zone: StructuralZone, start: int, end: int) -> bool:
-        if end < start:
-            return False
-        lows = self._lows[start : end + 1]
-        highs = self._highs[start : end + 1]
-        return bool(np.any((lows <= zone.high) & (highs >= zone.low)))
+        Zones are frozen and compare by value, so identity is not usable and a
+        linear scan would be back to quadratic. The confirmation index narrows
+        it to the handful confirmed on the same bar.
+        """
+        lo = bisect_left(self._confirmed, zone.confirmed_index)
+        hi = bisect_right(self._confirmed, zone.confirmed_index)
+        for position in range(lo, hi):
+            if self._zones[position] == zone:
+                return position
+        return None
 
     def _approach_speed(self, zone: StructuralZone, index: int) -> float:
         """How fast price covered the last leg into the zone, in ATR per bar."""

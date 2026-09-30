@@ -19,10 +19,12 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from traidingbrain.analysis.candles import CandleTimeline
 from traidingbrain.analysis.indicators import IndicatorSet, compute_all
 from traidingbrain.analysis.liquidity import LiquidityTimeline
 from traidingbrain.analysis.regime import RegimeTimeline
 from traidingbrain.analysis.structure import StructureTimeline
+from traidingbrain.analysis.zones import ZoneTimeline
 from traidingbrain.config.settings import EngineConfig
 from traidingbrain.data.frames import timeframe_ms
 from traidingbrain.domain.enums import Timeframe
@@ -58,6 +60,8 @@ class FrameAnalysis:
     structure: StructureTimeline
     liquidity: LiquidityTimeline
     regime: RegimeTimeline
+    candles: CandleTimeline
+    zones: ZoneTimeline
     _columns: dict[str, np.ndarray] = field(default_factory=dict, compare=False)
 
     def __len__(self) -> int:
@@ -103,7 +107,9 @@ def analyse(frame: pd.DataFrame, timeframe: Timeframe, config: EngineConfig) -> 
     """Run the full analysis stack over one timeframe.
 
     Order matters: structure feeds liquidity (pools are built from confirmed
-    swings) and both feed regime.
+    swings), both feed regime, and structure feeds zones -- an order block is
+    only valid at the CHoCH that validates it, so it cannot be found without the
+    structure timeline that dates the CHoCH.
     """
     indicators = compute_all(
         frame,
@@ -146,6 +152,8 @@ def analyse(frame: pd.DataFrame, timeframe: Timeframe, config: EngineConfig) -> 
         structure=structure,
         liquidity=liquidity,
         regime=regime,
+        candles=CandleTimeline(frame, indicators.atr),
+        zones=ZoneTimeline(frame, indicators.atr, structure),
     )
 
 
