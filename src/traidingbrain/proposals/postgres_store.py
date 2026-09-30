@@ -29,6 +29,7 @@ pending. That was a real bug in the SQLite store, found by a concurrency test.
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from typing import Any
 
 import psycopg
@@ -36,7 +37,7 @@ import psycopg
 from traidingbrain.domain.enums import ProposalStatus
 from traidingbrain.domain.proposal import ConfirmationToken, TradeProposal
 from traidingbrain.proposals.rules import fingerprint, token_objection, utc_now_ms
-from traidingbrain.storage.postgres import connect, migrate
+from traidingbrain.storage.postgres import migrate, pool_for
 
 
 def _hydrate(payload: dict[str, Any], status: str) -> TradeProposal:
@@ -60,8 +61,15 @@ class PostgresProposalStore:
             # migrated is a deployment that will forget.
             migrate(url)
 
-    def _connect(self) -> psycopg.Connection[Any]:
-        return connect(self.url)
+    def _connect(self) -> AbstractContextManager[psycopg.Connection[Any]]:
+        """A connection from the shared pool, returned when the block ends.
+
+        Not a fresh connection per call, which is what this used to be. The
+        dashboard polls this store every four seconds, the live loop uses it,
+        and the confirmation path deliberately runs a hundred callers at once --
+        against a server allowing twenty connections in total.
+        """
+        return pool_for(self.url).connection()
 
     # -- proposals ---------------------------------------------------------- #
 

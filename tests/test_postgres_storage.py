@@ -9,16 +9,20 @@ falling back to something that looks like it worked.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Lock
 
 import pytest
 
 from traidingbrain.config.settings import load_secrets
 from traidingbrain.storage.postgres import (
+    MAX_POOL_SIZE,
     PostgresUnavailableError,
     connect,
     discover,
     migrate,
+    pool_for,
     status,
 )
 
@@ -142,3 +146,62 @@ def test_an_unreachable_server_is_reported_not_swallowed() -> None:
     """
     with pytest.raises(PostgresUnavailableError, match="could not connect"):
         connect("postgresql://nobody:nothing@10.255.255.1:59999/nowhere?connect_timeout=2")
+
+
+# --------------------------------------------------------------------------- #
+# Connections, which ran out before anybody noticed
+# --------------------------------------------------------------------------- #
+
+
+def test_the_pool_is_shared_per_url_not_per_store() -> None:
+    """A pool per store object puts the exhaustion back where it started.
+
+    Two stores in one process -- the dashboard's and the live loop's -- must
+    draw from the same handful of connections, or four per store becomes eight
+    and then twelve.
+    """
+    url = url_or_skip()
+
+    assert pool_for(url) is pool_for(url)
+
+
+def test_a_hundred_callers_share_a_bounded_number_of_connections() -> None:
+    """The failure this pool exists for, reproduced.
+
+    Every store method used to open its own connection. Sixteen worker threads
+    confirming the same trade, plus a dashboard polling every four seconds, plus
+    a live loop, against a server allowing twenty: the at-most-once test failed
+    on connection exhaustion while passing in isolation.
+
+    It failed safe -- a refused connection cannot send a duplicate order -- but
+    a guarantee whose test falls over under the concurrency it exists to survive
+    is one nobody is checking any more.
+    """
+    url = url_or_skip()
+
+    pool = pool_for(url)
+    seen: set[int] = set()
+    guard = Lock()
+
+    def touch(_: int) -> int:
+        with pool.connection() as conn:
+            conn.execute("select 1")
+            with guard:
+                seen.add(id(conn))
+        return 1
+
+    with ThreadPoolExecutor(max_workers=16) as workers:
+        done = sum(workers.map(touch, range(100)))
+
+    assert done == 100, "not every caller got a connection"
+    assert len(seen) <= MAX_POOL_SIZE, (
+        f"{len(seen)} distinct connections for a pool capped at {MAX_POOL_SIZE}"
+    )
+
+
+def test_no_url_says_what_to_set_rather_than_failing_obscurely() -> None:
+    """An empty URL is a configuration mistake, and the message is where the
+    fix is explained. A psycopg parse error here would send somebody looking in
+    the wrong place."""
+    with pytest.raises(PostgresUnavailableError, match="TB_POSTGRES_URL"):
+        pool_for("")

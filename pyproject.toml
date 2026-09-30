@@ -24,6 +24,14 @@ api = [
     "uvicorn[standard]>=0.30",
     "jinja2>=3.1",
 ]
+# The proposal store and its migrations. The pool is not optional within this
+# group: every store method takes a connection, the dashboard polls one every
+# four seconds, and the confirmation path runs a hundred callers at once against
+# a server allowing twenty connections.
+postgres = [
+    "psycopg[binary]>=3.2",
+    "psycopg_pool>=3.2",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
