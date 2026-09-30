@@ -80,6 +80,7 @@ class MarketView(BaseModel):
     frames: list[FrameRead] = Field(default_factory=list)
     positioning: str = ""
     sentiment: str = ""
+    session: str = ""
     upcoming: list[str] = Field(default_factory=list)
     note: str = ""
 
@@ -222,6 +223,7 @@ def build_market_view(
             )
             for view in snapshot.frames
         ],
+        session=_session_line(snapshot),
         positioning=snapshot.positioning.reading if snapshot.positioning.known else "",
         sentiment=(
             f"{snapshot.sentiment.value}/100 {snapshot.sentiment.label}"
@@ -235,6 +237,20 @@ def build_market_view(
         ][:3],
         note="No trade is proposed here. This is the market, drawn the way the analysis reads it.",
     )
+
+
+def _session_line(snapshot: MarketSnapshot) -> str:
+    """Which desks are staffed, in a phrase rather than a list.
+
+    Worth showing even though nothing acts on it: it is the difference between a
+    break somebody made and a break that happened while nobody was watching, and
+    that is not visible in the candles.
+    """
+    session = snapshot.session
+    if not session.active:
+        return "no desk staffed"
+    names = " + ".join(session.active)
+    return f"{names}{' overlap' if session.is_overlap else ''}"
 
 
 def _events(

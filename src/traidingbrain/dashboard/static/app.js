@@ -333,6 +333,7 @@ function frameTable(view) {
 
 function marketContext(view) {
   const bits = [];
+  if (view.session) bits.push(`session <b>${escapeHtml(view.session)}</b>`);
   if (view.positioning) bits.push(`positioning <b>${escapeHtml(view.positioning.replace("_", " "))}</b>`);
   if (view.sentiment) bits.push(`sentiment <b>${escapeHtml(view.sentiment)}</b>`);
   for (const item of view.upcoming ?? []) bits.push(escapeHtml(item));
