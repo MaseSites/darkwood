@@ -56,6 +56,7 @@ from traidingbrain.config.settings import EngineConfig, TriggerConfig
 from traidingbrain.data.frames import timeframe_ms
 from traidingbrain.domain.enums import Timeframe
 from traidingbrain.domain.snapshot import MarketSnapshot
+from traidingbrain.strategy.setups import SetupSignal, evaluate_all
 
 #: How long a built analysis may be reused before the store is checked again.
 #: The check itself is cheap -- one parquet footer read -- so this only exists to
@@ -75,6 +76,25 @@ class FrameRead(BaseModel):
     choch: bool
     sweep_up: bool
     sweep_down: bool
+
+
+class SetupRead(BaseModel):
+    """One of the guide's setups firing on the newest bar.
+
+    Carries the whole trade, because a screen that says "Setup C fired" and not
+    where the stop goes has told you the interesting half and withheld the half
+    that decides whether to take it.
+    """
+
+    key: str
+    name: str
+    source: str
+    side: str
+    entry: float
+    stop: float
+    target: float
+    reward_risk: float
+    reasons: list[str] = Field(default_factory=list)
 
 
 class GateCheckRead(BaseModel):
@@ -127,6 +147,7 @@ class MarketView(BaseModel):
     session: str = ""
     upcoming: list[str] = Field(default_factory=list)
     gate: GateRead | None = None
+    setups: list[SetupRead] = Field(default_factory=list)
     note: str = ""
 
 
@@ -238,6 +259,7 @@ def build_market_view(
     timeframe: Timeframe,
     available: list[Timeframe],
     trigger: TriggerConfig | None = None,
+    setups: list[SetupSignal] | None = None,
     context_bars: int = CONTEXT_BARS,
 ) -> MarketView:
     """Assemble the market view for one symbol on one timeframe.
@@ -317,6 +339,7 @@ def build_market_view(
             if trigger is not None
             else None
         ),
+        setups=[_setup_read(signal) for signal in (setups or [])],
         note="No trade is proposed here. This is the market, drawn the way the analysis reads it.",
     )
 
@@ -363,6 +386,20 @@ def _gate_read(reading: GateReading) -> GateRead:
         blocking=reading.blocking,
         checks=checks,
         headline=headline,
+    )
+
+
+def _setup_read(signal: SetupSignal) -> SetupRead:
+    return SetupRead(
+        key=signal.setup,
+        name=signal.name,
+        source=signal.source,
+        side=signal.side.value,
+        entry=signal.entry,
+        stop=signal.stop,
+        target=signal.target,
+        reward_risk=round(signal.reward_risk, 2),
+        reasons=list(signal.reasons),
     )
 
 
@@ -421,3 +458,19 @@ def _events(
                 )
             )
     return sorted(lines, key=lambda line: line.bar_index)
+
+
+def setups_at(analysis: MultiFrameAnalysis, ts: int) -> list[SetupSignal]:
+    """Which of the guide's setups fire on the bar this snapshot was built for.
+
+    Found by timestamp rather than by position. The snapshot may be a few bars
+    behind the newest stored one -- the builder walks back past bars that are
+    mid-warm-up on a higher timeframe -- and reading the last index would
+    evaluate the setups on a different bar than the one being drawn.
+    """
+    signal = analysis.signal
+    stamps = signal.column("ts")
+    matches = [index for index, stamp in enumerate(stamps) if int(stamp) == ts]
+    if not matches:
+        return []
+    return evaluate_all(signal, matches[0])

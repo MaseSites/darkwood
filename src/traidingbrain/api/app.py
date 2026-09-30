@@ -35,7 +35,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from traidingbrain.api.chart import ChartView, build_chart
-from traidingbrain.api.market import MarketAnalysisCache, MarketView, build_market_view
+from traidingbrain.api.market import (
+    MarketAnalysisCache,
+    MarketView,
+    build_market_view,
+    setups_at,
+)
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Timeframe
@@ -443,7 +448,7 @@ def _market_for(services: Services, symbol: str, requested: str | None) -> Marke
             f"no analysable data for {symbol}; "
             f"run scripts/backfill.py {symbol} --since 2023-01-01",
         )
-    snapshot, _analysis = built
+    snapshot, analysis = built
     frame = services.bars.read(symbol, timeframe, until_ms=snapshot.ts)
     if frame.empty:
         raise HTTPException(404, f"no stored {timeframe.value} bars for {symbol}")
@@ -453,6 +458,7 @@ def _market_for(services: Services, symbol: str, requested: str | None) -> Marke
         timeframe=timeframe,
         available=offered,
         trigger=services.config.engine.trigger,
+        setups=setups_at(analysis, snapshot.ts),
     )
 
 

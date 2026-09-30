@@ -281,10 +281,52 @@ function marketPanel() {
             )}, with the levels and structural events the analysis found."></canvas>
   </figure>
 
+  ${setupPanel(view.setups)}
   ${gatePanel(view.gate)}
   ${frameTable(view)}
 
   <p class="chart__note">${escapeHtml(view.note)}</p>`;
+}
+
+/**
+ * Which of the guide's setups fire on this bar.
+ *
+ * Above the gate, because when one fires this is the answer and the gate is the
+ * working. Each row carries the whole trade: a screen that says "Setup C fired"
+ * and not where the stop goes has given away the interesting half and kept the
+ * half that decides whether to take it.
+ *
+ * Nothing here is an instruction. Two setups can fire at once and disagree, and
+ * the guide is explicit that they are separate models rather than one strategy,
+ * so they are listed rather than ranked.
+ */
+function setupPanel(setups) {
+  if (!setups?.length) return "";
+  const rows = setups
+    .map(
+      (s) => `<li class="setup setup--${escapeHtml(s.side)}">
+        <span class="setup__key">${escapeHtml(s.key)}</span>
+        <span class="setup__name">${escapeHtml(s.name)}
+          <span class="setup__source">${escapeHtml(s.source)}</span></span>
+        <span class="setup__side">${escapeHtml(s.side)}</span>
+        <dl class="setup__plan">
+          <div><dt>Entry</dt><dd class="num">${fmt.price(s.entry)}</dd></div>
+          <div><dt>Stop</dt><dd class="num down">${fmt.price(s.stop)}</dd></div>
+          <div><dt>Ziel</dt><dd class="num up">${fmt.price(s.target)}</dd></div>
+          <div><dt>CRV</dt><dd class="num">${s.reward_risk.toFixed(2)}</dd></div>
+        </dl>
+        <ul class="setup__why">${(s.reasons ?? [])
+          .map((r) => `<li>${escapeHtml(r)}</li>`)
+          .join("")}</ul>
+      </li>`
+    )
+    .join("");
+
+  return `
+  <section class="setups" aria-live="polite">
+    <h2 class="setups__head">${setups.length === 1 ? "Ein Setup" : `${setups.length} Setups`} nach den Regeln</h2>
+    <ul class="setups__list">${rows}</ul>
+  </section>`;
 }
 
 /**

@@ -1051,6 +1051,146 @@ body {
   height: 380px;
 }
 
+/* ----------------------------------------------------- the setups ------ */
+/* When a rule fires this is the answer and the gate below is the working, so it
+   sits above and is the one thing on the market screen allowed to be loud --
+   sparingly: a left rule in the side's own colour and the numbers at full
+   contrast. Everything else on this screen stays quiet, which is what lets this
+   read as an event rather than as more furniture.
+
+   Listed, never ranked. The guide's chapter 30 is explicit that the setups are
+   separate models rather than one strategy, and two firing at once is
+   information. */
+
+.setups {
+  margin-top: var(--s4);
+}
+
+.setups__head {
+  margin: 0 0 var(--s2);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--dim);
+}
+
+.setups__list {
+  display: grid;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup {
+  display: grid;
+  grid-template-columns: 22px minmax(140px, 1fr) auto;
+  grid-template-areas:
+    "key  name name"
+    "side plan plan"
+    "why  why  why";
+  align-items: baseline;
+  gap: var(--s2) var(--s3);
+  padding: var(--s3) var(--s4);
+  background: var(--panel-high);
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--long);
+  border-radius: var(--radius);
+}
+
+.setup--short {
+  border-left-color: var(--short);
+}
+
+.setup__key {
+  grid-area: key;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.setup__name {
+  grid-area: name;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.setup__source {
+  margin-left: var(--s2);
+  font-size: 11px;
+  color: var(--dimmer);
+}
+
+.setup__side {
+  grid-area: side;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--long);
+}
+
+.setup--short .setup__side {
+  color: var(--short);
+}
+
+.setup__plan {
+  grid-area: plan;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s4);
+  margin: 0;
+  justify-content: flex-end;
+}
+
+/* Its own row, full width.
+ *
+ * It started in the first column, which is 22px wide -- one word per line for
+ * fifteen lines. The kind of thing a source-only checker cannot see and a
+ * screenshot shows instantly. */
+.setup__why {
+  padding-top: var(--s1);
+  border-top: 1px solid var(--rule);
+}
+
+.setup__plan div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+}
+
+.setup__plan dt {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.setup__plan dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.setup__why {
+  grid-area: why;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--dimmer);
+}
+
+/* A separator between reasons rather than a bullet: they are a sentence of
+ * conditions, not a list of tasks, and bullets would make four short clauses
+ * look like four things to do. */
+.setup__why li + li::before {
+  content: "·";
+  margin-right: var(--s3);
+  color: var(--rule-strong);
+}
+
 /* ------------------------------------------------------- the gate ------ */
 /* The screen's standing answer to "is this a good trade". It is on view during
    the hours when nothing is happening, which is almost all of them, so it is
