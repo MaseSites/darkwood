@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from traidingbrain.domain.enums import Factor, Timeframe
@@ -341,7 +341,26 @@ class Secrets(BaseSettings):
         extra="ignore",
     )
 
-    anthropic_api_key: SecretStr = SecretStr("")
+    # Both of these are read under their own canonical names *and* under the TB_
+    # prefix, because the prefix is a trap here. `.env.example` has always listed
+    # `ANTHROPIC_API_KEY`, which is the name Anthropic's own tooling uses and the
+    # name anyone would write -- and with only the prefix configured it was read
+    # from `TB_ANTHROPIC_API_KEY` and the plain spelling was silently ignored.
+    # A credential that is present, correct and unread is the worst of the three.
+    anthropic_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("ANTHROPIC_API_KEY", "TB_ANTHROPIC_API_KEY"),
+    )
+    #: A long-lived token from `claude setup-token`, for the subscription brain.
+    #:
+    #: Here rather than in a Windows environment variable for the same reason as
+    #: every other credential: one file to fill in, one file to keep out of git.
+    #: The CLI only reads it from the environment, so the brain puts it there for
+    #: the subprocess and nowhere else.
+    claude_code_oauth_token: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("CLAUDE_CODE_OAUTH_TOKEN", "TB_CLAUDE_CODE_OAUTH_TOKEN"),
+    )
     bybit: BybitCredentials = BybitCredentials()
     kill_switch_file: Path = Path("data/KILL_SWITCH")
 

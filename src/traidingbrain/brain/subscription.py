@@ -30,6 +30,7 @@ the account already exists.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -41,7 +42,7 @@ from pydantic import ValidationError
 
 from traidingbrain.brain import prompt as prompts
 from traidingbrain.brain.client import AnthropicBrain, CacheLike, _Refusal
-from traidingbrain.config.settings import AppConfig
+from traidingbrain.config.settings import AppConfig, load_secrets
 from traidingbrain.domain.snapshot import BrainInput
 from traidingbrain.domain.verdict import BrainVerdict
 
@@ -93,6 +94,7 @@ class SubscriptionBrain(AnthropicBrain):
         super().__init__(config, cache, client=_NoApiClient(), model=model, budget_usd=0.0)
         self.cli = cli
         self._resolved: str | None = None
+        self._env = _cli_environment()
         self._workspace = tempfile.mkdtemp(prefix="traidingbrain-brain-")
         self._system_file = Path(self._workspace) / "system.md"
         self._system_file.write_text(
@@ -190,6 +192,7 @@ class SubscriptionBrain(AnthropicBrain):
                 errors="replace",
                 timeout=CALL_TIMEOUT_S,
                 cwd=self._workspace,
+                env=self._env,
                 check=False,
             )
         except FileNotFoundError as error:
@@ -288,6 +291,22 @@ class _NoApiClient:
             f"{name!r} needs the Anthropic API. This brain runs through the CLI "
             "subscription, which has no token-counting or batch endpoint."
         )
+
+
+def _cli_environment() -> dict[str, str]:
+    """The environment the CLI runs in, with a token from .env if one is there.
+
+    `claude setup-token` prints a long-lived token and expects it in
+    CLAUDE_CODE_OAUTH_TOKEN. Requiring that to be a machine-wide Windows variable
+    would put one credential somewhere different from every other credential in
+    this project, so .env is accepted as well and passed through here -- into the
+    subprocess only, never back into this process, and never logged.
+    """
+    environment = dict(os.environ)
+    token = load_secrets().claude_code_oauth_token.get_secret_value()
+    if token:
+        environment["CLAUDE_CODE_OAUTH_TOKEN"] = token
+    return environment
 
 
 def _extract_json(text: str) -> str:

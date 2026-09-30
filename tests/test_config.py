@@ -14,9 +14,11 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from tests.conftest import PROJECT_ROOT
 from traidingbrain.config.settings import (
     AppConfig,
     HistoryConfig,
+    Secrets,
     SizingConfig,
     SymbolsConfig,
     TimeframesConfig,
@@ -267,3 +269,68 @@ def test_the_shipped_configuration_can_actually_reach_its_threshold() -> None:
     history = load_config().engine.history
 
     assert history.k_neighbours > history.min_samples_for_stats
+
+
+def test_a_credential_is_read_under_its_own_name_as_well_as_the_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`.env.example` has always said ANTHROPIC_API_KEY, and that was never read.
+
+    Every field in this model picks up a TB_ prefix, so the plain spelling -- the
+    one Anthropic's own tooling uses, and the one the example file has always
+    told people to write -- was silently ignored. A credential that is present,
+    correct and unread is worse than a missing one: nothing reports it, and the
+    symptom is identical to not having filled it in.
+    """
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "plain")
+    monkeypatch.delenv("TB_ANTHROPIC_API_KEY", raising=False)
+
+    assert Secrets().anthropic_api_key.get_secret_value() == "plain"
+
+
+def test_the_prefixed_spelling_still_works(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both, not one instead of the other: existing .env files must keep working."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("TB_ANTHROPIC_API_KEY", "prefixed")
+
+    assert Secrets().anthropic_api_key.get_secret_value() == "prefixed"
+
+
+def test_the_cli_token_is_read_under_the_name_the_cli_itself_uses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`claude setup-token` prints a token for CLAUDE_CODE_OAUTH_TOKEN.
+
+    Accepting any other spelling as the only option would mean copying a value
+    out of one tool and renaming it on the way in, which is exactly where a
+    credential gets mistyped.
+    """
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
+
+    assert Secrets().claude_code_oauth_token.get_secret_value() == "tok"
+
+
+def test_every_name_in_the_example_file_is_actually_read() -> None:
+    """The example file is the instructions. A line nothing reads is a wrong one.
+
+    Checked against the model rather than by eye, because this drifts silently:
+    the file said ANTHROPIC_API_KEY for months while the loader wanted
+    TB_ANTHROPIC_API_KEY, and nothing in the project noticed.
+    """
+    example = (PROJECT_ROOT / ".env.example").read_text(encoding="utf-8")
+    names = {
+        line.split("=", 1)[0].strip()
+        for line in example.splitlines()
+        if "=" in line and not line.strip().startswith("#")
+    }
+
+    readable: set[str] = set()
+    for field in Secrets.model_fields.values():
+        alias = field.validation_alias
+        if alias is None:
+            continue
+        readable.update(str(choice) for choice in getattr(alias, "choices", []))
+
+    nested = {name for name in names if name.startswith("TB_") and "__" in name}
+    unread = names - readable - nested - {"TB_KILL_SWITCH_FILE"}
+    assert not unread, f".env.example names variables nothing reads: {sorted(unread)}"
