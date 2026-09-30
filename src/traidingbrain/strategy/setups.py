@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from traidingbrain.analysis.candles import confirm_breakout
+from traidingbrain.analysis.fvg_quality import MitigationRule, assess_gaps, best_gap
 from traidingbrain.analysis.liquidity import Zone, ZoneKind
 from traidingbrain.analysis.pipeline import FrameAnalysis
 from traidingbrain.analysis.zones import StructuralZone, ZoneRole, true_zone
@@ -361,6 +362,88 @@ class InducementOrderBlock:
 
 
 # --------------------------------------------------------------------------- #
+# Setup G -- six-factor fair value gap (V13)
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class SixFactorGap:
+    """V13. The first test of the highest-ranked gap that passes all six factors.
+
+    The most completely specified setup in the guide: it states the entry
+    condition, the stop to the candle, and the target, and its six factors are
+    conditions rather than preferences. That makes it the one that can be
+    implemented with the least interpretation -- and the one whose failure would
+    say the most, because there is nowhere for a judgement call to hide.
+
+    The factors are conjunctive on purpose. A gap meeting five of six is not
+    five-sixths of a setup; scoring them would let any one be bought off by the
+    others, and the video's list is a list of requirements.
+    """
+
+    key: str = "G"
+    name: str = "Sechs-Faktoren-FVG"
+    source: str = "V13"
+    mitigation: MitigationRule = MitigationRule.V13_INVALID
+
+    def evaluate(self, analysis: FrameAnalysis, index: int) -> SetupSignal | None:
+        if not analysis.is_ready(index):
+            return None
+
+        assessments = assess_gaps(
+            analysis.frame,
+            analysis.indicators.atr,
+            analysis.structure,
+            index,
+            rule=self.mitigation,
+            gaps=analysis.fair_value_gaps,
+        )
+        for bullish in (True, False):
+            chosen = best_gap(assessments, bullish=bullish)
+            if chosen is None:
+                continue
+            gap = chosen.gap
+            # "Entry: Wenn Reaktionskerze im FVG oder in Zonenrichtung schließt."
+            #
+            # Two conditions on this bar, and the second is easy to miss. The
+            # reaction has to be *this* bar, or the setup fires on every bar
+            # price spends near a gap it once reacted to. And the bar has to be
+            # a later one: the candle that creates a gap spans it by
+            # construction, so without this the setup matches the gap's own
+            # third candle and calls it a retest.
+            if index <= gap.created_index:
+                continue
+            if not _bar_reaches(analysis, index, gap.low, gap.high):
+                continue
+
+            side = Side.LONG if bullish else Side.SHORT
+            entry = analysis.close_at(index)
+            # "Stop Loss: Am Low der Kerze, die das bullische FVG erzeugte."
+            stop = _gap_candle_extreme(analysis, gap, bullish=bullish)
+            target = _move_end(analysis, gap, index, bullish=bullish)
+            if stop is None or target is None:
+                continue
+
+            signal = SetupSignal(
+                setup=self.key,
+                name=self.name,
+                source=self.source,
+                side=side,
+                entry=entry,
+                stop=stop,
+                target=target,
+                bar_index=index,
+                reasons=(
+                    *(f"{name} met" for name in chosen.met),
+                    f"highest-ranked {'bullish' if bullish else 'bearish'} gap",
+                ),
+                reference_level=gap.mid,
+            )
+            return signal if signal.is_coherent() else None
+        return None
+
+
+# --------------------------------------------------------------------------- #
 # The ones that cannot propose, and why
 # --------------------------------------------------------------------------- #
 
@@ -407,13 +490,6 @@ INCOMPLETE: tuple[Incomplete, ...] = (
         missing="trendline detection",
         quote="Mindestens zwei Swing-High-Anker; dritter Kontakt über Linie.",
     ),
-    Incomplete(
-        key="G",
-        name="Sechs-Faktoren-FVG",
-        source="V13",
-        missing="the six validity factors",
-        quote="Unmitigiert, S/R-Confluence, richtige Range-Hälfte, höchstrangiges Gap.",
-    ),
 )
 
 
@@ -421,6 +497,7 @@ TRADEABLE: tuple[Setup, ...] = (
     MomentumBreakout(),
     SupplyDemandRetest(),
     InducementOrderBlock(),
+    SixFactorGap(),
 )
 
 
@@ -483,6 +560,55 @@ def _previous_extreme(analysis: FrameAnalysis, index: int, *, bullish: bool) -> 
     if not prices:
         return None
     return max(prices) if bullish else min(prices)
+
+
+def _bar_reaches(analysis: FrameAnalysis, index: int, low: float, high: float) -> bool:
+    """Did this bar trade into the band?
+
+    The reaction has to belong to this bar. Without it the setup fires on every
+    bar price spends in the neighbourhood of a gap it reacted to once, which is
+    the same mistake the breakout made against its level.
+    """
+    return bool(
+        analysis.column("low")[index] <= high and analysis.column("high")[index] >= low
+    )
+
+
+def _gap_candle_extreme(analysis: FrameAnalysis, gap: Zone, *, bullish: bool) -> float | None:
+    """V13's stop: "Am Low der Kerze, die das bullische FVG erzeugte."
+
+    Which of the three candles created it is the question, and the geometry
+    answers it. A bullish gap is the space between the first candle's high and
+    the third candle's low, so the third candle's low *is* the top of the gap --
+    a stop there sits inside the zone being entered. Measured, that produced a
+    stop 0.016% from entry and a reward-to-risk of 55.
+
+    The candle that made the imbalance is the middle one: the displacement that
+    jumped the price past the first candle's high. Its low sits under the gap,
+    which is where a stop belongs -- the trade is wrong when the move that
+    created the imbalance has been undone.
+    """
+    displacement = gap.created_index - 1
+    if displacement < 0 or displacement >= len(analysis.frame):
+        return None
+    column = "low" if bullish else "high"
+    return float(analysis.column(column)[displacement])
+
+
+def _move_end(
+    analysis: FrameAnalysis, gap: Zone, index: int, *, bullish: bool
+) -> float | None:
+    """V13's target: "Hoch/Tief des Moves" that made the gap.
+
+    Measured from the gap's creation bar to now, which is the move as it stands
+    when the decision is taken. Reading further would be reading bars that have
+    not closed.
+    """
+    if index <= gap.created_index:
+        return None
+    column = "high" if bullish else "low"
+    values = analysis.column(column)[gap.created_index : index + 1]
+    return float(values.max() if bullish else values.min())
 
 
 @dataclass

@@ -21,7 +21,7 @@ import pandas as pd
 
 from traidingbrain.analysis.candles import CandleTimeline
 from traidingbrain.analysis.indicators import IndicatorSet, compute_all
-from traidingbrain.analysis.liquidity import LiquidityTimeline
+from traidingbrain.analysis.liquidity import LiquidityTimeline, Zone, find_fair_value_gaps
 from traidingbrain.analysis.regime import RegimeTimeline
 from traidingbrain.analysis.structure import StructureTimeline
 from traidingbrain.analysis.zones import ZoneTimeline
@@ -62,6 +62,12 @@ class FrameAnalysis:
     regime: RegimeTimeline
     candles: CandleTimeline
     zones: ZoneTimeline
+    #: Every three-bar imbalance in the series, found once.
+    #:
+    #: Each carries the bar it became visible on, so a caller filters by that
+    #: rather than by position. Rediscovering them per bar is quadratic in the
+    #: length of a run, and the gap rules are asked on every bar.
+    fair_value_gaps: list[Zone] = field(default_factory=list)
     _columns: dict[str, np.ndarray] = field(default_factory=dict, compare=False)
 
     def __len__(self) -> int:
@@ -154,6 +160,9 @@ def analyse(frame: pd.DataFrame, timeframe: Timeframe, config: EngineConfig) -> 
         regime=regime,
         candles=CandleTimeline(frame, indicators.atr),
         zones=ZoneTimeline(frame, indicators.atr, structure),
+        fair_value_gaps=find_fair_value_gaps(
+            frame, indicators.atr, config.liquidity.fvg_min_size_atr
+        ),
     )
 
 
