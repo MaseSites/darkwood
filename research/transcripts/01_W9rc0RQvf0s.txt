@@ -1,0 +1,115 @@
+[00000.480] Versprechungen, mithilfe von Daytrading das schnelle Geld zu verdienen und schnell reich zu werden, gibt es
+[00005.920] zu Hunderten im Internet. Aber was ist Daytrading überhaupt? Wie funktioniert es und was sind die
+[00010.800] Vorteile und Risiken? Das klären wir in diesem Video.
+[00020.240] Hi, mein Name ist Thomas von "Finanzfluss", und aus der Community haben wir mal die Bitte bekommen, über
+[00024.760] das Thema Daytrading ein Video zu machen. Deswegen beschäftigen wir uns heute damit, was Daytrading ist,
+[00030.200] wie es funktioniert, welche Erfolgsaussichten es gibt und welche die Risiken beim Daytrading sind.
+[00036.040] Am Schluss überlegen wir uns auch, ob es für einen langfristigen Investor sinnvoll ist, sich mit Daytrading
+[00040.960] zu beschäftigen. Das Thema Daytrading oder auch kurz Trading genannt ist im Allgemeinen ein sehr emotional
+[00046.940] aufgeladenes Thema. Auf der einen Seite findet man gerade im Internet sehr viele sogenannte Gurus, die
+[00052.900] versprechen, extrem viel Geld mit Daytrading verdient zu haben, und dir zeigen wollen, wie auch du das kannst.
+[00059.320] Auf der anderen Seite gibt es jede Menge gebrandmarkte Opfer, die man in Foren finden kann, die
+[00064.200] ihr ganzes Vermögen bei Daytrading verspekuliert und im schlimmsten Fall sogar Schulden aufgebaut haben.
+[00070.120] Um einmal jegliche emotionale Diskussion auszulassen, schauen wir uns erst mal eine Definition an, was ein
+[00075.520] Daytrader überhaupt ist. Ein Daytrader ist eine Person, die Daytrading betreibt. Daytrading ist nichts anders als
+[00082.060] das kurzfristige Spekulieren mit Wertpapieren.
+[00085.220] Hierbei baut der Trader innerhalb eines Handelstages eine sogenannte Wertpapierposition auf, das bedeutet,
+[00090.340] er kauft Wertpapiere, und verkauft diese auch wieder innerhalb desselben Tages. Daher kommt auch das Wort
+[00096.020] Daytrader, weil der Trader immer nur innerhalb eines Tages handelt und am Ende seines Handelstages
+[00101.900] alle Positionen geschlossen hat, also wieder 100 % Cashquote hat.
+[00106.300] Da Kursschwankungen innerhalb eines Tages mit relativ wenigen Ausnahmen nur sehr gering sind, müssen
+[00111.660] Daytrader sogenannte Hebel einsetzen, um an einem Tag überhaupt Profit schlagen zu können.
+[00117.160] Die Kursschwankungen innerhalb eines Tages sind verglichen auf Jahres- oder Monatssicht relativ gering.
+[00122.920] Sehr selten kommt es einmal zu großen Kursansprüngen oder Kursverfällen.
+[00126.820] So müssen sich Daytrader darauf konzentrieren, auch mit kleinen Kursschwankungen Gewinne zu erzielen.
+[00132.820] Hierzu bedienen sich Daytrader häufig eines Hebels, eines sogenannten Leverages. Das ist geliehenes Geld
+[00137.820] von ihrem Broker oder ihrer Bank, mit dem sie versuchen, ihre Gewinne in die Höhe zu "hebeln".
+[00143.200] Mithilfe von geliehenem Kapital können Daytrader fast beliebige Hebel erreichen.
+[00148.160] Sie können z. B. eine Aktie selbst kaufen und 100 Aktien auf Pump kaufen. Somit haben sie die Möglichkeit, auch
+[00154.380] von ganz kleinen Kursschwankungen während eines Tages zu profitieren. Auf der anderen Seite haben sie
+[00159.240] natürlich auch das Risiko, geliehenes Geld zu verlieren. Jetzt, wo wir wissen, was Hebelgeschäfte sind, schauen
+[00164.680] wir uns doch einmal an, welche Produkte und in welchen Märkten die meisten Daytrader handeln.
+[00170.140] Die meisten Daytrader, zumindest die privaten, handeln überwiegen Derivate. Das bedeutet, sie kaufen keine
+[00175.980] direkten Basiswerte, sondern Derivate wie z. B. Futures, Optionen, binäre Optionen oder CFDs.
+[00183.380] Das hat den Vorteil, dass solche Produkte sich deutlich besser hebeln lassen und hierfür weniger Geld auf den
+[00188.800] Tisch gelegt werden muss. Es gibt auch Trader, die ausschließlich mit Aktien handeln, das ist aber seltener,
+[00193.980] weil hierfür mehr Kapital benötigt wird, um überhaupt etwas zu bewegen.
+[00198.200] Wie wir euch in unserem Derivate-Video bereits erklärt haben, sind Derivate eine Ableitung auf einen Basiswert.
+[00204.720] Welche Basiswerte handeln Daytrader also? In der Regel handeln sie Aktien, aber noch häufiger handeln sie auf
+[00211.220] dem Forex-Markt. Der Forex-Markt ist der größte Finanzmarkt der Welt und handelt Währungspaare.
+[00216.840] Wenn ihr z. B. hört, dass der Euro gegenüber dem US-Dollar verloren hat oder der Britische Pfund
+[00221.920] gegenüber dem Yen gewonnen hat, ist das der Forex-Markt. Hier werden Währungspaare gehandelt.
+[00227.360] Es ist, wie gesagt, der größte und effizienteste Finanzmarkt und hat das größte Transaktionsvolumen.
+[00233.160] Jetzt, wo wir wissen, was Daytrader handeln, schauen wir uns doch einmal an, wie sie handeln.
+[00237.460] Ein Daytrader hat zwei Möglichkeiten: Er kann eine Long-Position oder eine Short-Position aufbauen.
+[00244.440] Eine Long-Position bedeutet, dass er auf steigende Kurse setzt. Baut er z. B. eine Aktien-Long-Position auf,
+[00250.800] kauft er diese Aktie in der Hoffnung, dass sie zukünftig steigen wird. Baut er eine Short-Position auf, setzt er
+[00256.740] auf fallende Kurse. Die Technik dahinter ist etwas komplizierter, denn zum Shortsellen verkauft er erst
+[00263.620] einen Wert, den er noch nicht besitzt, und kauft ihn zu einem späteren Zeitpunkt.
+[00268.140] Es handelt sich hierbei um ein sogenanntes Leihgeschäft. Das klingt jetzt sicherlich etwas
+[00271.840] kompliziert, aber wichtig sind nur, die beiden Begriffe Long und Short schon einmal gehört zu haben.
+[00276.660] Woher weiß ein Trader nun, ob er eine Long- oder eine Short-Position aufbauen soll?
+[00280.920] Hierzu gibt es verschiedene Strategien. Eine Strategie ist das sogenannte Ereignis-Trading.
+[00286.160] Hierzu konzentrieren sich Trader auf besondere Ereignisse, die im Laufe des Tages geschehen werden.
+[00291.600] Hierzu können z. B. veröffentlichte Arbeitsmarktdaten aus den USA und aus Deutschland zählen, es können
+[00297.180] volkswirtschaftliche Prognosen zählen, die publiziert werden, es kann aber auch sein, dass eine Leihzins-
+[00302.340] Entscheidung getroffen wird oder es zu ganz außergewöhnlichen Ankündigungen kommt, wie z. B.
+[00307.300] Neuverhandlungen über die Schulden Griechenlands oder den Brexit.
+[00311.060] Im nächsten Schritt trifft der Trader eine Vermutung, wie diese Zahlen wohl ausfallen werden.
+[00315.540] Geht er z. B. davon aus, dass ein Unternehmen bessere Verkaufszahlen veröffentlicht als allgemein erwartet,
+[00320.420] wird er eine Long-Position eingehen, weil er davon ausgeht, dass die Kurse zukünftig steigen werden.
+[00326.540] Geht er wie z. B. bei Apple davon aus, dass die Verkaufszahlen des i-Phones rückläufig sind, und zwar
+[00332.600] stärker rückläufig, als der allgemeine Markt vermutet, wird er Apple shortsellen.
+[00337.800] Dass er mit diesen Vorhersagen natürlich nicht immer richtig liegt, liegt in der Natur der Dinge.
+[00342.080] Er muss nur öfter richtig zu liegen oder bei diesen Entscheidungen mehr investiert haben als bei Verlusten.
+[00350.240] Jetzt, wo wir wissen, wie Trading funktioniert, schauen wir uns doch einmal ein paar Motivationsgründe an,
+[00354.420] warum so viele Leute sich gerade für dieses Thema begeistern lassen.
+[00358.320] Zunächst einmal gibt es den Traum vom schnellen Geld, also schnell reich zu werden. Da gerade beim Trading
+[00363.780] große Geldsummen schnell den Besitzer wechseln können, gibt es natürlich auch die Hoffnung, dass
+[00368.160] irgendwann mal eine Großgeldsumme auf euer Konto kommt.
+[00371.680] Ein zweiter Grund, warum sich viele Leute in Trading versuchen, sind die sehr geringen Einstiegshürden.
+[00377.080] Jeder kann versuchen, Daytrader zu werden - dazu braucht ihr keine spezielle Ausbildung, kein Studium,
+[00382.040] keine Zertifikate. Ihr könnt einfach ein Konto bei einem Broker eröffnen und direkt mit eurem eigenen Geld
+[00388.160] anfangen zu handeln. Das birgt aber auch das Risiko, dass man gerade diese Einstiegshürden unterschätzt.
+[00394.760] Wer anfangen möchte zu traden, muss sich bewusst sein, dass er gegen die größten Player auf dem
+[00399.200] Finanzmarkt spielt. Banken beschäftigen ganze Heerscharen von Tradern, die das beruflich gemacht
+[00404.420] haben, entsprechend studiert haben, die Informationen haben, die ihr eventuell nicht habt, und die deutlich
+[00409.940] schneller handeln können als ihr.
+[00412.120] Womit wir auch schon beim nächsten Punkt sind, nämlich der technischen Ausrüstung.
+[00415.800] Wenn ihr Trader sein wollt, braucht ihr eine gute technische Ausrüstung mit einer sehr schnellen
+[00419.480] Internetverbindung, da Kurse ja sehr schnell schwanken können, und wenn ihr einen kleinen Kursrutsch verpasst,
+[00424.560] weil euer Computer nicht schnell genug war, kann euer gesamter Gewinn dahingeschmolzen sein, oder ihr könnt
+[00429.500] sogar Verluste gemacht haben. Weitere Risiken beim privaten Trading sind, dass ihr z. B. eine Sucht
+[00434.900] entwickeln könnt. Diese Sucht kann ähnlich einer Spielsucht werden und euch in den totalen Ruin treiben.
+[00443.260] Hinzu kommt, dass Daytrading eine erhebliche Summe an Transaktionskosten produziert.
+[00447.980] Bei jedem Mal, wo gekauft und verkauft wird, fallen Transaktionskosten an, die an den Broker überwiesen
+[00453.000] werden müssen. Diese Transaktionskosten müsst ihr zusätzlich zum Ausgleich eurer Verluste erwirtschaften.
+[00459.880] Hinzu kommt ein Punkt, den ich eben schon erwähnt habe, dass ihr sehr, sehr starke Gegenspieler habt,
+[00464.480] nämlich die größten Investmentbanken dieser Welt. Da es beim Trading keine Wertschöpfung gibt, sondern
+[00469.220] immer nur Geld von einer Seite auf eine andere Seite transferiert wird, gibt es überall da, wo es Gewinner
+[00475.200] gibt, auch Verlierer. Das Geld, das ihr mit eurem Trading verliert, hat jemand anderes in der Tasche - das, was ihr
+[00481.820] gewinnt, hat jemand anderes verloren. Einer Studie zufolge, die im Forbes Magzin veröffentlicht wurde,
+[00487.600] und zu der ich euch auch den Link unten in die Beschreibung gepackt hab, machen 77 % der privaten
+[00494.060] Trader Verluste. Von denjenigen, die Gewinne machen, ist der durchschnittliche Jahresgewinn nur $ 22.000,00.
+[00504.020] Das ist keine sehr beeindruckende Zahl für Leute, die sich vorgenommen haben, in kürzester Zeit einen großen
+[00508.720] Reichtum anzuhäufen. Solltet ihr also mit dem Gedanken spielen, selbst Daytrader zu werden, seid euch
+[00514.360] bewusst, dass es sich beim Daytrading nicht um ein Hobby, sondern um einen wirklichen Beruf handelt.
+[00519.460] Ihr müsst dementsprechend auch eine Ausbildung durchlaufen und viel Lehrgeld bezahlen, weil Verluste
+[00524.880] zum Geschäft gehören. Seid euch bewusst, dass ihr gegen die größten Banken spielt, die studierte Leute mit
+[00530.440] viel Erfahrung und einem Informationsvorsprung sowie technologischem Vorsprung haben - eure Gegner.
+[00536.880] Wenn ihr euch an das Thema herantasten wollt, gibt es verschiedene Broker, die Demokonten zur Verfügung
+[00541.500] stellen, die ihr euch so vorstellen könnt wie das Musterdepot bei den Aktien.
+[00545.840] Ihr könnt hier ohne echten Geldeinsatz einmal eure Fähigkeiten testen. In der Beschreibung findet ihr
+[00550.800] einen Link zu einem solchen Demokonto bei einem Broker.
+[00553.840] Wenn ihr euch wie ich langfristig ein Vermögen aufbauen möchtet, dafür aber mit einer höheren
+[00558.760] Sicherheit, mit mehr Beständigkeit, ohne die ganze Zeit vor dem Bildschirm zu sitzen und irgendwelche Ticker
+[00565.260] zu verfolgen, dann lade ich euch herzlich ein, euch mal unsere Videos zum passiven Investieren anzuschauen,
+[00570.560] die wir euch hier verlinkt haben.
+[00573.200] Wenn euch das Video gefallen hat, gebt uns doch einen Daumen hoch, und schreibt uns in die Kommentare, was
+[00577.240] ihr noch zum Thema Trading, Derivate oder Investieren im Allgemeinen wissen wollt, und wenn du das erste Mal
+[00583.280] auf unserem Kanal bist, würden wir uns auch freuen, wenn du uns abonnieren würdest.
+[00587.020] Wir produzieren regelmäßig neue Videos und Tutorials zu den Themen Finanzprodukte, Geldanlage und
+[00592.620] Anlagestrategie, um dir die Welt der Finanzen verständlicher zu machen. Wir wollen dir helfen, deine
+[00597.800] Finanzen selbst im Griff zu haben und unabhängig von Beratern Entscheidungen treffen zu können.
+[00602.600] Jede Woche produzieren wir neue Videos, abonnier uns, um keines mehr zu verpassen und folg uns auch auf
+[00607.820] Facebook und den anderen Social-Media-Kanälen.

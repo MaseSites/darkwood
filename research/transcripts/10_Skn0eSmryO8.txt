@@ -1,0 +1,286 @@
+[00000.000] There are two challenges that traders typically face with Liquidity...
+[00003.440] The first is knowing which level is actually being targeted,
+[00006.400] and the second is knowing whether the price
+[00008.240] is going to make a continuation, or a reversal.
+[00010.800] Which involves an understanding in advanced market structure,
+[00013.600] which most traders lack.
+[00014.880] So in this video,
+[00015.920] we've broken down everything you need to know about trading Liquidity,
+[00019.200] into five simple steps.
+[00020.960] So let's waste no time and start with step number one,
+[00024.000] which is understanding the different forms of Liquidity.
+[00026.600] Liquidity refers to areas in the chart,
+[00028.880] that either contain a large quantity of unfilled orders,
+[00031.760] or a large quantity of stop losses,
+[00034.000] and it presents itself in two different forms...
+[00036.560] When people typically talk about Liquidity,
+[00038.520] they are usually referring to the External Range Liquidity (ERL),
+[00041.480] which can be either a previous swing high,
+[00043.440] or a previous swing low.
+[00045.040] These are pivotal moments in the chart,
+[00046.840] because they either result in a trend continuation, or a trend reversal,
+[00050.760] in the form of Liquidity Runs and Liquidity Sweeps,
+[00053.680] which we will be covering further into the video.
+[00055.800] The other form of Liquidity is Internal Range Liquidity (IRL),
+[00059.160] which is just another name for Fair Value Gaps (FVGs).
+[00061.440] This is what the price uses as fuel to attack the swing highs and lows.
+[00065.480] It's important that you pay attention to how the price interacts
+[00068.040] with both forms of Liquidity.
+[00069.520] Because together, they will tell you which direction the market is going to move.
+[00073.240] For our next step, we need to talk about order flow...
+[00075.800] and how it can help us determine which Liquidity level we should be targeting.
+[00079.240] When we look at a chart, the first thing we should do,
+[00081.640] is look to see whether the current order flow is bullish, or bearish.
+[00085.240] and this depends on whether the price is pushing through buy-side,
+[00088.200] or sell-side Liquidity.
+[00089.640] Which can seem confusing at a glance...
+[00091.640] But we can simplify this through the use of two concepts,
+[00094.760] which are called Break of Structure (BoS), and Change of Character (CHoCH).
+[00097.560] So let's see how they work...
+[00098.960] When a new swing forms on the chart,
+[00100.680] Liquidity levels are created at the swing high and swing low.
+[00104.080] The Liquidity level at the high is called the buy-side Liquidity,
+[00107.240] and the Liquidity level at the low is called the sell-side Liquidity.
+[00110.920] For the context of Break of Structure and Change of Character,
+[00113.840] we look at which type of Liquidity was ran through,
+[00116.240] when this new swing was created.
+[00117.840] Which in this case, was a buy-side Liquidity,
+[00120.240] which means we are currently in a bullish order flow.
+[00122.880] So with this in mind,
+[00124.040] our current Break of Structure level is the buy-side Liquidity.
+[00127.280] This is because a Break of Structure refers to the level,
+[00129.840] that would need to be broken through in order
+[00131.280] in order for the current market trend to continue,
+[00133.640] which in this case is an uptrend.
+[00135.560] And on the other hand,
+[00136.480] the current Change of Character level would be the sell-side Liquidity.
+[00140.000] And this is because if this lower level was to be hit,
+[00142.520] it signals to us that the order flow might be looking to change,
+[00145.960] which in this case, would be from a bullish order flow, to a bearish order flow.
+[00149.960] But in this instance, the price pushes up and through the buy-side Liquidity,
+[00153.560] which creates the Break of Structure, confirming that the uptrend is continuing.
+[00157.320] And now, with this new bullish swing,
+[00159.520] we have a new set of Break of Structure and Change of Character levels,
+[00162.880] that we can use to assess if this uptrend will continue to progress.
+[00166.320] Here we have another depiction of a price swing,
+[00168.440] But this time, when we look at the Liquidity
+[00170.360] that was broken before this swing was created,
+[00172.560] we can see it was a sell-side Liquidity,
+[00174.760] which means that this chart would currently be in a bearish order flow.
+[00178.000] And this means that the current Break of Structure
+[00180.000] would instead be the sell-side Liquidity level,
+[00182.480] because this would be the target level if sellers wish to continue the downtrend.
+[00186.280] And on the other side,
+[00187.240] the Change of Character level would be the buy-side Liquidity,
+[00190.400] because this would signal a change in order flow, from bearish to bullish.
+[00194.640] But for this example,
+[00195.680] the price chooses to push down and through the sell-side Liquidity,
+[00199.000] confirming the Break of Structure,
+[00200.480] which tells us the current downtrend is continuing.
+[00203.120] So in summary,
+[00204.000] a Break of Structure (BoS) refers to when a Liquidity level is Run,
+[00206.920] that confirms the continuation of the current trend.
+[00209.480] And one of the most important rules in trading,
+[00211.640] is that we should always trade the direction of the market's order flow,
+[00214.720] and not against it.
+[00215.840] But this leaves the question: How do we know when the order flow has reversed?
+[00219.360] Well, here we have another uptrend, validated by the Break of Structure.
+[00222.760] Let's say price has hit resistance here.
+[00224.840] But this time, instead of creating a higher low,
+[00227.240] we instead see price push down to form a lower low.
+[00230.160] This is what we call a Change of Character,
+[00232.160] because it is the first signal that the price action may be changing,
+[00235.280] from bullish, to bearish.
+[00236.960] When this occurs, this lower low becomes the new Break of Structure,
+[00240.600] and the previous swing high now becomes the Change of Character level.
+[00243.920] This is because this high is now the level that would have to break,
+[00246.880] in order to signal that we could be returning back to bullish order flow.
+[00250.160] But as it stands, we shouldn't flip our bias to bearish just yet,
+[00253.600] and the reason being, is that this change of character
+[00255.960] could really just be a Liquidity Sweep.
+[00257.880] Instead, we want to wait to see if the price will push down,
+[00260.760] and past the break of structure level,
+[00262.480] as this will confirm the start of a downtrend.
+[00264.760] So in summary, a Break of Structure (BoS) confirms a trend continuation,
+[00268.720] and a Change of Character signals that the direction of the order flow
+[00271.640] could be reversing.
+[00272.680] We'll now develop what we've covered so far in our next step,
+[00275.520] which is understanding the relationship between
+[00277.400] between External (ERL) and Internal Range Liquidity (IRL).
+[00280.280] Here we have an uptrend,
+[00281.640] and we know this because the price has created a Break of Structure
+[00284.640] by pushing through the previous swing high.
+[00286.680] And with this new bullish swing that was created,
+[00289.000] we have our current External Range Liquidity (ERL) levels.
+[00291.880] But because we know this structure is currently in an uptrend,
+[00294.880] we should be expecting the price to target the upper buy-side Liquidity level.
+[00298.760] But in order to do this,
+[00300.040] it needs to find some kind of support, that can create the next bullish leg.
+[00303.800] And this is where we look within the previous swing,
+[00306.200] for bullish Internal Range Liquidity (IRL), 
+[00308.360] in the form of a bullish Fair Value Gap (FVG).
+[00310.560] And this is what the market can use as fuel,
+[00312.760] to go and push through the buy-side External Range Liquidity (ERL).
+[00316.160] So what we've just seen happen,
+[00317.600] is the market has used Internal Range Liquidity (IRL),
+[00320.280] to push through the External Range Liquidity (ERL) level.
+[00323.080] And this has now given us a new swing, with its own External Range Liquidity levels.
+[00327.360] And if we are expecting the price to continue this uptrend,
+[00330.200] we should again look within this new swing,
+[00332.360] to find a bullish Fair Value Gap (FVG),
+[00334.000] that can be used as fuel to create the next leg up.
+[00336.560] So to summarize this,
+[00337.880] during an uptrend, we expect to see the impulsive moves
+[00340.880] leave behind Internal Range Liquidity (IRL),
+[00343.160] in the form of bullish Fair Value Gaps (FVGs),
+[00345.280] that can then be used in the future,
+[00346.960] to push through the buy-side External Range Liquidity,
+[00349.600] to create new higher highs.
+[00351.320] And for downtrends, it’s the same, but just in reverse.
+[00354.240] If we are expecting price to break through the sell-side External Range Liquidity (ERL) levels,
+[00358.760] we want to look within the previous impulsive bearish move
+[00361.680] for Internal Range Liquidity (IRL), that can progress to move lower,
+[00364.880] in the form of a bearish Fair Value Gap (FVG).
+[00367.160] So, this explains the relationship between Internal and External Range Liquidity,
+[00371.760] which is how the trending moves are formed on the chart.
+[00374.200] And it's important to always keep this in mind
+[00376.480] when doing your technical analysis.
+[00378.360] Because when we see the Internal Range Liquidity get disrespected,
+[00381.920] it's the first sign that the market is wanting to attack the Change of Character level,
+[00386.160] which could result in a full reversal.
+[00388.160] So now it's time for the next step,
+[00389.840] which involves understanding the difference between
+[00391.840] ‘Liquidity Runs’ and ‘Liquidity Sweeps’,
+[00394.000] and more importantly,
+[00395.080] how we can predict which of the two is going to happen.
+[00397.640] When the price attacks an External Range Liquidity level,
+[00400.360] which is either a previous swing high, or a previous swing low,
+[00403.560] it can do one of two things.
+[00405.200] The first option is for it to continue in the same direction,
+[00408.040] which is what we call a ‘Liquidity Run’.
+[00409.840] And the second option is to create a reversal, which is what we call a ‘Liquidity Sweep’.
+[00414.000] This might seem simple at a first glance,
+[00416.160] but understanding what price is going to do at a Liquidity level,
+[00419.200] is where most traders struggle.
+[00420.640] So let's start by looking at Liquidity Runs first.
+[00423.440] Here we have a swing high,
+[00424.960] which is the current External Range Liquidity that we are drawing into.
+[00428.280] Price then pushes up and closes above the level.
+[00430.640] But as it stands, this isn't yet a Liquidity Run,
+[00433.600] it has only created a breakout.
+[00435.320] What we are looking for, is an additional bullish candle to form,
+[00438.560] that creates a bullish Fair Value Gap (FVG),
+[00440.480] that overlaps with the breakout of the External Range Liquidity.
+[00443.720] This is because in order for the bullish move to continue,
+[00446.560] it needs to create Internal Range Liquidity,
+[00449.040] which it can use as support, during the next retracement.
+[00451.720] On the other hand, if it were to create the Fair Value Gap (FVG) above the level, 
+[00455.240] this is also valid.
+[00456.600] The important part is that the Internal Range Liquidity
+[00459.120] is created during, or after the breakout.
+[00461.440] because this shows strength for the buyers,
+[00463.160] by creating an area that they can use as support for the next leg up.
+[00466.480] However, if the fair value gap was created before the breakout,
+[00469.640] we cannot use it for validation of a Run on Liquidity.
+[00472.400] We have to wait and see if the chart creates the correct Internal Range Liquidity,
+[00476.320] that favors a trend continuation.
+[00478.400] As for Liquidity Runs on the sell-side,
+[00480.480] we use the exact same principles, just upside down.
+[00483.760] This means we are looking for the creation of a Fair Value Gap (FVG),
+[00486.680] either within the breakout of the Liquidity level, or underneath it.
+[00490.000] We don't want to consider the Fair Value Gaps (FVGs) that formed above the level.
+[00493.680] So let's now talk about Liquidity Sweeps.
+[00496.000] Here we have another swing high as our draw on Liquidity.
+[00499.120] But this time, when price attacks the level,
+[00501.280] it fails to push over and close above it.
+[00503.720] This shows massive weakness in the buyers efforts,
+[00506.280] creating what many know is a fake out,
+[00508.400] which is the clearest signal we could get, that the price is creating a Liquidity Sweep.
+[00512.160] From here, we expect to see a reversal in order flow,
+[00515.120] meaning we should now be looking for short entries.
+[00517.520] But in the instance that this bullish candle does close over the Liquidity level,
+[00521.440] it doesn't mean a Liquidity Sweep is off the table.
+[00524.080] And this is because,
+[00525.120] if we look at where the last bullish fair value gap (FVG) was created,
+[00528.400] we can see that it's below the External Range Liquidity.
+[00531.400] So, if price was to move down from here,
+[00533.440] there's a high chance that this Fair Value Gap (FVG) will be completely disrespected,
+[00537.240] which is the first signal that the order flow could be switching.
+[00540.080] But with that said,
+[00541.000] we don't want to consider shorting just yet.
+[00542.880] Using the knowledge on market structure that we covered earlier in the video,
+[00546.320] we want to see if the price will push down below this previous swing low,
+[00549.880] because this would create a Change of Character,
+[00552.200] which is the second signal for the change of order flow.
+[00554.960] But the final piece that we are looking for,
+[00556.960] is whether this bearish leg down managed to create a bearish Fair Value Gap (FVG),
+[00560.800] because this is what sellers can use as resistance to continue the downward move,
+[00564.880] creating a new Break of Structure,
+[00566.640] which confirms that the market has now transitioned into a bearish order flow.
+[00570.720] This is the typical setup that we tend to see, when the market creates a Liquidity Sweep.
+[00574.640] And the important note to take here,
+[00576.280] is that we shouldn't actually be taking trades solely
+[00578.760] on how the price reacts to the External Range Liquidity.
+[00581.840] Instead, we should be looking at how the market structure forms,
+[00584.680] and then look for entries when it has shown a clear directional bias.
+[00588.160] Which moves us on to the next step,
+[00589.680] which is that we should be using Top Down analysis,
+[00592.080] when looking for our trade setups.
+[00593.760] We'll demonstrate this,
+[00594.960] by analyzing this segment of a chart, on the four hour time frame.
+[00598.440] So firstly, we want to know which direction the current order flow is moving in.
+[00602.360] Which we can see is bullish,
+[00603.840] because we have this Break of Structure, through the previous buy-side Liquidity.
+[00607.440] So, this means we should be looking to buy from somewhere within this range.
+[00610.920] But where exactly should we be looking for our trade entry?
+[00613.840] Well, going back to what we covered earlier
+[00615.800] about the relationship between External and Internal Range Liquidity,
+[00619.120] we should be looking for a Fair Value Gap (FVG) within this leg,
+[00621.720] that we can use for our long trade.
+[00623.440] But even with this,
+[00624.400] we shouldn't just blindly take a trade if the price draws into it.
+[00627.600] What we should instead do,
+[00628.840] is move down into a smaller time frame,
+[00631.080] to analyze whether the market actually respects this four hour Fair Value Gap (FVG).
+[00635.480] So here we are looking at the same chart, but now on the 15 minute time frame.
+[00639.520] And as expected,
+[00640.400] we can see the current order flow on this timeframe is bearish,
+[00643.520] which we can confirm with this break of structure.
+[00645.880] But remember, we want to enter a long trade,
+[00648.360] so what we are looking for, is a reversal on this 15 minute time frame,
+[00652.120] so it aligns with the bullish four hour order flow.
+[00655.040] And when we mark out the current External Range Levels,
+[00657.520] we see a Sweep occur.
+[00658.760] Which as we know, is the first phase of the reversal we are looking for.
+[00662.240] We then see the bearish Fair Value Gap (FVG) get disrespected,
+[00665.000] followed by a change of character.
+[00666.560] Which means all we are waiting for now,
+[00668.480] is the bullish Break of Structure to signal the reversal is complete,
+[00671.680] which it doesn't take long to do.
+[00673.360] When a reversal like this occurs,
+[00675.000] the first fair value gap to form afterwards,
+[00677.600] is what is commonly known as the silver bullet.
+[00680.080] This is because it is the highest probability Fair Value Gap (FVG)
+[00683.040] that the market can offer.
+[00684.280] So, this is what we will use to enter our long trade.
+[00687.160] And now we can switch back to the four hour timeframe,
+[00689.840] with the confidence that this four hour Fair Value Gap (FVG) has been respected,
+[00693.400] based on the confirmation of the 15 minute trend reversal.
+[00696.600] And from here, we want to see the price push up to the buy-side Liquidity,
+[00700.240] where we can exit our trade.
+[00701.760] We could of course, hold this trade for a longer period,
+[00704.200] if we believe the market will continue in the bullish direction.
+[00707.040] But if we were to do this, we need to move up to a larger timeframe,
+[00710.120] so we can analyze the larger market structure.
+[00712.600] And now here on the weekly timeframe,
+[00714.560] we can see that the market is actually making very bearish swings,
+[00717.960] which means whilst our short term trade made sense on the four hour timeframe,
+[00721.960] the price has actually moved into a weekly bearish Fair Value Gap (FVG),
+[00725.400] so we should be expecting a reversal on the lower timeframes,
+[00728.440] to align with the weekly market structure.
+[00730.680] The key takeaway here,
+[00732.040] is that we should always analyze what the market is doing on the largest timeframes first,
+[00736.280] because this will give us an idea of how we can expect the price to behave
+[00739.520] when it hits an area of Liquidity on the lower timeframes.
+[00742.520] If you found this video helpful, please leave a LIKE!
+[00745.080] and then COMMENT what trading concept you'd like to see us cover next!

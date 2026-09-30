@@ -1,0 +1,111 @@
+[00000.149] Ahhh breakout strategies. Setting a support line, then a resistance line, and waiting
+[00005.050] for that one moment to happen. When the price suddenly breaks through. And when it breaks
+[00010.169] through, it really breaks through. But how do you trade this strategy successfully?
+[00015.969] Is there even a strategy? Are there any secrets? Well yes, there s a couple. And lucky for
+[00021.429] you, I m about to share them in this video. Lets not waste any time. Let s get straight
+[00025.679] to it. Has this ever happened you? You set your support
+[00028.330] line, you set your resistance line, and wait for a breakout to happen. Once you see that
+[00032.700] the price suddenly breaks through your resistance, you enter a trade extremely excited, because
+[00037.860] you are prepared for a huge jump in price. You get your popcorn, sit down, stare at your
+[00043.050] monitor, but then suddenly, The price reverses and dips. You stare at your screen confused
+[00048.550] on what just happened, and you portfolio just tanked.
+[00051.510] Well, I m going to teach you a secret so this never happens to you again.
+[00056.170] So the first question we need to ask ourselves, is what is a breakout?
+[00060.320] Well a breakout is when you have a support and resistance, where there are multiple key
+[00064.390] rejections for both. The actual breakout happens when the price bursts through one of the key
+[00069.500] levels. And notice what happens, when the price does break through, it starts soaring.
+[00074.510] Making this point right here, a great entry point.
+[00077.280] But the question is, how do we find setups like this, where the market could potentially
+[00081.970] have a breakout? The answer is breakout patterns.
+[00085.250] I m sure you ve all seen these before, but there are multiple key breakout patterns you
+[00089.630] should have in the back of your head when trading.
+[00091.909] There s the wedge, flag, rectangle, triangle, and pennant.
+[00096.479] Now the problem I see a lot of people doing, is they are looking for the exact price action
+[00101.190] that is in the pattern image. The price will rarely mimic this exact pattern,
+[00106.180] if ever. So your not exactly looking for the exact price action that happens in the image,
+[00111.100] your looking for the key support and resistance levels that make that pattern.
+[00115.159] Now to be honest, it doesn t matter which pattern you get. Hell, you don t even memorize
+[00119.980] the names of the patterns. The key thing you have to take away from this
+[00123.500] is that all these patterns have something in common.
+[00126.369] The price consolidates, making two key levels, then eventually breaks out.
+[00131.480] So here, we found price movement that looks as if it has multiple key points of support
+[00136.579] and resistance. The more key points, the better. We acknowledge this is happening so put a
+[00141.659] support and resistance line, making a rectangle pattern.
+[00145.779] So far so good, but this is the point where people usually make the mistake. So what happens
+[00150.519] is people usually wait for a breakout in either direction.
+[00153.769] So once someone sees the price break through their resistance line, they immediately enter
+[00158.060] the trade, but it turns out, it was a false breakout, and the price reverses in the opposite
+[00163.810] direction. This specific trader, would have lost a pretty
+[00167.120] decent amount of money. I m going to show you how to prevent this
+[00170.019] from happening, so we go in with a greater chance of the price going the direction we
+[00174.650] want it to. The first thing we need to understand is what
+[00177.450] is called momentum candles . Momentum candles can have many forms, but usually it s one
+[00182.810] big candle, with a large body. Or 3 medium sized candles, all going in the same directions.
+[00189.849] These two forms of momentum candles are going to be what we are looking for. Let me show
+[00194.189] you an example. So in this example we have a set of multiple
+[00197.409] higher highs, so we can set a resistance level right here. Then we have a key support level
+[00202.360] right here, because the price reversed multiple times at this level. And now we wait.
+[00207.159] We see a pretty decent sized candle form and break the resistance level. The problem is,
+[00216.230] only the tip of it broke out, so we are not counting this as a momentum candle. For us
+[00221.269] to be able to count this as a momentum candle, the majority of the body would have had to
+[00225.650] be crossing the resistance level. We would also consider this a momentum candle if another
+[00230.779] green candle appears outside of the line, like this.
+[00234.290] But, unfortunately it was a red candle instead, so we ignore this signal. And look what happened,
+[00238.545] it was a false breakout.
+[00239.545] Let me show you another example. So here, we have our support and resistance levels
+[00243.829] set up, the price moves, and a decent sized candle breaks through our resistance. It s
+[00248.170] not a momentum candle, because it does not have a big body, so we wait for further confirmation.
+[00253.469] A second candle appears, but it s still a pretty small candle.
+[00258.239] And as we said before, we will only count it as momentum candle, if it has a huge body,
+[00264.389] or there are three green candle. So we wait again. Then a 3rd green candle
+[00270.009] pops up, which is an extremely bullish sign. So, this when we enter the trade.
+[00275.169] Now, there are three different scenarios that could happen. The price keeps going up from
+[00279.310] here. The price goes back down to the resistance level, and bounces off. Or, the price breaks
+[00284.050] through the resistance level, and falls back down and counts this as a false breakout.
+[00288.360] So what should we do? Should we wait for a pullback to happen? OR should we enter the
+[00292.490] trade right now?
+[00293.919] Well what I like to do, is setup a strategy, so the odds are in my favor no matter what
+[00299.340] the outcome is. Rather than wait for a pullback, I m going to enter the trade at the close
+[00304.009] of this momentum candle. Then, I will set my stop loss right below
+[00308.289] the resistance level. This way, if the price does end up doing a pullback and bouncing
+[00314.139] off my resistance level, it doesn t reach my stop loss, and I still make profit.
+[00319.580] Or if the price decides to go straight up from here, I m in the trade.
+[00323.729] Considering this candle right here, is a momentum candle, it s a very low chance that this is
+[00328.750] a false breakout. But in the off chance it were, I have a stop loss in case the price
+[00334.450] decided to drop. Now that we have our entry point, we need
+[00337.110] to figure out an exit strategy. With breakouts, they tend to have large upsides.
+[00342.419] So if we decided to do just the normal 1.5 ratio, we would be missing out on a lot of
+[00348.229] profit. To make sure we are taking advantage of the
+[00350.729] huge profits, is to use what I like to call, the 2 step take profit system.
+[00356.430] This is how it works. First, you find your entry signal, then put the stop loss below
+[00360.630] the resistance line, then we are going to set our take profit line at a 1.5 ratio.
+[00366.240] Once the price hits our take profit mark, we sell half of our shares to guarantee that
+[00370.930] profit. The other half will stay in the game. Next, we will raise our stop loss to our previous
+[00377.889] take profit mark. Then our next take profit mark will be declared by an indicator, that
+[00382.849] indicator is the chandelier indicator.
+[00385.560] To add this indicator, just go to trading view, go the indicators tab, and type in chandelier
+[00390.699] stop . Then go to the indicators settings, and change the ATR multiplier to 2.
+[00396.479] This will give us our exit strategy. It s very simple. We sold half of our shares
+[00401.629] at the 1.5 profit mark. We let the other half run. we set our new stop loss at our old take
+[00407.889] profit mark, and we will exit the trade once the chandelier indicator changes colors.
+[00413.479] So right here, we would of sold the remaining of our position. Notice all of the extra profit
+[00420.379] we made, by only selling half of our shares. If we would of sold all of our shares at the
+[00425.189] 1.5 profit mark, we would of missed out on a lot upside.
+[00427.860] You can also see the price went straight up right away, without forming a pullback. This
+[00428.900] is why I like to enter the trade right away, because most breakouts will go straight up,
+[00429.900] without forming a pullback.
+[00430.900] Let s see one more example. We find some key points that are great levels
+[00432.999] to make a support and resistance. Once we set our trend lines, we wait for a momentum
+[00437.539] candle to break through our resistance. One candle breaks, but it does not have a
+[00442.379] big body, so we wait for two more green candles. Once we see the three candles, we enter the
+[00451.090] trade. We then put our stop loss below the resistance
+[00454.409] line, and the set our take profit to a 1.5 ratio.
+[00458.129] We then wait for the price to hit our take profit, then we sell half our shares.
+[00462.370] After we sold half of our shares, we move our stop loss to our old take profit mark,
+[00467.530] then we turn on the chandelier indicator. We Then wait to sell the other half of our
+[00472.030] shares, until the chandelier indicator turns colors. Once it does, we exit the trade.
+[00477.229] I just show you some secrets to make your break out trading that much better. All I
+[00482.570] ask in return, is if you take 2 seconds out of your day and like this video. If you want
+[00486.860] to see part 2 of this video, and make this strategy even more profitable, check out this
+[00491.879] video. Thanks for watching, and ill see you guys,
+[00494.710] next time.

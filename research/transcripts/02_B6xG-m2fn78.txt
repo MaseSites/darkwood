@@ -1,0 +1,556 @@
+[00000.120] Herzlich willkommen zum besten Trading
+[00002.639] Anfänger Tutorial 2025. Es gibt ein
+[00006.480] Problem und das haben alle Trading
+[00008.760] Tutorials da draußen gemeinsam und das
+[00010.719] ist die massive Reitüberflutung für
+[00012.960] jemanden, der sich jetzt erstmal auf die
+[00015.040] Basics fokussieren muss. Mit diesem
+[00016.680] Video bekommst du alle Informationen und
+[00019.119] Tools, die du brauchst, um noch heute
+[00021.199] dein ersten Trade zu öffnen. Ich habe
+[00023.199] damals meine ersten 10.000 1000 €
+[00025.279] vertradet, weil ich die Basics, die ich
+[00027.119] heute in diesem Video mit euch teile,
+[00029.000] nicht hatte. Und wir gehen heute die
+[00030.519] folgenden Topics durch. Wie funktioniert
+[00033.320] der Markt? Welche Websites und Werkzeuge
+[00036.239] verwende ich? Trading Psychologie und
+[00039.120] das Mindset, was du dafür brauchst? Und
+[00041.399] dazu machen wir noch einen Dive in
+[00043.120] technische Analyse. Das heißt, mit dem
+[00044.840] heutigen Video hast du einen klaren
+[00046.280] Kopf, weißt, worauf es ankommt und
+[00048.760] brauchst nicht wie ich deine ersten
+[00051.039] 10.000 1000 € verlieren, bevor du
+[00052.680] anfängst profitabel zu traden. Wundert
+[00055.120] euch nicht, ihr habt's wahrscheinlich
+[00055.920] schon gehört an meiner Stimme. Ich bin
+[00057.280] krank. Ich wollte dennch trotzdem das
+[00059.280] Video für euch heute aufnehmen, weil ich
+[00060.760] denke, dass es wichtig ist und sei
+[00062.600] einfach mal ehrlich, ich bin ein Mann,
+[00064.320] ich kann mich auch mal zusammenreißen
+[00065.840] für das Video. Das heißt, let's go.
+[00067.880] Starten wir rein mit dem ersten Topic.
+[00070.040] Wie funktioniert der Markt? Im Grunde
+[00072.560] genommen spiegelt der Markt einfach nur
+[00074.280] die Emotion und die Entscheidung aller
+[00076.920] Marktteilnehmer wieder. Das bedeutet,
+[00078.720] der Chart geht nicht in die Höhe aus
+[00080.079] irgendeinem Zufall oder der Markt fällt
+[00082.240] nicht aus irgendeinem Zufall, sondern er
+[00083.759] tut immer genau das, wofür sich alle
+[00085.920] Marktteilnehmer entschieden haben. Das
+[00087.759] heißt, wenn mehr Menschen kaufen möchten
+[00089.960] als verkaufen, übersteigt die Nachfrage
+[00092.320] das Angebot und der Preis steigt.
+[00094.880] Umgekehrt, wenn mehr Menschen verkaufen
+[00097.000] als kaufen, übersteigt das Angebot die
+[00099.840] Nachfrage und der Preis sinkt. Ich
+[00102.119] denke, das ist noch mal wichtig zu
+[00103.200] erwähnen, denn jemand, der sich das
+[00104.399] erste Mal Kryptowährungen anschaut oder
+[00106.799] die traditionellen Märkte, kann ja gar
+[00108.880] nicht wissen, wieso geht der Chart hoch,
+[00111.079] wieso geht der Chart runter und stopp,
+[00112.920] was bedeutet überhaupt mehr Käufer als
+[00115.759] Verkäufer? Es ist noch mal wichtig zu
+[00117.640] verstehen, es geht nicht um die Anzahl
+[00119.799] der Käufer oder Verkäufer, sondern um
+[00122.399] das Gesamtvolumen der Trades. Denn um
+[00124.840] euch ein Beispiel zu nennen, wenn es
+[00126.159] jetzt eine Person gibt, die zehn
+[00128.239] Bitcoins kauft und es gibt fünf andere
+[00130.920] Personen, die jeweils einen Bitcoin
+[00133.120] verkaufen, würde der Preis trotzdem
+[00135.280] ansteigen. Dabei gibt es mehr Verkäufer,
+[00138.200] als dass es Käufer gibt. Aber natürlich
+[00139.840] gibt es auch noch andere Faktoren, die
+[00141.040] den Preis beeinflussen können und das
+[00142.680] sind z.B. die Marktstimmung. Sind wir
+[00144.319] gerade in einem Abtrend? Sind wir in
+[00145.760] einem Bullenmarkt oder sind wir in einem
+[00147.280] Bärenmarkt? Genauso wie externe
+[00149.040] Ereignisse, wie z.B. regulatorische
+[00150.959] Änderungen, wenn z.B. in China oder in
+[00153.200] irgendeinem anderen Land z.B. Krypto
+[00155.000] verboten wird, genauso wie Manipulation
+[00157.080] durch Wales oder Marketmer. So und hier
+[00158.959] habe ich noch mal eine Grafik
+[00159.800] ausgepackt, um Leuten, die wirklich
+[00161.280] frisch neu im Thema sind, noch mal von
+[00163.159] vorne abzuholen. Jeder Chart besteht aus
+[00166.200] einzelnen Kerzen. Ich kann hier mal an
+[00167.840] Trading View ein bisschen ranzoomen. Ihr
+[00169.519] seht, der Chart besteht aus vielen
+[00171.840] einzelnen Kerzen. Das ist ganz egal, ob
+[00173.440] wir uns den eine Minute Timeframe, den 5
+[00175.640] Minuten Timeframe oder den ein
+[00177.200] Tagestimeframe anschauen. Der Chart
+[00179.000] besteht immer aus einzelnen Kerzen. Eine
+[00181.560] grüne, also eine positive Kerze, öffnet
+[00183.680] immer hier unten. Ihr könnt es mal
+[00184.959] sehen, geöffnet oder open. Hier ist noch
+[00186.760] mal wichtig, ich habe die englischen
+[00188.159] Wörter noch mal dazu geschrieben, weil
+[00190.120] man sich im Cryptospace meistens zu 90%
+[00193.159] sowieso nur mit den englischen Wörtern
+[00194.760] ausdrückt. Das bedeutet, an alle Leute,
+[00196.760] die jetzt diese Grafik sehen, macht
+[00198.239] gerne einen Screenshot, druckt euch das
+[00199.879] aus und schaut euch einfach die Vokabel
+[00201.280] an, damit ihr die drauf habt. Aber wie
+[00202.760] gesagt, eine grüne, also eine positive
+[00204.360] Kerze öffnet immer unten und schließt
+[00207.360] immer oben. Genau. Umgekehrt ist es mit
+[00208.879] der bärischen, also mit der roten Kerze.
+[00211.159] Die rote Kerze öffnet immer oben und
+[00213.599] schließt immer unten. Bedeutet also,
+[00215.120] wenn wir jetzt eine neue Kerze haben und
+[00216.680] die Kerze schließt über der Öffnung
+[00218.480] haben wir immer eine grüne Kerze, öffnet
+[00220.280] eine Kerze und sie schließt unterhalb
+[00222.760] der Öffnung haben wir eine rote Kerze.
+[00224.840] Die beiden Striche, die wir oben und
+[00226.000] unten sehen können, sind quasi die
+[00227.439] dochte, man nennt es im Englischen auch
+[00229.000] Wick und quasi die Mitte ist der
+[00231.159] Kerzenbodyudy. Wenn wir uns das Ganze
+[00232.879] mal Trading View anschauen und ich zoome
+[00234.400] noch mal richtig nah dran, sehen wir
+[00236.280] hier auch, es gibt eine bärische Kerze.
+[00238.640] Hier oben ist die Öffnung der bärischen
+[00240.000] Kerze und hier unten ist die Schließung.
+[00242.920] Oben drüber haben wir wirklich nur einen
+[00244.599] ganz ganz kleinen Wig und unten drunter
+[00246.519] einen etwas größeren. Und hier auf der
+[00247.920] rechten Seite können wir sehen, wir
+[00248.799] haben eine große große Wig, einen sehr
+[00251.280] sehr großen Buddy und unterhalb keinen
+[00253.439] Wig. So und ich habe einmal einen Side
+[00255.159] Side Chart rausgeholt. Links sehen wir
+[00256.799] den Bitcoin Chart im 1 Stunden Timeframe
+[00259.280] und rechts sehen wir den Bitcoin Chart
+[00261.199] im Daily Timeframe. Das heißt, jede
+[00263.520] einzelne Kerze auf der rechten Seite,
+[00265.560] also im Daily Timeframe, spiegelt einen
+[00268.560] Tag wieder. Und auf der linken Seite, wo
+[00270.400] ich diese linerne Box eingezeichnet
+[00271.800] habe, die man ganz klein hier auf dem
+[00273.160] rechten Chart auch sehen kann, spiegelt
+[00274.759] auch einen Tag wieder. Da ich mir das im
+[00276.600] 1 Stunden Timeframe anschaue, können wir
+[00278.520] quasi einen Tag runterbrechen auf 24
+[00281.800] Kerzen und uns so das Movement noch mal
+[00283.639] genauer anschauen. Bedeutet, du kannst
+[00285.600] Trades im einen Stunden Timeframe
+[00287.360] eröffnen. Du kannst aber auch Longterm
+[00288.840] Trades im einen Tageschart öffnen. Du
+[00290.720] kannst aber auch Skyping Trades im eine
+[00293.320] Minuten Timeframe öffnen. Ich kann jedem
+[00295.080] da draußen empfehlen, guckt euch die 5
+[00296.560] Minuten Charts an, die 15 Minuten
+[00298.360] Charts, den 30 Minuten Chart, den ein
+[00300.720] Stunden Chart, den 4 Stunden Chart und
+[00303.600] den Daily Chart an. So, dann gehen wir
+[00305.520] weiter zu den Websites und Tools. Das
+[00307.720] erste Tool ist Trading View. Das ist
+[00310.039] quasi euer neues Zuuhause. Das heißt,
+[00311.680] ihr könnt einmal auf tradingview.com
+[00313.840] gehen. Ich gucke, dass ich auch einen
+[00314.880] Link in die Videobeschreibung packe,
+[00316.919] dass ihr auf tradingview.com geht und
+[00318.639] euch einmal hier einen Account erstellt.
+[00320.880] Das Gute ist, das ist kostenlos und ich
+[00322.880] würde jedem Anfänger da draußen auch
+[00324.240] empfehlen, bleibt erstmal bei der
+[00326.280] kostenlosen Version, denn die Vorteile
+[00328.479] der kostenpflichtigen Version sind für
+[00330.240] Anfänger in den meisten Fällen erstmal
+[00331.960] nicht relevant. Wenn ihr dann in Trading
+[00333.360] Review drin seid, könnt ihr, wenn ihr
+[00334.400] möchtet, auch das Layout einstellen, wie
+[00336.240] ihr das möchtet. Wie ihr seht, ich habe
+[00337.479] so einen kleinen Gradient drinne. Von
+[00339.360] oben nach unten wird es schwarz zu grau.
+[00341.600] Dafür geht ihr einfach in ihr
+[00342.440] Einstellungen und ihr könnt hier alles
+[00344.000] einstellen. Ihr könnt, wenn ihr möchtet,
+[00345.160] auch die Farben der einzelnen Candles,
+[00347.199] also der Kerzen, ähm einstellen. Ihr
+[00349.479] könnt es in lila oder orange machen,
+[00351.000] manche machen es in weiß und schwarz
+[00352.880] oder andere Farben, die euch nicht
+[00354.720] emotional attachen, denn ich habe schon
+[00356.360] öfter gehört, dass eine rote Candle mehr
+[00358.400] Emotion in dir auslösen können. Und
+[00360.080] Emotionen haben im Trading ja natürlich
+[00361.639] nichts verloren. Ich habe es trotzdem
+[00363.639] normalerweise einfach nur in rot und
+[00366.120] grün. Dann könnt ihr auf der rechten
+[00367.479] Seite eure eigene Watchlist erstellen
+[00369.080] und könnt euch den Bitcoin Chart, den
+[00371.080] Ethereum Chart, den Linkchart, den XRP
+[00373.520] Chart, ihr könnt also jeden Chart hier,
+[00375.520] wenn ihr möchtet, einfach anzeigen
+[00376.759] lassen und auf der rechten Seite
+[00378.319] hinzufügen über das Plus. Ich mache euch
+[00380.120] das einmal vor. Ich gehe hier oben aufs
+[00381.479] Plus, gebe dann BTC ein, wenn ich BTC
+[00383.919] angezeigt haben möchte und kann mir dann
+[00385.800] hier angucken, welchen Bitcoin Chart
+[00388.360] anzeigen lassen möchte. Du könntest sie
+[00390.319] also auch, wenn du möchtest, den BTC ETH
+[00392.199] Kurs anzeigen lassen, aber ich denke für
+[00393.599] die meisten da draußen ist erstmal der
+[00395.039] BTC USD Chart relevant. Du kannst, wenn
+[00397.479] du möchtest, dir auch den BTC Europreis
+[00400.000] anzeigen lassen. Ich schaue mir aber
+[00402.120] alles sowieso nur in US-Dollar an,
+[00403.840] deshalb haue ich bei mir den US-Dollar
+[00405.520] Preis rein und dann könnt ihr auf der
+[00407.120] rechten Seite noch gucken, von welcher
+[00409.280] Plattform er die Daten fetcht. Wenn du
+[00411.400] jetzt z.B. auf Binance tradest, kannst
+[00413.039] du dir die Daten von Binance anzeigen
+[00414.800] lassen, aber All in All nimmt sich da
+[00416.400] nicht viel. Das heißt, wenn ich mir hier
+[00417.680] den BTC USD Chart von Coinbase anzeigen
+[00420.599] lasse, dann fahre ich damit schon mal
+[00422.120] richtig. Es kann aber sein, dass wenn du
+[00423.440] auf einer sehr sehr kleinen Trading
+[00424.840] Plattform mit sehr wenig Volumen
+[00426.240] tradest, dass die Charts ein wenig
+[00428.240] abweichen können, aber das ist selbst
+[00429.599] dann so minimal, dass es dir kaum
+[00431.360] auffallen würde. Ansonsten guckst du,
+[00433.400] dass wenn du auf Binance tradest, die
+[00434.879] auch den Binance Chart hier anzeigen
+[00436.319] lässt. So und zu guter Letzt kannst du
+[00437.599] dir hier auf Trading Review auch Take
+[00438.879] Position einzeichnen. Das bedeutet, wenn
+[00440.520] du jetzt sagst, hey, ich möchte hier an
+[00442.120] der Stelle long gehen, kannst du hier
+[00444.000] mit diesem Tool hier und darüber mache
+[00446.199] ich auch noch mal ein ausgiebiges
+[00447.879] Tutorial, wie man Trading View in Tiefe
+[00450.400] benutzt, die Trades einzeigen lassen,
+[00452.080] ganz egal, ob es Long Trades sind oder
+[00454.319] auch Short Trades sind. Runtergebrochen
+[00456.440] ist Trading View für jemanden, der sich
+[00458.120] jetzt neu mit Krypto auseinandersetzt
+[00459.599] oder jemand, der schon seit 10 Jahren in
+[00461.280] Krypto tief investiert ist, quasi das
+[00463.599] Zuhause, indem du dich am meisten
+[00465.319] aufhältst. So und das zweite Tool, was
+[00466.919] ihr braucht, ist natürlich eine
+[00468.039] Handelsplattform. Das heißt, wenn ihr
+[00469.560] jetzt Trades eröffnen möchtet, könnt ihr
+[00471.599] traden z.B. auf Binance, Bybit, Bitget
+[00474.639] oder auch anderen Plattformen. Ihr könnt
+[00476.280] einfach mal selber nachgoogeln, aber
+[00477.639] ganz wichtig, guckt euch vorher immer
+[00479.840] die Gebühren an, denn es kann sein, dass
+[00481.400] kleinere Plattformen höhere Gebühren
+[00483.319] chargen, aber damit ihr so einen kleinen
+[00484.720] Richtwert habt, die Maker und Taker
+[00486.520] Gebühren sind immer ungefähr bei 0,02 %
+[00489.280] und
+[00490.080] 0,06%. Das kann aber auch abweichen, je
+[00492.199] nachdem welches VIP Level ihr auf der
+[00493.960] jeweiligen Plattform seid. So und das
+[00495.400] dritte Tool, was ihr auf jeden Fall
+[00496.680] braucht, ist ein Trading Tagebuch. Das
+[00499.440] könnt ihr physisch machen, das könnt ihr
+[00500.759] aber auch in der digitalen Version
+[00502.080] machen. Ich würde euch beides empfehlen,
+[00504.319] denn wenn ihr jetzt hergeht und sagt,
+[00505.759] okay, ihr fühlt euch bereit, die ersten
+[00507.919] Trades zu machen, würde ich euch nicht
+[00510.080] empfehlen, schon mit echtem Geld einen
+[00512.599] Trade zu setzen. Guckt, dass ihr erstmal
+[00514.560] anfangen mit Paper Trading. Das
+[00515.880] bedeutet, wenn ihr im Tradingwiew drin
+[00517.320] seid und denkt: "Hey, okay, ich schaue
+[00519.240] mir das an. Es sieht weiterhin bullish
+[00520.760] aus. Ich möchte aus X Gründen jetzt hier
+[00522.880] einen Longtrade eröffnen. Dann zeichnet
+[00524.800] ihr euch hier einen Longtrade ein.
+[00526.519] Schaut am besten schon vorher, wo soll
+[00527.800] der Take Profit sein, wo soll der Stop
+[00529.760] Loss sein? Und ihr tragt euch das Ganze
+[00531.200] in ein Journal ein. Hat einfach den
+[00532.959] Zweck, dass wenn ihr anfangt mit Traden,
+[00535.440] keine echten Trades macht. Ihr könnt
+[00536.959] also kein echtes Geld verlieren. Könnt
+[00538.440] aber gucken, ob die Tradingstategie, die
+[00540.839] ihr verfolgt, auch Sinn ergibt und
+[00543.279] überhaupt aufgeht. Habe ich damals nicht
+[00545.360] gemacht. Ich habe einfach willkürlich
+[00547.640] Trades eröffnet, habe am Anfang Glück
+[00549.720] gehabt und habe am Anfang wirklich fast
+[00551.200] mein Geld verdoppelt in den ersten zwei
+[00553.160] Monaten, aber bin am Ende des Tages
+[00555.440] völlig auf die Schnauze gefallen, weil
+[00557.000] ich so ein Journal nicht geführt hatte,
+[00558.640] weil ich keine Strategie hatte und
+[00560.480] generell viel zu doll FOMO im Markt
+[00562.320] entwickelt habe und ja, wie ich schon
+[00564.480] gesagt, einfach nur nach Wilkö getradet
+[00566.320] habe. Ihr stellt euch also eine Tabelle
+[00567.800] z.B. wie in Excel oder in Numbers und
+[00570.079] schreibt euch vor allem auch physisch
+[00571.320] runter, wie ihr welche Trades aufmacht
+[00573.360] und vor allem schaut euch dann nach
+[00574.440] einem Monat an, hättet ihr euer Geld
+[00576.040] vermehrt oder hättet ihr mit eurer
+[00577.320] Strategie Geld verloren. Auf diese Art
+[00579.160] und Weise kriegt ihr auch noch mal ein
+[00580.079] besseres Gefühl für den Markt. Gehen wir
+[00581.640] zum nächsten Topic und das ist die
+[00583.360] Trading Psychologie. So und das, was wir
+[00585.320] uns jetzt anschauen, ist mit Abstand das
+[00586.880] Wichtigste und entscheidet darüber, ob
+[00588.680] ihr Geld verdienen oder Geld verlieren
+[00590.839] werdet. So, und das hier sind zwei
+[00592.519] Thesen, die dafür verantwortlich sind,
+[00594.640] dass 99% der Trader da draußen ihr Geld
+[00597.880] verlieren, währenddessen die anderen 1%
+[00601.480] diese beiden Thesen verstanden haben und
+[00603.480] Geld verdienen. So und der erste Satz
+[00605.160] klingt erstmal richtig, könnte
+[00607.000] gleichzeitig aber nicht falscher sein.
+[00608.920] Aber nur weil ich einen Trade verliere,
+[00611.200] heißt das nicht, dass ich kein Geld
+[00614.079] verdiene. Und wenn wir uns die zweite
+[00615.720] These anschauen, ein positiver Trade ist
+[00618.360] ein guter Trade, könnte auch nicht
+[00621.160] falscher sein. So und wie ich schon
+[00622.480] erwähnt habe, als ich damals mit Trading
+[00624.320] begonnen habe, habe ich sofort 10.000
+[00626.040] 1000 € in den Markt geblasen habe,
+[00627.959] angefangen zu traden und habe sofort
+[00629.839] Profite gemacht, aber habe nicht
+[00631.279] verstanden, dass die Trades, die ich
+[00633.079] mache, keine guten sind, sondern ich
+[00635.839] einfach nur Geld verdiene, weil ich
+[00637.600] Glück habe. Wie ich schon gesagt habe,
+[00639.160] ist mir das am Ende auch auf die Füße
+[00640.560] gefallen, aber ich habe diese beiden
+[00642.200] Thesen nicht verstanden. Ich habe mir
+[00644.120] damals den Markt angeschaut und habe aus
+[00646.040] ich weiß nicht was für Gründen, ich habe
+[00647.440] nicht mal YouTube Videos geschaut,
+[00648.720] sondern ich habe mir einfach nur den
+[00649.880] Markt auf Trading Video angeschaut und
+[00651.760] habe einfach das Gefühl gehabt, hey, ich
+[00653.880] habe gerade ein schlechtes Gefühl. Ich
+[00655.959] mache einen Short Trade auf. Ein Tag
+[00657.480] später habe ich mir aber gesagt, ey, ich
+[00658.760] habe jetzt irgendwie ein gutes Gefühl.
+[00660.959] Ich mache also einen Long Trade auf. Das
+[00662.480] ist die erste Zeit gut gegangen und ich
+[00663.920] habe nicht verstanden, dass nur weil ich
+[00666.240] Glück habe, das kein guter Trade ist.
+[00668.639] Runtergebrochen hatte ich damals einfach
+[00670.720] kein Risikomanagement. So und um die
+[00672.680] erste These jetzt noch mal genau zu
+[00673.959] erklären, gehen wir dafür mal in Trading
+[00676.279] View rein und wir zeichnen hier jetzt
+[00677.639] willkürlich einfach mal eine
+[00678.720] Testposition ein. Ich würde das nicht
+[00680.680] tun. Ich mache das jetzt nur, um es
+[00681.959] einmal besser zu veranschaulichen. Gehen
+[00684.079] wir mal her und sagen jetzt: "Hey, das
+[00685.800] sieht aus, als würden wir hier noch mal
+[00686.839] runter korrigieren." Wir machen hier
+[00688.360] also einen Short Trade auf. Wenn wir
+[00690.560] jetzt hier den Stoploss überhalb des
+[00692.639] letzten Hochs platzieren und den Take
+[00695.480] Profit hier unten platzieren, weil wir
+[00696.920] glauben, der Chart wird sich in der
+[00698.120] nächsten Zeit jetzt erstmal runter
+[00699.639] bewegen, bevor er sich hoch bewegt,
+[00701.079] sehen wir, haben wir ein Risk Reward
+[00702.440] Ratio von 3:1. Wenn wir jetzt also
+[00705.079] sagen, wir riskieren 100 € bei diesem
+[00708.440] Trade, die wir potenziell verlieren
+[00710.240] können, verdienen aber gleichzeitig 300
+[00713.079] € weil wir ein Risk zu Road Ratio haben
+[00715.079] von 3:1. Muss mal schauen, ob das
+[00717.000] überhaupt genau stimmt. Nicht mal nein,
+[00718.399] wir können sogar noch ein bisschen
+[00719.680] hochgehen. Das heißt, das hier wäre
+[00721.279] jetzt ein Risk Reward Ratio von 3:1. Und
+[00723.800] der Chart sich jetzt statt, dass er sich
+[00725.320] runter bewegt, sich erstmal hoch bewegt,
+[00727.839] haben wir den Trade verloren. Wenn wir
+[00730.399] jetzt aber im nächsten Trade mit unserer
+[00732.839] Strategie den Trade gewinnen und wir
+[00734.920] sagen wir machen jetzt hier noch mal in
+[00737.519] der Zukunft sagen wir der Chart geht
+[00739.240] hier erstmal weiter noch mal eine Short
+[00741.639] Position auf machen noch mal ein Risk
+[00743.760] Ratio von ja 3:1 und wir gewinnen diesen
+[00746.880] Trade in der Zukunft. Also direkt im
+[00748.720] Anschluss haben wir, trotz, dass wir
+[00750.079] einen Trade verloren und einen Trade
+[00751.760] gewonnen haben, Geld verdient, weil wir
+[00754.320] mehr Geld potenziell gewinnen als dass
+[00756.680] wir verlieren. Was ich damit sagen
+[00758.120] möchte, ist, dass ihr eine ganz klare
+[00759.959] Strategie braucht, mit der ihr nicht
+[00762.279] öfter einen Trade gewinnen müsst, als
+[00764.320] dass ihr die anderen Trades verliert.
+[00766.399] Hierfür haben wir noch mal eine gute
+[00767.480] Grafik. Hier sehen wir die einzelne
+[00769.800] Anzahl an Trades. Hier sehen wir auf der
+[00771.480] linken Seite haben wir sechs Trades
+[00773.440] verloren und auf der rechten Seite haben
+[00775.920] wir nur halb so viele, also drei Trades
+[00778.760] gewonnen. Da wir in jedem Trade nur -1
+[00781.360] riskieren. Ihr könnt euch das auch
+[00782.680] vorstellen, als würden wir in jedem
+[00783.920] Trade 100 € verlieren. Wie auf der
+[00785.839] anderen Seite aber + 400, + 500 und +
+[00789.279] 400 gewinnen, haben wir nur 30% der Zeit
+[00793.160] mit unserer Strategie richtig gelegen.
+[00795.320] Das heißt, wir haben 70% der Zeit und
+[00798.199] der Trades verloren und trotzdem einen
+[00801.480] Profit von + 7 erreicht. Das heißt, um
+[00804.440] noch mal zurückzukommen, ein Trade zu
+[00806.480] verlieren ist per se nichts Schlechtes.
+[00809.040] Jeder Trader da draußen wird Trades
+[00810.800] verlieren und es gibt niemanden da
+[00812.440] draußen, der eine Winrate hat von 90, 95
+[00815.519] oder gar 100%. Jeder Trader da draußen
+[00818.320] und vor allem die professionellen
+[00819.839] verlieren in den meisten Fällen mehr
+[00821.519] Trades als dass sie gewinnen, aber am
+[00823.519] Ende haben sie eine Strategie, mit der
+[00824.920] sie trotzdem am Ende des Tages Profit
+[00826.959] machen. Hier habe ich noch mal eine
+[00828.600] Profitabilitätstabelle. Ich weiß nicht,
+[00830.000] ob das überhaupt ein richtiges Wort ist,
+[00831.600] aber ihr könnt euch die auch noch mal
+[00832.600] abscreenshotten. Und mit der Tabelle
+[00834.240] könnt ihr gucken, wie viel Prozent der
+[00836.480] Trades ihr verlieren könnt, um trotzdem
+[00838.320] bei dem Risk to Reward Ratio, was ihr
+[00839.920] euch aussucht, profitabel zu traden. Wie
+[00842.000] ihr z.B. In der zweiten Spalte hier
+[00843.279] sehen könnt, bei einem ein Risk to
+[00845.880] Reward Ratio müsst ihr 50% der Trades
+[00848.680] gewinnen, um überhaupt breakven zu sein.
+[00851.560] Das heißt, ihr müsst mehr Trades
+[00853.160] gewinnen, als dass ihr sie verliert, was
+[00855.000] für den Anfänger auf jeden Fall
+[00856.440] schwierig ist. Ganz anders als bei einem
+[00858.279] Risk to Reward Ratio von 3:1. Hier müsst
+[00861.199] ihr nur 30% der Zeit richtig liegen mit
+[00863.639] euren Trades, um trotzdem profitabel zu
+[00866.160] sein. So, dann kommen wir auch schon zum
+[00867.440] nächsten Topic und das ist technische
+[00869.199] Analyse. Hier möchte ich das Ganze ein
+[00870.600] bisschen kürzer halten, weil ich denke,
+[00872.360] dass man mit technischer Analyse die
+[00873.839] meisten eher verwirrt, als dass man den
+[00875.440] einen gefallen tut. Und hier, wie ich am
+[00876.759] Anfang auch schon gesagt habe, bevor ich
+[00878.120] euch Reiz überflute und z.000 1000 Dinge
+[00880.160] erkläre, halten wir es hier etwas
+[00881.759] kürzer. Wir fangen meiner Meinung nach
+[00883.120] mit dem wichtigsten an und zwar Trends
+[00885.079] erkennen. So und wenn wir uns jetzt hier
+[00886.160] den Bitcoin Chart anschauen auf dem ein
+[00888.240] Stunde Timeframe, kann ich mit meinem
+[00889.600] Auge sofort schon mal einen Abtrend
+[00891.040] erkennen. Heißt also wir halten Ausschau
+[00893.000] nach unsichtbaren Linien, wo es so
+[00894.720] aussieht, als würde der Chart immer
+[00896.320] wieder bouncen. Heißt also wir ziehen
+[00898.120] uns hier erstmal eine Linie rein. Die
+[00899.600] können wir nachher noch besser adjusten.
+[00901.480] Heißt also hier sehen wir ganz klar
+[00903.360] einen Abtrend. Du siehst also immer
+[00905.440] wieder, der Chart bounc hier auf dieser
+[00907.920] unsichtbaren Linie hier. Jetzt noch
+[00909.240] nicht ganz, aber hier ganz klar hat der
+[00911.120] Chart probiert etwas runter zu dippen.
+[00913.079] Hier aber auch noch mal ganz klar
+[00914.120] erwähnt, wenn ihr das z.B. auf dem ein
+[00915.720] Stunden Timeframe macht, braucht ihr die
+[00917.279] Linien nicht auf den Millimeter perfekt
+[00919.160] irgendwie einzeichnen. Denn am Ende des
+[00920.720] Tages, und das ist wichtig noch mal zu
+[00922.440] erwähnen, nur weil ihr jetzt hier eine
+[00924.279] Linie einzeichnet, heißt das nicht, dass
+[00926.519] sich der Kurs so bewegt, wie ihr das
+[00928.079] gerne hättet. Die dienen einfach nur als
+[00929.759] kleine Hilfe, um zu verstehen, die
+[00931.079] dienen einfach nur als kleine Hilfe, um
+[00932.519] zu verstehen, wie der Markt sich
+[00934.920] eventuell in der Zukunft verhalten wird.
+[00938.000] Das heißt, hier sehen wir z.B. haben wir
+[00939.759] einen ganz klaren Abtrend. Und wenn ich
+[00941.399] jetzt einmal hier ranzoome, können wir
+[00943.079] erkennen, dass der Chart den Abtrend
+[00945.240] durchbrochen hat. Daraus kann man deuten
+[00947.000] und die Betonung liegt auf kann, dass
+[00948.959] der Chart sich in der Zukunft jetzt
+[00950.199] erstmal etwas bärischer verhalten wird.
+[00952.319] Aber auch hier ganz klar noch mal
+[00953.279] erwähnt, Trends können sich schnell
+[00955.199] ändern und nur weil ihr eine Linie
+[00956.480] eingezeichnet habt, heißt das noch lange
+[00958.399] nicht, dass der Chart sich so verhalten
+[00960.279] wird, wie ihr möchtet. Aber wenn ihr
+[00962.040] passende Up und Downtrends eingezeichnet
+[00964.399] habt, kann die Wahrscheinlichkeit höher
+[00965.759] sein, dass wenn wir z.B. hier den
+[00967.800] Uptrend durchbrochen haben, noch etwas
+[00970.199] weiter nach unten korrigieren werden. So
+[00971.920] und ein anderes Tool, was ich immer
+[00973.240] benutze, ist das Fibonacci Retracement
+[00976.079] Level. Ich zeichne dafür einfach mal
+[00977.519] einen Chart ein, den es so nicht gibt,
+[00979.199] aber ihr könnt euch dann auf der linken
+[00980.240] Seite das Fliip Retracement Tool einmal
+[00981.880] rausziehen und vom untersten Punkt des
+[00984.160] Trends bis zum höchsten Punkt des
+[00986.759] Trends. Und dann sehen wir auf der
+[00987.839] linken Seite Kennzahlen 1 0,786 0,618
+[00992.720] 0,5 0,382 0,236 und die 0 hier das
+[00997.759] gleiche Thema wie bei einem Up oder
+[00999.319] Downtrendkanal, den ihr selber euch
+[01000.759] einzeichnet. Nur weil ihr diesen
+[01002.639] Indikator benutzt, heißt das noch lange
+[01004.440] nicht, dass sich der Chart so bewegt,
+[01005.880] wie ihr das gerne hättet. Aber das
+[01007.360] 0618er und das 05er Level sind Level,
+[01010.279] auf denen in vielen Fällen, wenn der
+[01012.319] Markt sich zurückbewegt, der Chart noch
+[01014.360] mal hochbounzen kann. Das Fibonacci
+[01016.440] Retracement Tool wollte ich euch einfach
+[01017.560] noch mal zeigen, dass das, wenn ihr
+[01018.519] jetzt selber in Trading Review
+[01019.680] eintaucht, ihr rückwirkend das
+[01021.600] Retracement Tool ansetzen könnt und
+[01023.720] schauen könnt, ob in einem Bullenmarkt
+[01025.600] oder einem Bärenmarkt oder in einer
+[01027.240] Seitwärtsphase ihr ganz klar erkennen
+[01029.360] könnt, welche Levels sind wichtig. in
+[01031.480] einem Bullenmarkt. Welche Levels sind
+[01032.919] wichtig in einem Bärenmarkt?
+[01034.199] Abschließend kann ich sagen, startet
+[01035.919] heute schon rein mit eurem ersten Trade,
+[01038.039] aber fangt immer an mit Paper Trading.
+[01040.880] Ich würde jedem Anfänger da draußen
+[01042.400] empfehlen, macht die allerersten minimum
+[01045.439] 100 Trades im Paper Trading. Schreibt
+[01047.760] alles mit in der physischen Version und
+[01049.360] vor allem noch in einer Excel oder
+[01050.520] Numbers Tabelle. Und damit vielen Dank
+[01052.039] fürs Zuschauen und wir sehen uns
+[01053.240] übermorgen beim erneuten Video. Haut
+[01055.240] rein. Peace. M.

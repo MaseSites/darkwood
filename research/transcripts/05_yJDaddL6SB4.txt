@@ -1,0 +1,268 @@
+[00000.040] fair value gaps are a great tool to
+[00001.920] include into your trading strategy but
+[00003.800] if you are interested in using them you
+[00005.520] need to understand what actually makes a
+[00007.480] valid fair value Gap that's usable so
+[00009.760] we've broken down everything you need to
+[00011.759] master FEG trading into seven easy to
+[00014.280] follow tips but first we need to know
+[00016.359] how they work here we have a series of
+[00018.400] three bullish candles and within their
+[00020.199] formation lies a bullish fair value Gap
+[00022.560] the Gap forms when there is a space left
+[00024.599] between the first candle's top Wick and
+[00026.519] the third candle's bottom Wick which is
+[00028.359] also known as a bullish imbalance
+[00030.480] to give a simple explanation behind why
+[00032.599] imbalances are important the chart likes
+[00034.960] Balan price action and to achieve this
+[00037.200] it needs to see both buyers and sellers
+[00039.079] taking part in the moves so when we have
+[00041.160] a move that involves only buyers taking
+[00043.160] part this creates a bullish imbalance
+[00045.399] and the same happens when only sellers
+[00047.079] are taking part it creates a bearish
+[00049.039] imbalance so with this logic this area
+[00051.600] is a bullish imbalance because it was a
+[00053.800] strong impulsive move for buyers meaning
+[00056.039] in the future we can expect it to act as
+[00057.960] a magnet for price to draw into before
+[00060.440] continuing the upward move and in doing
+[00062.519] so this area has now been rebalanced we
+[00065.159] then also have the bearish variation
+[00066.960] which follows the same principles the
+[00068.720] only difference is that the imbalance is
+[00070.240] to the downside meaning we expect price
+[00072.439] to push into it from below in order to
+[00074.479] rebalance the area before then
+[00076.400] continuing the next leg down if there is
+[00078.479] no gap between the first and third
+[00080.240] candles Wix like in this formation on
+[00081.960] the right it means the price action is
+[00083.759] already balanced meaning there is no
+[00085.680] fair value Gap to trade so now that
+[00087.720] we've covered what fair value gaps are
+[00089.640] let's start off with our first tip which
+[00091.560] is that you should only be using fgs
+[00093.600] that align with the current order flow
+[00095.640] price can only go in two directions but
+[00097.560] it rarely ever moves in one straight
+[00099.479] line instead it makes many smaller moves
+[00101.880] which together create the larger swings
+[00103.960] in the case of an uptrend we know that
+[00105.680] in order for it to remain valid we need
+[00107.520] to see it create new higher Highs but
+[00109.640] after a high is created we know a
+[00111.640] retracement is expected and when the
+[00113.520] price comes down it needs to find some
+[00115.439] kind of support that it can use to
+[00117.039] create the next leg up and this is where
+[00119.119] we would look with in the previous leg
+[00120.840] to find a bullish fair value Gap that
+[00122.840] can provide the liquidity needed to
+[00124.399] continue the upward move we can see a
+[00126.479] good example within this chart here
+[00128.360] every time we see a higher high form we
+[00130.280] then see a retracement back into a
+[00132.000] bullish fair value Gap where it finds
+[00133.879] the support needed to continue the
+[00135.519] upward move as for downtrends we know
+[00138.120] that in order for the price to continue
+[00139.720] creating new lower lows it needs to find
+[00141.920] a form of resistance to create the next
+[00143.959] leg down and this is when we would use a
+[00145.879] bearish fair value Gap we can see an
+[00148.080] example of this here within this
+[00149.440] downtrend tring structure every time a
+[00151.440] new lower low formed it then retraced
+[00153.760] back up and into a bearish fair value
+[00155.640] Gap where it then saw resistance before
+[00157.640] continuing the move down so to sum this
+[00159.879] up during an uptrend we only use the
+[00162.040] bullish fair value gaps that form and
+[00164.000] during a downtrend we only use the
+[00166.000] bearish fair value gaps this makes sure
+[00168.480] we are correctly following the order
+[00169.959] flow of the chart now moving on the next
+[00172.519] tip is that you should never use an FEG
+[00174.800] that has already been touched for
+[00176.360] example here we have a fair value Gap
+[00178.680] but if we look closely we can see that
+[00180.599] the price has already dipped into it
+[00182.519] even though it barely entered the fvg we
+[00184.599] still consider it mitigated meaning it
+[00186.440] has become greatly weakened and if we
+[00188.280] are looking for the highest quality fair
+[00189.959] value gaps we may no longer want to
+[00191.920] consider using this one but with that
+[00193.799] said it doesn't mean this F will
+[00195.799] definitely fail if the price moves back
+[00197.640] into it for a second time it's just a
+[00199.560] warning that fegs that have already been
+[00201.519] touched should be considered weaker than
+[00203.360] those that haven't been for our next tip
+[00205.519] you should be targeting fair value gaps
+[00207.319] that are created within a discounted
+[00208.920] area to give an example of this here we
+[00211.439] have a strong bullish move but when we
+[00213.200] Mark out the fair value gaps we have a
+[00215.159] few to choose from so the question is
+[00217.640] which ones should we be targeting for
+[00219.120] our trades well the first thing we
+[00220.840] should do is Mark out the top and bottom
+[00222.720] of the move along with the 50% midlevel
+[00225.519] this will give us what we call the
+[00226.879] premium and discount areas of the range
+[00229.159] to put it into simple terms if we are
+[00231.239] looking for a long trade setups found
+[00233.280] within the discount area will always be
+[00235.120] the strongest so when we now look back
+[00236.959] at the chart these highlighted fair
+[00238.720] value gaps are the we should be
+[00240.319] targeting for our long trades and we can
+[00242.480] do the same for bearish fegs within a
+[00244.720] downtrend the only difference is we want
+[00246.840] to be targeting the fair value gaps that
+[00248.799] were created in the premium area which
+[00250.760] is anywhere above the 50% line now we
+[00253.560] are moving on to some of the more
+[00254.879] advanced aspects starting with our next
+[00256.919] tip which is that you should look to
+[00258.320] combine fbgs on different time frames
+[00260.440] for a more precise entry most Traders
+[00262.840] using fbgs choose to take trades from
+[00265.240] either the top the bottom or the middle
+[00267.280] of the Gap and while this isn't a wrong
+[00269.120] way to trade there is a better way to
+[00270.840] find a more precise entry let's say for
+[00273.080] this example we found this FEG on the
+[00275.360] 4-Hour time frame which is giving us
+[00277.520] quite a large range that the price could
+[00279.360] potentially reverse from so instead of
+[00281.320] taking a trade with such a wide margin
+[00283.360] of error we can instead move down in
+[00285.360] time frames to find a more confined area
+[00287.919] here we are now looking at the price
+[00289.320] action on the 15-minute chart that
+[00291.039] created the larger 4H hour FEG and when
+[00293.680] we look closely we can see that there
+[00295.360] was a 15-minute fair value Gap that
+[00297.320] formed during this upward move this
+[00299.199] should be our new Target for a long
+[00300.759] entry because it has the Confluence of a
+[00302.800] 15-minute fair value Gap within a 4-Hour
+[00305.440] fair value Gap creating a very strong
+[00307.720] area of support the next tip we have is
+[00310.120] that you should consider the third
+[00311.520] candle of an FEG the most important here
+[00314.160] we have two impulsive bullish candles
+[00316.479] and just by observing these two candles
+[00318.479] we already know the maximum potential
+[00320.319] size of the F before the third candle
+[00322.560] has even opened but we aren't really
+[00324.199] interested in the size of the Gap what
+[00326.039] we are really looking at is the way in
+[00327.919] which the third candle chooses to form
+[00330.039] for example if we were to see the
+[00331.520] creation of a bearish candle like this
+[00333.759] it creates what we call a rejection fair
+[00335.960] value gap which we should avoid taking
+[00337.800] trades from and the reason behind this
+[00339.680] lies with how the third candle that
+[00341.360] formed the F showed a large amount of
+[00343.600] strength for sellers which means whilst
+[00345.680] this Gap May initially see a bullish
+[00347.360] rejection there's a high chance that it
+[00349.080] will quickly fail but on the other hand
+[00351.080] if the third candle that created the FEG
+[00353.319] was an additional bullish impulsive
+[00355.039] candle this is what we call a breakaway
+[00357.120] Gap and these are the fegs that we want
+[00359.160] to trade this is because it has shown an
+[00361.160] impressive strength for buyers Breakaway
+[00363.560] gaps typically take longer to be drawn
+[00365.520] into but they provide a much greater
+[00367.360] chance of providing a strong support for
+[00369.199] the next leg up for tip number six you
+[00371.639] need to understand how to trade fegs
+[00373.800] that form around a liquidity area
+[00375.599] because they can offer the strongest
+[00376.800] fair value gaps possible price is only
+[00379.240] ever doing one thing and that is
+[00380.960] targeting external range liquidity which
+[00383.120] is either a previous swing high or a
+[00384.960] swing low and to get there it uses
+[00387.199] internal range liquidity as fuel or in
+[00389.720] other words an F but depending on how
+[00392.160] the liquidity is taken price can do one
+[00394.280] of two things in this first chart we
+[00396.599] have a clear swing high that is our
+[00398.240] current draw on liquidity and we then
+[00400.319] see a very impulsive bullish move that
+[00402.599] blasts straight through the level this
+[00404.240] is what we call a liquidity run which is
+[00406.280] when the price has completely
+[00407.599] disrespected the previous swing High
+[00409.680] which confirms that we are continuing
+[00411.280] the bullish Trend and as for fair value
+[00413.360] gaps we want to see a bullish FEG form
+[00415.879] within the move that broke through the
+[00417.280] liquidity level as this will create the
+[00419.240] strong EST type of FEG we can find
+[00421.680] because it has the Confluence with the
+[00423.199] liquidity run which makes it a very high
+[00425.520] probability area of support then we have
+[00427.879] another scenario where we again have a
+[00429.759] swing high as our draw on liquidity but
+[00432.199] this time instead of the price bursting
+[00434.039] through the level we actually see the
+[00435.800] candle fail to close above the line this
+[00437.919] is what we call a liquidity sweep which
+[00439.960] is when the buyers aren't strong enough
+[00441.479] to continue the move up as for the FG
+[00443.919] that formed here we shouldn't consider
+[00445.720] using it for a long trade and the reason
+[00447.919] being is due to the price failing to
+[00449.520] push over the liquidity level as this
+[00451.319] signals that we are likely now flipping
+[00453.120] the directional bias from bullish to
+[00454.720] bearish meaning we should now be looking
+[00456.599] to take trades within bearish fgs to
+[00459.039] continue the move down which follows the
+[00460.919] rule we made in the first step which is
+[00462.720] that we should always follow the order
+[00464.159] flow of the chart and for our next step
+[00466.440] you're going to want to avoid trading
+[00468.000] fgs during consolidation periods the
+[00470.680] easiest way to make money in the markets
+[00472.319] is to trade during a trending phase
+[00474.319] because all it takes is a confirmation
+[00476.560] of a trend continuation and going Beyond
+[00479.000] this most Traders will be able to
+[00480.919] successfully identify a trend reversal
+[00483.240] using simple knowledge of Market
+[00484.759] structure but then when it comes to a
+[00486.479] consolidation area they end up
+[00488.039] repeatedly getting chopped up not
+[00489.639] knowing which direction they should be
+[00491.000] targeting this is because when we are
+[00492.599] looking for a bias in Trend we want to
+[00494.639] first see an F get respected and from
+[00497.120] the move that then transpires we want to
+[00499.080] see the creation of an additional F that
+[00501.400] can be used to further Propel the price
+[00503.159] up but then when we eventually see a
+[00504.960] bullish FEG fail people immediately flip
+[00507.440] towards a bearish bias but if the next
+[00509.599] bearish FEG that formed happens to fail
+[00511.879] too this is when your instincts should
+[00513.680] tell you that there's a good chance we
+[00515.120] are entering a consolidation area but if
+[00517.159] you're only interested in trending
+[00518.560] phases you're going to wait to see when
+[00520.479] price next creates and respects two new
+[00522.719] FS as this will give you new short-term
+[00525.480] directional bias if you found this video
+[00527.680] helpful please leave a like and then
+[00529.640] comment what trading concept you'd like
+[00531.320] to see us cover next

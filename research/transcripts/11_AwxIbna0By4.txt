@@ -1,0 +1,177 @@
+[00000.040] was ist eigentlich ein orderblock und
+[00001.760] wie erkenne ich ob ein orderblock gut
+[00003.639] oder schlecht ist genau die Antworten
+[00005.600] auf diese Fragen will ich dir in diesem
+[00007.120] Video
+[00009.110] [Musik]
+[00010.400] liefern wenn Du Dich schon mal mit dem
+[00012.440] Thema SMC auseinandergesetzt hast dann
+[00014.839] hast du bestimmt schon von dem Begriff
+[00017.039] orderblock gehört wenn du noch nicht so
+[00018.680] genau weißt was es ist und wie du
+[00020.800] erkennst ob ein Bereich wirklich ein
+[00023.160] orderblock enthält oder nicht dann habe
+[00025.480] ich jetzt das richtige Video für dich zu
+[00027.880] allererst müssen wir uns natürlich mal
+[00029.240] die Frage stellen was ist denn ein
+[00030.920] orderblock vereinfacht gesagt ist ein
+[00033.680] orderblock nichts anderes als die letzte
+[00036.600] Kerze bevor der Markt stark seine
+[00038.719] Richtung Wechsel der Grundgedanke
+[00040.680] dahinter ist dass wir ja dem
+[00042.760] institutionellen Geld folgen wollen und
+[00045.280] das institutionelle Geld benötigt viel
+[00047.640] Liquidität um ihre Position auf und
+[00049.840] abzubauen und sie wollen in diesem
+[00052.039] Bereich beispielsweise long gehen das
+[00053.840] heißt sie brauchen viel Liquidität für
+[00055.640] ihre long Bewegung und möchten aber auch
+[00058.760] gleichzeitig ihre shortbewegung hier
+[00060.800] irgendwo beenden für beides ist nicht
+[00063.960] genug Liquidität vorhanden deswegen
+[00066.119] werden erstmal longs in den Markt gelegt
+[00068.960] und dann später noch mal zurück in
+[00071.119] diesen Bereich gelaufen um die
+[00072.759] vorhandenen Shorts noch aufzulösen das
+[00075.680] ist der Grundgedanke eines orderblocks
+[00078.159] wir halten also noch mal fest die letzte
+[00080.520] Kerze vor dem Richtungswechsel ist der
+[00082.920] orderblock aber ganz so einfach ist es
+[00084.520] auch nicht ich persönlich habe ein paar
+[00086.840] Kriterien um festzustellen ob sich es
+[00088.720] wirklich um ein order Block handelt oder
+[00090.680] einfach nur eine Kerze denn damit diese
+[00093.840] Logik Sinn macht müssen für mich drei
+[00096.399] Bedingungen erfüllt sein die erste
+[00098.680] Bedingung ist dass diese letzte Kerze
+[00101.439] dieser potenzielle orderblock auch
+[00103.240] wirklich Liquidität zur linken Seite
+[00105.560] sweept das heißt es muss die tiefste
+[00107.840] Kerze sein die sich all die Liquidität
+[00110.479] hier krallt und dann die Gegenbewegung
+[00114.079] einleutet das heißt Kriterium Nummer 1
+[00116.479] liquiditätssweep Kriterium Nummer 2 ich
+[00118.759] möchte sehen dass der Markt sich sehr
+[00120.640] stark wegbewegt und zwar mit einer Fair
+[00123.399] Value GAP falls du nicht weißt was eine
+[00125.759] Fair Value GAP ist dann verlinke ich dir
+[00127.880] hier oben im Eck ein Video da habe ich
+[00129.759] auch mal was zugemacht solltest du
+[00131.800] unbedingt verstanden haben damit du
+[00133.560] diesem Beispiel folgen kannst warum
+[00136.160] brauchen wir eine Fair Value GAP weil
+[00138.200] uns die Fair Value GAP im Endeffekt
+[00140.440] einfach sagt dass der Markt hier
+[00142.360] wirklich impulsiv wegzieht wir haben
+[00144.440] damit also so ein gewisses Zeichen dass
+[00146.920] institutionelle Player am Markt sind die
+[00149.440] den Markt sehr stark und impulsiv
+[00151.959] wegbewegen können und unser drittes
+[00154.400] Kriterium ist dann dass der Markt auch
+[00156.879] wirklich die Richtung wechselt im SMC
+[00159.440] Bereich kennt man den Begriff meistens
+[00161.239] unter change of character wir wollen
+[00163.519] also sehen dass hier auch wirklich
+[00165.000] Struktur auf dieser Dimension gebrochen
+[00166.959] wird und wir von einem short in ein long
+[00169.800] Szenario übergehen oder umgekehrt eben
+[00171.920] von einem long in ein Short Szenario
+[00173.959] übergehen wenn diese drei Bedingungen
+[00176.239] erfüllt sind dann ist es für mich ein
+[00178.720] valider orderblock BL den ich in der
+[00180.480] Zukunft verwenden kann um noch mal davon
+[00183.040] zu traden und genau das möchte ich Dir
+[00185.080] jetzt natürlich auch noch in der Praxis
+[00186.599] zeigen orderblöcke können natürlich in
+[00188.680] beide Richtungen entstehen du hast
+[00190.360] gerade in der Theorie das long Beispiel
+[00192.360] gesehen und wir wollen uns jetzt in der
+[00193.920] Praxis auch mal ein Short Beispiel
+[00195.680] ansehen wir haben hier eine
+[00197.879] Aufwärtsbewegung und wollen jetzt quasi
+[00200.400] sehen wo ein potenzieller orderblock
+[00202.599] entsteht wir haben unsere drei Kriterien
+[00205.360] die dafür erfüllt sein müssen zu
+[00207.280] allererst wollen wir natürlich die Kerze
+[00209.200] ausfinden nicht machen die das Ende der
+[00212.080] Bewegung darstellt und damit eben auch
+[00214.200] Liquidität zur linken Seite sweept und
+[00216.599] wenn wir hier einmal genau reinschauen
+[00218.519] dann können wir feststellen dass genau
+[00220.920] sowas hier passiert ist mit dieser
+[00223.280] letzten Kerze die Liquidität genommen
+[00227.239] hat und damit ein potenzieller
+[00229.519] orderblock für die Zukunft sein könnte
+[00232.040] damit ist Kriterium Nummer 1 abgehakt
+[00234.480] jetzt wollen wir also sehen dass der
+[00235.760] Markt sich impulsiv wegbewegt damit wir
+[00238.640] ein Indiz DAF bekommen dass hier
+[00240.519] wirklich Institution am Werk sind das
+[00242.720] bedeutet wir brauchen als nächstes eine
+[00244.319] Fair Value GAP und dafür lassen wir den
+[00247.280] Markt einmal laufen und sehen jetzt drei
+[00250.879] Kerzen und dazwischen hat sich eine Fair
+[00253.480] Value GAP gebildet nämlich von diesem
+[00256.560] kerzenschatten zu diesem kerzenort haben
+[00259.359] wir eine Fair Value GAP und damit unser
+[00262.040] Signal okay hier ist wirklich potenziell
+[00265.040] eine Institution am Werk dann fehlt uns
+[00267.440] also nur noch Kriterium Nummer 3 der
+[00269.960] muss auch Strukturen brechen er muss ein
+[00271.960] change of character hinlegen und das
+[00274.240] wäre für mich an dieser Stelle gegeben
+[00276.759] denn von hier ging für mich der
+[00278.520] eigentliche Impuls in dieses Hoch los
+[00281.160] und deswegen muss dieser Punkt brechen
+[00283.919] bevor ich bereit bin einzusteigen ganz
+[00286.520] ganz wichtig ein orderblock ist nur
+[00288.600] valide wenn er auch wirklich unmitigiert
+[00290.840] bleibt bevor dieser change of character
+[00292.800] stattfindet das heißt alle drei
+[00294.840] Kriterien müssen vorhanden sein bevor
+[00297.720] wir diesen Rücklauf sehen denn wenn der
+[00299.720] Markt hier vorher schon mitigiert dann
+[00301.479] gibt es keinen Grund mehr wirklich noch
+[00303.440] mal dahin zurückzulaufen dementsprechend
+[00306.360] warten wir jetzt also nur auf den change
+[00308.479] of character oder dass unser
+[00310.440] potentieller orderblock wieder ungültig
+[00313.360] wird und hier haben wir dann auch den
+[00316.560] change of character der Markt ist jetzt
+[00318.919] natürlich ein ganzes Stück weggelaufen
+[00320.600] aber genau das ist auch Sinn und Zweck
+[00323.199] das ganzen wir haben einen potentiellen
+[00325.759] orderblock hier oben wir haben hier eine
+[00327.440] Fair Value GAP und jetzt können wir von
+[00330.240] dieser Zone erneut wegtraden ganz ganz
+[00333.039] wichtig es ist natürlich nicht immer
+[00335.280] komplett exakt ein orderblock muss nicht
+[00338.800] immer ganz genau an die Kante angelaufen
+[00341.360] werden er kann auch 50% mitigiert werden
+[00344.639] oftmals reagiert der Markt auch bereits
+[00347.160] in der Fair Value GAP vor dem orderblock
+[00349.919] deswegen würde ich persönlich
+[00351.440] tatsächlich schon in der Fair Value GAP
+[00353.840] meinen entry suchen und einfach den
+[00356.039] gesamten orderblock hier abdecken und
+[00358.680] dann kann man man sich ansehen ob der
+[00360.639] Markt hier noch mal zurückläuft und so
+[00363.080] einen potenziellen trade nehmen wir
+[00365.919] sehen jetzt wir sind sogar mitten in den
+[00368.319] orderblock gelaufen gar nicht mehr
+[00370.280] unbedingt an die Fair Value GAP aber ich
+[00372.720] persönlich würde ich hier im
+[00374.440] Zweifelsfall einfach immer etwas
+[00376.880] konservativer agieren und nicht
+[00378.720] unbedingt versuchen wirklich den letzten
+[00381.319] Punkt rauszuquetschen dann hat man in
+[00383.720] der Regel mehr Freude an seinen Setups
+[00386.080] und genau so könnten wir einen validen
+[00388.680] orderblock spielen ich habe bewusst
+[00390.400] gerade ein Setup genommen dass sich noch
+[00392.639] nicht ausgespielt hat das heißt der
+[00394.240] Markt ist hier noch live unterwegs dass
+[00396.120] ich keine gekünstelten Setups für euch
+[00398.759] suche sondern zeige dass das wirklich
+[00401.560] tagtäglich in den Märkten passieren kann
+[00403.680] und tatsächlich auch auf jedem timeframe

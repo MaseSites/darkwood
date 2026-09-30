@@ -1,0 +1,90 @@
+[00000.080] In this trade I used purely just support and  resistances and made a total of 25% in just  
+[00005.520] 30 minutes. I m going to show you how to  draw the perfect support and resistances,  
+[00009.120] how to make them more accurate, and show you the  secret on how to use them to get winning trades.  
+[00014.080] Let s get straight into it. Ahhh support and resistances.  
+[00017.360] One of the first things you learn when starting to  trade. I remember my first time drawing a support,  
+[00021.920] and oh boy have I learned a lot since then. Unlike most of my videos where I go over  
+[00026.080] indicator strategies, this video is going  to be about the foundation of trading.   
+[00030.640] I m going to be honest, most people do know how  to draw support and resistances. But 99% of them,  
+[00036.080] don t know how to use them correctly. First things first. You want to do what  
+[00039.600] I call the top-down approach. This is  where you go on a higher time frame  
+[00043.200] than what you would normally trade on and  draw your support and resistances there.  
+[00047.120] So for example if your day trading and are one  the 1 minute or 5 minute, you should be going  
+[00052.480] on the 1 hour time frame to draw your levels. There are a lot of reasons for this. One being,  
+[00057.200] support and resistances on higher timeframes  are more accurate and price respects them  
+[00061.840] a lot more. So you wont get as many false  breakouts. Nobody likes false breakouts.  
+[00069.280] The second reason being, is this. If you drew all  your support and resistances on a lower timeframe  
+[00076.960] you are going to have so many lines that you  wont even be able to read your chart. You ll  
+[00080.960] also hesitate a lot more when entering a trade  considering the lines are so close together.  
+[00085.760] You will never have a clear entry. Go on a high time frame. Focus on  
+[00089.360] the major key levels and turning  points. And draw your lines there.  
+[00092.480] You should also be updating your levels every  single day. Go through your charts and see  
+[00096.640] when the market is paying attention to a level or  when it just ignores and goes right through it.   
+[00100.880] You should be deleting and adding resistances to  keep your chart up to date and more accurate.   
+[00105.680] If you re a beginner and are having trouble  finding key areas, change your chart to a line  
+[00110.080] graph. It will make it a little easier to see  the key levels and where price is holding. Once  
+[00114.480] you draw your levels, change it back to candle  sticks. And you ll see your left with really  
+[00118.400] good support and resistances. It s a great  way to practice your pattern recognition.    
+[00122.080] Also, you should not expect your lines  to have 100% precision. As I m sure  
+[00126.000] all of you have gone though this: Squeaky voice: Alright, I set up my  
+[00128.560] resistance. And now I wait. Oh wait, price broke  my resistance, I should enter since its about to  
+[00134.000] sky rocket up. Enter enter enter. Oh sh- You shouldn t expect 100% precision when  
+[00140.240] dealing with support and resistances.  Price action is always volatile and won  
+[00144.580] t always respect your lines to the tee.  Sometimes price will break your resistance  
+[00148.480] or support and do a false breakout. It doesn  t necessarily mean the level isn t working,  
+[00153.040] it just rejected the general area.  Believe it or not, you can actually  
+[00156.640] use this to your advantage. As if price  does a false breakout to your resistance,  
+[00161.120] you can have a pretty good idea that it will  reject downwards to your nearest support.   
+[00165.040] Considering it s showing weakness. This is exactly why I like using zones  
+[00168.880] sometimes. It will give you some wiggle  room for the support and resistances and  
+[00172.400] you wont get faked out as much. The main point im trying to make  
+[00175.200] is that you shouldn t be using support and  resistances as an exact science. Use them  
+[00179.280] as general areas to help make decisions.  This next step is probably one of the most  
+[00183.680] important tips. Wait for confirmation. What I see so many traders do, is this.  
+[00188.640] They go on a higher time frame, find a key  resistance and see price heading towards  
+[00192.800] it. So they make a pending limit order  for a short right at the resistance.   
+[00196.720] While this is the right idea, the execution is all  wrong. As sure, that is a key resistance point,  
+[00205.280] but who s to say price won t just  break through it like it does here,  
+[00208.480] and then you end up with a losing trade. What you should be doing  
+[00211.840] is wait for confirmation. One way to do that is like this.  
+[00215.280] We found a key resistance on a higher  time frame and price just hit it.   
+[00221.360] We see that price is creating a trendline  heading upwards and we see a key pivot  
+[00225.920] point right here, where price has to break. So instead of entering a short up here, wait for  
+[00231.040] price to break this trendline and key pivot point  for confirmation that price is reversing. This  
+[00236.160] is where you would enter your trade.  Use confirmation signals, to really  
+[00243.680] increase your win percentage when  using support and resistances.  
+[00246.640] The next tip I m going to share  with you guys is use confluence  
+[00250.160] clusters. This tip is HUGE. But before we do that, I want to share with you  
+[00252.560] this really cool site I found called capitalise. Now remember earlier how we were talking about  
+[00257.200] pivot points? Well what if you could automate  this process and make a trading bot to  
+[00261.360] automatically enter a position when it crosses  above a pivot point and close the position say  
+[00266.320] when the rsi becomes overbought That would be pretty cool right?  
+[00269.280] Well I m sure your thinking. Well,  I don t necessarily know how to code  
+[00272.960] or make a bot for that matter. Well that s where this website  
+[00275.920] comes into play. They make it really easy to  automate trading strategies to where you can  
+[00280.000] type them out in plain English. So for example you could do   
+[00283.440] If bitcoin crosses above the daily pivot  point, buy $10,000 worth of bitcoin  
+[00288.240] Then sell 10,000 worth of bitcoin  if the rsi crosses above 70.  
+[00292.960] That s just one simple example, but you can  make it so much more complex and add so many  
+[00297.440] different indicators. And the cool thing is  you don t need to know how to code at all.  
+[00301.600] Thought Id share it with you guys if you are  interested in trying out, I ll leave a link in  
+[00304.960] my description. Let s get back to the video. Now you may be asking yourself. What the hell  
+[00314.240] is a confluence cluster? What I mean by  confluence clusters is use other indicators  
+[00318.880] like pivot points, vwap, or moving averages and  pair them with your support and resistance.  
+[00324.080] So for example, we have a moving average  and a support in the exact same area. This  
+[00328.960] makes the support wayyyy stronger and we  can predict price will respect a lot more  
+[00333.840] because of this confluence. The more  confluences and reasons for price to respect  
+[00338.240] the support or resistance, the better.  You should never be using support and  
+[00342.000] resistance by themselves.  Let me show you a live example  
+[00345.040] of a winning trading using this strategy. We see price is leveling out and using this  
+[00349.520] support on a higher time frame. Instead  of just entering here and expecting price  
+[00353.680] to respect this level, we wait for  confirmation and other confluences.   
+[00357.520] So we go to a lower time frame, see a key area  price has to break to start trending upwards,  
+[00362.640] add some moving averages and pivot points, and  once price breaks all of these confirmations,  
+[00367.040] then we enter a trade. So as you can see,  
+[00369.200] price broke all of these confirmation signals,  we enter a trade. Then we make our profit.  
+[00373.600] Support and resistances are such a  key part of trading. If done correctly  
+[00377.600] they can be extremely powerful.  If you want to see a more advanced  
+[00381.120] example of using this method of trading,  watch this video, where I go over some  
+[00384.880] advanced techniques and a specific trade  example of using this specific method.  
+[00389.120] Thanks for watching and ill  see you guys next time. 
