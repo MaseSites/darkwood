@@ -17,6 +17,8 @@ two machines end up disagreeing about whether a candle is done.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from traidingbrain.domain.enums import Timeframe
 
 #: The Unix epoch fell on a Thursday, but exchanges open the weekly candle on
@@ -28,6 +30,27 @@ _WEEKLY_GRID_OFFSET_MS = 4 * 24 * 60 * 60 * 1000
 
 def timeframe_ms(timeframe: Timeframe) -> int:
     return timeframe.minutes * 60_000
+
+
+def collected_timeframes(
+    context: Sequence[Timeframe], execution: Timeframe
+) -> list[Timeframe]:
+    """Every timeframe the collector gathers, in a fixed order.
+
+    One definition for two machines. The collector writes `context` plus the
+    execution frame; the sync has to drain exactly that set, and when it did
+    not, M1 -- sixty rows for every hourly one, and the largest table by far --
+    accumulated in the landing zone with nothing to empty it. Nothing in either
+    program said they had to match, so they did not.
+
+    Here rather than in `settings.py` for the same reason the rest of this
+    module is here: the collector runs on a Pi and imports this file, and it
+    must not drag pandas in to answer a question about a list.
+    """
+    ordered = list(context)
+    if execution not in ordered:
+        ordered.append(execution)
+    return ordered
 
 
 def grid_offset_ms(timeframe: Timeframe) -> int:

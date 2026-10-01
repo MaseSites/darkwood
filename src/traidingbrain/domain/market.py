@@ -67,6 +67,25 @@ class FundingRate(BaseModel):
     rate: float = Field(description="Signed rate; longs pay shorts when positive")
 
 
+#: Stand-in exchange rules for when no venue is connected.
+#:
+#: Bybit's USDT perpetual defaults, and the fees are the part that matters:
+#: they decide most short-horizon trades on their own. Defined here rather than
+#: in each script because three copies had already appeared, and a paper run
+#: costed differently from the backtest would disagree with it for a reason
+#: nobody could see.
+DEFAULT_SPEC: dict[str, float] = {
+    "price_tick": 0.1,
+    "qty_step": 0.001,
+    "min_qty": 0.001,
+    "min_notional": 5.0,
+    "max_leverage": 100.0,
+    "taker_fee": 0.00055,
+    "maker_fee": 0.0002,
+    "maintenance_margin_rate": 0.005,
+}
+
+
 class SymbolSpec(BaseModel):
     """Exchange-side trading rules for one symbol.
 

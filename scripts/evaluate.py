@@ -29,7 +29,7 @@ from traidingbrain.brain.fake import FakeBrain
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
-from traidingbrain.domain.market import SymbolSpec
+from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
 from traidingbrain.history.engine import HistoryEngine
 from traidingbrain.sim.engine import BacktestEngine, load_engine
 from traidingbrain.sim.evaluate import (
@@ -42,19 +42,6 @@ from traidingbrain.sim.evaluate import (
 )
 from traidingbrain.strategies.baseline import RandomEntry, StructureBaseline
 from traidingbrain.strategies.brain_strategy import BrainStrategy
-
-#: Offline instrument rules. Close enough to Bybit's majors that the cost model is
-#: realistic; `scripts/run_backtest.py --live-spec` fetches the real ones.
-DEFAULT_SPEC = {
-    "price_tick": 0.01,
-    "qty_step": 0.001,
-    "min_qty": 0.001,
-    "min_notional": 5.0,
-    "max_leverage": 100.0,
-    "taker_fee": 0.00055,
-    "maker_fee": 0.0002,
-    "maintenance_margin_rate": 0.005,
-}
 
 STRATEGY_NAMES = ["random", "baseline", "fake-brain"]
 

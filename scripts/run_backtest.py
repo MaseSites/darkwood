@@ -25,7 +25,7 @@ from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.exchange import MarketData
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
-from traidingbrain.domain.market import SymbolSpec
+from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
 from traidingbrain.history.engine import HistoryEngine
 from traidingbrain.sim.engine import BacktestResult, load_engine
 from traidingbrain.sim.metrics import compare
@@ -86,18 +86,6 @@ STRATEGY_NAMES = [
 
 #: Fallback instrument rules, used when running offline. Taken from Bybit's
 #: BTCUSDT perpetual; `--live-spec` fetches the real ones.
-DEFAULT_SPEC = {
-    "price_tick": 0.1,
-    "qty_step": 0.001,
-    "min_qty": 0.001,
-    "min_notional": 5.0,
-    "max_leverage": 100.0,
-    "taker_fee": 0.00055,
-    "maker_fee": 0.0002,
-    "maintenance_margin_rate": 0.005,
-}
-
-
 def human(ts: int) -> str:
     return datetime.fromtimestamp(ts / 1000, tz=UTC).strftime("%Y-%m-%d %H:%M")
 

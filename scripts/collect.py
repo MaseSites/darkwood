@@ -40,7 +40,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from traidingbrain.config.settings import load_config, load_secrets
 from traidingbrain.data.exchange import MarketData
-from traidingbrain.data.grid import timeframe_ms
+from traidingbrain.data.grid import collected_timeframes, timeframe_ms
 from traidingbrain.domain.enums import Timeframe
 from traidingbrain.storage.postgres import connect
 
@@ -204,7 +204,9 @@ def main() -> int:
     if args.timeframes:
         frames = [Timeframe(t.strip()) for t in args.timeframes.split(",") if t.strip()]
     else:
-        frames = [*config.engine.timeframes.context, config.engine.timeframes.execution]
+        frames = collected_timeframes(
+            config.engine.timeframes.context, config.engine.timeframes.execution
+        )
 
     market = MarketData(
         venue_name=config.engine.exchange.name,
