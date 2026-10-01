@@ -66,6 +66,14 @@ class TradeReason:
     setup_key: str
     setup_name: str
     setup_source: str
+    setup_timeframe: str
+    """Which chart the setup was found on.
+
+    The question the multi-timeframe search exists to answer: a four-hour
+    entry and an hourly one are different trades even under the same setup
+    letter, and without this the journal cannot tell which chart is worth
+    reading."""
+
     side: str
     entry: float
     stop: float

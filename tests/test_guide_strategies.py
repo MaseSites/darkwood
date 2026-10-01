@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from traidingbrain.analysis.pipeline import MultiFrameAnalysis
+from traidingbrain.analysis.pipeline import MultiFrameAnalysis, decision_time_ms
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.domain.enums import Side, Timeframe
 from traidingbrain.domain.market import SymbolSpec
@@ -33,10 +33,11 @@ from traidingbrain.strategies.guide import (
     FIXED_CONFIDENCE,
     GuidePool,
     GuideSetupStrategy,
+    _just_closed,
     all_strategies,
     per_setup,
 )
-from traidingbrain.strategy.setups import TRADEABLE
+from traidingbrain.strategy.setups import TRADEABLE, SetupSignal
 
 from .factories import make_symbol_spec
 
@@ -342,3 +343,86 @@ def test_the_pool_reports_whichever_setup_fired(engine: BacktestEngine) -> None:
 def test_a_setup_strategy_is_named_after_the_guide_letter() -> None:
     for setup in TRADEABLE:
         assert GuideSetupStrategy(setup).name == f"guide-{setup.key}"
+
+
+# --------------------------------------------------------------------------- #
+# Searching every chart, not only the hourly one
+# --------------------------------------------------------------------------- #
+
+
+def test_a_four_hour_candle_is_offered_once_not_four_times(
+    engine: BacktestEngine,
+) -> None:
+    """The rule that makes multi-timeframe search safe.
+
+    The loop steps hourly. A four-hour setup spans four hourly bars, and
+    without this check it would be proposed on each of them -- the same trade
+    offered four times, and in a backtest four entries where the rule
+    describes one.
+    """
+    analysis = engine.analysis
+    hits = 0
+    checked = 0
+    for index in range(200, 400):
+        aligned = analysis.aligned_indices(index)
+        if aligned is None:
+            continue
+        checked += 1
+        decision = decision_time_ms(analysis.signal.ts_at(index), analysis.signal_timeframe)
+        if _just_closed(analysis, Timeframe.H4, decision):
+            hits += 1
+
+    assert checked > 100, "nothing was ready; this test proved nothing"
+    # One hour in four, give or take the window's edges.
+    assert checked // 5 <= hits <= checked // 3
+
+
+def test_the_frame_the_loop_steps_on_closes_every_step(engine: BacktestEngine) -> None:
+    """The degenerate case the rule must not break: hourly setups have to keep
+    firing exactly as often as before."""
+    analysis = engine.analysis
+    ready = [i for i in range(200, 300) if analysis.aligned_indices(i) is not None]
+
+    closes = [
+        i
+        for i in ready
+        if _just_closed(
+            analysis,
+            Timeframe.H1,
+            decision_time_ms(analysis.signal.ts_at(i), analysis.signal_timeframe),
+        )
+    ]
+
+    assert closes == ready
+
+
+def test_it_is_read_off_the_data_not_off_the_clock(engine: BacktestEngine) -> None:
+    """The first version computed this from the grid with a modulo, which is
+    true of real exchange bars and false of anything whose timestamps sit a
+    little off it -- and then every setup silently stopped firing. These
+    fixtures are off-grid on purpose, so this would catch the regression."""
+    analysis = engine.analysis
+    index = next(i for i in range(200, 300) if analysis.aligned_indices(i) is not None)
+    decision = decision_time_ms(analysis.signal.ts_at(index), analysis.signal_timeframe)
+
+    assert decision % H1_MS != 0, "the fixture is on the grid; this proves nothing"
+    assert _just_closed(analysis, Timeframe.H1, decision)
+
+
+def test_a_signal_remembers_which_chart_it_came_from() -> None:
+    """Two signals with the same setup letter from different frames are not the
+    same kind of trade -- the four-hour one has a stop four times wider and runs
+    for days. The journal has to be able to tell them apart."""
+    signal = SetupSignal(
+        setup="A",
+        name="x",
+        source="V08",
+        side=Side.LONG,
+        entry=100.0,
+        stop=98.0,
+        target=104.0,
+        bar_index=5,
+        timeframe=Timeframe.H4,
+    )
+
+    assert signal.timeframe is Timeframe.H4

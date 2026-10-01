@@ -515,8 +515,8 @@ function scorePanel() {
     <p class="score__headline">${escapeHtml(score.headline)}</p>
 
     <p class="score__sides">
-      <span class="up"><b class="num">${score.bullish.toFixed(2)}</b> dafür</span>
-      <span class="down">dagegen <b class="num">${score.bearish.toFixed(2)}</b></span>
+      <span class="up">${Math.round(upShare)} % sprechen für <b>aufwärts</b></span>
+      <span class="down"><b>abwärts</b>: ${Math.round(100 - upShare)} %</span>
     </p>
     <div class="score__split" role="img"
          aria-label="Belege dafür ${score.bullish}, dagegen ${score.bearish}">
@@ -526,7 +526,9 @@ function scorePanel() {
 
     <p class="score__meta">${score.breadth} Familien mit Meinung &middot;
       ${score.readings} Messwerte &middot;
-      Widerspruch ${(score.conflict * 100).toFixed(0)} %</p>
+      Widerspruch ${(score.conflict * 100).toFixed(0)} %
+      <span class="score__raw" title="Rohe Gewichtssummen, ohne Einheit">
+        (${score.bullish.toFixed(2)} / ${score.bearish.toFixed(2)})</span></p>
 
     <ul class="score__families">${families}</ul>
 

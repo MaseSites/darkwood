@@ -509,6 +509,7 @@ def _market_for(services: Services, symbol: str, requested: str | None) -> Marke
         trigger=services.config.engine.trigger,
         setups=setups_at(analysis, snapshot.ts),
         min_stop=_cost_floor(services, symbol),
+        analysis=analysis,
     )
 
 

@@ -1955,3 +1955,13 @@ body {
   color: var(--caution);
   white-space: nowrap;
 }
+
+/* The two weight sums, demoted to a footnote.
+ *
+ * They were the headline and read as "0.08 für / 0.31 gegen", which nobody can
+ * place: the numbers have no unit and no scale, so there is no way to know
+ * whether 0.31 is a lot. The share of the evidence is the thing a person can
+ * actually use; the raw sums stay for anyone checking the arithmetic. */
+.score__raw {
+  color: var(--dimmer);
+}

@@ -38,6 +38,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field
 
@@ -134,6 +135,21 @@ class GateRead(BaseModel):
     headline: str = ""
 
 
+class LevelBand(BaseModel):
+    """A price *range* that matters, not a single line.
+
+    The pools and zones have always had two edges -- a pool of equal highs
+    spans the spread between them, a demand zone spans a candle's body. Drawing
+    only the midpoint threw that away, and a band is what the charts Severin
+    sent actually show: a region price reacts in, not a hairline it touches.
+    """
+
+    low: float
+    high: float
+    kind: str
+    label: str
+
+
 class MarketView(BaseModel):
     """The chart plus the reading, for a symbol at this moment."""
 
@@ -159,6 +175,7 @@ class MarketView(BaseModel):
     levels: list[LevelLine]
     events: list[EventLine] = Field(default_factory=list)
     levels_hidden: int = 0
+    bands: list[LevelBand] = Field(default_factory=list)
     frames: list[FrameRead] = Field(default_factory=list)
     positioning: str = ""
     sentiment: str = ""
@@ -278,6 +295,72 @@ class MarketAnalysisCache:
 STALE_AFTER_BARS = 2
 
 
+#: How far from price a band may sit and still be drawn, in ATR.
+#:
+#: Six, which is wide enough to hold the next move and narrow enough that the
+#: chart does not fill with levels from a different market regime. Zones price
+#: has run away from stay in the data; they just stop being drawn.
+BAND_REACH_ATR = 6.0
+
+#: Most bands a chart may carry. Past this it stops being a chart.
+MAX_BANDS = 10
+
+
+def _bands_near(
+    analysis: MultiFrameAnalysis, snapshot: MarketSnapshot, *, bar_ms: int
+) -> list[LevelBand]:
+    """Pools and structural zones within reach of price, nearest first.
+
+    Read from the signal frame at the snapshot's own bar, so the bands are the
+    ones the analysis was looking at when it formed its view -- not whatever
+    the newest bar happens to show.
+    """
+    del bar_ms
+    signal = analysis.signal
+    stamps = signal.column("ts")
+    found = np.nonzero(stamps == snapshot.ts)[0]
+    if not found.size:
+        return []
+    index = int(found[0])
+    unit = snapshot.atr
+    if unit <= 0:
+        return []
+
+    out: list[tuple[float, LevelBand]] = []
+    for zone in analysis.signal.liquidity.state_at(index).zones:
+        distance = abs(snapshot.price - zone.mid) / unit
+        if distance <= BAND_REACH_ATR:
+            out.append(
+                (distance, LevelBand(low=zone.low, high=zone.high, kind=zone.kind.value,
+                                     label=BAND_LABELS.get(zone.kind.value, zone.kind.value)))
+            )
+    for structural in signal.zones.unmitigated_at(index):
+        distance = abs(snapshot.price - structural.mid) / unit
+        if distance <= BAND_REACH_ATR:
+            out.append(
+                (distance, LevelBand(low=structural.low, high=structural.high,
+                                     kind=structural.role.value,
+                                     label=BAND_LABELS.get(structural.role.value,
+                                                           structural.role.value)))
+            )
+    out.sort(key=lambda pair: pair[0])
+    return [band for _, band in out[:MAX_BANDS]]
+
+
+#: German for the band kinds, as a lookup rather than a rename of the enums --
+#: the enums are what the backtests and the tests assert on.
+BAND_LABELS: dict[str, str] = {
+    "equal_highs": "gleiche Hochs",
+    "equal_lows": "gleiche Tiefs",
+    "fvg_bullish": "Lücke (bullisch)",
+    "fvg_bearish": "Lücke (bearisch)",
+    "supply": "Angebot",
+    "demand": "Nachfrage",
+    "order_block_bullish": "Order Block (long)",
+    "order_block_bearish": "Order Block (short)",
+}
+
+
 def build_market_view(
     snapshot: MarketSnapshot,
     frame: pd.DataFrame,
@@ -288,6 +371,7 @@ def build_market_view(
     setups: list[SetupSignal] | None = None,
     min_stop: float = 0.0,
     context_bars: int = CONTEXT_BARS,
+    analysis: MultiFrameAnalysis | None = None,
 ) -> MarketView:
     """Assemble the market view for one symbol on one timeframe.
 
@@ -322,6 +406,7 @@ def build_market_view(
     ]
 
     levels, hidden = choose_levels(snapshot.levels, snapshot.atr)
+    bands = _bands_near(analysis, snapshot, bar_ms=bar_ms) if analysis is not None else []
 
     return MarketView(
         symbol=snapshot.symbol,
@@ -336,6 +421,7 @@ def build_market_view(
         atr_pct=snapshot.atr_pct,
         candles=candles,
         levels=levels,
+        bands=bands,
         events=_events(snapshot, timeframe, bar_ms, len(candles)),
         levels_hidden=hidden,
         frames=[

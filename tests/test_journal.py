@@ -54,6 +54,7 @@ def reason(**overrides: object) -> TradeReason:
         "setup_key": "A",
         "setup_name": "Momentum-Ausbruch",
         "setup_source": "V08",
+        "setup_timeframe": "H1",
         "side": "long",
         "entry": 100.0,
         "stop": 98.0,

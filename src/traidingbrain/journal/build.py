@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from traidingbrain.analysis.pipeline import MultiFrameAnalysis
+from traidingbrain.analysis.pipeline import MultiFrameAnalysis, decision_time_ms
 from traidingbrain.data.grid import timeframe_ms
 from traidingbrain.domain.enums import Side, Timeframe
 from traidingbrain.journal.postmortem import examine
@@ -30,6 +30,7 @@ from traidingbrain.journal.record import (
 from traidingbrain.score.rating import rate
 from traidingbrain.score.reading import score_at
 from traidingbrain.sim.broker import Fill
+from traidingbrain.strategies.guide import SEARCH_ORDER, _just_closed
 from traidingbrain.strategy.setups import SetupSignal, evaluate_all
 
 #: What the setup fields say when no setup can be matched to a fill.
@@ -59,9 +60,31 @@ def decision_index(multi: MultiFrameAnalysis, proposal_id: str, signal: Timefram
 
 
 def _setup_for(analysis: MultiFrameAnalysis, index: int, side: Side) -> SetupSignal | None:
-    """The setup that fired this bar on the traded side, if exactly one did."""
-    matching = [s for s in evaluate_all(analysis.signal, index) if s.side is side]
-    return matching[0] if len(matching) == 1 else None
+    """The setup that fired for this trade, on whichever chart it came from.
+
+    Searched across the frames in the pool's own order, because a trade may
+    have been found on any of them. Looking only at the signal frame left 40%
+    of the journal with no setup attributed once the search went
+    multi-timeframe -- the trades were fine, the record of why was not.
+    """
+    aligned = analysis.aligned_indices(index)
+    if aligned is None:
+        return None
+    decision = decision_time_ms(analysis.signal.ts_at(index), analysis.signal_timeframe)
+    for timeframe in SEARCH_ORDER:
+        frame = analysis.analyses.get(timeframe)
+        at = aligned.get(timeframe)
+        if frame is None or at is None or not _just_closed(analysis, timeframe, decision):
+            continue
+        matching = [s for s in evaluate_all(frame, at) if s.side is side]
+        if len(matching) == 1:
+            return matching[0]
+        if matching:
+            # More than one fired here. The pool takes the first, and so does
+            # this -- guessing differently would attribute the trade to a setup
+            # the engine did not act on.
+            return matching[0]
+    return None
 
 
 def reason_at(multi: MultiFrameAnalysis, index: int, side: Side) -> TradeReason | None:
@@ -81,6 +104,7 @@ def reason_at(multi: MultiFrameAnalysis, index: int, side: Side) -> TradeReason 
         setup_key=setup.setup if setup else UNKNOWN_SETUP,
         setup_name=setup.name if setup else UNKNOWN_SETUP,
         setup_source=setup.source if setup else UNKNOWN_SETUP,
+        setup_timeframe=setup.timeframe.value if setup else UNKNOWN_SETUP,
         side=str(side),
         entry=entry,
         stop=stop,

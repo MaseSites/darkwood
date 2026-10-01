@@ -46,7 +46,7 @@ from traidingbrain.analysis.fvg_quality import MitigationRule, assess_gaps, best
 from traidingbrain.analysis.liquidity import Zone, ZoneKind
 from traidingbrain.analysis.pipeline import FrameAnalysis
 from traidingbrain.analysis.zones import StructuralZone, ZoneRole, true_zone
-from traidingbrain.domain.enums import Bias, Side
+from traidingbrain.domain.enums import Bias, Side, Timeframe
 
 #: V08: "Erstes Ziel bei 1,5R, halbe Position schließen, Rest laufen lassen."
 BREAKOUT_FIRST_TARGET_R = 1.5
@@ -79,6 +79,15 @@ class SetupSignal:
     stop: float
     target: float
     bar_index: int
+    timeframe: Timeframe = Timeframe.H1
+    """Which chart this was found on.
+
+    Everything about a signal scales with it: an H4 setup puts its stop at H4
+    structure, so the stop is roughly four times wider, the target with it, and
+    the trade runs for days rather than hours. Carried rather than inferred,
+    because once several frames are searched two signals with the same setup
+    letter are no longer the same kind of trade."""
+
     reasons: tuple[str, ...] = ()
     #: The price the setup is built around -- the broken level, or the zone edge.
     #: Carried so the chart can draw the thing the rule is about, and so a test
@@ -192,6 +201,7 @@ class MomentumBreakout:
             target = close + BREAKOUT_FIRST_TARGET_R * risk * side.sign
 
             signal = SetupSignal(
+                timeframe=analysis.timeframe,
                 setup=self.key,
                 name=self.name,
                 source=self.source,
@@ -255,6 +265,7 @@ class SupplyDemandRetest:
                 continue
 
             signal = SetupSignal(
+                timeframe=analysis.timeframe,
                 setup=self.key,
                 name=self.name,
                 source=self.source,
@@ -341,6 +352,7 @@ class InducementOrderBlock:
                 continue
 
             signal = SetupSignal(
+                timeframe=analysis.timeframe,
                 setup=self.key,
                 name=self.name,
                 source=self.source,
@@ -425,6 +437,7 @@ class SixFactorGap:
                 continue
 
             signal = SetupSignal(
+                timeframe=analysis.timeframe,
                 setup=self.key,
                 name=self.name,
                 source=self.source,

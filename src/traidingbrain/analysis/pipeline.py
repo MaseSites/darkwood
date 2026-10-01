@@ -44,11 +44,12 @@ def index_at_or_before(frame: pd.DataFrame, timeframe: Timeframe, as_of_ms: int)
     """
     if frame.empty:
         return None
+    # Closes are sorted because the bars are, so this is a binary search rather
+    # than a scan of the whole column. It is called once per frame per bar, and
+    # the frames run to hundreds of thousands of rows.
     closes = frame["ts"].to_numpy(dtype="int64") + timeframe_ms(timeframe)
-    eligible = np.nonzero(closes <= as_of_ms)[0]
-    if eligible.size == 0:
-        return None
-    return int(eligible[-1])
+    position = int(np.searchsorted(closes, as_of_ms, side="right")) - 1
+    return position if position >= 0 else None
 
 
 @dataclass

@@ -28,7 +28,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from traidingbrain.analysis.pipeline import MultiFrameAnalysis
+from traidingbrain.analysis.pipeline import (
+    MultiFrameAnalysis,
+    decision_time_ms,
+    index_at_or_before,
+)
+from traidingbrain.data.grid import timeframe_ms
+from traidingbrain.domain.enums import Timeframe
 from traidingbrain.sim.engine import TradeIntent
 from traidingbrain.strategy.setups import TRADEABLE, Setup, SetupSignal
 
@@ -74,27 +80,85 @@ class GuideSetupStrategy:
         return _to_intent(signal) if signal is not None else None
 
 
+#: Which charts are searched, slowest first.
+#:
+#: Slowest first because a daily setup and an hourly one firing in the same
+#: hour are not equal claims: the daily one rests on more and is the one a
+#: person would take. Without an order the answer would depend on dictionary
+#: insertion, which is not a preference anybody stated.
+SEARCH_ORDER: tuple[Timeframe, ...] = (
+    Timeframe.D1,
+    Timeframe.H4,
+    Timeframe.H1,
+    Timeframe.M15,
+)
+
+
+def _just_closed(
+    analysis: MultiFrameAnalysis, timeframe: Timeframe, decision_ms: int
+) -> bool:
+    """Did a candle of this timeframe finish in the hour just ended?
+
+    The loop steps hourly. Without this a four-hour setup would be proposed on
+    all four hours its candle spans -- the same trade offered four times, and
+    in a backtest four entries where the rule describes one.
+
+    Asked of the frame rather than of the clock. The first version computed it
+    from the grid, `(decision - offset) % step == 0`, which is true of real
+    exchange bars and false of anything whose timestamps sit a little off it --
+    and then every setup silently stops firing. The data answers the question
+    it is the authority on.
+    """
+    frame = analysis.analyses.get(timeframe)
+    if frame is None:
+        return False
+    step = timeframe_ms(analysis.signal_timeframe)
+    now = index_at_or_before(frame.frame, timeframe, decision_ms)
+    before = index_at_or_before(frame.frame, timeframe, decision_ms - step)
+    return now is not None and now != before
+
+
 @dataclass
 class GuidePool:
-    """Every tradeable setup at once, first one to fire.
+    """Every tradeable setup on every chart, first one to fire.
 
-    "First" is by the order in `TRADEABLE`, and that order is arbitrary -- which
-    is worth saying out loud, because on a bar where two setups agree it decides
-    which one is taken. Agreement is rare enough that ranking them would be
-    inventing a preference the sources never state; if it turns out to matter,
-    the per-setup rows are where that will show.
+    **Why several charts.** Until now every setup read the hourly frame and
+    nothing else, while the weekly, daily and four-hour frames were analysed
+    only to feed the score. Severin reads the four-hour chart and kept pointing
+    at entries there; the system had never looked. Searching each frame is what
+    makes those visible, and it is also where longer trades come from -- a
+    four-hour setup puts its stop at four-hour structure, so it is roughly four
+    times wider, the target with it, and the trade runs for days.
+
+    **One signal per candle, not per hour.** A four-hour setup is offered on
+    the single hourly bar where its candle closed. Offering it on all four
+    would be the same trade four times.
+
+    "First" is by `SEARCH_ORDER` then by `TRADEABLE`, and the second of those is
+    arbitrary -- worth saying out loud, because on a bar where two setups agree
+    it decides which is taken.
     """
 
     name: str = "guide-all"
 
     def propose_at(self, analysis: MultiFrameAnalysis, index: int) -> TradeIntent | None:
-        for setup in TRADEABLE:
-            signal = setup.evaluate(analysis.signal, index)
-            if signal is None:
+        aligned = analysis.aligned_indices(index)
+        if aligned is None:
+            return None
+        decision = decision_time_ms(analysis.signal.ts_at(index), analysis.signal_timeframe)
+
+        for timeframe in SEARCH_ORDER:
+            frame = analysis.analyses.get(timeframe)
+            at = aligned.get(timeframe)
+            if frame is None or at is None or not _just_closed(analysis, timeframe, decision):
                 continue
-            intent = _to_intent(signal)
-            if intent is not None:
-                return intent
+            for setup in TRADEABLE:
+                signal = setup.evaluate(frame, at)
+                if signal is None:
+                    continue
+                intent = _to_intent(signal)
+                if intent is not None:
+                    return intent
         return None
 
 

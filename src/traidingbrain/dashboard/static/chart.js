@@ -236,6 +236,7 @@ export function drawChart(canvas, view, hover) {
   };
 
   drawGrid(ctx, { plotLeft, plotRight, plotTop, plotBottom, low, high, span, y, colours });
+  drawZones(ctx, view, { plotLeft, plotRight, y, colours });
   drawBands(ctx, view, { plotLeft, plotRight, y, colours });
   const levelLabels = drawLevels(ctx, view, {
     plotLeft,
@@ -293,6 +294,53 @@ function drawBands(ctx, view, g) {
 
   if (byRole.stop !== undefined) band(byRole.entry, byRole.stop, "rgba(248, 113, 113, 0.10)");
   if (byRole.target !== undefined) band(byRole.entry, byRole.target, "rgba(52, 211, 153, 0.10)");
+}
+
+/**
+ * The price ranges that matter, drawn as ranges.
+ *
+ * Pools and structural zones have always had two edges -- a pool of equal highs
+ * spans the spread between them, a demand zone spans a candle's body. Drawing
+ * only a hairline threw that away, and the charts Severin sent all show
+ * regions: a band price reacts *in*, not a line it touches.
+ *
+ * Behind the candles and very faint. A zone is context for the price action,
+ * so anything strong enough to compete with the candles is drawn wrongly, and
+ * ten of them at full strength would be a wall rather than a chart.
+ */
+function drawZones(ctx, view, g) {
+  const tint = {
+    equal_highs: "248, 113, 113",
+    equal_lows: "52, 211, 153",
+    supply: "248, 113, 113",
+    demand: "52, 211, 153",
+    order_block_bullish: "52, 211, 153",
+    order_block_bearish: "248, 113, 113",
+    fvg_bullish: "245, 158, 11",
+    fvg_bearish: "245, 158, 11",
+  };
+
+  ctx.save();
+  for (const band of view.bands ?? []) {
+    const top = g.y(band.high);
+    const bottom = g.y(band.low);
+    const rgb = tint[band.kind] ?? "124, 138, 163";
+    ctx.fillStyle = `rgba(${rgb}, 0.10)`;
+    // A band thinner than a pixel disappears, and a pool of equal highs is
+    // often only a few ticks tall. One pixel is the floor so it stays visible
+    // as the thing it is rather than vanishing at this zoom.
+    const height = Math.max(1, bottom - top);
+    ctx.fillRect(g.plotLeft, top, g.plotRight - g.plotLeft, height);
+    ctx.strokeStyle = `rgba(${rgb}, 0.28)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(g.plotLeft, top);
+    ctx.lineTo(g.plotRight, top);
+    ctx.moveTo(g.plotLeft, top + height);
+    ctx.lineTo(g.plotRight, top + height);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawLevels(ctx, view, g) {
