@@ -183,7 +183,17 @@ def compute(
     for verdict in evidence.verdicts():
         base = table.get(verdict.family, 0.0)
         modifier = modifiers.get(verdict.family, 1.0)
-        split = verdict.agreement < MIN_AGREEMENT or verdict.direction is Bias.NEUTRAL
+        # Two kinds of split, and either one is enough to silence the family.
+        # The second matters most where the first cannot see it: every
+        # indicator on the weekly can agree perfectly, every indicator on the
+        # hourly can agree perfectly, and the two frames can point opposite
+        # ways. A median over frames picks one of them and would then report
+        # full strength for a market the timeframes cannot agree about.
+        split = (
+            verdict.agreement < MIN_AGREEMENT
+            or verdict.timeframe_agreement < MIN_AGREEMENT
+            or verdict.direction is Bias.NEUTRAL
+        )
 
         # The family's own members decide how much of its weight survives: a
         # finding that shares a cause with another, or that happened long

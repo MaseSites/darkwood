@@ -41,7 +41,11 @@ def test_shipped_config_loads(app_config: AppConfig) -> None:
     assert app_config.engine.exchange.testnet is True, (
         "testnet must stay the default; live trading is a stage 10 decision"
     )
-    assert app_config.engine.symbols.active == ["BTCUSDT"]
+    # Which symbols are active is a choice too -- all four are on now that the
+    # dashboard shows them side by side. The invariant is that every active one
+    # is a symbol the venue actually offers, which the config validates.
+    assert app_config.engine.symbols.active
+    assert set(app_config.engine.symbols.active) <= set(app_config.engine.symbols.available)
 
 
 def test_paths_are_absolute_after_loading(app_config: AppConfig) -> None:

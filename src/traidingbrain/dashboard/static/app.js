@@ -23,6 +23,15 @@ const POLL_MS = 4000;
 
 const state = {
   proposals: [],
+  /* The score, and which symbol and bar it belongs to.
+   *
+   * Kept beside the chart rather than inside it because it arrives later: the
+   * indicator bank over five timeframes takes about ten seconds the first time
+   * a market is opened, and waiting for it would put the chart behind it. The
+   * two stamps are how a late answer for a market nobody is looking at any
+   * more gets thrown away instead of drawn. */
+  score: null,
+  scoreFor: null,
   system: null,
   notices: new Map(),
   changed: new Map(),
@@ -288,6 +297,7 @@ function marketPanel() {
             )}, with the levels and structural events the analysis found."></canvas>
   </figure>
 
+  ${scorePanel()}
   ${setupPanel(view.setups)}
   ${gatePanel(view.gate)}
   ${frameTable(view)}
@@ -356,6 +366,106 @@ function setupPanel(setups) {
  * than a description of the market, and the useful information is usually how
  * close the bar came.
  */
+/**
+ * Every indicator at once, reconciled into something a person can read.
+ *
+ * Two numbers rather than one, because the difference between them destroys
+ * the part that matters: a market where a strong bullish read is fighting a
+ * strong bearish one, and a quiet market with a mild lean, produce the same
+ * subtraction and are not the same trade.
+ *
+ * Each family shows what every timeframe said underneath it. Without that row
+ * a family reading near zero is unreadable -- "barely leaning" and "the week
+ * is up while the hour is down" look identical, and only the second is a
+ * reason to wait rather than to shrug.
+ */
+function scorePanel() {
+  const score = state.score;
+  if (score === "unavailable") return "";
+  if (!score) {
+    return `<section class="score score--waiting">
+      <h3 class="score__head">Gesamtbild <span class="pulse"></span></h3>
+      <p class="score__wait">Rechne 42 Indikatoren über fünf Zeitebenen&hellip;</p>
+    </section>`;
+  }
+
+  const total = score.bullish + score.bearish;
+  const upShare = total > 0 ? (score.bullish / total) * 100 : 50;
+  // Bars are scaled against the loudest family rather than against a fixed
+  // maximum. The absolute numbers are small by design -- a family has to clear
+  // two kinds of disagreement before it contributes anything -- and a fixed
+  // scale would draw every honest reading as a flat line.
+  const loudest = Math.max(0.05, ...score.families.map((f) => Math.abs(f.contribution)));
+
+  const families = score.families
+    .map((f) => {
+      const share = Math.abs(f.contribution) / loudest;
+      const side = f.contribution >= 0 ? "up" : "down";
+      const frames = f.frames
+        .map(
+          (frame) => `<span class="score__frame ${frame.lean >= 0 ? "up" : "down"}"
+             title="${escapeHtml(frame.label)}">${escapeHtml(frame.label)}
+             <b class="num">${frame.lean >= 0 ? "+" : ""}${frame.lean.toFixed(2)}</b></span>`
+        )
+        .join("");
+      return `<li class="score__family${f.silent ? " score__family--silent" : ""}">
+        <span class="score__fam">${escapeHtml(f.label)}
+          <span class="score__members">${f.members}</span></span>
+        <span class="score__gauge" aria-hidden="true">
+          <i class="score__fill score__fill--${side}"
+             style="--share:${share.toFixed(3)}"></i>
+        </span>
+        <span class="score__num num ${side}">${f.contribution >= 0 ? "+" : ""}${f.contribution.toFixed(
+          3
+        )}</span>
+        <span class="score__frames">${frames}</span>
+        ${f.reason ? `<span class="score__reason">${escapeHtml(f.reason)}</span>` : ""}
+      </li>`;
+    })
+    .join("");
+
+  return `
+  <section class="score" aria-live="polite">
+    <h3 class="score__head">Gesamtbild
+      <span class="score__regime">${escapeHtml(score.regime)}</span></h3>
+    <p class="score__headline">${escapeHtml(score.headline)}</p>
+
+    <p class="score__sides">
+      <span class="up"><b class="num">${score.bullish.toFixed(2)}</b> dafür</span>
+      <span class="down">dagegen <b class="num">${score.bearish.toFixed(2)}</b></span>
+    </p>
+    <div class="score__split" role="img"
+         aria-label="Belege dafür ${score.bullish}, dagegen ${score.bearish}">
+      <span class="score__side score__side--up" style="width:${upShare.toFixed(1)}%"></span>
+      <span class="score__side score__side--down" style="width:${(100 - upShare).toFixed(1)}%"></span>
+    </div>
+
+    <p class="score__meta">${score.breadth} Familien mit Meinung &middot;
+      ${score.readings} Messwerte &middot;
+      Widerspruch ${(score.conflict * 100).toFixed(0)} %</p>
+
+    <ul class="score__families">${families}</ul>
+
+    ${
+      score.context.length
+        ? `<p class="score__context">Ohne Richtung: ${score.context
+            .map(escapeHtml)
+            .join(" &middot; ")}</p>`
+        : ""
+    }
+    ${
+      // Which families had nothing to say at all, said out loud. Without it
+      // "5 Familien" reads as "everything was weighed", and half the families
+      // this build knows about do not feed the score yet.
+      score.missing.length
+        ? `<p class="score__missing">Noch nicht im Gesamtbild:
+             ${score.missing.map(escapeHtml).join(", ")}
+             &mdash; diese Familien liefern noch keine Befunde.</p>`
+        : ""
+    }
+  </section>`;
+}
+
 function gatePanel(gate) {
   if (!gate) return "";
   const rows = (gate.checks ?? [])
@@ -493,6 +603,39 @@ async function loadMarket() {
     state.market = "unavailable";
   }
   state.loadingSince = null;
+}
+
+/**
+ * Fetch the score, after the chart and never in front of it.
+ *
+ * Only when it would say something new: a different market, or the same market
+ * on a newer bar. The reading does not depend on which timeframe the chart is
+ * showing -- it reads all of them -- so switching the chart's tab must not
+ * throw it away and spend ten seconds rebuilding the same answer.
+ *
+ * A late reply for a market nobody is looking at any more is discarded rather
+ * than drawn. Clicking through four assets while the first is still computing
+ * would otherwise paint the first one's score under the fourth one's chart.
+ */
+async function loadScore() {
+  const view = state.market;
+  if (!view || view === "unavailable") return;
+  const wanted = view.symbol;
+  if (state.scoreFor === wanted && state.score && state.score !== "unavailable") {
+    if (state.score.as_of_ts === view.as_of_ts) return;
+  }
+  if (state.scoreFor !== wanted) {
+    state.score = null;
+    state.scoreFor = wanted;
+  }
+  let answer;
+  try {
+    answer = await api(`/api/market/${wanted}/score`);
+  } catch {
+    answer = "unavailable";
+  }
+  if (state.symbol !== wanted) return;
+  state.score = answer;
 }
 
 function paintMarket() {
@@ -1029,9 +1172,13 @@ document.addEventListener("click", (event) => {
     state.marketTimeframe = action.dataset.tf;
   }
   state.market = null;
+  state.score = null;
   state.hover = null;
   renderMarket();
-  loadMarket().then(renderMarket);
+  loadMarket()
+    .then(renderMarket)
+    .then(loadScore)
+    .then(renderMarket);
 });
 
 /**
@@ -1143,8 +1290,12 @@ async function refresh() {
   watchCanvases();
   loadCharts();
   /* The market is refreshed on the same poll but rendered separately: it has no
-   * hold gesture to interrupt, so it never has to wait for one. */
-  loadMarket().then(renderMarket);
+   * hold gesture to interrupt, so it never has to wait for one. The score
+   * follows it rather than racing it, so the chart is never held up. */
+  loadMarket()
+    .then(renderMarket)
+    .then(loadScore)
+    .then(renderMarket);
 }
 
 document.getElementById("halt").addEventListener("click", async () => {

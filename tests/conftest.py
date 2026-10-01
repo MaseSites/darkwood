@@ -17,7 +17,9 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
+import psycopg
 import pytest
 
 from traidingbrain.config.settings import load_secrets
@@ -126,4 +128,48 @@ def postgres_test_url() -> str:
             "tests truncate; running them here would delete real proposals. Point "
             "the test URL at a separate database (e.g. traidingbrain_test)."
         )
+
+    unreachable = _unreachable(test_url)
+    if unreachable:
+        pytest.skip(unreachable)
     return test_url
+
+
+#: How long to wait for the test database to answer before giving up on it.
+#:
+#: Short on purpose. This is a yes-or-no question about a machine on the local
+#: network, and the only thing a longer wait buys is a longer wait.
+PROBE_TIMEOUT_SECONDS = 3.0
+
+#: The probe's answer, taken once. `None` means not asked yet.
+_PROBE: list[str | None] = [None]
+
+
+def _unreachable(url: str) -> str | None:
+    """Why the test database cannot be used, or None if it can.
+
+    **Why this exists.** The database moved onto the Raspberry Pi, and the Pi is
+    not always on. With it off, every Postgres test spent over two minutes
+    retrying a connection that was never going to arrive, and a full run sat
+    there for forty minutes before reporting six failures that said nothing
+    about the code. The honest answer -- these tests need a database and there
+    is not one -- was always available in under a second.
+
+    Asked once per session and remembered. Probing per test would put the same
+    wait back, multiplied.
+    """
+    if _PROBE[0] is not None:
+        return _PROBE[0] or None
+
+    try:
+        psycopg.connect(url, connect_timeout=int(PROBE_TIMEOUT_SECONDS)).close()
+    except Exception as error:  # any failure to reach it is the same answer here
+        host = urlsplit(url).hostname or "the configured host"
+        _PROBE[0] = (
+            f"no Postgres answering at {host}: {error}. "
+            f"These tests need a database; start it, or point TB_POSTGRES_TEST_URL "
+            f"at one that is running."
+        )
+    else:
+        _PROBE[0] = ""
+    return _PROBE[0] or None

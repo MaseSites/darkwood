@@ -385,3 +385,150 @@ def test_the_description_names_both_sides_and_the_breadth() -> None:
 
     assert "for" in described and "against" in described
     assert "families" in described and "conflict" in described
+
+
+# --------------------------------------------------------------------------- #
+# Across timeframes: two measurements, not one read twice
+# --------------------------------------------------------------------------- #
+
+
+def on(timeframe: Timeframe, key: str, direction: Bias, strength: float = 0.8) -> Finding:
+    return Finding(
+        key=key,
+        family=Family.MOMENTUM,
+        direction=direction,
+        strength=strength,
+        timeframe=timeframe,
+        source="test",
+    )
+
+
+def test_the_slow_frame_outweighs_the_fast_one() -> None:
+    """The plan's table, as an assertion.
+
+    The fifteen-minute chart is for timing an entry; the weekly decides whether
+    the trade is allowed at all. Pooling every reading into one median would
+    give them the same say, because each frame carries the same indicators --
+    so the noisiest frame would win any tie by having arrived most recently.
+    """
+    split = evidence_of(
+        on(Timeframe.W1, "a_w1", Bias.BULLISH),
+        on(Timeframe.M15, "a_m15", Bias.BEARISH),
+    )
+
+    verdict = split.verdicts()[0]
+
+    assert verdict.direction is Bias.BULLISH
+
+
+def test_the_frames_are_reported_one_by_one() -> None:
+    """Without this a family near zero is unreadable: "barely leaning" and
+    "the weekly is up while the hourly is down" produce the same number."""
+    mixed = evidence_of(
+        on(Timeframe.D1, "a_d1", Bias.BULLISH, 0.9),
+        on(Timeframe.H1, "a_h1", Bias.BEARISH, 0.9),
+    )
+
+    frames = {v.timeframe: v for v in mixed.verdicts()[0].by_timeframe}
+
+    assert frames[Timeframe.D1].direction is Bias.BULLISH
+    assert frames[Timeframe.H1].direction is Bias.BEARISH
+    assert frames[Timeframe.D1].members == 1
+
+
+def test_frames_disagreeing_is_reported_apart_from_indicators_disagreeing() -> None:
+    """Two different kinds of split, and a single number cannot hold both.
+
+    Here every indicator on each frame is in perfect step with its neighbours
+    -- the indicators agree completely -- and the frames point opposite ways.
+    A reading that reported only one of those would describe a market that is
+    not this one.
+    """
+    opposed = evidence_of(
+        on(Timeframe.D1, "a_d1", Bias.BULLISH, 0.9),
+        on(Timeframe.D1, "b_d1", Bias.BULLISH, 0.9),
+        on(Timeframe.H1, "a_h1", Bias.BEARISH, 0.9),
+        on(Timeframe.H1, "b_h1", Bias.BEARISH, 0.9),
+    )
+
+    verdict = opposed.verdicts()[0]
+
+    assert verdict.timeframe_agreement < 0.2
+    assert len(verdict.by_timeframe) == 2
+
+
+def test_frames_that_agree_report_full_timeframe_agreement() -> None:
+    aligned = evidence_of(
+        on(Timeframe.D1, "a_d1", Bias.BULLISH, 0.6),
+        on(Timeframe.H1, "a_h1", Bias.BULLISH, 0.6),
+    )
+
+    assert aligned.verdicts()[0].timeframe_agreement == pytest.approx(1.0)
+
+
+def test_one_timeframe_reconciles_exactly_as_a_plain_median() -> None:
+    """The two-stage reconciliation must not change the single-frame answer.
+
+    Every other test in this file, and the setups, and the backtests, all feed
+    one timeframe at a time. If the extra stage moved those numbers it would
+    have silently rewritten four years of measurements.
+    """
+    single = evidence_of(
+        on(Timeframe.H1, "a", Bias.BULLISH, 0.2),
+        on(Timeframe.H1, "b", Bias.BULLISH, 0.4),
+        on(Timeframe.H1, "c", Bias.BEARISH, 1.0),
+    )
+
+    verdict = single.verdicts()[0]
+
+    assert verdict.direction is Bias.BULLISH
+    assert verdict.strength == pytest.approx(0.2)
+
+
+def test_turning_every_reading_around_turns_the_verdict_around() -> None:
+    """The weighted median has to be antisymmetric.
+
+    A naive implementation picks the element where the running weight first
+    reaches half, which on an even split depends on the sort order -- so a
+    perfectly balanced family would lean one way, and the mirrored one would
+    lean the same way. That is a bias with no market in it at all.
+    """
+    frames = (Timeframe.W1, Timeframe.D1, Timeframe.H4, Timeframe.H1)
+    up = evidence_of(
+        *(
+            on(tf, f"a_{tf.value}", Bias.BULLISH if n % 2 else Bias.BEARISH, 0.5)
+            for n, tf in enumerate(frames)
+        )
+    )
+    down = evidence_of(
+        *(
+            on(tf, f"a_{tf.value}", Bias.BEARISH if n % 2 else Bias.BULLISH, 0.5)
+            for n, tf in enumerate(frames)
+        )
+    )
+
+    assert up.verdicts()[0].signed_strength == pytest.approx(
+        -down.verdicts()[0].signed_strength
+    )
+
+
+def test_a_family_whose_frames_disagree_contributes_nothing() -> None:
+    """The gap a median over frames leaves open.
+
+    Every indicator on the daily agrees with every other; the same on the
+    hourly; and the two frames point opposite ways. The median has to pick one
+    of them -- that is what a median does -- so without this the score would
+    report full strength for a market the timeframes cannot agree about.
+    """
+    opposed = evidence_of(
+        on(Timeframe.D1, "a_d1", Bias.BULLISH, 0.9),
+        on(Timeframe.D1, "b_d1", Bias.BULLISH, 0.9),
+        on(Timeframe.H1, "a_h1", Bias.BEARISH, 0.9),
+        on(Timeframe.H1, "b_h1", Bias.BEARISH, 0.9),
+    )
+
+    score = compute(opposed)
+
+    assert score.families[0].split
+    assert score.bullish == 0.0
+    assert score.bearish == 0.0

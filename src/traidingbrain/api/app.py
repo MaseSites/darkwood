@@ -41,6 +41,7 @@ from traidingbrain.api.market import (
     build_market_view,
     setups_at,
 )
+from traidingbrain.api.scoring import ScoreRead, build_score_view
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Timeframe
@@ -419,6 +420,18 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
         """
         return _market_for(services, symbol, timeframe)
 
+    @app.get("/api/market/{symbol}/score", response_model=ScoreRead)
+    def score(symbol: str) -> ScoreRead:
+        """Every indicator, reconciled by family, across every timeframe.
+
+        Its own request rather than part of the chart. Building the indicator
+        bank over five frames takes about ten seconds the first time a symbol
+        is opened, and putting that in front of the chart would mean an empty
+        screen for all of it -- which is the thing this dashboard was rebuilt
+        to stop doing.
+        """
+        return _score_for(services, symbol)
+
 
 def _followed_symbols(services: Services) -> list[str]:
     return list(services.config.engine.symbols.active)
@@ -497,6 +510,27 @@ def _market_for(services: Services, symbol: str, requested: str | None) -> Marke
         setups=setups_at(analysis, snapshot.ts),
         min_stop=_cost_floor(services, symbol),
     )
+
+
+def _score_for(services: Services, symbol: str) -> ScoreRead:
+    """The reading for the bar the chart is drawn for."""
+    if services.market is None:
+        raise HTTPException(503, "no bar source is wired, so nothing can be scored")
+    if symbol not in services.config.engine.symbols.active:
+        raise HTTPException(404, f"{symbol} is not a symbol this build follows")
+
+    built = services.market.latest_snapshot(symbol)
+    if built is None:
+        raise HTTPException(
+            404,
+            f"no analysable data for {symbol}; "
+            f"run scripts/backfill.py {symbol} --since 2023-01-01",
+        )
+    snapshot, analysis = built
+    view = build_score_view(symbol, analysis, snapshot.ts)
+    if view is None:
+        raise HTTPException(409, "the timeframes are still warming up on this bar")
+    return view
 
 
 def _chart_for(services: Services, proposal_id: str, requested: str | None = None) -> ChartView:

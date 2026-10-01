@@ -55,6 +55,14 @@ class Unit(StrEnum):
     RATIO = "ratio"
     SIGNED = "signed"
     ATR_UNITS = "atr_units"
+    NORMALISED = "normalised_-1_1"
+    """Already on the scale the score wants: -1 fully bearish, +1 fully bullish.
+
+    For the readings that are a position by construction -- where in a band,
+    where in a channel, which share of volume went one way. Scaling those
+    against their own history would discard the thing they measure: a close at
+    the top of its range is at the top of its range, whether or not it has been
+    there often lately."""
 
 
 @dataclass(frozen=True)
@@ -84,6 +92,42 @@ class Spec:
     """True when the number changes with the data feed -- anything using volume.
     Chapter 11.2: "VWAP ist datenfeed- und sessionabhängig"."""
 
+    full_scale: float | None = None
+    """For an ATR-unit reading: the distance that counts as fully emphatic.
+
+    One number does not fit all of them. Price sits within about an ATR of a
+    21-period average and routinely six from a 200-period one, so a shared
+    scale would leave the long averages pinned at the maximum in any trend --
+    a gradation thrown away exactly where there is most of it to measure.
+    `None` means the default."""
+
+    depends_on: tuple[str, ...] = ()
+    """Other indicators this one is not independent of.
+
+    Only for shared causes that cross a family boundary -- within a family the
+    median already handles it. The case that forced the field: the position of
+    price in a twenty-bar channel is registered twice, once as a volatility
+    reading and once as a location reading, and they are the same number. Two
+    families agreeing is confluence, and this is how one thing is stopped from
+    faking it."""
+
+    directional: bool = True
+    """False when the reading has a size but no side.
+
+    ADX, ATR, Bollinger width, historical volatility, choppiness and relative
+    volume all measure *how much*, never *which way*. Each one's registered
+    failure mode says so in words -- "high ADX read as bullish", "volume is
+    participation, never direction" -- and this field is that sentence made
+    executable.
+
+    Such a reading is context, not evidence, and `read_all` leaves it out of
+    the findings. Letting it in as a neutral vote would be worse than dropping
+    it: a family is reconciled by the median of its members, so four
+    non-directional readings beside three directional ones would pull the
+    family to neutral and erase the only part of it that had something to say.
+    The number is still computed and still available to read -- it just does
+    not get a vote on direction it does not have."""
+
     def __post_init__(self) -> None:
         if not self.failure_modes:
             raise ValueError(
@@ -92,6 +136,8 @@ class Spec:
             )
         if self.lag_bars < 0 or self.lookback < 1:
             raise ValueError(f"{self.name}: lookback {self.lookback}, lag {self.lag_bars}")
+        if self.name in self.depends_on:
+            raise ValueError(f"{self.name} depends on itself")
 
 
 #: How far a reading may sit from neutral before it counts as fully emphatic.
@@ -107,6 +153,15 @@ BOUNDED_FULL_SCALE = 25.0
 #: history. Rolling rather than global, because a global scale would let a
 #: quiet year decide what "extreme" means in a violent one.
 SIGNED_FULL_SCALE_SIGMA = 2.0
+
+#: How many ATR a distance has to cover before it counts as fully emphatic.
+#:
+#: A fixed scale rather than a rolling one, and that is deliberate. Price two
+#: ATR above its 200-period average is far above it, and it stays far above it
+#: however long the trend lasts. Scaling that against its own history would
+#: read a persistent trend as normal and therefore as neutral -- the trend
+#: family would go quiet exactly when it has the clearest thing to say.
+ATR_FULL_SCALE = 2.0
 
 #: How long the rolling window for that normalisation is.
 #:
@@ -150,6 +205,12 @@ class Reading:
             timeframe=timeframe,
             source=self.spec.source,
             label=f"{self.spec.name} {self.value:.4g}",
+            # A dependency is between two indicators, but a finding's key also
+            # carries the timeframe -- the hourly reading does not depend on
+            # the daily one, only on its own timeframe's twin.
+            depends_on=tuple(
+                f"{name}_{timeframe.value.lower()}" for name in self.spec.depends_on
+            ),
         )
 
 
@@ -184,10 +245,14 @@ def _add(
     fails: tuple[str, ...],
     source: str,
     venue: bool = False,
+    directional: bool = True,
+    depends_on: tuple[str, ...] = (),
+    full_scale: float | None = None,
 ) -> Spec:
     return register(
         Spec(
             name=name,
+            full_scale=full_scale,
             family=family,
             input_series=inputs,
             lookback=lookback,
@@ -196,6 +261,8 @@ def _add(
             failure_modes=fails,
             source=source,
             venue_dependent=venue,
+            directional=directional,
+            depends_on=depends_on,
         )
     )
 
@@ -206,27 +273,37 @@ HLCV = ("high", "low", "close", "volume")
 CV = ("close", "volume")
 
 # -- trend and regime, chapter 12.1 ----------------------------------------- #
+#
+# Every moving average here is registered in ATR units, not in price. The
+# reading is the *distance* from price to the average, because the level of a
+# 200-period average carries no direction on its own -- what carries direction
+# is whether price is above it and by how much. Measuring that gap in ATR makes
+# it mean the same thing on BTC at 60,000 and on XRP at 0.50.
 
-_add("sma_50", Family.TREND, inputs=CLOSE, lookback=50, unit=Unit.PRICE, lag=25,
+_add("sma_50", Family.TREND, inputs=CLOSE, lookback=50, unit=Unit.ATR_UNITS, lag=25,
      fails=("crossover read as a forecast", "lags every turn by half the lookback"),
-     source="Z01")
-_add("sma_200", Family.TREND, inputs=CLOSE, lookback=200, unit=Unit.PRICE, lag=100,
+     source="Z01", full_scale=2.5)
+_add("sma_200", Family.TREND, inputs=CLOSE, lookback=200, unit=Unit.ATR_UNITS, lag=100,
      fails=("describes the last 200 bars, not now", "meaningless inside a range"),
-     source="Z01")
-_add("ema_21", Family.TREND, inputs=CLOSE, lookback=21, unit=Unit.PRICE, lag=7,
-     fails=("several EMAs counted as independent signals",), source="Z03")
-_add("ema_55", Family.TREND, inputs=CLOSE, lookback=55, unit=Unit.PRICE, lag=18,
-     fails=("several EMAs counted as independent signals",), source="Z03")
+     source="Z01", full_scale=6.0)
+_add("ema_21", Family.TREND, inputs=CLOSE, lookback=21, unit=Unit.ATR_UNITS, lag=7,
+     fails=("several EMAs counted as independent signals",), source="Z03", full_scale=1.5)
+_add("ema_55", Family.TREND, inputs=CLOSE, lookback=55, unit=Unit.ATR_UNITS, lag=18,
+     fails=("several EMAs counted as independent signals",), source="Z03", full_scale=2.5)
 _add("macd_hist", Family.TREND, inputs=CLOSE, lookback=26, unit=Unit.SIGNED, lag=9,
      fails=("cross without regime context", "histogram sign flips on noise"),
      source="Z03")
 _add("adx_14", Family.TREND, inputs=HLC, lookback=14, unit=Unit.BOUNDED_100, lag=14,
-     fails=("high ADX read as bullish -- it is strength, not direction",), source="Z03")
+     fails=("high ADX read as bullish -- it is strength, not direction",), source="Z03",
+     directional=False)
 _add("dmi_14", Family.TREND, inputs=HLC, lookback=14, unit=Unit.SIGNED, lag=14,
      fails=("DI cross alone taken as an entry",), source="Z03")
-_add("supertrend_10", Family.TREND, inputs=HLC, lookback=10, unit=Unit.SIGNED, lag=10,
-     fails=("flips repeatedly in a sideways market",), source="Z03")
-_add("psar", Family.TREND, inputs=HLC, lookback=2, unit=Unit.SIGNED, lag=2,
+#: The Supertrend band is three ATR wide by construction, so the line sits
+#: about that far away right after a flip. Scaling it to anything tighter would
+#: report every fresh flip as maximally emphatic.
+_add("supertrend_10", Family.TREND, inputs=HLC, lookback=10, unit=Unit.ATR_UNITS, lag=10,
+     fails=("flips repeatedly in a sideways market",), source="Z03", full_scale=3.0)
+_add("psar", Family.TREND, inputs=HLC, lookback=2, unit=Unit.ATR_UNITS, lag=2,
      fails=("every flip traded in a flat range",), source="Z16")
 _add("aroon_25", Family.TREND, inputs=("high", "low"), lookback=25, unit=Unit.BOUNDED_PM100,
      lag=25, fails=("measures time since an extreme, not size of move",), source="Z16")
@@ -236,21 +313,27 @@ _add("trix_15", Family.TREND, inputs=CLOSE, lookback=15, unit=Unit.SIGNED, lag=1
      fails=("triple smoothing makes it very late",), source="Z16")
 _add("ppo", Family.TREND, inputs=CLOSE, lookback=26, unit=Unit.SIGNED, lag=9,
      fails=("same information as MACD, scaled",), source="Z16")
-_add("hma_21", Family.TREND, inputs=CLOSE, lookback=21, unit=Unit.PRICE, lag=5,
-     fails=("new smoothing is not a new information source",), source="Z01")
-_add("kama_20", Family.TREND, inputs=CLOSE, lookback=20, unit=Unit.PRICE, lag=10,
+_add("hma_21", Family.TREND, inputs=CLOSE, lookback=21, unit=Unit.ATR_UNITS, lag=5,
+     fails=("new smoothing is not a new information source",), source="Z01", full_scale=1.5)
+_add("kama_20", Family.TREND, inputs=CLOSE, lookback=20, unit=Unit.ATR_UNITS, lag=10,
      fails=("adapts its own lag, so the lag field is an estimate",), source="Z01")
 
 # -- momentum, chapter 12.2 -------------------------------------------------- #
 
 _add("rsi_14", Family.MOMENTUM, inputs=CLOSE, lookback=14, unit=Unit.BOUNDED_100, lag=1,
      fails=("overbought persists through a strong trend",), source="Z03")
+#: The slow stochastic -- raw %K smoothed over three bars, which is what every
+#: charting platform draws by default. Raw %K is registered separately as
+#: Williams %R, because the two are the same number to the sign.
 _add("stoch_14", Family.MOMENTUM, inputs=HLC, lookback=14, unit=Unit.BOUNDED_100, lag=1,
      fails=("an extreme is not a reversal guarantee",), source="Z03")
 _add("stochrsi_14", Family.MOMENTUM, inputs=CLOSE, lookback=14, unit=Unit.BOUNDED_100, lag=1,
      fails=("a derivative of a derivative; noisier than either",), source="Z03")
+#: Williams %R is native to -100..0; the bank shifts it onto 0..100 so that 50
+#: is the midpoint here as it is for every other bounded reading.
 _add("willr_14", Family.MOMENTUM, inputs=HLC, lookback=14, unit=Unit.BOUNDED_100, lag=1,
-     fails=("mirrors Stochastic; not independent confirmation",), source="Z03")
+     fails=("mirrors Stochastic; not independent confirmation",), source="Z03",
+     depends_on=("stoch_14",))
 _add("cci_20", Family.MOMENTUM, inputs=HLC, lookback=20, unit=Unit.SIGNED, lag=1,
      fails=("fixed thresholds are market and lookback dependent",), source="Z03")
 _add("roc_12", Family.MOMENTUM, inputs=CLOSE, lookback=12, unit=Unit.RATIO, lag=1,
@@ -264,49 +347,71 @@ _add("ultimate_osc", Family.MOMENTUM, inputs=HLC, lookback=28, unit=Unit.BOUNDED
 
 # -- volatility, chapter 12.3 ------------------------------------------------ #
 
-_add("atr_14", Family.VOLATILITY, inputs=HLC, lookback=14, unit=Unit.ATR_UNITS, lag=1,
-     fails=("no direction; rises in selloffs too",), source="Z02")
+_add("atr_14", Family.VOLATILITY, inputs=HLC, lookback=14, unit=Unit.RATIO, lag=1,
+     fails=("no direction; rises in selloffs too",), source="Z02", directional=False)
 _add("bb_width_20", Family.VOLATILITY, inputs=CLOSE, lookback=20, unit=Unit.RATIO, lag=1,
-     fails=("width is expansion, not direction",), source="Z03")
-_add("bb_position_20", Family.VOLATILITY, inputs=CLOSE, lookback=20, unit=Unit.SIGNED, lag=1,
-     fails=("touching a band is not a reversal",), source="Z03")
-_add("keltner_pos_20", Family.VOLATILITY, inputs=HLC, lookback=20, unit=Unit.SIGNED, lag=1,
+     fails=("width is expansion, not direction",), source="Z03", directional=False)
+_add("bb_position_20", Family.VOLATILITY, inputs=CLOSE, lookback=20, unit=Unit.NORMALISED,
+     lag=1, fails=("touching a band is not a reversal",), source="Z03")
+_add("keltner_pos_20", Family.VOLATILITY, inputs=HLC, lookback=20, unit=Unit.NORMALISED, lag=1,
      fails=("whipsaws in flat markets",), source="Z17")
 _add("donchian_pos_20", Family.VOLATILITY, inputs=("high", "low"), lookback=20,
-     unit=Unit.SIGNED, lag=1, fails=("late, and fakeout-prone in a range",), source="Z01")
+     unit=Unit.NORMALISED, lag=1, fails=("late, and fakeout-prone in a range",), source="Z01")
 _add("hist_vol_30", Family.VOLATILITY, inputs=CLOSE, lookback=30, unit=Unit.RATIO, lag=30,
-     fails=("past dispersion does not price jump risk",), source="Z01")
+     fails=("past dispersion does not price jump risk",), source="Z01", directional=False)
 _add("choppiness_14", Family.VOLATILITY, inputs=HLC, lookback=14, unit=Unit.BOUNDED_100, lag=14,
-     fails=("describes trendiness, not which way",), source="Z16")
+     fails=("describes trendiness, not which way",), source="Z16", directional=False)
 
 # -- volume and money flow, chapter 12.4 ------------------------------------- #
 
 _add("rvol_20", Family.VOLUME, inputs=("volume",), lookback=20, unit=Unit.RATIO, lag=1,
-     fails=("volume is participation, never direction",), source="Z12", venue=True)
-_add("obv", Family.VOLUME, inputs=CV, lookback=20, unit=Unit.SIGNED, lag=1,
+     fails=("volume is participation, never direction",), source="Z12", venue=True,
+     directional=False)
+#: OBV and A/D are cumulative, so their level depends on where the file starts.
+#: The bank reads their *change* over the lookback as a share of the volume
+#: traded in it -- a number that means the same thing on any slice of history.
+_add("obv", Family.VOLUME, inputs=CV, lookback=20, unit=Unit.NORMALISED, lag=1,
      fails=("assigns a whole bar's volume to one direction",), source="Z18", venue=True)
-_add("cmf_20", Family.VOLUME, inputs=HLCV, lookback=20, unit=Unit.BOUNDED_PM100, lag=1,
+_add("cmf_20", Family.VOLUME, inputs=HLCV, lookback=20, unit=Unit.NORMALISED, lag=1,
      fails=("close position is a proxy, not real order flow",), source="Z19", venue=True)
 _add("mfi_14", Family.VOLUME, inputs=HLCV, lookback=14, unit=Unit.BOUNDED_100, lag=1,
      fails=("extremes persist in trends, like RSI",), source="Z19", venue=True)
 _add("force_index_13", Family.VOLUME, inputs=CV, lookback=13, unit=Unit.SIGNED, lag=1,
      fails=("price change times volume; dominated by gaps",), source="Z18", venue=True)
-_add("accum_dist", Family.VOLUME, inputs=HLCV, lookback=20, unit=Unit.SIGNED, lag=1,
-     fails=("no direct identification of institutional flow",), source="Z18", venue=True)
-_add("vwap_session", Family.VOLUME, inputs=HLCV, lookback=24, unit=Unit.SIGNED, lag=1,
-     fails=("anchor and feed change the number",), source="Z03", venue=True)
+#: Read as a divergence, not as a flow. The accumulation/distribution line
+#: summed over a window *is* Chaikin money flow -- the same formula with the
+#: same window -- so reading it that way would register one number twice. What
+#: the line adds is where it sits in its own range against where price sits in
+#: its: the two disagreeing is the reading people actually use it for.
+_add("accum_dist", Family.VOLUME, inputs=HLCV, lookback=50, unit=Unit.NORMALISED, lag=1,
+     fails=("no direct identification of institutional flow",
+            "a divergence can persist for a long time without resolving"),
+     source="Z18", venue=True)
+_add("vwap_session", Family.VOLUME, inputs=HLCV, lookback=2, unit=Unit.ATR_UNITS, lag=1,
+     fails=("anchor and feed change the number",), source="Z03", venue=True, full_scale=2.5)
 
 # -- location, chapter 12.5 -------------------------------------------------- #
+#
+# The calendar readings warm up as soon as one period has closed, so their
+# lookback is two bars rather than a bar count standing in for a day. A bar
+# count would mean something different on every timeframe, and on the weekly
+# frame "the previous day in 168 bars" is three years of warm-up for a number
+# that was available in the second week.
 
-_add("range_position_20", Family.LOCATION, inputs=("high", "low", "close"), lookback=20,
-     unit=Unit.SIGNED, lag=1, fails=("a range must be chosen before the position means anything",),
-     source="Z13")
-_add("prev_day_position", Family.LOCATION, inputs=HLC, lookback=24, unit=Unit.SIGNED, lag=1,
+#: Position in the range of *closes*, where Donchian uses the wicks. The
+#: distinction is the point: a range drawn through the wicks includes every
+#: rejected spike, and a range drawn through the closes is where value
+#: actually settled. Related enough to declare the dependence all the same.
+_add("range_position_20", Family.LOCATION, inputs=CLOSE, lookback=20,
+     unit=Unit.NORMALISED, lag=1,
+     fails=("a range must be chosen before the position means anything",),
+     source="Z13", depends_on=("donchian_pos_20",))
+_add("prev_day_position", Family.LOCATION, inputs=HLC, lookback=2, unit=Unit.NORMALISED, lag=1,
      fails=("loses relevance as distance grows",), source="P10")
-_add("prev_week_position", Family.LOCATION, inputs=HLC, lookback=168, unit=Unit.SIGNED, lag=1,
-     fails=("loses relevance as distance grows",), source="P10")
-_add("pivot_position", Family.LOCATION, inputs=HLC, lookback=24, unit=Unit.SIGNED, lag=1,
-     fails=("many pivot formulas; no level is guaranteed",), source="Z03")
+_add("prev_week_position", Family.LOCATION, inputs=HLC, lookback=2, unit=Unit.NORMALISED,
+     lag=1, fails=("loses relevance as distance grows",), source="P10")
+_add("pivot_position", Family.LOCATION, inputs=HLC, lookback=2, unit=Unit.ATR_UNITS, lag=1,
+     fails=("many pivot formulas; no level is guaranteed",), source="Z03", full_scale=2.5)
 
 
 def specs_by_family() -> dict[Family, list[Spec]]:
@@ -338,14 +443,25 @@ def normalise(spec: Spec, series: pd.Series, index: int) -> float:
     value = float(values[index])
     if not np.isfinite(value):
         return 0.0
+    return _scale(spec, value, values, index)
 
+
+def _scale(spec: Spec, value: float, values: np.ndarray, index: int) -> float:
+    """The unit-dependent half of `normalise`, split out so each branch is one line.
+
+    Anything that is not bounded and not already a distance falls through to
+    the rolling z-score, which is the only honest default for a number whose
+    natural size nobody can state in advance.
+    """
     if spec.output_unit is Unit.BOUNDED_100:
         return float(np.clip((value - 50.0) / BOUNDED_FULL_SCALE, -1.0, 1.0))
     if spec.output_unit is Unit.BOUNDED_PM100:
         return float(np.clip(value / 100.0, -1.0, 1.0))
-    if spec.output_unit in (Unit.SIGNED, Unit.RATIO, Unit.PRICE, Unit.ATR_UNITS):
-        return _rolling_z(values, index)
-    return 0.0
+    if spec.output_unit is Unit.NORMALISED:
+        return float(np.clip(value, -1.0, 1.0))
+    if spec.output_unit is Unit.ATR_UNITS:
+        return float(np.clip(value / (spec.full_scale or ATR_FULL_SCALE), -1.0, 1.0))
+    return _rolling_z(values, index)
 
 
 def _rolling_z(values: np.ndarray, index: int) -> float:
@@ -377,9 +493,16 @@ def read_all(
     missing indicator and one reading zero are different states, and folding
     them together would let a detector that failed to run look like one that
     found nothing.
+
+    Non-directional indicators are left out too, for the reason set out on
+    `Spec.directional`: a reading with a size but no side is context, and
+    letting it vote neutral would drag its family's median towards nothing.
+    `context_at` returns those instead.
     """
     findings: list[Finding] = []
     for name, spec in SPECS.items():
+        if not spec.directional:
+            continue
         series = computed.get(name)
         if series is None or not spec.lookback <= index < len(series):
             continue
@@ -392,6 +515,26 @@ def read_all(
             )
         )
     return findings
+
+
+def context_at(computed: dict[str, pd.Series], index: int) -> dict[str, float]:
+    """The non-directional readings at this bar, by name.
+
+    How violent, how wide, how choppy, how busy. None of it argues a side, and
+    all of it changes what a side is worth -- which is why it is kept and shown
+    rather than quietly dropped at the point where it fails to be evidence.
+    """
+    out: dict[str, float] = {}
+    for name, spec in SPECS.items():
+        if spec.directional:
+            continue
+        series = computed.get(name)
+        if series is None or not spec.lookback <= index < len(series):
+            continue
+        value = float(series.to_numpy(dtype="float64")[index])
+        if np.isfinite(value):
+            out[name] = value
+    return out
 
 
 #: Signature every compute function follows: a frame in, one series out.

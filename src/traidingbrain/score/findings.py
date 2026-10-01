@@ -116,11 +116,50 @@ class Finding:
         takes no side contributes no evidence, and letting it lean would turn
         the absence of an opinion into one.
         """
-        if self.direction is Bias.BULLISH:
-            return self.strength
-        if self.direction is Bias.BEARISH:
-            return -self.strength
-        return 0.0
+        return _signed(self.direction, self.strength)
+
+
+def _signed(direction: Bias, strength: float) -> float:
+    """Strength carrying its direction's sign; zero for a neutral reading."""
+    if direction is Bias.BULLISH:
+        return strength
+    if direction is Bias.BEARISH:
+        return -strength
+    return 0.0
+
+
+#: How loudly each timeframe speaks about direction.
+#:
+#: The plan's own table, as numbers. The weekly and daily set the frame a trade
+#: has to fit; the fifteen-minute chart is there for timing the entry and has
+#: no business arguing about which way the market is going. Equal weights would
+#: let the fastest and noisiest frame outvote the one that decides whether the
+#: trade is allowed at all.
+#:
+#: A starting point to be measured against outcomes, like every other weight
+#: here -- which is why it is a table with a reason rather than a constant.
+TIMEFRAME_WEIGHTS: dict[Timeframe, float] = {
+    Timeframe.W1: 1.00,
+    Timeframe.D1: 1.00,
+    Timeframe.H4: 0.90,
+    Timeframe.H1: 0.90,
+    Timeframe.M15: 0.40,
+    Timeframe.M1: 0.20,
+}
+
+
+@dataclass(frozen=True)
+class TimeframeVerdict:
+    """What one family said on one timeframe."""
+
+    timeframe: Timeframe
+    direction: Bias
+    strength: float
+    members: int
+
+    @property
+    def signed_strength(self) -> float:
+        return _signed(self.direction, self.strength)
 
 
 @dataclass(frozen=True)
@@ -141,39 +180,67 @@ class FamilyVerdict:
 
     members: tuple[str, ...]
 
+    by_timeframe: tuple[TimeframeVerdict, ...] = ()
+    """What the family said on each frame separately.
+
+    Without this a family reading near zero is unreadable. "The trend family is
+    barely leaning" and "the weekly is up while the hourly is down" produce the
+    same number and are completely different situations -- and the second is
+    the one where a person most needs to look rather than act."""
+
+    timeframe_agreement: float = 1.0
+    """How much the frames agreed with each other, 0 to 1.
+
+    Separate from `agreement`, which measures whether the family's indicators
+    agree. A family can have every indicator on every frame in perfect step
+    within that frame and still have the frames pointing opposite ways."""
+
     @property
     def signed_strength(self) -> float:
-        if self.direction is Bias.BULLISH:
-            return self.strength
-        if self.direction is Bias.BEARISH:
-            return -self.strength
-        return 0.0
+        return _signed(self.direction, self.strength)
 
 
 def reconcile(findings: list[Finding]) -> list[FamilyVerdict]:
-    """Collapse each family to a single verdict.
+    """Collapse each family to a single verdict, in two steps.
 
-    Within a family the answer is the **median** signed strength, not the mean
-    and not the majority. The median is what stops one extreme member from
-    carrying a family: three oscillators reading mildly bullish and one reading
-    violently bearish is a mildly bullish family with poor agreement, which is
-    the truthful description. A mean would let the loud one decide.
+    **Within one timeframe** the answer is the **median** signed strength, not
+    the mean and not the majority. The median is what stops one extreme member
+    from carrying a family: three oscillators reading mildly bullish and one
+    reading violently bearish is a mildly bullish family with poor agreement,
+    which is the truthful description. A mean would let the loud one decide.
 
-    Agreement is one minus the mean absolute deviation from that median, scaled
-    so that a family pulling in opposite directions lands near zero. It is
-    reported rather than folded in, because "the family is split" and "the
-    family is weakly bullish" are different states that a single number cannot
-    hold.
+    **Across timeframes** the per-frame answers are combined by a *weighted*
+    median, because they are not interchangeable. The hourly RSI and the weekly
+    RSI are two measurements of different things, and the weekly one decides
+    whether a trade is allowed at all while the fifteen-minute one only times
+    it. Pooling every reading into one median instead would let the fastest
+    frame, which has as many indicators as any other, outvote the slowest.
+
+    Both kinds of disagreement are reported and neither is folded in.
+    `agreement` says whether the indicators agree; `timeframe_agreement` says
+    whether the frames do. A single number cannot hold both, and "the family
+    is split" is a different answer from "the family is weakly bullish".
     """
     verdicts: list[FamilyVerdict] = []
     for family in Family:
         members = [finding for finding in findings if finding.family is family]
         if not members:
             continue
+
+        frames = _per_timeframe(members)
+        centre = _weighted_median(
+            [
+                (frame.signed_strength, TIMEFRAME_WEIGHTS.get(frame.timeframe, 1.0))
+                for frame in frames
+            ]
+        )
         signed = [finding.signed_strength for finding in members]
-        centre = statistics.median(signed)
         spread = (
             statistics.mean(abs(value - centre) for value in signed) if len(signed) > 1 else 0.0
+        )
+        across = [frame.signed_strength for frame in frames]
+        frame_spread = (
+            statistics.mean(abs(value - centre) for value in across) if len(across) > 1 else 0.0
         )
         verdicts.append(
             FamilyVerdict(
@@ -184,9 +251,60 @@ def reconcile(findings: list[Finding]) -> list[FamilyVerdict]:
                 # the widest the signed scale allows on either side of a median.
                 agreement=round(max(0.0, 1.0 - spread), 4),
                 members=tuple(finding.key for finding in members),
+                by_timeframe=tuple(frames),
+                timeframe_agreement=round(max(0.0, 1.0 - frame_spread), 4),
             )
         )
     return verdicts
+
+
+def _per_timeframe(members: list[Finding]) -> list[TimeframeVerdict]:
+    """One verdict per frame the family was measured on, in timeframe order.
+
+    Fixed order rather than first-seen, so that the result cannot depend on
+    which frame the caller happened to walk first.
+    """
+    verdicts: list[TimeframeVerdict] = []
+    for timeframe in Timeframe:
+        present = [f for f in members if f.timeframe is timeframe]
+        if not present:
+            continue
+        centre = statistics.median([f.signed_strength for f in present])
+        verdicts.append(
+            TimeframeVerdict(
+                timeframe=timeframe,
+                direction=_direction_of(centre),
+                strength=abs(centre),
+                members=len(present),
+            )
+        )
+    return verdicts
+
+
+def _weighted_median(pairs: list[tuple[float, float]]) -> float:
+    """The median with unequal votes: where half the weight lies.
+
+    Interpolated when the halfway point lands exactly on a boundary, so that
+    negating every input negates the answer. Without that, an evenly split
+    family would lean one way purely because of how the list is ordered.
+    """
+    if not pairs:
+        return 0.0
+    ordered = sorted(pairs)
+    total = sum(weight for _, weight in ordered)
+    if total <= 0.0:
+        return statistics.median([value for value, _ in ordered])
+
+    running = 0.0
+    half = total / 2.0
+    for position, (value, weight) in enumerate(ordered):
+        running += weight
+        if running > half:
+            return value
+        if running == half:
+            following = ordered[position + 1][0] if position + 1 < len(ordered) else value
+            return (value + following) / 2.0
+    return ordered[-1][0]
 
 
 def _direction_of(signed: float) -> Bias:

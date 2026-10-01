@@ -1509,3 +1509,266 @@ body {
     min-width: 58px;
   }
 }
+
+/* ------------------------------------------------------------ the score -- */
+/* The reading from every indicator at once.
+ *
+ * Built around one refusal: there is no single number anywhere in here. The
+ * split bar shows both sides at their own widths because a market where a
+ * strong read fights a strong read, and a quiet market with a mild lean,
+ * subtract to the same thing and are not the same trade.
+ *
+ * The family rows are gauges from a centre line rather than printed numbers,
+ * because the thing worth seeing at a glance is which family actually moved
+ * the answer — usually one did and the rest are close to nothing, and that is
+ * invisible in a column of digits. */
+
+.score {
+  margin-top: var(--s3);
+  padding: var(--s3) var(--s4) var(--s4);
+  background: var(--panel-high);
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--rule-strong);
+  border-radius: var(--radius);
+}
+
+.score__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0 0 var(--s2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.score__regime {
+  padding: 1px 6px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.score__headline {
+  margin: 0 0 var(--s3);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.score__wait {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* The two numbers sit beside the bar rather than inside it.
+   Inside, the narrower side clips its own label — and a "0.02" cut down to
+   "0.0" reads as zero, which is the one thing it must never say. */
+.score__sides {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 var(--s1);
+  font-size: 11px;
+}
+
+.score__sides .up {
+  color: var(--long);
+}
+
+.score__sides .down {
+  color: var(--short);
+}
+
+/* Both sides at once, each as wide as its share. Nothing is subtracted. */
+.score__split {
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.score__side--up {
+  background: var(--long);
+}
+
+.score__side--down {
+  background: var(--short);
+}
+
+.score__meta {
+  margin: var(--s2) 0 var(--s3);
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.score__families {
+  display: grid;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.score__family {
+  display: grid;
+  grid-template-columns: 120px 1fr 62px;
+  align-items: center;
+  gap: var(--s1) var(--s3);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--rule);
+}
+
+.score__family:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+/* A family that was silenced is still listed. Dropping it would hide the
+   reason, and the reason is the useful part — three different things produce a
+   contribution of nothing and they call for three different responses. */
+.score__family--silent .score__gauge,
+.score__family--silent .score__num {
+  opacity: 0.4;
+}
+
+.score__fam {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.score__members {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dimmer);
+}
+
+.score__gauge {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel);
+}
+
+/* The centre line. Everything is read against it, so it is drawn rather than
+   implied by the fills meeting. */
+.score__gauge::before {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 50%;
+  width: 1px;
+  background: var(--rule-strong);
+  content: "";
+}
+
+/* Each half of the track is a full-width element scaled down from the centre.
+   Animating `width` would make the browser lay the row out again on every
+   frame of every gauge; a transform is composited and touches nothing else. */
+.score__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  border-radius: 3px;
+  transform: scaleX(var(--share, 0));
+  transition: transform 240ms var(--ease-out);
+}
+
+.score__fill--up {
+  left: 50%;
+  background: var(--long);
+  transform-origin: left center;
+}
+
+.score__fill--down {
+  right: 50%;
+  background: var(--short);
+  transform-origin: right center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .score__fill {
+    transition: none;
+  }
+}
+
+.score__num {
+  font-size: 12px;
+  text-align: right;
+}
+
+/* What each timeframe said, under the family it belongs to. The whole second
+   row exists because a family near zero is otherwise unreadable. */
+.score__frames {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 2 / -1;
+  gap: var(--s1) var(--s3);
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.score__frame {
+  display: inline-flex;
+  gap: 4px;
+  align-items: baseline;
+}
+
+.score__frame b {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.score__frame.up b {
+  color: var(--long);
+}
+
+.score__frame.down b {
+  color: var(--short);
+}
+
+.score__reason {
+  grid-column: 2 / -1;
+  font-size: 10px;
+  color: var(--caution);
+}
+
+.score__context {
+  margin: var(--s3) 0 0;
+  padding-top: var(--s2);
+  border-top: 1px solid var(--rule);
+  font-size: 10px;
+  color: var(--dimmer);
+}
+
+/* A limitation, drawn as one: the caution colour rather than the dim one, so
+   it is not read as another line of footnote. */
+.score__missing {
+  margin: var(--s2) 0 0;
+  font-size: 10px;
+  color: var(--caution);
+}
+
+@media (max-width: 720px) {
+  .score__family {
+    grid-template-columns: 1fr 56px;
+  }
+
+  .score__gauge {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+
+  .score__frames,
+  .score__reason {
+    grid-column: 1 / -1;
+  }
+}

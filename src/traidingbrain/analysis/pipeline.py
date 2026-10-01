@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from traidingbrain.analysis.bank import compute_bank
 from traidingbrain.analysis.candles import CandleTimeline
 from traidingbrain.analysis.indicators import IndicatorSet, compute_all
 from traidingbrain.analysis.liquidity import LiquidityTimeline, Zone, find_fair_value_gaps
@@ -69,9 +70,21 @@ class FrameAnalysis:
     #: length of a run, and the gap rules are asked on every bar.
     fair_value_gaps: list[Zone] = field(default_factory=list)
     _columns: dict[str, np.ndarray] = field(default_factory=dict, compare=False)
+    _bank: dict[str, pd.Series] | None = field(default=None, compare=False)
 
     def __len__(self) -> int:
         return len(self.frame)
+
+    def bank(self) -> dict[str, pd.Series]:
+        """Every registered indicator over this frame, built on first ask.
+
+        Lazy on purpose. Four of these recurse bar by bar -- Parabolic SAR,
+        KAMA, Fisher, Supertrend -- and a backtest that never consults the
+        score should not pay for them on five timeframes per symbol.
+        """
+        if self._bank is None:
+            self._bank = compute_bank(self.frame, self.indicators.atr)
+        return self._bank
 
     def column(self, name: str) -> np.ndarray:
         """A column as a numpy array, built once.
