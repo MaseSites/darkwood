@@ -89,6 +89,19 @@ class OpenPosition:
     funding_paid: float = 0.0
     snapshot_hash: str = ""
     proposal_id: str = ""
+    stop_moved: bool = False
+    """True once the breakeven rule has pulled the stop up. Checked so the
+    move happens once; without it a later dip would re-arm it and the stop
+    would walk back down to the entry it had already left."""
+
+    @property
+    def risk_price(self) -> float:
+        """What one unit was risked, in price. Survives moving the stop.
+
+        Taken from the sizing rather than from `entry_price - stop`, because
+        after the first move that difference is zero and every R measured from
+        it would be infinite."""
+        return self.risk_amount / self.qty if self.qty else 0.0
 
     @property
     def notional(self) -> float:
@@ -246,7 +259,15 @@ class SimBroker:
         self._charge_funding(ts)
 
         if self.position is not None:
-            return self._check_exits(ts, open_, high, low)
+            exit_fill = self._check_exits(ts, open_, high, low)
+            if exit_fill is not None:
+                return exit_fill
+            # Only after the exits, so a minute that held both the stop and the
+            # breakeven trigger is resolved as a stop. The same reasoning as
+            # `pessimistic_intrabar`: OHLC cannot order two events inside one
+            # minute, and assuming the kind one is how a backtest lies.
+            self._maybe_move_to_breakeven(high, low)
+            return None
 
         if self.pending is not None:
             if ts >= self.pending.expires_ts:
@@ -343,6 +364,28 @@ class SimBroker:
             return self._close(position, price, ts, ExitReason.TARGET)
 
         return None
+
+    def _maybe_move_to_breakeven(self, high: float, low: float) -> None:
+        """Pull the stop to the entry once the trade has run far enough.
+
+        Measured from the favourable extreme of the minute, not its close: the
+        trade really was that far ahead, and a rule that only counted closes
+        would arm later than the one a person would actually have used.
+        """
+        trigger = self.config.breakeven_at_r
+        position = self.position
+        if trigger is None or position is None or position.stop_moved:
+            return
+        risk = position.risk_price
+        if risk <= 0:
+            return
+        best = high - position.entry_price
+        if position.side is Side.SHORT:
+            best = position.entry_price - low
+        if best < trigger * risk:
+            return
+        position.stop = position.entry_price
+        position.stop_moved = True
 
     def _gap_aware(self, open_: float, level: float, side: Side, *, adverse: bool) -> float:
         """The price actually obtainable, which may be worse than the level.

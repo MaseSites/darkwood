@@ -389,3 +389,104 @@ def test_quantities_round_down_to_the_venue_step(
     """Down, never nearest: rounding up can push the notional past the margin, and
     the rejection then happens at the exchange."""
     assert round_to_step(value, step) == pytest.approx(expected)
+
+
+# --------------------------------------------------------------------------- #
+# Moving the stop to the entry
+# --------------------------------------------------------------------------- #
+
+
+def armed(at: float = 1.0) -> SimBroker:
+    """A broker with the breakeven rule on and a long filled at 100.
+
+    Risk is ten, so one R is 110 and the original stop is 90.
+    """
+    broker = SimBroker(free_spec(), config(breakeven_at_r=at))
+    broker.submit(long_entry())
+    minutes(broker, [(100.0, 100.0, 100.0)])
+    return broker
+
+
+def test_the_stop_stays_put_until_the_trade_has_run_far_enough() -> None:
+    broker = armed()
+
+    minutes(broker, [(100.0, 109.0, 100.0)], start=EPOCH + MINUTE)
+
+    assert broker.position is not None
+    assert broker.position.stop == pytest.approx(90.0)
+
+
+def test_reaching_the_trigger_pulls_the_stop_to_the_entry() -> None:
+    broker = armed()
+
+    minutes(broker, [(100.0, 110.0, 100.0)], start=EPOCH + MINUTE)
+
+    assert broker.position is not None
+    assert broker.position.stop == pytest.approx(100.0)
+
+
+def test_a_trade_that_gave_it_back_scratches_instead_of_losing() -> None:
+    """The case the rule exists for. Nineteen per cent of the journal's trades
+    were a point in profit and ended as full losses."""
+    broker = armed()
+
+    minutes(broker, [(100.0, 112.0, 100.0), (100.0, 100.0, 85.0)], start=EPOCH + MINUTE)
+
+    assert broker.position is None
+    fill = broker.fills[-1]
+    assert fill.reason is ExitReason.STOP
+    assert fill.exit_price == pytest.approx(100.0)
+    assert fill.r_multiple == pytest.approx(0.0)
+
+
+def test_the_trigger_and_the_stop_in_one_minute_resolve_as_a_stop() -> None:
+    """The same reasoning as `pessimistic_intrabar`. One minute holding both
+    the trigger and the original stop cannot say which came first, and taking
+    the kind reading is how a backtest flatters a rule."""
+    broker = armed()
+
+    minutes(broker, [(100.0, 112.0, 89.0)], start=EPOCH + MINUTE)
+
+    fill = broker.fills[-1]
+    assert fill.reason is ExitReason.STOP
+    assert fill.r_multiple == pytest.approx(-1.0)
+
+
+def test_the_stop_does_not_walk_back_down_after_it_has_moved() -> None:
+    """Once moved, moved. Re-arming on a later dip would drag the stop back to
+    an entry it had already left, which is not a rule anybody described."""
+    broker = armed()
+
+    minutes(
+        broker,
+        [(100.0, 111.0, 100.0), (100.0, 101.0, 100.5), (100.0, 115.0, 100.5)],
+        start=EPOCH + MINUTE,
+    )
+
+    assert broker.position is not None
+    assert broker.position.stop == pytest.approx(100.0)
+    assert broker.position.stop_moved
+
+
+def test_a_short_arms_on_the_low_not_the_high() -> None:
+    """The sign flip. Reading the high for a short would arm the rule when the
+    trade went against it, which is the exact opposite of the rule."""
+    broker = SimBroker(free_spec(), config(breakeven_at_r=1.0))
+    broker.submit(long_entry(side=Side.SHORT, limit_price=100.0, stop=110.0, target=80.0))
+    minutes(broker, [(100.0, 100.0, 100.0)])
+
+    minutes(broker, [(100.0, 100.0, 90.0)], start=EPOCH + MINUTE)
+
+    assert broker.position is not None
+    assert broker.position.stop == pytest.approx(100.0)
+
+
+def test_the_rule_is_off_unless_it_is_configured() -> None:
+    """It changes what gets traded, not how a trade is simulated, so it cannot
+    be a default that quietly rewrites every historical result."""
+    broker = SimBroker(free_spec(), config())
+    broker.submit(long_entry())
+    minutes(broker, [(100.0, 100.0, 100.0), (100.0, 115.0, 100.0)])
+
+    assert broker.position is not None
+    assert broker.position.stop == pytest.approx(90.0)

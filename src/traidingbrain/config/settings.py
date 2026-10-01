@@ -189,6 +189,15 @@ class SimulationConfig(_Frozen):
     fill_on_touch: bool = False
     entry_expiry_bars: int = Field(gt=0)
     pessimistic_intrabar: bool = True
+    breakeven_at_r: float | None = Field(default=None, gt=0)
+    """Move the stop to the entry once the trade is this far in profit.
+
+    Off by default, because it is a change to what gets traded rather than a
+    detail of how it is simulated. It lives here rather than in a strategy so
+    that the gaps, the slippage, the liquidation check and the pessimistic
+    intrabar ordering all still apply -- a rule tested beside the simulator
+    instead of inside it is a second answer to the same question, and the first
+    attempt at this missed liquidations, gaps and V08's runner at once."""
 
 
 class PathsConfig(_Frozen):
