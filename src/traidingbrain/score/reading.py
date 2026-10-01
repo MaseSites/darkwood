@@ -1,8 +1,9 @@
 """From the analysed frames to one score, across every timeframe at once.
 
 This is the join. `analysis` produces the numbers, `registry` says what each
-one is worth, `engine` reconciles them -- and this walks the aligned
-timeframes, collects the findings, and asks for the score.
+indicator reading is worth, `observations` turns the structural detectors into
+evidence, `engine` reconciles them -- and this walks the aligned timeframes,
+collects the findings, and asks for the score.
 
 Two decisions live here, and both are about the multi-timeframe part.
 
@@ -31,6 +32,7 @@ from traidingbrain.analysis.pipeline import FrameAnalysis, MultiFrameAnalysis
 from traidingbrain.domain.enums import RegimeKind, Timeframe
 from traidingbrain.score.engine import Score, compute
 from traidingbrain.score.findings import Evidence, Finding
+from traidingbrain.score.observations import observations_for
 from traidingbrain.score.registry import context_at, read_all
 
 
@@ -82,6 +84,8 @@ def evidence_at(
         if index is None or analysis is None:
             continue
         for finding in findings_for(analysis, index):
+            evidence.add(finding)
+        for finding in observations_for(analysis, index):
             evidence.add(finding)
         context[timeframe] = context_for(analysis, index)
     return evidence, context

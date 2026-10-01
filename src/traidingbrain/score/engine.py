@@ -43,6 +43,21 @@ from traidingbrain.score.findings import (
 #: persist through a whole trend. These are a starting point to be measured
 #: against outcomes, not a finding -- which is why they are here with their
 #: reason rather than buried in an expression.
+#:
+#: **A property anyone changing these has to know about.** The weight is not
+#: the only asymmetry between families. A family of two emphatic structural
+#: readings has a median near its members' strength; a family of seventy
+#: indicator readings has a median near zero, because that is what seventy
+#: measurements of a noisy thing do. Measured on real bars: structure reads
+#: 0.75 where the trend family reads 0.02 from seventy indicators. So structure
+#: dominates by roughly its weight *times* that gap, which is a good deal more
+#: than 1.00 against 0.70 suggests.
+#:
+#: That is not obviously wrong -- the sources do put structure first, and a
+#: family whose members disagree *should* be quiet. It is recorded because the
+#: next person to tune these numbers will otherwise assume the weights are the
+#: whole story, and because the question it raises is empirical: it wants
+#: measuring against outcomes, not adjusting by argument.
 DEFAULT_FAMILY_WEIGHTS: dict[Family, float] = {
     Family.STRUCTURE: 1.00,
     Family.LOCATION: 0.90,
