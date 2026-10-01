@@ -237,6 +237,7 @@ export function drawChart(canvas, view, hover) {
 
   drawGrid(ctx, { plotLeft, plotRight, plotTop, plotBottom, low, high, span, y, colours });
   drawZones(ctx, view, { plotLeft, plotRight, y, colours });
+  drawDiagonals(ctx, view, { x, y, plotRight, colours });
   drawBands(ctx, view, { plotLeft, plotRight, y, colours });
   const levelLabels = drawLevels(ctx, view, {
     plotLeft,
@@ -338,6 +339,46 @@ function drawZones(ctx, view, g) {
     ctx.lineTo(g.plotRight, top);
     ctx.moveTo(g.plotLeft, top + height);
     ctx.lineTo(g.plotRight, top + height);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/**
+ * Trendlines, drawn from their first anchor to the current bar.
+ *
+ * Extended rather than stopped at the second anchor: the evidence is where the
+ * line was touched, but the useful part is where it sits today, and a segment
+ * that ends in the past shows the first and hides the second.
+ *
+ * Dashed, because a diagonal is drawn by a person from points they chose. A
+ * solid line would claim the same standing as the price itself.
+ */
+function drawDiagonals(ctx, view, g) {
+  const lines = view.diagonals ?? [];
+  const first = view.candles[0];
+  if (!lines.length || !first || !view.bar_ms) return;
+
+  // The anchors are timestamps, the plot speaks in bar positions, and an anchor
+  // is usually older than the window shows. Bars are evenly spaced, so the
+  // position follows from arithmetic and comes out negative for an anchor off
+  // the left edge -- which is exactly where the line should be drawn from.
+  const at = (ts) => (ts - first.ts) / view.bar_ms;
+
+  ctx.save();
+  ctx.setLineDash([5, 4]);
+  ctx.lineWidth = 1;
+  for (const line of lines) {
+    const from = g.x(at(line.from_ts));
+    const to = g.x(at(line.to_ts));
+    if (!Number.isFinite(from) || !Number.isFinite(to)) continue;
+    ctx.strokeStyle =
+      line.kind === "resistance"
+        ? "rgba(248, 113, 113, 0.55)"
+        : "rgba(52, 211, 153, 0.55)";
+    ctx.beginPath();
+    ctx.moveTo(from, g.y(line.from_price));
+    ctx.lineTo(to, g.y(line.to_price));
     ctx.stroke();
   }
   ctx.restore();

@@ -41,10 +41,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from traidingbrain.analysis.candles import confirm_breakout
+from traidingbrain.analysis.candles import CandlePattern, confirm_breakout
 from traidingbrain.analysis.fvg_quality import MitigationRule, assess_gaps, best_gap
 from traidingbrain.analysis.liquidity import Zone, ZoneKind
 from traidingbrain.analysis.pipeline import FrameAnalysis
+from traidingbrain.analysis.trendlines import Trendline, TrendlineKind
 from traidingbrain.analysis.zones import StructuralZone, ZoneRole, true_zone
 from traidingbrain.domain.enums import Bias, Side, Timeframe
 
@@ -481,6 +482,157 @@ class Incomplete:
         return None
 
 
+@dataclass(frozen=True)
+class TrendlineFakeout:
+    """V06. A weak poke above a falling trendline, then the structure breaks down.
+
+    The rule card, field by field:
+
+        Erkennung     Mindestens zwei Swing-High-Anker; dritter Kontakt/brüchige
+                      Bewegung über Linie.
+        Voraussetzungen  Ausbruchskerzen klein/nicht impulsiv.
+        Entry         Nach bearish Engulfing und Bruch des Swing Lows.
+        Stop Loss     Über dem Hoch.
+        Take Profit   Tiefere Levels.
+
+    **What separates this from a real breakout is energy, not price.** V06 is
+    explicit: small candles that drift just past the line read as a fakeout,
+    large impulsive ones through it read as a break. So the poke is required to
+    be *small*, and that condition is what stops this from firing on every
+    trendline break in a trending market.
+
+    The last confirmed swing high is the fakeout's own high, and the stop goes
+    above it -- "über dem Hoch" with the high being the one the fake made.
+    """
+
+    key: str = "B"
+    name: str = "Trendlinien-Fakeout"
+    source: str = "V06"
+
+    def evaluate(self, analysis: FrameAnalysis, index: int) -> SetupSignal | None:
+        if not analysis.is_ready(index) or index < MIN_BARS_FOR_FAKEOUT:
+            return None
+        if CandlePattern.BEARISH_ENGULFING not in analysis.candles.at(index):
+            return None
+
+        structure = analysis.structure.state_at(index)
+        swing_low = structure.last_swing_low
+        swing_high = structure.last_swing_high
+        close = analysis.close_at(index)
+        unit = analysis.atr_at(index)
+        # "Bruch des Swing Lows": this bar closed below the level the engulfing
+        # was supposed to defend. Without it the pattern is a candle, not a
+        # structural event, and V03 warns against trading candles alone.
+        if swing_low is None or swing_high is None or close >= swing_low.price:
+            return None
+
+        broken = _weak_poke_above(analysis, index, unit=unit)
+        if broken is None:
+            return None
+
+        stop = max(swing_high.price, broken.price_at(index))
+        risk = stop - close
+        if risk <= 0:
+            return None
+        target = _lower_level(analysis, index, below=close, fallback=close - 2.0 * risk)
+
+        return SetupSignal(
+            timeframe=analysis.timeframe,
+            setup=self.key,
+            name=self.name,
+            source=self.source,
+            side=Side.SHORT,
+            entry=close,
+            stop=stop,
+            target=target,
+            bar_index=index,
+            reference_level=broken.price_at(index),
+            reasons=(
+                f"Trendlinie mit {broken.touches} Kontakten schwach überschritten",
+                "bearish Engulfing",
+                f"Swing-Tief {swing_low.price:.2f} gebrochen",
+            ),
+        )
+
+
+#: Bars the fakeout needs before it can be judged: the engulfing itself and
+#: the candle it engulfs.
+MIN_BARS_FOR_FAKEOUT = 2
+
+#: How far beyond the line price may travel and still be a fakeout.
+#:
+#: V06 separates the two by what happens *past* the line: "kleine Kerzen, die
+#: nur leicht jenseits der Linie abweichen" against "grosse, impulsive Kerzen
+#: durch die Linie plus Folgekerzen in derselben Richtung".
+#:
+#: The first version measured the breaking candle instead, and that was close
+#: to self-contradictory: a break is only recorded once the high clears the
+#: line by 0.6 ATR, so a candle that travels there from below needs at least
+#: that much range -- while the rule demanded less than 0.5. It fired fourteen
+#: times in six thousand bars, and those were the cases where the arithmetic
+#: happened to allow it rather than cases the video describes.
+MAX_EXCURSION_ATR = 1.2
+
+#: How far back a poke may have happened and still lead to this entry.
+POKE_WINDOW_BARS = 6
+
+
+def _weak_poke_above(
+    analysis: FrameAnalysis, index: int, *, unit: float
+) -> Trendline | None:
+    """A resistance line price drifted over without conviction, recently.
+
+    Returns the line rather than a boolean so the caller can put the stop above
+    where it now sits -- the level the fake is measured against.
+
+    "Without conviction" is two things, both from V06: price never got far
+    past the line, and nothing impulsive carried it there. An impulsive candle
+    anywhere in the excursion is the video's own counter-example -- "grosse
+    energetische Break-Kerzen plus Folgebewegung signalisieren eher echten
+    Break" -- so it disqualifies the setup rather than merely weakening it.
+    """
+    if unit <= 0:
+        return None
+    highs = analysis.column("high")
+    for back in range(POKE_WINDOW_BARS):
+        broke_at = index - back
+        if broke_at < 1:
+            break
+        for line in analysis.trendlines.broken_at(broke_at):
+            if line.kind is not TrendlineKind.RESISTANCE:
+                continue
+            excursion = max(
+                float(highs[at]) - line.price_at(at) for at in range(broke_at, index + 1)
+            )
+            if excursion > MAX_EXCURSION_ATR * unit:
+                continue
+            impulsive = any(
+                CandlePattern.MOMENTUM_UP in analysis.candles.at(at)
+                or CandlePattern.MARUBOZU_UP in analysis.candles.at(at)
+                for at in range(broke_at, index + 1)
+            )
+            if impulsive:
+                continue
+            return line
+    return None
+
+
+def _lower_level(
+    analysis: FrameAnalysis, index: int, *, below: float, fallback: float
+) -> float:
+    """V06's "tiefere Levels": the nearest pool of equal lows under price.
+
+    A pool rather than a measured move, because that is what the guide means by
+    a level and what every other setup here targets. The fallback exists so a
+    market with no pool below still produces a complete plan rather than none.
+    """
+    pools = analysis.liquidity.state_at(index).zones_of(ZoneKind.EQUAL_LOWS)
+    beneath = [pool for pool in pools if pool.high < below]
+    if not beneath:
+        return fallback
+    return max(beneath, key=lambda pool: pool.high).high
+
+
 INCOMPLETE: tuple[Incomplete, ...] = (
     Incomplete(
         key="D",
@@ -496,18 +648,12 @@ INCOMPLETE: tuple[Incomplete, ...] = (
         missing="target",
         quote="Take Profit: Nicht spezifiziert.",
     ),
-    Incomplete(
-        key="B",
-        name="Trendlinien-Fakeout",
-        source="V06",
-        missing="trendline detection",
-        quote="Mindestens zwei Swing-High-Anker; dritter Kontakt über Linie.",
-    ),
 )
 
 
 TRADEABLE: tuple[Setup, ...] = (
     MomentumBreakout(),
+    TrendlineFakeout(),
     SupplyDemandRetest(),
     InducementOrderBlock(),
     SixFactorGap(),

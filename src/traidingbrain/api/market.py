@@ -150,6 +150,21 @@ class LevelBand(BaseModel):
     label: str
 
 
+class Diagonal(BaseModel):
+    """A trendline, as two points the chart can join.
+
+    Given in bar timestamps rather than indices so the drawing does not depend
+    on how much history the view happens to carry.
+    """
+
+    from_ts: int
+    from_price: float
+    to_ts: int
+    to_price: float
+    kind: str
+    touches: int
+
+
 class MarketView(BaseModel):
     """The chart plus the reading, for a symbol at this moment."""
 
@@ -176,6 +191,7 @@ class MarketView(BaseModel):
     events: list[EventLine] = Field(default_factory=list)
     levels_hidden: int = 0
     bands: list[LevelBand] = Field(default_factory=list)
+    diagonals: list[Diagonal] = Field(default_factory=list)
     frames: list[FrameRead] = Field(default_factory=list)
     positioning: str = ""
     sentiment: str = ""
@@ -361,6 +377,32 @@ BAND_LABELS: dict[str, str] = {
 }
 
 
+def _diagonals(analysis: MultiFrameAnalysis, snapshot: MarketSnapshot) -> list[Diagonal]:
+    """The few trendlines worth drawing, extended to the current bar.
+
+    Drawn from the first anchor to now rather than between the anchors: the
+    useful part of a trendline is where it sits today, and a segment that stops
+    at the second anchor shows the evidence while hiding the level.
+    """
+    signal = analysis.signal
+    stamps = signal.column("ts")
+    found = np.nonzero(stamps == snapshot.ts)[0]
+    if not found.size:
+        return []
+    index = int(found[0])
+    return [
+        Diagonal(
+            from_ts=int(stamps[line.first_index]),
+            from_price=line.first_price,
+            to_ts=int(stamps[index]),
+            to_price=line.price_at(index),
+            kind=line.kind.value,
+            touches=line.touches,
+        )
+        for line in signal.trendlines.best_at(index)
+    ]
+
+
 def build_market_view(
     snapshot: MarketSnapshot,
     frame: pd.DataFrame,
@@ -407,6 +449,7 @@ def build_market_view(
 
     levels, hidden = choose_levels(snapshot.levels, snapshot.atr)
     bands = _bands_near(analysis, snapshot, bar_ms=bar_ms) if analysis is not None else []
+    diagonals = _diagonals(analysis, snapshot) if analysis is not None else []
 
     return MarketView(
         symbol=snapshot.symbol,
@@ -422,6 +465,7 @@ def build_market_view(
         candles=candles,
         levels=levels,
         bands=bands,
+        diagonals=diagonals,
         events=_events(snapshot, timeframe, bar_ms, len(candles)),
         levels_hidden=hidden,
         frames=[

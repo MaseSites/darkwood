@@ -25,6 +25,7 @@ from traidingbrain.analysis.indicators import IndicatorSet, compute_all
 from traidingbrain.analysis.liquidity import LiquidityTimeline, Zone, find_fair_value_gaps
 from traidingbrain.analysis.regime import RegimeTimeline
 from traidingbrain.analysis.structure import StructureTimeline
+from traidingbrain.analysis.trendlines import TrendlineTimeline
 from traidingbrain.analysis.zones import ZoneTimeline
 from traidingbrain.config.settings import EngineConfig
 from traidingbrain.data.frames import timeframe_ms
@@ -64,6 +65,7 @@ class FrameAnalysis:
     regime: RegimeTimeline
     candles: CandleTimeline
     zones: ZoneTimeline
+    trendlines: TrendlineTimeline
     #: Every three-bar imbalance in the series, found once.
     #:
     #: Each carries the bar it became visible on, so a caller filters by that
@@ -174,6 +176,7 @@ def analyse(frame: pd.DataFrame, timeframe: Timeframe, config: EngineConfig) -> 
         regime=regime,
         candles=CandleTimeline(frame, indicators.atr),
         zones=ZoneTimeline(frame, indicators.atr, structure),
+        trendlines=TrendlineTimeline(frame, structure, indicators.atr),
         fair_value_gaps=find_fair_value_gaps(
             frame, indicators.atr, config.liquidity.fvg_min_size_atr
         ),
