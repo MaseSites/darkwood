@@ -12,16 +12,21 @@ data while the interface is still being shaped.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from tests.factories import make_snapshot, make_symbol_spec
 from traidingbrain.api.app import Services, _cost_floor, create_app
+from traidingbrain.api.market import build_market_view
 from traidingbrain.brain.fake import FakeBrain
 from traidingbrain.config.settings import AppConfig, load_config
+from traidingbrain.domain.enums import Timeframe
 from traidingbrain.domain.proposal import TradeProposal
 from traidingbrain.proposals.builder import BuildFailure, ProposalBuilder
 from traidingbrain.proposals.store import ProposalStore
@@ -356,3 +361,81 @@ def test_the_cost_floor_is_zero_rather_than_guessed_when_fees_are_unknown(
     assert _cost_floor(services, "BTCUSDT") == 0.0
     services.specs = {"BTCUSDT": make_symbol_spec()}
     assert _cost_floor(services, "BTCUSDT") > 0.0
+
+
+# --------------------------------------------------------------------------- #
+# Saying how old the data is
+# --------------------------------------------------------------------------- #
+
+
+def _market_frame(last_ts: int, bars: int = 60) -> pd.DataFrame:
+    hour = 3_600_000
+    ts = last_ts - np.arange(bars, dtype="int64")[::-1] * hour
+    close = np.full(bars, 100.0)
+    return pd.DataFrame(
+        {
+            "ts": ts,
+            "open": close,
+            "high": close * 1.002,
+            "low": close * 0.998,
+            "close": close,
+            "volume": np.full(bars, 10.0),
+        }
+    )
+
+
+def test_a_current_market_does_not_warn() -> None:
+    """A badge that is always lit is furniture. The newest bar is always a
+    little behind by construction, so one bar's lag must stay silent."""
+    hour = 3_600_000
+    just_closed = (int(time.time() * 1000) // hour) * hour - hour
+
+    view = build_market_view(
+        make_snapshot(ts=just_closed),
+        _market_frame(just_closed),
+        timeframe=Timeframe.H1,
+        available=[Timeframe.H1],
+    )
+
+    assert not view.stale
+    assert view.behind_ms < 2 * hour
+
+
+def test_a_screen_showing_history_says_so() -> None:
+    """The defect this exists for.
+
+    The collector runs on a machine that is sometimes off, the dashboard reads
+    what is on disk, and a frozen screen looked exactly like a working one. For
+    an hour the only way to discover that nothing had arrived since the day
+    before was to ask. A number that does not move is either a quiet market or
+    a broken pipe, and the screen owes an answer to which.
+    """
+    hour = 3_600_000
+    yesterday = int(time.time() * 1000) - 20 * hour
+
+    view = build_market_view(
+        make_snapshot(ts=yesterday),
+        _market_frame(yesterday),
+        timeframe=Timeframe.H1,
+        available=[Timeframe.H1],
+    )
+
+    assert view.stale
+    assert view.behind_ms >= 19 * hour
+
+
+def test_the_age_is_measured_from_the_close_not_the_open() -> None:
+    """Bars are stamped with their open. Measuring from there would report a
+    bar that has only just finished as an hour out of date, and the warning
+    would fire on every working system."""
+    hour = 3_600_000
+    opened_an_hour_ago = int(time.time() * 1000) - hour
+
+    view = build_market_view(
+        make_snapshot(ts=opened_an_hour_ago),
+        _market_frame(opened_an_hour_ago),
+        timeframe=Timeframe.H1,
+        available=[Timeframe.H1],
+    )
+
+    assert view.behind_ms < hour // 2

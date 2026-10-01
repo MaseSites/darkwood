@@ -1935,3 +1935,23 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ---------------------------------------------------- stale market data -- */
+/* Shown only when the newest bar is two or more bars behind the clock.
+ *
+ * Caution rather than danger: nothing is broken, the screen is simply
+ * reporting history, and the fix is to start the collector rather than to stop
+ * what you were doing. It sits next to the price because that is where the eye
+ * already is when the number has not moved. */
+
+.stale {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--caution);
+  border-radius: var(--radius);
+  font-size: 11px;
+  color: var(--caution);
+  white-space: nowrap;
+}

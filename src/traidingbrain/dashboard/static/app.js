@@ -270,6 +270,7 @@ function marketPanel() {
     </span>
     <span class="market__atr">ATR ${(view.atr_pct * 100).toFixed(2)}%</span>
 
+    ${freshness(view)}
     ${ratingChip()}
 
     <span class="head-spacer"></span>
@@ -389,6 +390,31 @@ function setupPanel(setups) {
  * pointing down is a clean short, and a chip showing only "90" would be read
  * as ninety per cent of something.
  */
+/**
+ * How old the newest analysed bar is.
+ *
+ * This exists because a frozen screen and a working one looked identical. The
+ * collector runs on a machine that is sometimes off, the dashboard reads what
+ * is on disk, and for an hour the only way to find out that nothing had
+ * arrived since Tuesday was to ask. A number that does not move is either a
+ * quiet market or a broken pipe, and the screen owes an answer to which.
+ *
+ * Silent while the data is current. A badge that is always lit is furniture.
+ */
+function freshness(view) {
+  if (!view.stale) return "";
+  return `<span class="stale" role="status">
+    Daten ${ago(view.behind_ms)} alt &mdash; nichts Neues kommt an</span>`;
+}
+
+function ago(ms) {
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 90) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.round(hours / 24)} Tage`;
+}
+
 function ratingChip() {
   const score = state.score;
   if (!score || score === "unavailable") {

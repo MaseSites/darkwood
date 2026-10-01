@@ -142,6 +142,16 @@ class MarketView(BaseModel):
     available_timeframes: list[str] = Field(default_factory=list)
     bar_ms: int
     as_of_ts: int
+    #: How far behind the clock the newest analysed bar is, in milliseconds.
+    #:
+    #: Computed here rather than on the screen because a browser's clock can be
+    #: wrong and this number is the difference between "the market is quiet"
+    #: and "nothing has arrived since Tuesday". It exists because a frozen
+    #: score looked identical to a working one for an hour, and the only way to
+    #: find out was to ask.
+    behind_ms: int = 0
+    #: True once that gap is wide enough that the screen is reporting history.
+    stale: bool = False
     price: float
     atr: float
     atr_pct: float
@@ -260,6 +270,14 @@ class MarketAnalysisCache:
         return None
 
 
+#: How many bars may pass before the screen says it is showing history.
+#:
+#: Two, not one: the newest bar is always a little behind by construction, and
+#: a warning that fires every hour on a working system is a warning nobody
+#: reads. Two missed bars is a collector that stopped.
+STALE_AFTER_BARS = 2
+
+
 def build_market_view(
     snapshot: MarketSnapshot,
     frame: pd.DataFrame,
@@ -279,6 +297,10 @@ def build_market_view(
     belong to it.
     """
     bar_ms = timeframe_ms(timeframe)
+    # The bar is stamped with its open, so a bar that has only just closed is
+    # already one full bar old. Measuring from the close is what keeps "fresh"
+    # from being off by an hour on the hourly chart.
+    behind = max(0, int(time.time() * 1000) - (snapshot.ts + bar_ms))
     visible = frame.loc[frame["ts"] <= snapshot.ts].tail(context_bars)
 
     ts = visible["ts"].to_numpy(dtype="int64")
@@ -307,6 +329,8 @@ def build_market_view(
         available_timeframes=[tf.value for tf in available],
         bar_ms=bar_ms,
         as_of_ts=snapshot.ts,
+        behind_ms=behind,
+        stale=behind > STALE_AFTER_BARS * bar_ms,
         price=snapshot.price,
         atr=snapshot.atr,
         atr_pct=snapshot.atr_pct,
