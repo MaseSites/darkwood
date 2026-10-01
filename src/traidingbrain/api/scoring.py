@@ -207,7 +207,13 @@ def _headline(reading: ScoreReading) -> str:
         + f" ({score.bullish:.2f} dafür / {score.bearish:.2f} dagegen)."
     )
     if score.conflict >= LOUD_CONFLICT:
-        return f"{sentence} Stark umstritten — {score.conflict:.0%} der Belege stehen dagegen."
+        # The share of the evidence on the losing side, not `conflict` itself.
+        # Conflict is twice that by construction -- a scale that reaches one
+        # when the two sides are equal -- and printing it as a share said "76 %
+        # of the evidence is against" about a market where 38 % was.
+        total = score.bullish + score.bearish
+        losing = min(score.bullish, score.bearish) / total if total else 0.0
+        return f"{sentence} Stark umstritten — {losing:.0%} der Belege stehen dagegen."
     return sentence
 
 

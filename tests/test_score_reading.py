@@ -16,10 +16,12 @@ import pandas as pd
 import pytest
 
 from traidingbrain.analysis.pipeline import MultiFrameAnalysis
-from traidingbrain.api.scoring import build_score_view, signal_index_at
+from traidingbrain.api.scoring import _headline, build_score_view, signal_index_at
 from traidingbrain.config.settings import AppConfig, load_config
-from traidingbrain.domain.enums import Timeframe
-from traidingbrain.score.reading import score_at
+from traidingbrain.domain.enums import Bias, RegimeKind, Timeframe
+from traidingbrain.score.engine import Score, ScoredFamily
+from traidingbrain.score.findings import Evidence, Family, FamilyVerdict
+from traidingbrain.score.reading import ScoreReading, score_at
 
 H1_MS = 3_600_000
 BARS = 1_400
@@ -245,3 +247,31 @@ def test_the_headline_counts_the_families_that_agree_not_the_ones_that_spoke(
     )
 
     assert view.headline.startswith(f"{agreeing} von {len(speaking)} ")
+
+
+def test_a_contested_headline_reports_the_share_not_the_conflict_scale() -> None:
+    """`conflict` is twice the losing side's share, so that it reaches one when
+    the two sides are equal. Printing it as a share claimed "76 % of the
+    evidence is against" about a market where 38 % was."""
+    score = Score(bullish=0.59, bearish=0.36)
+    score.families = [
+        ScoredFamily(
+            verdict=FamilyVerdict(
+                family=Family.STRUCTURE,
+                direction=Bias.BULLISH,
+                strength=0.6,
+                agreement=1.0,
+                members=("a",),
+            ),
+            base_weight=1.0,
+            regime_modifier=1.0,
+            contribution=0.59,
+            split=False,
+        )
+    ]
+    reading = ScoreReading(score=score, regime=RegimeKind.RANGE, evidence=Evidence())
+
+    headline = _headline(reading)
+
+    assert "38 %" in headline.replace("\u00a0", " ") or "38%" in headline
+    assert "76" not in headline
