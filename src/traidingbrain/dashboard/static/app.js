@@ -270,6 +270,8 @@ function marketPanel() {
     </span>
     <span class="market__atr">ATR ${(view.atr_pct * 100).toFixed(2)}%</span>
 
+    ${ratingChip()}
+
     <span class="head-spacer"></span>
 
     <span class="chart__tabs" role="tablist" aria-label="Timeframe">
@@ -379,6 +381,33 @@ function setupPanel(setups) {
  * is up while the hour is down" look identical, and only the second is a
  * reason to wait rather than to shrug.
  */
+/**
+ * The overall number, in the market header where it is always on screen.
+ *
+ * It rates how clear the picture is, never how likely a win -- so the
+ * direction has to sit next to it or the number reads as a forecast. Ninety
+ * pointing down is a clean short, and a chip showing only "90" would be read
+ * as ninety per cent of something.
+ */
+function ratingChip() {
+  const score = state.score;
+  if (!score || score === "unavailable") {
+    return `<span class="rating rating--waiting" title="wird berechnet">
+      <b class="num">&mdash;</b><span class="rating__of">/100</span></span>`;
+  }
+  return `<span class="rating rating--${ratingTone(score.rating)}"
+     title="Wie eindeutig das Bild ist &mdash; keine Wahrscheinlichkeit">
+    <b class="num">${score.rating}</b><span class="rating__of">/100</span>
+    <span class="rating__band">${escapeHtml(score.band)}</span>
+  </span>`;
+}
+
+function ratingTone(value) {
+  if (value >= 60) return "high";
+  if (value >= 40) return "mid";
+  return "low";
+}
+
 function scorePanel() {
   const score = state.score;
   if (score === "unavailable") return "";
@@ -424,10 +453,39 @@ function scorePanel() {
     })
     .join("");
 
+  const parts = score.parts
+    .map(
+      (p) => `<li class="score__part${p.weakest ? " score__part--weak" : ""}">
+        <span class="score__part-label">${escapeHtml(p.label)}</span>
+        <span class="score__part-gauge" aria-hidden="true">
+          <i style="--share:${p.value.toFixed(3)}"></i></span>
+        <span class="score__part-num num">${Math.round(p.value * 100)}</span>
+      </li>`
+    )
+    .join("");
+  const weakest = score.parts.find((p) => p.weakest);
+
   return `
   <section class="score" aria-live="polite">
     <h3 class="score__head">Gesamtbild
       <span class="score__regime">${escapeHtml(score.regime)}</span></h3>
+
+    <div class="score__verdict">
+      <p class="score__big num rating--${ratingTone(score.rating)}">
+        ${score.rating}<span class="score__big-of">/100</span></p>
+      <p class="score__verdict-text">
+        <b>${escapeHtml(score.band)}</b>, Richtung ${escapeHtml(score.direction)}.
+        ${
+          weakest
+            ? `Am schwächsten: <b>${escapeHtml(weakest.label)}</b>.`
+            : ""
+        }
+        <span class="score__caveat">Bewertet, wie eindeutig das Bild ist &mdash;
+          nicht, wie wahrscheinlich ein Gewinn. Keine Wahrscheinlichkeit.</span>
+      </p>
+      <ul class="score__parts">${parts}</ul>
+    </div>
+
     <p class="score__headline">${escapeHtml(score.headline)}</p>
 
     <p class="score__sides">

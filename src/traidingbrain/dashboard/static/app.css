@@ -1772,3 +1772,166 @@ body {
     grid-column: 1 / -1;
   }
 }
+
+/* ------------------------------------------ the overall rating, 1 to 100 -- */
+/* One number, always on screen, with its direction beside it.
+ *
+ * The direction is not decoration here. The number rates how *clear* the
+ * picture is, so ninety pointing down is a clean short — and a chip showing
+ * only "90" would be read as ninety per cent of something. The "/100" and the
+ * band word are there for the same reason: to stop a bare number from being
+ * mistaken for a probability. */
+
+.rating {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.rating b {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.rating__of {
+  color: var(--dimmer);
+}
+
+.rating__band {
+  padding-left: 6px;
+  border-left: 1px solid var(--rule);
+  color: var(--dim);
+}
+
+.rating--waiting b {
+  color: var(--dimmer);
+}
+
+.rating--high b,
+.rating--high.score__big {
+  color: var(--long);
+}
+
+.rating--mid b,
+.rating--mid.score__big {
+  color: var(--caution);
+}
+
+.rating--low b,
+.rating--low.score__big {
+  color: var(--short);
+}
+
+.rating--high {
+  border-color: color-mix(in oklab, var(--long) 45%, var(--rule-strong));
+}
+
+.rating--low {
+  border-color: color-mix(in oklab, var(--short) 45%, var(--rule-strong));
+}
+
+/* The same number again at the top of the panel, where there is room for the
+   four parts that produced it. A low rating is only useful with its reason. */
+.score__verdict {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s1) var(--s4);
+  align-items: center;
+  margin: 0 0 var(--s3);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--rule);
+}
+
+.score__big {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.score__big-of {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--dimmer);
+}
+
+.score__verdict-text {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.score__caveat {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.score__parts {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--s1) var(--s4);
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.score__part {
+  display: grid;
+  grid-template-columns: 84px 1fr 24px;
+  gap: var(--s2);
+  align-items: center;
+  font-size: 10px;
+  color: var(--dim);
+}
+
+/* The part holding the number down, marked rather than merely shortest. At a
+   glance the bars are hard to rank; the one that matters should not need
+   ranking. */
+.score__part--weak {
+  color: var(--caution);
+}
+
+.score__part-gauge {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--panel);
+}
+
+.score__part-gauge i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--dim);
+  transform: scaleX(var(--share, 0));
+  transform-origin: left center;
+  transition: transform 240ms var(--ease-out);
+}
+
+.score__part--weak .score__part-gauge i {
+  background: var(--caution);
+}
+
+.score__part-num {
+  text-align: right;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .score__part-gauge i {
+    transition: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .score__verdict {
+    grid-template-columns: 1fr;
+  }
+}

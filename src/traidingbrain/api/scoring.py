@@ -21,6 +21,7 @@ from traidingbrain.analysis.pipeline import MultiFrameAnalysis
 from traidingbrain.domain.enums import Bias, RegimeKind, Timeframe
 from traidingbrain.score.engine import MIN_AGREEMENT, ScoredFamily
 from traidingbrain.score.findings import Family
+from traidingbrain.score.rating import Rating, rate
 from traidingbrain.score.reading import ScoreReading, score_at
 
 FAMILY_WORDS: dict[Family, str] = {
@@ -59,6 +60,17 @@ REGIME_WORDS: dict[RegimeKind, str] = {
     RegimeKind.UNKNOWN: "unklar",
 }
 
+#: What each part of the overall rating is called on screen.
+#:
+#: Four different questions, so that agreeing on three of them is real
+#: agreement rather than one measurement restated four ways.
+PART_WORDS: dict[str, str] = {
+    "clarity": "Deutlichkeit",
+    "agreement": "Einigkeit",
+    "consensus": "Mehrheit",
+    "coverage": "Abdeckung",
+}
+
 #: Above this share of the evidence arguing the other way, the headline says
 #: so instead of reporting a lean. Half is the point where the reading stops
 #: describing a direction and starts describing a disagreement.
@@ -74,6 +86,20 @@ CONTEXT_WORDS: dict[str, str] = {
     "hist_vol_30": "Vola 30",
     "rvol_20": "rel. Volumen",
 }
+
+
+class PartRead(BaseModel):
+    """One of the four things the overall rating is made of."""
+
+    name: str
+    label: str
+    value: float
+    """0 to 1."""
+
+    weakest: bool
+    """The part holding the number down. The useful half of a low rating: "41"
+    says nothing a person can act on, "41, weakest part Einigkeit" says where
+    to look."""
 
 
 class FrameRead(BaseModel):
@@ -112,6 +138,15 @@ class ScoreRead(BaseModel):
 
     symbol: str
     as_of_ts: int
+    rating: int
+    """1 to 100: how clear the picture is, never how likely a win.
+
+    Direction is carried separately and deliberately. 90 with "abwärts" is a
+    clean short, not a forecast of a rise -- and nothing here is calibrated
+    against outcomes, so it is not a probability either."""
+
+    band: str
+    parts: list[PartRead] = Field(default_factory=list)
     direction: str
     bullish: float
     bearish: float
@@ -178,6 +213,19 @@ def _family_read(scored: ScoredFamily) -> FamilyRead:
             for frame in verdict.by_timeframe
         ],
     )
+
+
+def _part_reads(rating: Rating) -> list[PartRead]:
+    weakest = rating.weakest
+    return [
+        PartRead(
+            name=name,
+            label=PART_WORDS.get(name, name),
+            value=round(value, 3),
+            weakest=name == weakest,
+        )
+        for name, value in rating.parts.items()
+    ]
 
 
 def _headline(reading: ScoreReading) -> str:
@@ -248,9 +296,13 @@ def build_score_view(
         return None
 
     score = reading.score
+    rating = rate(score)
     return ScoreRead(
         symbol=symbol,
         as_of_ts=ts,
+        rating=rating.value,
+        band=rating.band,
+        parts=_part_reads(rating),
         direction=DIRECTION_WORDS[score.direction],
         bullish=round(score.bullish, 3),
         bearish=round(score.bearish, 3),
