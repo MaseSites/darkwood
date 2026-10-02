@@ -810,3 +810,52 @@ def test_an_account_file_from_before_the_counters_still_opens(
     assert restored.equity == pytest.approx(9876.5)
     assert restored.tally == Tally()
     store.save(restored)
+
+
+def test_a_broken_loop_does_not_read_as_a_quiet_market(
+    tmp_path: Path, config: AppConfig, tape: dict[Timeframe, pd.DataFrame]
+) -> None:
+    """The sentence has to be able to say "everything is throwing".
+
+    Otherwise "say why nothing is happening" answers every question except the
+    one where something is actually wrong, and a loop failing every cycle for
+    an hour looks exactly like a market that offered no setup.
+    """
+    broken = Tally(cycles=40, failures=39, bars_seen=0)
+    assert broken.mostly_failing
+    assert "scheitern" in broken.sentence()
+
+    # One bad response in a long run is not a broken loop.
+    flaky = Tally(cycles=400, failures=3, bars_seen=70, proposed=0)
+    assert not flaky.mostly_failing
+    assert "kein Setup" in flaky.sentence()
+
+
+def test_a_failed_decision_does_not_discard_settled_minutes(
+    tmp_path: Path, config: AppConfig, tape: dict[Timeframe, pd.DataFrame]
+) -> None:
+    """Settling is what an open position depends on; deciding is not.
+
+    Under one try/except a decision that raised took the settled minutes with
+    it -- the position's own record thrown away by a failure in the half that
+    was not about it.
+    """
+
+    class Exploding:
+        name = "exploding"
+
+        def propose_at(self, analysis: object, index: int) -> None:
+            raise RuntimeError("boom")
+
+    start = EPOCH + timeframe_ms(Timeframe.H1) * START_BAR
+    trader, source, states, _journal = build(
+        tmp_path, config, tape, now_ms=start, strategy=Exploding()
+    )
+
+    advance(trader, source, hours=3)
+
+    saved = states.load(SYMBOL)
+    assert saved is not None
+    assert saved.last_minute_ts > 0, "the settled minutes were thrown away with the decision"
+    assert saved.tally.failures >= 1
+    assert any("Entscheiden" in error for error in trader.stats.errors)

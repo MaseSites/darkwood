@@ -257,26 +257,53 @@ class PaperTrader:
         Every failure is caught and recorded rather than raised. A loop that
         dies on one bad API response stops watching its own open position,
         which is worse than missing a cycle.
+
+        **The two halves do not share a fate.** Settling is what an open
+        position depends on; deciding is what a flat account does with a spare
+        moment. They were under one `try` with one `return` on failure, so a
+        decision that raised would have discarded minutes that had already been
+        settled -- the open position's own record thrown away by a failure in
+        the part that was not about it. Not observed, found by reading; the
+        shape of it is wrong whether or not it has fired yet.
         """
         self.stats.tally.cycles += 1
         try:
             newest, minutes = self.refresh_data()
         except Exception as exc:  # broad on purpose: a bad cycle must not end the run
-            self.stats.errors.append(f"Daten holen fehlgeschlagen: {exc}")
+            self._failed(f"Daten holen fehlgeschlagen: {exc}")
             return []
 
+        closed: list[JournalEntry] = []
         try:
             closed = self._settle(minutes)
+        except Exception as exc:
+            self._failed(f"Abrechnen fehlgeschlagen: {exc}")
+
+        try:
             if newest and newest != self.state.last_decided_ts:
                 self.state.last_decided_ts = newest
                 self.stats.tally.bars_seen += 1
                 self._maybe_open(newest)
-        except Exception as exc:  # same reasoning
-            self.stats.errors.append(f"Zyklus fehlgeschlagen: {exc}")
-            return []
+        except Exception as exc:
+            self._failed(f"Entscheiden fehlgeschlagen: {exc}")
 
+        # Always. Whatever was settled happened, and a record that is only
+        # written when the whole cycle succeeded is a record that disappears
+        # exactly when something is wrong.
         self._persist()
         return closed
+
+    def _failed(self, message: str) -> None:
+        """Record a failed cycle where somebody will see it.
+
+        Counted as well as listed, because the list lives in this process and
+        prints at shutdown. A loop failing every cycle for an hour reads on the
+        screen exactly like a quiet market, and "say why nothing is happening"
+        is not worth much if "everything is throwing" is not one of the answers
+        it can give.
+        """
+        self.stats.tally.failures += 1
+        self.stats.errors.append(message)
 
     def _settle(self, minutes: pd.DataFrame) -> list[JournalEntry]:
         """Walk the minutes that arrived since the last cycle.

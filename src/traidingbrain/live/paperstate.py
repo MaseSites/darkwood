@@ -77,25 +77,56 @@ class Tally:
     opened: int = 0
     closed: int = 0
     expired: int = 0
+    failures: int = 0
+    """Cycles that threw. A loop failing every pass reads on the screen exactly
+    like a quiet market, so the sentence below has to be able to say it."""
+
+    @property
+    def mostly_failing(self) -> bool:
+        """Is this a broken loop rather than a flaky exchange response?
+
+        Half the cycles, not one. A handful of failures over a long run is a
+        request that timed out; half of them is a loop that cannot work and is
+        wearing the costume of a quiet market.
+        """
+        return bool(self.failures) and self.failures >= max(1, self.cycles // 2)
 
     def sentence(self) -> str:
-        """One German line saying why nothing is happening, if nothing is."""
-        if self.opened:
-            return (
+        """One German line saying why nothing is happening, if nothing is.
+
+        A table rather than a chain of returns, and ordered: the first true row
+        wins. "Everything is throwing" comes before every explanation of a
+        quiet market, because a broken loop that explains itself as patience is
+        the one answer here that actively misleads.
+        """
+        reasons = (
+            (
+                self.mostly_failing,
+                f"{self.failures} von {self.cycles} Zyklen scheitern -- Fehlerliste prüfen",
+            ),
+            (
+                bool(self.opened),
                 f"{self.opened} eröffnet, {self.closed} geschlossen "
-                f"({self.proposed} Vorschläge auf {self.bars_seen} Kerzen)"
-            )
-        if not self.bars_seen:
-            return "noch keine Kerze ausgewertet"
-        if not self.proposed:
-            return f"{self.bars_seen} Kerzen ausgewertet, kein Setup hat ausgelöst"
-        if self.refused_by_risk and not self.not_ready:
-            return (
+                f"({self.proposed} Vorschläge auf {self.bars_seen} Kerzen)",
+            ),
+            (not self.bars_seen, "noch keine Kerze ausgewertet"),
+            (
+                not self.proposed,
+                f"{self.bars_seen} Kerzen ausgewertet, kein Setup hat ausgelöst",
+            ),
+            (
+                bool(self.not_ready),
+                f"{self.proposed} Setups ausgelöst, {self.not_ready} ohne Bewertung",
+            ),
+            (
+                bool(self.refused_by_risk),
                 f"{self.proposed} Setups ausgelöst, alle von der Risikoschicht "
-                f"abgelehnt -- meist zu enger Stop für die Gebühren"
-            )
-        if self.not_ready:
-            return f"{self.proposed} Setups ausgelöst, {self.not_ready} ohne Bewertung"
+                f"abgelehnt -- meist zu enger Stop für die Gebühren",
+            ),
+        )
+        for applies, text in reasons:
+            if applies:
+                return text
         return f"{self.proposed} Vorschläge auf {self.bars_seen} Kerzen"
 
 
