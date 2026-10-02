@@ -94,9 +94,7 @@ SEARCH_ORDER: tuple[Timeframe, ...] = (
 )
 
 
-def _just_closed(
-    analysis: MultiFrameAnalysis, timeframe: Timeframe, decision_ms: int
-) -> bool:
+def _just_closed(analysis: MultiFrameAnalysis, timeframe: Timeframe, decision_ms: int) -> bool:
     """Did a candle of this timeframe finish in the hour just ended?
 
     The loop steps hourly. Without this a four-hour setup would be proposed on
@@ -141,6 +139,17 @@ class GuidePool:
 
     name: str = "guide-all"
 
+    setups: tuple[Setup, ...] = TRADEABLE
+    """Which setups this pool may take.
+
+    A field rather than the module constant read directly, so that asking
+    "what would this look like without setup C" is a different pool rather than
+    a patched global. Setup C loses on all four timeframes with an interval
+    that excludes zero, and whether to switch it off is Severin's decision
+    about his own rules -- but the measurement supporting it has to be
+    repeatable without editing the module it measures.
+    """
+
     def propose_at(self, analysis: MultiFrameAnalysis, index: int) -> TradeIntent | None:
         aligned = analysis.aligned_indices(index)
         if aligned is None:
@@ -152,7 +161,7 @@ class GuidePool:
             at = aligned.get(timeframe)
             if frame is None or at is None or not _just_closed(analysis, timeframe, decision):
                 continue
-            for setup in TRADEABLE:
+            for setup in self.setups:
                 signal = setup.evaluate(frame, at)
                 if signal is None:
                     continue
