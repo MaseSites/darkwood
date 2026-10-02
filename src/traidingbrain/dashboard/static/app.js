@@ -1406,3 +1406,159 @@ setInterval(tickCountdowns, 1000);
 setInterval(() => {
   if (state.loadingSince) renderMarket();
 }, 1000);
+
+/* ---------------------------------------------------- the paper trading log */
+
+/* Read from the trader's own files through `/api/paper`, which means this works
+ * whether or not the trader is running — and says which. An account last
+ * settled six hours ago renders identically to a working one unless something
+ * prints the age, and that exact mistake has already cost an hour here on the
+ * score panel. So staleness gets a colour, a line of text, and a reason.
+ *
+ * On its own poll, slower than the ticket's. These trades last hours to days;
+ * four seconds would be redrawing an unchanged table fifteen times a minute. */
+const PAPER_POLL_MS = 20000;
+
+function paperClock(ms) {
+  if (!ms) return "—";
+  return new Date(ms).toLocaleString("de-CH", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function paperAccount(account) {
+  const position = account.position;
+  const side = position ? (position.side === "long" ? "long" : "short") : null;
+  const classes = ["paper__account"];
+  if (side) classes.push(`paper__account--${side}`);
+  if (account.stale) classes.push("paper__account--stale");
+
+  let body;
+  if (position) {
+    const direction = side === "long" ? "up" : "down";
+    const word = side === "long" ? "Long" : "Short";
+    const label = account.setup ? `Setup ${escapeHtml(account.setup)}` : "Position";
+    const frame = account.setup_timeframe ? ` auf ${escapeHtml(account.setup_timeframe)}` : "";
+    body = `
+      <p class="paper__state">${label}${frame} &middot; ${word} seit ${paperClock(
+        position.opened_ts
+      )}${position.stop_moved ? " &middot; Stop auf Einstand" : ""}</p>
+      <dl class="paper__plan">
+        <div><dt>Entry</dt><dd>${fmt.price(position.entry)}</dd></div>
+        <div><dt>Stop</dt><dd>${fmt.price(position.stop)}</dd></div>
+        <div><dt>Ziel</dt><dd>${fmt.price(position.target)}</dd></div>
+      </dl>
+      <p class="paper__open ${position.unrealised >= 0 ? "up" : "down"}">
+        ${position.unrealised >= 0 ? "+" : ""}${fmt.money(position.unrealised)} offen
+      </p>`;
+  } else if (account.resting_at) {
+    body = `<p class="paper__state">Order liegt bei ${fmt.price(
+      account.resting_at
+    )} und wartet auf den Kurs.</p>`;
+  } else {
+    body = `<p class="paper__state">Flach. Wartet auf ein Setup.</p>`;
+  }
+
+  /* Why it is stale matters more than that it is: the trader not running and
+   * the exchange being unreachable call for different things. This says the
+   * fact and the command; the cause is in the runner's own error list. */
+  const stale = account.stale
+    ? `<p class="paper__stale">Seit ${account.behind_minutes} Min. nichts verbucht &mdash;
+         läuft <code>scripts/papertrade.py</code> noch?</p>`
+    : "";
+
+  return `
+    <li class="${classes.join(" ")}">
+      <div class="paper__sym">
+        <span>${escapeHtml(account.symbol)}</span>
+        <span class="paper__equity">${fmt.money(account.equity)}</span>
+      </div>
+      ${body}
+      ${stale}
+    </li>`;
+}
+
+function paperTrade(trade) {
+  const won = trade.r_multiple >= 0;
+  return `
+    <tr>
+      <td>${paperClock(trade.closed_ts)}</td>
+      <td>${escapeHtml(trade.symbol.replace("USDT", ""))}</td>
+      <td>${escapeHtml(trade.setup)} ${escapeHtml(trade.setup_timeframe)}</td>
+      <td>${trade.side === "long" ? "Long" : "Short"}</td>
+      <td class="paper__r ${won ? "up" : "down"}">${won ? "+" : ""}${trade.r_multiple.toFixed(
+        2
+      )} R</td>
+      <td>${escapeHtml(trade.exit_reason)}</td>
+      <td class="paper__verdict">${escapeHtml(trade.verdict)}</td>
+    </tr>`;
+}
+
+function renderPaper(readout) {
+  const host = document.getElementById("paper");
+  const hint = document.getElementById("paper-hint");
+  if (!host) return;
+
+  if (readout === "unavailable") {
+    host.innerHTML = `<p class="paper__state">Konten nicht lesbar.</p>`;
+    return;
+  }
+  if (!readout.accounts.length) {
+    host.innerHTML = `<p class="paper__state">
+      Noch kein Konto. Starte den Papertrader:
+      <code>python scripts/papertrade.py</code></p>`;
+    return;
+  }
+
+  /* The headline carries the one number that decides whether any of this is
+   * worth anything, and carries it with its sample size. A mean over nine
+   * trades is not an edge and the screen should not let it look like one. */
+  if (hint) {
+    hint.innerHTML = readout.trades
+      ? `${readout.trades} Trades vorwärts &middot; Mittel ${
+          readout.mean_r >= 0 ? "+" : ""
+        }${readout.mean_r.toFixed(3)} R${
+          readout.trades < 30 ? " (noch zu wenige für eine Aussage)" : ""
+        }`
+      : "Noch kein abgeschlossener Trade — die ersten brauchen Stunden bis Tage";
+  }
+
+  const trades = readout.recent.length
+    ? `<table class="paper__trades">
+         <thead>
+           <tr>
+             <th>Geschlossen</th><th>Markt</th><th>Setup</th><th>Richtung</th>
+             <th class="paper__r">Ergebnis</th><th>Grund</th><th>Was passiert ist</th>
+           </tr>
+         </thead>
+         <tbody>${readout.recent.map(paperTrade).join("")}</tbody>
+       </table>`
+    : "";
+
+  const totals = readout.trades
+    ? `<p class="paper__totals">
+         <span>Treffer <b>${Math.round((100 * readout.wins) / readout.trades)}%</b></span>
+         <span>Summe <b>${fmt.money(readout.total_net)}</b></span>
+         <span>Trades <b>${readout.trades}</b></span>
+       </p>`
+    : "";
+
+  host.innerHTML = `
+    <ul class="paper__accounts">${readout.accounts.map(paperAccount).join("")}</ul>
+    ${trades}
+    ${totals}`;
+}
+
+async function loadPaper() {
+  try {
+    renderPaper(await api("/api/paper"));
+  } catch {
+    renderPaper("unavailable");
+  }
+}
+
+loadPaper();
+setInterval(loadPaper, PAPER_POLL_MS);

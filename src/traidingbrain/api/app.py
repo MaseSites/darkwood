@@ -24,6 +24,7 @@ longer exists.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -41,6 +42,7 @@ from traidingbrain.api.market import (
     build_market_view,
     setups_at,
 )
+from traidingbrain.api.paper import PaperReadout, build_paper_readout
 from traidingbrain.api.scoring import ScoreRead, build_score_view
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.store import ParquetStore
@@ -420,6 +422,22 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
         """
         return _market_for(services, symbol, timeframe)
 
+    @app.get("/api/paper", response_model=PaperReadout)
+    def paper() -> PaperReadout:
+        """What the forward paper trader is holding and what it has closed.
+
+        Read straight from the trader's two files rather than from the process,
+        so the dashboard works whether or not it is running -- and says which,
+        because an account last settled six hours ago looks exactly like a
+        working one otherwise.
+        """
+        return build_paper_readout(
+            services.config.engine.paths.data_dir / "paper.sqlite",
+            services.config.engine.paths.data_dir / "journal.sqlite",
+            now_ms=int(time.time() * 1000),
+            symbols=_followed_symbols(services),
+        )
+
     @app.get("/api/market/{symbol}/score", response_model=ScoreRead)
     def score(symbol: str) -> ScoreRead:
         """Every indicator, reconciled by family, across every timeframe.
@@ -494,8 +512,7 @@ def _market_for(services: Services, symbol: str, requested: str | None) -> Marke
     if built is None:
         raise HTTPException(
             404,
-            f"no analysable data for {symbol}; "
-            f"run scripts/backfill.py {symbol} --since 2023-01-01",
+            f"no analysable data for {symbol}; run scripts/backfill.py {symbol} --since 2023-01-01",
         )
     snapshot, analysis = built
     frame = services.bars.read(symbol, timeframe, until_ms=snapshot.ts)
@@ -524,8 +541,7 @@ def _score_for(services: Services, symbol: str) -> ScoreRead:
     if built is None:
         raise HTTPException(
             404,
-            f"no analysable data for {symbol}; "
-            f"run scripts/backfill.py {symbol} --since 2023-01-01",
+            f"no analysable data for {symbol}; run scripts/backfill.py {symbol} --since 2023-01-01",
         )
     snapshot, analysis = built
     view = build_score_view(symbol, analysis, snapshot.ts)

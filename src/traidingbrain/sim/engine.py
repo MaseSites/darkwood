@@ -26,14 +26,27 @@ from traidingbrain.analysis.pipeline import MultiFrameAnalysis
 from traidingbrain.analysis.snapshot import SnapshotBuilder
 from traidingbrain.config.settings import AppConfig
 from traidingbrain.data.frames import timeframe_ms
-from traidingbrain.domain.enums import ExitReason, OrderType, Side, Timeframe
+from traidingbrain.domain.enums import ExitReason, Timeframe
 from traidingbrain.domain.market import FundingRate, SymbolSpec
 from traidingbrain.domain.snapshot import MarketSnapshot
 from traidingbrain.history.engine import HistoryEngine
-from traidingbrain.risk.leverage import choose_leverage
-from traidingbrain.risk.sizing import costs_are_affordable, position_size, risk_budget
 from traidingbrain.sim.broker import Fill, PendingEntry, SimBroker
 from traidingbrain.sim.metrics import BacktestMetrics, compute_metrics, format_metrics
+from traidingbrain.sim.plan import TradeIntent, plan_entry
+
+#: Re-exported: `TradeIntent` lives below the planner so that `plan` and
+#: `engine` do not import each other. Every existing caller imports it from
+#: here, and still can.
+__all__ = [
+    "AnalysisStrategy",
+    "BacktestEngine",
+    "BacktestResult",
+    "MissingMinuteDataError",
+    "Strategy",
+    "TradeIntent",
+    "load_engine",
+    "wants_analysis",
+]
 
 
 class MissingMinuteDataError(RuntimeError):
@@ -42,35 +55,6 @@ class MissingMinuteDataError(RuntimeError):
 
 def _day(ts_ms: int) -> str:
     return datetime.fromtimestamp(ts_ms / 1000, tz=UTC).date().isoformat()
-
-
-@dataclass(frozen=True)
-class TradeIntent:
-    """What a strategy wants to do, in prices.
-
-    Sizing, leverage and the liquidation check are the engine's job, not the
-    strategy's -- so a strategy cannot accidentally propose a position larger than
-    the risk budget allows, and every strategy is measured under the same money
-    management.
-    """
-
-    side: Side
-    entry: float
-    stop: float
-    target: float
-    confidence: float
-    reason: str = ""
-
-    @property
-    def reward_risk(self) -> float:
-        distance = abs(self.entry - self.stop)
-        return abs(self.target - self.entry) / distance if distance > 0 else 0.0
-
-    @property
-    def is_coherent(self) -> bool:
-        if self.side is Side.LONG:
-            return self.stop < self.entry < self.target
-        return self.target < self.entry < self.stop
 
 
 class Strategy(Protocol):
@@ -308,9 +292,7 @@ class BacktestEngine:
             return start, end, ""
         return self._fit_to_minutes(signal_ts, start, end)
 
-    def _fit_to_minutes(
-        self, signal_ts: np.ndarray, start: int, end: int
-    ) -> tuple[int, int, str]:
+    def _fit_to_minutes(self, signal_ts: np.ndarray, start: int, end: int) -> tuple[int, int, str]:
         """Trim the run to where intrabar order can actually be resolved.
 
         The minute series decides whether the stop or the target came first inside
@@ -426,75 +408,19 @@ class BacktestEngine:
     ) -> PendingEntry | None:
         """Turn a price plan into an order, or refuse it.
 
-        Every refusal here is a risk rule doing its job: too little confidence, a
-        reward-to-risk that does not pay for the losses, a position too small to
-        place, or a stop so wide that liquidation would arrive before it.
+        The rules themselves live in `sim/plan.py`, because the forward paper
+        trader applies the same ones and a second copy of them would differ by
+        about as much as the effects being measured.
         """
-        risk_config = self.config.risk
-        if intent.reward_risk < risk_config.limits.min_reward_risk:
-            return None
-
-        # No snapshot means no history lookup, so no evidence that confidence
-        # is calibrated -- and the sizing ladder stays capped. That is the right
-        # answer rather than a missing feature: a rule-based strategy states a
-        # fixed confidence, and a fixed number is not evidence about itself.
-        samples = snapshot.history.similar_situations_found if snapshot is not None else 0
-        budget = risk_budget(
-            intent.confidence,
-            equity,
-            risk_config.sizing,
-            history_samples=samples,
-        )
-        if budget is None:
-            return None
-
-        size = position_size(intent.side, intent.entry, intent.stop, budget.risk_amount, self.spec)
-        if not size.is_viable:
-            return None
-
-        # Costs scale with the position, risk does not. A stop tight enough to
-        # make the round trip cost a large share of what is at stake is a trade
-        # that cannot win, whatever happens next.
-        affordable, _fraction = costs_are_affordable(
-            size.notional,
-            size.risk_amount,
-            self.spec,
-            self.config.engine.simulation.slippage_bps,
-            risk_config.limits.max_cost_fraction_of_risk,
-        )
-        if not affordable:
-            return None
-
-        leverage = choose_leverage(
-            intent.side,
-            intent.entry,
-            intent.stop,
-            qty=size.qty,
+        return plan_entry(
+            intent,
+            snapshot,
+            symbol=self.symbol,
             spec=self.spec,
-            config=risk_config.leverage,
-        )
-        if leverage is None:
-            return None
-
-        return PendingEntry(
-            proposal_id=f"{self.symbol}-{created_ts}",
-            side=intent.side,
-            order_type=OrderType.LIMIT,
-            limit_price=intent.entry,
-            stop=intent.stop,
-            target=intent.target,
-            qty=size.qty,
-            leverage=leverage.leverage,
+            config=self.config,
+            equity=equity,
             created_ts=created_ts,
             expires_ts=expires_ts,
-            risk_amount=size.risk_amount,
-            # Empty for a bar-reading strategy, which has no normalised view
-            # to hash. The field identifies the situation a model was shown, and
-            # inventing one here would make two different things look alike in
-            # the record.
-            snapshot_hash=(
-                snapshot.to_brain_input().content_hash() if snapshot is not None else ""
-            ),
         )
 
     def _empty_result(

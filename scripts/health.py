@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from traidingbrain.config.settings import load_secrets
-from traidingbrain.storage.postgres import connect
+from traidingbrain.storage.postgres import PostgresUnavailableError, connect
 
 MINUTE = 60_000
 
@@ -124,8 +124,17 @@ def main() -> int:
         return 2
 
     now_ms = int(time.time() * 1000)
-    with connect(url) as conn, conn.cursor() as cur:
-        problems = check_series(cur, now_ms, args.quiet)
+    try:
+        with connect(url) as conn, conn.cursor() as cur:
+            problems = check_series(cur, now_ms, args.quiet)
+    except PostgresUnavailableError as error:
+        # A database that cannot be reached *is* the health report, and the most
+        # likely one: the collector runs on the Raspberry Pi and the Pi gets
+        # switched off. A traceback here says "this script is broken" about a
+        # situation in which it is working perfectly.
+        print(f"database not reachable: {error}", file=sys.stderr)
+        print(f"  {url.rsplit('@', 1)[-1]} -- is the Pi on and in this network?", file=sys.stderr)
+        return 1
     problems += check_disk(args.quiet)
 
     if problems:

@@ -1965,3 +1965,214 @@ body {
 .score__raw {
   color: var(--dimmer);
 }
+
+/* ---------------------------------------------------- the paper trading log */
+
+/* DECISION SHEET, addendum.
+ *
+ * SUBJECT    The second region on this screen, and a different question from the
+ *            first. The decision panel asks "do you want this trade". This one
+ *            answers "what has the system been doing on its own" — a log, read
+ *            at a glance and then left alone.
+ *
+ * GROUND     A position blotter, which is the instrument this corresponds to on
+ *            a real desk: account per instrument, open risk, then the closed
+ *            trades underneath in the order they closed.
+ *
+ * Deliberately quieter than the ticket above it. It inherits every token — the
+ * same two type roles, the same four price colours, the same single radius —
+ * because inventing a second visual language for the same screen is how a
+ * dashboard stops reading as one instrument. The one thing it adds is the
+ * staleness mark, because an account last settled six hours ago looks exactly
+ * like a working one otherwise, and that mistake has already cost an hour here.
+ */
+
+.paper__accounts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--s3);
+  margin: 0 0 var(--s4);
+  padding: 0;
+  list-style: none;
+}
+
+.paper__account {
+  padding: var(--s3);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--panel-high);
+}
+
+/* The left edge carries the state, so a glance down the row reads without
+   having to parse any number: flat is a hairline, long is green, short is red,
+   stale is amber regardless of what it holds. */
+.paper__account {
+  border-left: 2px solid var(--rule-strong);
+}
+
+.paper__account--long {
+  border-left-color: var(--long);
+}
+
+.paper__account--short {
+  border-left-color: var(--short);
+}
+
+.paper__account--stale {
+  border-left-color: var(--liq);
+}
+
+.paper__sym {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s2);
+  font: 500 12px/1 var(--sans);
+  letter-spacing: 0.03em;
+  color: var(--text);
+}
+
+.paper__equity {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.paper__state {
+  margin-top: var(--s2);
+  font: 400 11px/1.6 var(--sans);
+  color: var(--dimmer);
+}
+
+.paper__plan {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--s1) var(--s2);
+  margin: var(--s2) 0 0;
+}
+
+.paper__plan div {
+  min-width: 0;
+}
+
+.paper__plan dt {
+  font: 400 10px/1.4 var(--sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dimmer);
+}
+
+.paper__plan dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.paper__open {
+  margin-top: var(--s2);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.paper__open.up {
+  color: var(--long);
+}
+
+.paper__open.down {
+  color: var(--short);
+}
+
+.paper__stale {
+  margin-top: var(--s2);
+  font: 400 11px/1.5 var(--sans);
+  color: var(--liq);
+}
+
+/* The closed trades. A table because they are rows of one shape being compared
+   down a column, which is the one case where a table is the honest element. */
+.paper__trades {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.paper__trades th {
+  padding: 0 var(--s2) var(--s1) 0;
+  border-bottom: 1px solid var(--rule);
+  font: 400 10px/1.4 var(--sans);
+  letter-spacing: 0.04em;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--dimmer);
+  white-space: nowrap;
+}
+
+.paper__trades td {
+  padding: var(--s1) var(--s2) var(--s1) 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--text);
+  vertical-align: top;
+}
+
+.paper__trades tr:last-child td {
+  border-bottom: 0;
+}
+
+.paper__r {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.paper__r.up {
+  color: var(--long);
+}
+
+.paper__r.down {
+  color: var(--short);
+}
+
+/* The sentence that says why it ended that way. In the sans role, because it is
+   prose rather than a figure, and wrapping so it is never truncated — a verdict
+   cut off mid-clause is worse than no verdict. */
+.paper__verdict {
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--dim);
+}
+
+.paper__totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  margin: var(--s3) 0 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.paper__totals b {
+  font-weight: 500;
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .paper__plan {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* The verdict column is the first thing to go: on a phone the row has to say
+     what happened, and the sentence explaining it can be read on a larger
+     screen. Hidden rather than wrapped to two lines per trade, which turns a
+     twelve-row log into a page of scrolling. */
+  .paper__verdict {
+    display: none;
+  }
+}

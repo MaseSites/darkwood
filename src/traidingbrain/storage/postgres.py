@@ -96,17 +96,35 @@ _NO_URL = (
 )
 
 
-def connect(url: str) -> psycopg.Connection[Any]:
+#: Seconds to wait for a connection before calling the database unreachable.
+#:
+#: Without it the default is the operating system's, which on Windows against a
+#: host that is simply off is well over a minute -- `scripts/health.py` sat for
+#: ninety seconds and was killed before it printed anything. A health check that
+#: hangs is worse than one that says "no database": the first looks like work in
+#: progress, the second is an answer.
+#:
+#: Five seconds because the database is on the LAN. A connection that needs
+#: longer than that from the same flat is not slow, it is absent.
+CONNECT_TIMEOUT_S = 5
+
+
+def connect(url: str, *, timeout_s: int = CONNECT_TIMEOUT_S) -> psycopg.Connection[Any]:
     """Open a single connection, or say clearly there is nowhere to connect to.
 
     For one-off work: migrations, a script, a health check. Anything running per
     request or under concurrency wants `pool_for` -- see the note there for what
     happens when it does not.
+
+    A URL that sets its own `connect_timeout` keeps it: the keyword is only a
+    default, and someone who wrote a timeout into the URL meant it.
     """
     if not url:
         raise PostgresUnavailableError(_NO_URL)
     try:
-        return psycopg.connect(url)
+        if "connect_timeout" in url:
+            return psycopg.connect(url)
+        return psycopg.connect(url, connect_timeout=timeout_s)
     except psycopg.Error as error:
         raise PostgresUnavailableError(f"could not connect: {error}") from error
 
