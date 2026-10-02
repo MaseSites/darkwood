@@ -22,6 +22,7 @@ Three failure modes get their own test:
 from __future__ import annotations
 
 import dataclasses
+import sqlite3
 from pathlib import Path
 
 import pandas as pd
@@ -39,7 +40,7 @@ from traidingbrain.domain.market import Bar, FundingRate, SymbolSpec
 from traidingbrain.journal.record import Source
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.live.paper import PaperTrader
-from traidingbrain.live.paperstate import PaperStateStore
+from traidingbrain.live.paperstate import PaperStateStore, Tally
 from traidingbrain.sim.plan import TradeIntent
 
 SYMBOL = "BTCUSDT"
@@ -721,3 +722,91 @@ def test_a_replay_cannot_overwrite_a_forward_trade(
     ]
     assert len(survived) == 1
     assert survived[0].r_multiple == live.r_multiple
+
+
+# --------------------------------------------------------------------------- #
+# Why nothing is happening
+# --------------------------------------------------------------------------- #
+
+
+def test_the_counters_survive_a_restart(
+    tmp_path: Path, config: AppConfig, tape: dict[Timeframe, pd.DataFrame]
+) -> None:
+    """An account flat for three days should say three days.
+
+    Held only in memory the counters were printed at shutdown, which is exactly
+    when they stop being useful: the case they exist for is a trader that has
+    been running a long time and traded nothing.
+    """
+    start = EPOCH + timeframe_ms(Timeframe.H1) * START_BAR
+    first, source, states, journal = build(tmp_path, config, tape, now_ms=start)
+    advance(first, source, hours=5)
+    seen = first.stats.tally.bars_seen
+    assert seen >= 3
+
+    second = PaperTrader(
+        SYMBOL,
+        config,
+        source=source,
+        store=ParquetStore(tmp_path / "ohlcv"),
+        state=states,
+        journal=journal,
+        spec=make_symbol_spec(),
+        clock=FixedClock(source.now_ms),
+        strategy=FixedIntent(),  # type: ignore[arg-type]
+    )
+    assert second.stats.tally.bars_seen == seen
+    advance(second, source, hours=2)
+    assert second.stats.tally.bars_seen > seen
+
+
+def test_the_sentence_separates_no_setup_from_every_setup_refused(
+    tmp_path: Path, config: AppConfig, tape: dict[Timeframe, pd.DataFrame]
+) -> None:
+    """Two different problems with two different answers.
+
+    A market that offered nothing wants patience; a risk layer that refused
+    every setup wants the stop width looked at. "Flach" says neither.
+    """
+    quiet = Tally(cycles=400, bars_seen=72, proposed=0)
+    assert "kein Setup" in quiet.sentence()
+
+    refused = Tally(cycles=400, bars_seen=72, proposed=9, refused_by_risk=9)
+    assert "Risikoschicht" in refused.sentence()
+
+    cold = Tally(cycles=4, bars_seen=0)
+    assert "keine Kerze" in cold.sentence()
+
+    working = Tally(cycles=400, bars_seen=72, proposed=9, opened=3, closed=2)
+    assert "eröffnet" in working.sentence()
+
+
+def test_an_account_file_from_before_the_counters_still_opens(
+    tmp_path: Path, config: AppConfig
+) -> None:
+    """`CREATE TABLE IF NOT EXISTS` leaves an existing table exactly as it was.
+
+    So a column added later is missing from every file already in use, and
+    every read of it fails -- on a file that may be holding an open position.
+    Four accounts were already running when this column was added.
+    """
+    path = tmp_path / "paper.sqlite"
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "CREATE TABLE accounts (symbol TEXT PRIMARY KEY, equity REAL NOT NULL, "
+            "last_minute_ts INTEGER NOT NULL, last_decided_ts INTEGER NOT NULL, "
+            "last_price REAL NOT NULL, opened_ts INTEGER NOT NULL, "
+            "pending TEXT, position TEXT, reason TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO accounts VALUES ('BTCUSDT', 9876.5, 17, 16, 42.0, 0, NULL, NULL, NULL)"
+        )
+        conn.commit()
+
+    store = PaperStateStore(path)
+    restored = store.load("BTCUSDT")
+
+    assert restored is not None
+    assert restored.equity == pytest.approx(9876.5)
+    assert restored.tally == Tally()
+    store.save(restored)

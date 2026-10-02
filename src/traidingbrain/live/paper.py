@@ -50,7 +50,7 @@ from traidingbrain.journal.build import reason_at
 from traidingbrain.journal.postmortem import examine
 from traidingbrain.journal.record import JournalEntry, Source, TradeReason
 from traidingbrain.journal.store import JournalStore
-from traidingbrain.live.paperstate import PaperState, PaperStateStore
+from traidingbrain.live.paperstate import PaperState, PaperStateStore, Tally
 from traidingbrain.sim.broker import Fill, SimBroker
 from traidingbrain.sim.engine import AnalysisStrategy
 from traidingbrain.sim.plan import plan_entry
@@ -116,29 +116,35 @@ POLL_SECONDS = 30
 
 @dataclass
 class PaperStats:
-    """What a run did, for a status line worth reading."""
+    """What a run did, for a status line worth reading.
 
-    cycles: int = 0
-    bars_seen: int = 0
-    proposed: int = 0
-    refused_by_risk: int = 0
-    not_ready: int = 0
-    """Setups that fired where the score could not be read -- warm-up, almost
-    always. Counted separately from a risk refusal because the two call for
-    opposite responses: more history, or none at all."""
+    The counters themselves live in `Tally` and are written to disk every
+    cycle, because the case they exist for is a trader that has run for three
+    days and traded nothing: "still flat" cannot say whether no setup fired,
+    whether the risk layer refused every one, or whether the score was never
+    ready. Held only in memory they were invisible for exactly as long as they
+    mattered.
 
-    opened: int = 0
-    closed: int = 0
-    expired: int = 0
+    The errors are not persisted. They are about this process -- a failed
+    fetch, a bad cycle -- and carrying yesterday's forward would make the list
+    grow for ever and describe nothing.
+    """
+
+    tally: Tally = field(default_factory=Tally)
     errors: list[str] = field(default_factory=list)
 
+    @property
+    def cycles(self) -> int:
+        return self.tally.cycles
+
     def summary(self) -> str:
+        t = self.tally
         return (
-            f"Zyklen {self.cycles}, neue Kerzen {self.bars_seen}, "
-            f"Vorschläge {self.proposed}, abgelehnt {self.refused_by_risk}, "
-            f"ohne Bewertung {self.not_ready}, "
-            f"eröffnet {self.opened}, geschlossen {self.closed}, "
-            f"verfallen {self.expired}" + (f", {len(self.errors)} Fehler" if self.errors else "")
+            f"Zyklen {t.cycles}, Kerzen {t.bars_seen}, "
+            f"Vorschläge {t.proposed}, abgelehnt {t.refused_by_risk}, "
+            f"ohne Bewertung {t.not_ready}, eröffnet {t.opened}, "
+            f"geschlossen {t.closed}, verfallen {t.expired}"
+            + (f", {len(self.errors)} Fehler" if self.errors else "")
         )
 
 
@@ -182,6 +188,10 @@ class PaperTrader:
             symbol=symbol, equity=config.engine.simulation.initial_equity
         )
         self.state.restore_into(self.broker)
+        # The counters carry over, so a restart continues the tally rather than
+        # resetting it. An account that has been flat for three days should say
+        # three days, not "since I was last started".
+        self.stats.tally = self.state.tally
         self._reason: TradeReason | None = self.state.reason
 
     # -- data --------------------------------------------------------------- #
@@ -248,7 +258,7 @@ class PaperTrader:
         dies on one bad API response stops watching its own open position,
         which is worse than missing a cycle.
         """
-        self.stats.cycles += 1
+        self.stats.tally.cycles += 1
         try:
             newest, minutes = self.refresh_data()
         except Exception as exc:  # broad on purpose: a bad cycle must not end the run
@@ -259,7 +269,7 @@ class PaperTrader:
             closed = self._settle(minutes)
             if newest and newest != self.state.last_decided_ts:
                 self.state.last_decided_ts = newest
-                self.stats.bars_seen += 1
+                self.stats.tally.bars_seen += 1
                 self._maybe_open(newest)
         except Exception as exc:  # same reasoning
             self.stats.errors.append(f"Zyklus fehlgeschlagen: {exc}")
@@ -302,7 +312,7 @@ class PaperTrader:
                 before = self.broker.expired_entries
                 fill = self.broker.on_minute(ts, float(opens[i]), float(highs[i]), float(lows[i]))
                 if self.broker.expired_entries > before:
-                    self.stats.expired += 1
+                    self.stats.tally.expired += 1
                     self._reason = None
                 if fill is not None:
                     entry = self._record(fill)
@@ -376,7 +386,7 @@ class PaperTrader:
         intent = self.strategy.propose_at(analysis, index)
         if intent is None or not intent.is_coherent:
             return
-        self.stats.proposed += 1
+        self.stats.tally.proposed += 1
 
         # The case for the trade, built *before* the order exists. If it cannot
         # be built the trade does not happen: an order placed now and explained
@@ -388,7 +398,7 @@ class PaperTrader:
         # new deployment would propose, refuse, and never say why.
         reason = reason_at(analysis, index, intent.side)
         if reason is None:
-            self.stats.not_ready += 1
+            self.stats.tally.not_ready += 1
             return
 
         signal_ms = timeframe_ms(self.config.engine.timeframes.signal)
@@ -404,12 +414,12 @@ class PaperTrader:
             expires_ts=created + self.config.engine.simulation.entry_expiry_bars * signal_ms,
         )
         if entry is None or not self.broker.submit(entry):
-            self.stats.refused_by_risk += 1
+            self.stats.tally.refused_by_risk += 1
             return
 
         self._reason = reason
         self.state.opened_ts = 0
-        self.stats.opened += 1
+        self.stats.tally.opened += 1
         # Persisted immediately rather than at the end of the cycle. The gap
         # between placing the order and saving its reason is the window in
         # which a crash would produce an unexplained trade, and it costs one
@@ -426,7 +436,7 @@ class PaperTrader:
         a row saying "lost 1 R" for reasons unknown is what this whole package
         exists to avoid.
         """
-        self.stats.closed += 1
+        self.stats.tally.closed += 1
         reason = self._reason
         self._reason = None
         self.state.opened_ts = 0
@@ -474,6 +484,7 @@ class PaperTrader:
 
     def _persist(self) -> None:
         self.state.capture_from(self.broker, reason=self._reason)
+        self.state.tally = self.stats.tally
         self.state_store.save(self.state)
 
     # -- reading ------------------------------------------------------------ #
@@ -493,7 +504,10 @@ class PaperTrader:
                 f"{self.symbol}: Order liegt bei {pending.limit_price:,.2f} "
                 f"({pending.side.value}), verfällt {pending.expires_ts}"
             )
-        return f"{self.symbol}: flach, Kontostand {self.broker.equity:,.2f} CHF"
+        return (
+            f"{self.symbol}: flach, Kontostand {self.broker.equity:,.2f} CHF"
+            f" -- {self.stats.tally.sentence()}"
+        )
 
     def close_out(self) -> JournalEntry | None:
         """Close an open position at the last price and journal it.

@@ -66,6 +66,17 @@ class PaperAccount(BaseModel):
     setup_timeframe: str | None = None
     rating: int | None = None
 
+    activity: str = ""
+    """One German sentence on why this account is doing what it is doing.
+
+    The panel's honest answer to "it has been flat all day". Without it the
+    screen cannot tell a market that offered no setup from a risk layer that
+    refused every one, and those call for opposite responses."""
+
+    bars_seen: int = 0
+    proposed: int = 0
+    refused_by_risk: int = 0
+
 
 class PaperTrade(BaseModel):
     closed_ts: int
@@ -146,6 +157,10 @@ def build_paper_readout(
                 setup=reason.setup_key if reason is not None else None,
                 setup_timeframe=reason.setup_timeframe if reason is not None else None,
                 rating=reason.rating if reason is not None else None,
+                activity=saved.tally.sentence(),
+                bars_seen=saved.tally.bars_seen,
+                proposed=saved.tally.proposed,
+                refused_by_risk=saved.tally.refused_by_risk,
             )
         )
 

@@ -1459,7 +1459,12 @@ function paperAccount(account) {
       account.resting_at
     )} und wartet auf den Kurs.</p>`;
   } else {
-    body = `<p class="paper__state">Flach. Wartet auf ein Setup.</p>`;
+    /* "Flach" alone cannot say whether the market offered nothing or whether
+     * every setup was refused, and those call for opposite responses. The
+     * sentence comes from the trader's own counters. */
+    body = `<p class="paper__state">Flach &mdash; ${escapeHtml(
+      account.activity || "wartet auf ein Setup"
+    )}</p>`;
   }
 
   /* Why it is stale matters more than that it is: the trader not running and

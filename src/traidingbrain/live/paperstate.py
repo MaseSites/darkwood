@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import closing
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -43,9 +43,60 @@ CREATE TABLE IF NOT EXISTS accounts (
     opened_ts       INTEGER NOT NULL,
     pending         TEXT,
     position        TEXT,
-    reason          TEXT
+    reason          TEXT,
+    tally           TEXT
 );
 """
+
+#: Columns added after the table first shipped.
+#:
+#: SQLite has no `ADD COLUMN IF NOT EXISTS`, and `CREATE TABLE IF NOT EXISTS`
+#: leaves an existing table exactly as it was -- so a file written by an earlier
+#: version keeps its old shape and every read of a new column fails. Three
+#: accounts had already been running when `tally` was added.
+_ADDED_COLUMNS = {"tally": "TEXT"}
+
+
+@dataclass
+class Tally:
+    """What the loop has done since the account was opened.
+
+    Persisted rather than held in memory, because the interesting case is a
+    trader that has run for three days and traded nothing. "Still flat" cannot
+    say whether no setup fired, whether the risk layer refused every one, or
+    whether the score was never ready -- and those are three different problems
+    with three different answers. Printed only at shutdown, the counters were
+    invisible for exactly as long as they mattered.
+    """
+
+    cycles: int = 0
+    bars_seen: int = 0
+    proposed: int = 0
+    refused_by_risk: int = 0
+    not_ready: int = 0
+    opened: int = 0
+    closed: int = 0
+    expired: int = 0
+
+    def sentence(self) -> str:
+        """One German line saying why nothing is happening, if nothing is."""
+        if self.opened:
+            return (
+                f"{self.opened} eröffnet, {self.closed} geschlossen "
+                f"({self.proposed} Vorschläge auf {self.bars_seen} Kerzen)"
+            )
+        if not self.bars_seen:
+            return "noch keine Kerze ausgewertet"
+        if not self.proposed:
+            return f"{self.bars_seen} Kerzen ausgewertet, kein Setup hat ausgelöst"
+        if self.refused_by_risk and not self.not_ready:
+            return (
+                f"{self.proposed} Setups ausgelöst, alle von der Risikoschicht "
+                f"abgelehnt -- meist zu enger Stop für die Gebühren"
+            )
+        if self.not_ready:
+            return f"{self.proposed} Setups ausgelöst, {self.not_ready} ohne Bewertung"
+        return f"{self.proposed} Vorschläge auf {self.bars_seen} Kerzen"
 
 
 @dataclass
@@ -61,6 +112,7 @@ class PaperState:
     pending: PendingEntry | None = None
     position: OpenPosition | None = None
     reason: TradeReason | None = None
+    tally: Tally = field(default_factory=Tally)
 
     def capture_from(self, broker: SimBroker, *, reason: TradeReason | None) -> None:
         self.equity = broker.equity
@@ -92,6 +144,10 @@ class PaperStateStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with closing(self._connect()) as conn:
             conn.executescript(_DDL)
+            have = {row[1] for row in conn.execute("PRAGMA table_info(accounts)")}
+            for column, kind in _ADDED_COLUMNS.items():
+                if column not in have:
+                    conn.execute(f"ALTER TABLE accounts ADD COLUMN {column} {kind}")
             conn.commit()
 
     def _connect(self) -> sqlite3.Connection:
@@ -103,14 +159,14 @@ class PaperStateStore:
         with closing(self._connect()) as conn:
             conn.execute(
                 "INSERT INTO accounts (symbol, equity, last_minute_ts, last_decided_ts, "
-                "last_price, opened_ts, pending, position, reason) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "last_price, opened_ts, pending, position, reason, tally) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(symbol) DO UPDATE SET equity=excluded.equity, "
                 "last_minute_ts=excluded.last_minute_ts, "
                 "last_decided_ts=excluded.last_decided_ts, "
                 "last_price=excluded.last_price, opened_ts=excluded.opened_ts, "
                 "pending=excluded.pending, position=excluded.position, "
-                "reason=excluded.reason",
+                "reason=excluded.reason, tally=excluded.tally",
                 (
                     state.symbol,
                     state.equity,
@@ -121,6 +177,7 @@ class PaperStateStore:
                     _dump(state.pending),
                     _dump(state.position),
                     _dump_reason(state.reason),
+                    json.dumps(asdict(state.tally)),
                 ),
             )
             conn.commit()
@@ -129,7 +186,7 @@ class PaperStateStore:
         with closing(self._connect()) as conn:
             row = conn.execute(
                 "SELECT equity, last_minute_ts, last_decided_ts, last_price, opened_ts, "
-                "pending, position, reason FROM accounts WHERE symbol = ?",
+                "pending, position, reason, tally FROM accounts WHERE symbol = ?",
                 (symbol,),
             ).fetchone()
         if row is None:
@@ -144,6 +201,7 @@ class PaperStateStore:
             pending=_load_pending(row[5]),
             position=_load_position(row[6]),
             reason=_load_reason(row[7]),
+            tally=_load_tally(row[8]),
         )
 
     def symbols(self) -> list[str]:
@@ -190,6 +248,20 @@ def _load_position(raw: str | None) -> OpenPosition | None:
     data: dict[str, Any] = json.loads(raw)
     data["side"] = Side(data["side"])
     return OpenPosition(**data)
+
+
+def _load_tally(raw: str | None) -> Tally:
+    """The counters, or fresh ones.
+
+    Unknown keys are dropped rather than raising: a file written by a later
+    version with one more counter in it should still open, because the thing it
+    is protecting is an account with an open position.
+    """
+    if not raw:
+        return Tally()
+    data: dict[str, Any] = json.loads(raw)
+    fields = set(Tally().__dict__)
+    return Tally(**{k: int(v) for k, v in data.items() if k in fields})
 
 
 def _dump_reason(reason: TradeReason | None) -> str | None:
