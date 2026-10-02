@@ -24,6 +24,11 @@ dist/
 
 /runs/
 *.log
+
+# Process ids of the detached paper trader and dashboard. They describe this
+# machine's running processes, not the project, and a committed one would point
+# at whatever happens to hold that number on somebody else's computer.
+*.pid
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
