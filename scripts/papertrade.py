@@ -235,9 +235,15 @@ def run(traders: list[PaperTrader], source: MarketData | None, *, cycles: int | 
         while cycles is None or done < cycles:
             if done % 20 == 0:
                 top_up_funding(source, symbols)
+            # Two passes, and the order is the point. Settling is what an
+            # open position depends on and costs a fetch; deciding costs ten
+            # to fifteen seconds of analysis per market. Interleaved, one
+            # market's analysis delays eleven other markets' exits.
             for trader in traders:
-                for entry in trader.step():
+                for entry in trader.settle():
                     announce(entry)
+            for trader in traders:
+                trader.decide()
             done += 1
             if cycles is None or done < cycles:
                 time.sleep(POLL_SECONDS)

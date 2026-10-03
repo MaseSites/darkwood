@@ -25,7 +25,36 @@ symbols:
   # Only the analysis runs on all of them -- the model is still asked per asset,
   # on demand, so this costs bars and CPU rather than money.
   active: [BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT]
-  available: [BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT]
+
+  # `available` is "we have the data and could trade it"; `active` is "we do".
+  # The eight below were added to raise the number of cases: the rules fire
+  # about 1.9 times a day across four markets, and Severin wants ten. More
+  # markets is the one lever that gets there without making a single rule more
+  # generous -- the same setups, read off more charts.
+  #
+  # What it does not buy, and the reason the two lists stay separate: crypto
+  # moves largely as a block, so twelve markets give roughly three times the
+  # trades and much less than three times the independent evidence. On a bad
+  # day they all lose together. More cases, not proportionally more proof.
+  #
+  # All eight carry six to seven years of history and a minimum order size of
+  # 5 to 20 USDT -- small enough that a five-franc risk budget still produces a
+  # placeable position, which is already not quite true of BTC.
+  available:
+    [
+      BTCUSDT,
+      ETHUSDT,
+      SOLUSDT,
+      XRPUSDT,
+      ADAUSDT,
+      AVAXUSDT,
+      LINKUSDT,
+      DOGEUSDT,
+      BNBUSDT,
+      LTCUSDT,
+      DOTUSDT,
+      ATOMUSDT,
+    ]
 
 timeframes:
   # W1 and D1 give the macro read, H4 the intermediate structure, H1 the setup,

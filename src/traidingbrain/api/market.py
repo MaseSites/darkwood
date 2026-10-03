@@ -210,6 +210,22 @@ class _Cached:
     checked_at: float
 
 
+#: Most bars per context frame an analysis is built over.
+#:
+#: The same bound and the same reasoning as the paper trader's: the archive
+#: holds six years, a full build takes well over a minute and the result is a
+#: gigabyte-scale object that this cache then keeps per symbol. Measured on this
+#: machine with four markets open, the dashboard sat at 1.8 GB; at twelve it
+#: would not fit.
+#:
+#: Five thousand is twelve times the longest lookback anything in the analysis
+#: declares. What it cuts off is an unmitigated zone older than that -- fifty-two
+#: days on the fifteen-minute frame, seven months on the hourly. The chart is a
+#: reading surface, and a zone from seven months ago is not what anybody opens it
+#: for.
+HISTORY_BARS = 5000
+
+
 class MarketAnalysisCache:
     """Built analyses, rebuilt only when the underlying bars move.
 
@@ -267,7 +283,10 @@ class MarketAnalysisCache:
 
     def _build(self, symbol: str) -> _Cached | None:
         newest = self._newest_ts(symbol)
-        frames = {tf: self.store.read(symbol, tf) for tf in self.config.timeframes.context}
+        frames = {
+            tf: self.store.read(symbol, tf).tail(HISTORY_BARS).reset_index(drop=True)
+            for tf in self.config.timeframes.context
+        }
         if any(frame.empty for frame in frames.values()):
             return None
 
@@ -347,17 +366,29 @@ def _bands_near(
         distance = abs(snapshot.price - zone.mid) / unit
         if distance <= BAND_REACH_ATR:
             out.append(
-                (distance, LevelBand(low=zone.low, high=zone.high, kind=zone.kind.value,
-                                     label=BAND_LABELS.get(zone.kind.value, zone.kind.value)))
+                (
+                    distance,
+                    LevelBand(
+                        low=zone.low,
+                        high=zone.high,
+                        kind=zone.kind.value,
+                        label=BAND_LABELS.get(zone.kind.value, zone.kind.value),
+                    ),
+                )
             )
     for structural in signal.zones.unmitigated_at(index):
         distance = abs(snapshot.price - structural.mid) / unit
         if distance <= BAND_REACH_ATR:
             out.append(
-                (distance, LevelBand(low=structural.low, high=structural.high,
-                                     kind=structural.role.value,
-                                     label=BAND_LABELS.get(structural.role.value,
-                                                           structural.role.value)))
+                (
+                    distance,
+                    LevelBand(
+                        low=structural.low,
+                        high=structural.high,
+                        kind=structural.role.value,
+                        label=BAND_LABELS.get(structural.role.value, structural.role.value),
+                    ),
+                )
             )
     out.sort(key=lambda pair: pair[0])
     return [band for _, band in out[:MAX_BANDS]]
@@ -498,9 +529,7 @@ def build_market_view(
             # No spacing state here: the dashboard is not the thing that spends
             # money on calls, and reporting "too soon" against a live loop the
             # screen cannot see would be an objection nobody could act on.
-            _gate_read(evaluate(snapshot, trigger))
-            if trigger is not None
-            else None
+            _gate_read(evaluate(snapshot, trigger)) if trigger is not None else None
         ),
         setups=[_setup_read(signal, min_stop) for signal in (setups or [])],
         note="Hier wird kein Trade vorgeschlagen. Das ist der Markt, so wie die Analyse ihn liest.",

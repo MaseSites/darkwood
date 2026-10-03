@@ -859,3 +859,61 @@ def test_a_failed_decision_does_not_discard_settled_minutes(
     assert saved.last_minute_ts > 0, "the settled minutes were thrown away with the decision"
     assert saved.tally.failures >= 1
     assert any("Entscheiden" in error for error in trader.stats.errors)
+
+
+def test_settling_every_market_comes_before_deciding_for_any(
+    tmp_path: Path, config: AppConfig, tape: dict[Timeframe, pd.DataFrame]
+) -> None:
+    """With a dozen markets, interleaving costs an open position its exits.
+
+    Deciding builds the analysis -- ten to fifteen seconds a market. Settling is
+    a fetch and a walk over a few minutes, and it is the half an open position
+    depends on. Done market by market, one market's analysis delays every other
+    market's exit by as long as it takes.
+
+    The split is what lets a runner settle all of them first. Here it is checked
+    directly: settling must not ask the strategy anything.
+    """
+    start = EPOCH + timeframe_ms(Timeframe.H1) * START_BAR
+    strategy = FixedIntent(stop_atr=UNREACHABLE_STOP)
+    trader, source, _states, _journal = build(
+        tmp_path, config, tape, now_ms=start, strategy=strategy
+    )
+
+    source.now_ms += timeframe_ms(Timeframe.H1)
+    trader.clock = FixedClock(source.now_ms)
+
+    trader.settle()
+    assert strategy.asked == 0, "settling reached the strategy; the halves are not separate"
+    assert trader.wants_decision, "a new bar closed and nothing noticed"
+
+    trader.decide()
+    assert strategy.asked == 1
+    assert not trader.wants_decision, "the decision was not marked as taken"
+
+
+def test_deciding_twice_on_one_bar_does_nothing_the_second_time(
+    tmp_path: Path, config: AppConfig, tape: dict[Timeframe, pd.DataFrame]
+) -> None:
+    """The runner calls decide once per cycle whether or not a bar closed.
+
+    Without the guard a flat market would rebuild its analysis every thirty
+    seconds -- fifteen seconds of work, twice a minute, per market -- and the
+    loop would never finish a pass.
+    """
+    start = EPOCH + timeframe_ms(Timeframe.H1) * START_BAR
+    strategy = FixedIntent(stop_atr=UNREACHABLE_STOP)
+    trader, source, _states, _journal = build(
+        tmp_path, config, tape, now_ms=start, strategy=strategy
+    )
+
+    source.now_ms += timeframe_ms(Timeframe.H1)
+    trader.clock = FixedClock(source.now_ms)
+    trader.settle()
+    trader.decide()
+    asked = strategy.asked
+
+    trader.decide()
+    trader.decide()
+
+    assert strategy.asked == asked, "the same bar was decided more than once"

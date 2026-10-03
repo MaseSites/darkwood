@@ -193,6 +193,9 @@ class PaperTrader:
         # three days, not "since I was last started".
         self.stats.tally = self.state.tally
         self._reason: TradeReason | None = self.state.reason
+        #: Newest closed signal bar seen by the last refresh. Carried between
+        #: the two halves of a cycle so deciding does not have to re-fetch.
+        self._newest = 0
 
     # -- data --------------------------------------------------------------- #
 
@@ -252,7 +255,11 @@ class PaperTrader:
     # -- the cycle ---------------------------------------------------------- #
 
     def step(self) -> list[JournalEntry]:
-        """One cycle: settle what is open, then maybe open something.
+        """One whole cycle for one market: settle, then decide.
+
+        Kept for callers that drive a single market, and for the tests. The
+        runner uses `settle` and `decide` separately so that a dozen markets all
+        settle before any of them spends ten seconds on an analysis.
 
         Every failure is caught and recorded rather than raised. A loop that
         dies on one bad API response stops watching its own open position,
@@ -266,12 +273,30 @@ class PaperTrader:
         the part that was not about it. Not observed, found by reading; the
         shape of it is wrong whether or not it has fired yet.
         """
+        closed = self.settle()
+        self.decide()
+        return closed
+
+    def settle(self) -> list[JournalEntry]:
+        """Pull fresh bars and resolve whatever is open. The cheap half.
+
+        Separated from deciding so a runner with a dozen markets can settle all
+        of them before any of the expensive analysis begins. Deciding costs ten
+        to fifteen seconds a market; settling costs a fetch and a walk over a
+        few minutes, and it is what an open position depends on.
+
+        Late settling does not change a recorded outcome, because the minutes
+        are replayed: a stop hit at 14:01 and noticed at 14:03 is still resolved
+        at 14:01, at that minute's price. What it delays is only when the
+        journal entry appears and when the account is free again.
+        """
         self.stats.tally.cycles += 1
         try:
             newest, minutes = self.refresh_data()
         except Exception as exc:  # broad on purpose: a bad cycle must not end the run
             self._failed(f"Daten holen fehlgeschlagen: {exc}")
             return []
+        self._newest = newest
 
         closed: list[JournalEntry] = []
         try:
@@ -279,19 +304,37 @@ class PaperTrader:
         except Exception as exc:
             self._failed(f"Abrechnen fehlgeschlagen: {exc}")
 
-        try:
-            if newest and newest != self.state.last_decided_ts:
-                self.state.last_decided_ts = newest
-                self.stats.tally.bars_seen += 1
-                self._maybe_open(newest)
-        except Exception as exc:
-            self._failed(f"Entscheiden fehlgeschlagen: {exc}")
-
         # Always. Whatever was settled happened, and a record that is only
         # written when the whole cycle succeeded is a record that disappears
         # exactly when something is wrong.
         self._persist()
         return closed
+
+    def decide(self) -> None:
+        """Ask the setups about the bar that just closed. The expensive half.
+
+        Does nothing unless a signal bar has closed since the last decision, so
+        most cycles cost nothing at all -- at a fifteen-minute cadence that is
+        twenty-nine cycles in thirty.
+        """
+        newest = self._newest
+        if not newest or newest == self.state.last_decided_ts:
+            return
+        try:
+            self.state.last_decided_ts = newest
+            self.stats.tally.bars_seen += 1
+            self._maybe_open(newest)
+        except Exception as exc:
+            self._failed(f"Entscheiden fehlgeschlagen: {exc}")
+        self._persist()
+
+    @property
+    def wants_decision(self) -> bool:
+        """Has a signal bar closed that has not been acted on?
+
+        Let a runner see the expensive work coming before it starts it.
+        """
+        return bool(self._newest) and self._newest != self.state.last_decided_ts
 
     def _failed(self, message: str) -> None:
         """Record a failed cycle where somebody will see it.
