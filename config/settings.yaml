@@ -24,7 +24,26 @@ symbols:
   #
   # Only the analysis runs on all of them -- the model is still asked per asset,
   # on demand, so this costs bars and CPU rather than money.
-  active: [BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT]
+  # All twelve. The rules fired 1.9 times a day across four markets and Severin
+  # wants ten; this is the lever that gets most of the way there without making
+  # a single rule more generous -- the same setups, the same cadence, read off
+  # three times as many charts. It needed no measurement for exactly that
+  # reason: nothing about how a trade is decided changes.
+  active:
+    [
+      BTCUSDT,
+      ETHUSDT,
+      SOLUSDT,
+      XRPUSDT,
+      ADAUSDT,
+      AVAXUSDT,
+      LINKUSDT,
+      DOGEUSDT,
+      BNBUSDT,
+      LTCUSDT,
+      DOTUSDT,
+      ATOMUSDT,
+    ]
 
   # `available` is "we have the data and could trade it"; `active` is "we do".
   # The eight below were added to raise the number of cases: the rules fire

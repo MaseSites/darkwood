@@ -72,7 +72,15 @@ class AccountRow(BaseModel):
 
 
 class Portfolio(BaseModel):
-    """The whole paper account, across every market."""
+    """Every paper account, side by side.
+
+    `total_equity` is a sum and not a portfolio. Each market keeps its own
+    account at the configured starting balance, so that a loss on one cannot
+    change the position size on another -- if they shared, every row would be
+    conditioned on every other row and none of them would be comparable. Twelve
+    accounts of a thousand are twelve experiments on a realistic account, not
+    one account of twelve thousand, and the screen says so beneath the figure.
+    """
 
     accounts: list[AccountRow]
     total_equity: float

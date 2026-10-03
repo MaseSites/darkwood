@@ -1699,7 +1699,11 @@ function renderKonto(portfolio) {
       </span>
       <span class="total__meta">
         ${portfolio.trades} Trades vorwärts &middot; ${hit}<br />
-        ${money(portfolio.open_risk)} CHF gerade im Risiko
+        ${money(portfolio.open_risk)} CHF gerade im Risiko<br />
+        <span style="color: var(--dimmer)">
+          ${portfolio.accounts.length} getrennte Konten à
+          ${money(portfolio.accounts[0]?.start_equity ?? 0)} &mdash; kein gemeinsames Depot
+        </span>
       </span>
     </div>
     <ul class="konto__grid">${portfolio.accounts.map(kontoCard).join("")}</ul>`;
