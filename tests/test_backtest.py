@@ -36,15 +36,42 @@ from traidingbrain.strategies.baseline import RandomEntry, StructureBaseline
 H1_MS = timeframe_ms(Timeframe.H1)
 
 
+#: Starting equity the frozen run is measured at.
+#:
+#: Pinned rather than read from the configuration. `initial_equity` is a
+#: preference -- Severin moved it from ten thousand to one thousand because the
+#: smaller number is what he will actually have -- and position size is risk
+#: divided by stop distance, so every fill price and the whole equity curve move
+#: with it. Inheriting it meant the golden file failed on a change that was not
+#: about the engine at all, and the only ways out were to regenerate the golden
+#: (which hides whatever else moved with it) or to leave a red test standing.
+#:
+#: The guard is about the simulator, the sizing rules and the strategy. The
+#: account they run on is an input, and an input a test depends on belongs in
+#: the test.
+GOLDEN_EQUITY = 10_000.0
+
+
 @pytest.fixture(scope="module")
 def config() -> AppConfig:
-    """Shipped risk rules, short analysis warm-up.
+    """Shipped risk rules, short analysis warm-up, pinned starting equity.
 
     The risk side is deliberately the real thing: a golden run that used toy sizing
     would not protect the numbers anyone actually looks at.
     """
     base = load_config()
-    return base.model_copy(update={"engine": fast_engine_config()})
+    engine = fast_engine_config()
+    return base.model_copy(
+        update={
+            "engine": engine.model_copy(
+                update={
+                    "simulation": engine.simulation.model_copy(
+                        update={"initial_equity": GOLDEN_EQUITY}
+                    )
+                }
+            )
+        }
+    )
 
 
 @pytest.fixture(scope="module")

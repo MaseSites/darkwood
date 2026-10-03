@@ -1567,3 +1567,454 @@ async function loadPaper() {
 
 loadPaper();
 setInterval(loadPaper, PAPER_POLL_MS);
+
+/* ------------------------------------------------------- the four views -- */
+
+/* Four places, not four tabs. Each answers a different question, and only the
+ * market view is live -- the other three are records and hold still, so they
+ * load when you open them rather than polling in the background. A ledger that
+ * redrew itself every four seconds while you read it would be worse than one
+ * that did not.
+ *
+ * Routing is the URL hash and nothing else. No framework, no history
+ * manipulation: the address bar says which page you are on, reloading keeps
+ * you there, and the back button works because it was never taken away.
+ */
+
+const VIEWS = ["markt", "konto", "trades", "verlauf"];
+const DEFAULT_VIEW = "markt";
+
+/* Which kind of trade each record page is showing. Forward and replayed are
+ * never mixed and never averaged, so this is per-page state rather than a
+ * global: looking at replayed trades on one page should not silently change
+ * what the other one means. */
+const sources = { trades: "live", verlauf: "live" };
+
+function currentView() {
+  const raw = (location.hash || "").replace(/^#\/?/, "");
+  return VIEWS.includes(raw) ? raw : DEFAULT_VIEW;
+}
+
+function showView(name) {
+  for (const view of VIEWS) {
+    const node = document.getElementById(`view-${view}`);
+    if (node) node.hidden = view !== name;
+  }
+  document.querySelectorAll(".views__item").forEach((item) => {
+    if (item.dataset.view === name) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  });
+  /* Which view is open is written on <body> and the rest is CSS. Setting
+   * `hidden` on the rail here did not survive: the market poll rebuilds that
+   * element every few seconds and the attribute went with it, so the market
+   * picker sat on the account page looking like a control you could use. An
+   * attribute on an ancestor nothing re-renders cannot be clobbered that way. */
+  document.body.dataset.view = name;
+
+  if (name === "konto") loadKonto();
+  if (name === "trades") loadLedger();
+  if (name === "verlauf") loadCurve();
+}
+
+function money(value) {
+  return value.toLocaleString("de-CH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function signed(value, digits = 2) {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}`;
+}
+
+function viewClock(ms) {
+  if (!ms) return "—";
+  return new Date(ms).toLocaleString("de-CH", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/* ------------------------------------------------------------- Konto ----- */
+
+function kontoCard(account) {
+  const classes = ["konto__card"];
+  if (account.stale) classes.push("konto__card--stale");
+  else if (account.change > 0) classes.push("konto__card--up");
+  else if (account.change < 0) classes.push("konto__card--down");
+
+  const direction = account.change > 0 ? "up" : account.change < 0 ? "down" : "";
+  const open = account.has_position
+    ? `<p class="konto__state">Position offen &middot; ${money(
+        account.open_risk
+      )} CHF im Risiko &middot; ${signed(account.unrealised)} CHF unrealisiert</p>`
+    : "";
+
+  return `
+    <li class="${classes.join(" ")}">
+      <div class="konto__sym">
+        <span>${escapeHtml(account.symbol)}</span>
+        <span class="konto__value">${money(account.equity)}</span>
+      </div>
+      <p class="konto__delta ${direction}">
+        ${signed(account.change)} CHF &middot; ${signed(account.change_pct, 2)} %
+        <span style="color: var(--dimmer)">von ${money(account.start_equity)}</span>
+      </p>
+      ${open}
+      <p class="konto__state">${escapeHtml(account.activity)}</p>
+      <div class="konto__actions">
+        <input class="konto__amount" type="number" min="1" step="50" value="500"
+               aria-label="Betrag in Franken" data-amount="${escapeHtml(account.symbol)}" />
+        <button class="btn" type="button" data-topup="${escapeHtml(account.symbol)}">
+          Einzahlen
+        </button>
+        <button class="btn" type="button" data-reset="${escapeHtml(account.symbol)}">
+          Zurücksetzen
+        </button>
+      </div>
+    </li>`;
+}
+
+function renderKonto(portfolio) {
+  const host = document.getElementById("konto");
+  if (!host) return;
+  if (portfolio === "unavailable") {
+    host.innerHTML = `<p class="konto__state">Konten nicht lesbar.</p>`;
+    return;
+  }
+
+  const direction =
+    portfolio.total_change > 0 ? "up" : portfolio.total_change < 0 ? "down" : "";
+  const hit = portfolio.trades
+    ? `${Math.round((100 * portfolio.wins) / portfolio.trades)} % Treffer`
+    : "noch kein abgeschlossener Trade";
+
+  host.innerHTML = `
+    <div class="total">
+      <span class="total__value">${money(portfolio.total_equity)}</span>
+      <span class="total__change ${direction}">
+        ${signed(portfolio.total_change)} CHF &middot; ${signed(portfolio.total_change_pct, 2)} %
+      </span>
+      <span class="total__meta">
+        ${portfolio.trades} Trades vorwärts &middot; ${hit}<br />
+        ${money(portfolio.open_risk)} CHF gerade im Risiko
+      </span>
+    </div>
+    <ul class="konto__grid">${portfolio.accounts.map(kontoCard).join("")}</ul>`;
+
+  host.querySelectorAll("[data-topup]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const symbol = button.dataset.topup;
+      const field = host.querySelector(`[data-amount="${symbol}"]`);
+      const amount = Number(field?.value ?? 0);
+      if (!(amount > 0)) return;
+      await api(`/api/portfolio/${symbol}/topup`, {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      });
+      loadKonto();
+    });
+  });
+
+  host.querySelectorAll("[data-reset]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const symbol = button.dataset.reset;
+      /* A reset throws away a balance that took trades to produce, so it asks.
+       * The journal is untouched either way -- what happened happened. */
+      if (!confirm(`${symbol} auf den Startbetrag zurücksetzen?\n\nDie Trades im Journal bleiben.`))
+        return;
+      await api(`/api/portfolio/${symbol}/reset`, { method: "POST" });
+      loadKonto();
+    });
+  });
+}
+
+function renderSettings(settings) {
+  const host = document.getElementById("einstellungen");
+  if (!host) return;
+  if (settings === "unavailable") {
+    host.innerHTML = `<p class="konto__state">Einstellungen nicht lesbar.</p>`;
+    return;
+  }
+
+  const rows = [
+    ["Startkapital je Markt", `${money(settings.initial_equity)} CHF`, "bei Zurücksetzen"],
+    [
+      "Risiko je Trade",
+      `${(settings.risk_pct_floor * 100).toFixed(2)} %`,
+      `das sind ${money(settings.initial_equity * settings.risk_pct_floor)} CHF`,
+    ],
+    ["Hebel höchstens", `${settings.max_leverage}×`, "so gewählt, dass die Liquidation hinter dem Stop liegt"],
+    ["Mindest-CRV", `${settings.min_reward_risk}`, "Gewinn muss mindestens so viel wie das Risiko sein"],
+    [
+      "Gebührendecke",
+      `${(settings.max_cost_fraction_of_risk * 100).toFixed(0)} %`,
+      "Gebühren dürfen höchstens so viel vom Risiko fressen",
+    ],
+    ["Slippage", `${settings.slippage_bps} bp`, "wird immer gegen uns gerechnet"],
+    ["Setups aktiv", settings.setups_on.join(" · "), "D und E fehlen deine Regeln"],
+    [
+      "Zeitebenen",
+      settings.searched_timeframes.join(" · "),
+      `Entscheidung auf ${settings.signal_timeframe}-Schluss`,
+    ],
+  ];
+
+  host.innerHTML = `
+    <div class="settings__grid">
+      ${rows
+        .map(
+          ([label, value, note]) => `
+        <dl class="settings__row">
+          <dt>${escapeHtml(label)}</dt>
+          <dd>${escapeHtml(String(value))}<small>${escapeHtml(note)}</small></dd>
+        </dl>`
+        )
+        .join("")}
+    </div>
+    <p class="settings__note">${escapeHtml(settings.note)}</p>`;
+}
+
+async function loadKonto() {
+  try {
+    const [portfolio, settings] = await Promise.all([
+      api("/api/portfolio"),
+      api("/api/portfolio/settings"),
+    ]);
+    renderKonto(portfolio);
+    renderSettings(settings);
+  } catch {
+    renderKonto("unavailable");
+    renderSettings("unavailable");
+  }
+}
+
+/* ------------------------------------------------------------ Trades ----- */
+
+function ledgerRow(row) {
+  const won = row.r_multiple >= 0;
+  const flag = row.agreed_with_score
+    ? ""
+    : `<span class="ledger__flag" title="Das Gesamtbild zeigte in die andere Richtung">Bild dagegen</span>`;
+  return `
+    <tr>
+      <td>${viewClock(row.closed_ts)}</td>
+      <td>${escapeHtml(row.symbol.replace("USDT", ""))}</td>
+      <td>${escapeHtml(row.setup)} ${escapeHtml(row.setup_timeframe)}</td>
+      <td>${row.side === "long" ? "Long" : "Short"}</td>
+      <td class="ledger__num ${won ? "up" : "down"}">${signed(row.r_multiple)} R</td>
+      <td class="ledger__num optional ${won ? "up" : "down"}">${signed(row.net_pnl)}</td>
+      <td class="optional">${escapeHtml(row.exit_reason)}</td>
+      <td class="ledger__num optional">${row.rating}${flag}</td>
+      <td class="ledger__why">${escapeHtml(row.verdict)}</td>
+    </tr>`;
+}
+
+function renderLedger(ledger, source) {
+  const host = document.getElementById("trades");
+  const hint = document.getElementById("trades-hint");
+  if (!host) return;
+
+  document.querySelectorAll("#trades-source .segmented__item").forEach((item) => {
+    item.setAttribute("aria-pressed", String(item.dataset.source === source));
+  });
+
+  if (ledger === "unavailable") {
+    host.innerHTML = `<p class="konto__state">Journal nicht lesbar.</p>`;
+    return;
+  }
+  if (!ledger.rows.length) {
+    host.innerHTML = `<p class="konto__state">
+      ${
+        source === "live"
+          ? "Noch kein Trade vorwärts abgeschlossen. Die ersten brauchen Stunden bis Tage."
+          : "Keine nachgespielten Trades im Journal."
+      }</p>`;
+    if (hint) hint.textContent = "";
+    return;
+  }
+
+  const sum = ledger.rows.reduce((total, row) => total + row.r_multiple, 0);
+  const wins = ledger.rows.filter((row) => row.r_multiple > 0).length;
+  if (hint) {
+    hint.textContent =
+      `${ledger.total} Trades${ledger.truncated ? ` (die neuesten ${ledger.rows.length} gezeigt)` : ""}` +
+      ` · ${Math.round((100 * wins) / ledger.rows.length)} % Treffer · ${signed(sum, 1)} R`;
+  }
+
+  host.innerHTML = `
+    <div class="scroller">
+      <table class="ledger">
+        <thead>
+          <tr>
+            <th>Geschlossen</th><th>Markt</th><th>Setup</th><th>Richtung</th>
+            <th class="ledger__num">Ergebnis</th>
+            <th class="ledger__num optional">CHF</th>
+            <th class="optional">Grund</th>
+            <th class="ledger__num optional">Bewertung</th>
+            <th>Was passiert ist</th>
+          </tr>
+        </thead>
+        <tbody>${ledger.rows.map(ledgerRow).join("")}</tbody>
+      </table>
+    </div>`;
+}
+
+async function loadLedger() {
+  const source = sources.trades;
+  try {
+    renderLedger(await api(`/api/portfolio/ledger?source=${source}`), source);
+  } catch {
+    renderLedger("unavailable", source);
+  }
+}
+
+/* ----------------------------------------------------------- Verlauf ----- */
+
+/* An SVG line, drawn from the points rather than by a chart library. The shape
+ * is one path and two labels; a dependency for that would be more code than
+ * the code.
+ *
+ * In R, not francs. A trade's result in money depends on the size of the
+ * account it was taken on, and that account has changed size -- a franc curve
+ * across the boundary shows a cliff that no trade caused. */
+function curveSvg(points) {
+  if (points.length < 2) return "";
+  const width = 1000;
+  const height = 260;
+  const pad = { top: 16, right: 48, bottom: 20, left: 8 };
+
+  const values = points.map((p) => p.cumulative_r);
+  let low = Math.min(0, ...values);
+  let high = Math.max(0, ...values);
+  if (high === low) high = low + 1;
+  const span = high - low;
+
+  const x = (i) =>
+    pad.left + (i / (points.length - 1)) * (width - pad.left - pad.right);
+  const y = (v) =>
+    pad.top + ((high - v) / span) * (height - pad.top - pad.bottom);
+
+  const path = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.cumulative_r).toFixed(1)}`).join("");
+  const final = values[values.length - 1];
+  const zeroY = y(0).toFixed(1);
+
+  return `
+    <svg class="curve" viewBox="0 0 ${width} ${height}" role="img"
+         aria-label="Summenkurve in R über ${points.length} Trades, am Ende ${signed(final, 2)} R">
+      <line class="curve__zero" x1="${pad.left}" y1="${zeroY}" x2="${width - pad.right}" y2="${zeroY}" />
+      <text class="curve__label" x="${width - pad.right + 6}" y="${zeroY + 3}">0</text>
+      <path class="curve__line curve__line--${final >= 0 ? "up" : "down"}" d="${path}" />
+      <text class="curve__label" x="${width - pad.right + 6}" y="${(y(final) + 3).toFixed(1)}">
+        ${signed(final, 1)}
+      </text>
+    </svg>`;
+}
+
+function breakdown(title, table) {
+  const entries = Object.entries(table).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) return "";
+  const widest = Math.max(...entries.map(([, v]) => Math.abs(v)), 0.001);
+  const rows = entries
+    .map(([name, value]) => {
+      const share = (Math.abs(value) / widest) * 50;
+      const left = value >= 0 ? 50 : 50 - share;
+      return `
+        <li class="breakdown__row">
+          <span class="breakdown__name">${escapeHtml(name.replace("USDT", ""))}</span>
+          <span class="breakdown__track">
+            <span class="breakdown__fill ${value >= 0 ? "up" : "down"}"
+                  style="left:${left}%;width:${share}%"></span>
+          </span>
+          <span class="breakdown__value">${signed(value, 1)} R</span>
+        </li>`;
+    })
+    .join("");
+  return `
+    <h3 class="panel__head">${escapeHtml(title)}</h3>
+    <ul class="breakdown">${rows}</ul>`;
+}
+
+function renderCurve(curve, source) {
+  const host = document.getElementById("verlauf");
+  if (!host) return;
+
+  document.querySelectorAll("#verlauf-source .segmented__item").forEach((item) => {
+    item.setAttribute("aria-pressed", String(item.dataset.source === source));
+  });
+
+  if (curve === "unavailable") {
+    host.innerHTML = `<p class="konto__state">Verlauf nicht lesbar.</p>`;
+    return;
+  }
+  if (!curve.points.length) {
+    host.innerHTML = `<p class="konto__state">Noch nichts abgeschlossen.</p>`;
+    return;
+  }
+
+  const total = curve.points[curve.points.length - 1].cumulative_r;
+  const count = curve.points.length;
+  const mean = total / count;
+  const warning =
+    source === "live" && count < 30
+      ? `<p class="figure__note">Zu wenige Trades für eine Aussage. Unter dreissig sagt
+         ein Mittelwert mehr über den Zufall als über die Regeln.</p>`
+      : "";
+
+  host.innerHTML = `
+    ${curveSvg(curve.points)}
+    <div class="figures">
+      <div>
+        <div class="figure__label">Summe</div>
+        <div class="figure__value ${total >= 0 ? "up" : "down"}">${signed(total, 1)} R</div>
+        <div class="figure__note">über ${count} Trades</div>
+      </div>
+      <div>
+        <div class="figure__label">Je Trade</div>
+        <div class="figure__value ${mean >= 0 ? "up" : "down"}">${signed(mean, 3)} R</div>
+        ${warning}
+      </div>
+      <div>
+        <div class="figure__label">Grösster Rückgang</div>
+        <div class="figure__value down">−${curve.drawdown_r.toFixed(1)} R</div>
+        <div class="figure__note">vom eigenen Höchststand</div>
+      </div>
+      <div>
+        <div class="figure__label">Bester / schlechtester</div>
+        <div class="figure__value">${signed(curve.best_r, 1)} / ${signed(curve.worst_r, 1)}</div>
+        <div class="figure__note">einzelner Trade</div>
+      </div>
+    </div>
+    ${breakdown("Nach Markt", curve.by_symbol)}
+    ${breakdown("Nach Setup", curve.by_setup)}`;
+}
+
+async function loadCurve() {
+  const source = sources.verlauf;
+  try {
+    renderCurve(await api(`/api/portfolio/curve?source=${source}`), source);
+  } catch {
+    renderCurve("unavailable", source);
+  }
+}
+
+/* --------------------------------------------------------------- wire ---- */
+
+document.querySelectorAll("#trades-source .segmented__item").forEach((item) => {
+  item.addEventListener("click", () => {
+    sources.trades = item.dataset.source;
+    loadLedger();
+  });
+});
+
+document.querySelectorAll("#verlauf-source .segmented__item").forEach((item) => {
+  item.addEventListener("click", () => {
+    sources.verlauf = item.dataset.source;
+    loadCurve();
+  });
+});
+
+window.addEventListener("hashchange", () => showView(currentView()));
+showView(currentView());

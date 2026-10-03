@@ -43,18 +43,56 @@ from traidingbrain.api.market import (
     setups_at,
 )
 from traidingbrain.api.paper import PaperReadout, build_paper_readout
+from traidingbrain.api.portfolio import (
+    Curve,
+    Ledger,
+    Portfolio,
+    SettingsView,
+    TopUp,
+    TopUpRequest,
+    build_curve,
+    build_ledger,
+    build_portfolio,
+    build_settings,
+    reset_account,
+    top_up,
+)
 from traidingbrain.api.scoring import ScoreRead, build_score_view
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Timeframe
 from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.domain.proposal import FactorView, ProposalAdjustment, TradeProposal
+from traidingbrain.journal.record import Source
 from traidingbrain.proposals.builder import BuildFailure, ProposalBuilder, describe
 from traidingbrain.proposals.store import ProposalStore
 from traidingbrain.risk.limits import AccountState, KillSwitch, RiskLimits
 from traidingbrain.risk.sizing import min_economic_stop_fraction
 
 BPS = 1e-4
+
+
+class NoCacheStatic(StaticFiles):
+    """The dashboard's own files, never cached.
+
+    Chrome happily serves a stale `app.js` after it changes, and the page then
+    runs yesterday's code against today's markup -- which looks like a bug in
+    whatever was just built rather than like a cache. It has cost real time here
+    more than once, and the handover note carries a warning about it that this
+    class is meant to make unnecessary.
+
+    Nothing is given up. These files are served from this machine to this
+    machine, they are tens of kilobytes, and the dashboard is the one surface
+    where seeing the current version matters more than any load time.
+    """
+
+    def is_not_modified(self, *args: Any, **kwargs: Any) -> bool:
+        return False
+
+    async def get_response(self, path: str, scope: Any) -> Any:
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
 
 class PriceSource(Protocol):
@@ -255,11 +293,17 @@ def create_app(services: Services) -> FastAPI:
 
     dashboard = Path(__file__).resolve().parent.parent / "dashboard"
     if dashboard.exists():
-        app.mount("/static", StaticFiles(directory=dashboard / "static"), name="static")
+        app.mount("/static", NoCacheStatic(directory=dashboard / "static"), name="static")
 
         @app.get("/", include_in_schema=False)
         def index() -> FileResponse:
-            return FileResponse(dashboard / "templates" / "index.html")
+            # Same reasoning as NoCacheStatic: the page is served from this
+            # machine to this machine, and a cached shell loading fresh scripts
+            # is the worst of both.
+            return FileResponse(
+                dashboard / "templates" / "index.html",
+                headers={"Cache-Control": "no-store"},
+            )
 
     @app.get("/api/state", response_model=SystemState)
     def state() -> SystemState:
@@ -438,6 +482,57 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
             symbols=_followed_symbols(services),
         )
 
+    @app.get("/api/portfolio", response_model=Portfolio)
+    def portfolio() -> Portfolio:
+        """Every paper account side by side, and what the forward trades add up to."""
+        return build_portfolio(
+            _state_path(services),
+            _journal_path(services),
+            services.config,
+            now_ms=int(time.time() * 1000),
+        )
+
+    @app.get("/api/portfolio/ledger", response_model=Ledger)
+    def ledger(source: str = "live", symbol: str | None = None) -> Ledger:
+        """Every trade of one kind, newest first.
+
+        One kind, never both. A list that mixed replayed with forward trades
+        would invite exactly the average this project refuses to compute.
+        """
+        return build_ledger(_journal_path(services), source=_source(source), symbol=symbol)
+
+    @app.get("/api/portfolio/curve", response_model=Curve)
+    def curve(source: str = "live") -> Curve:
+        """The running total in R, with how far it fell below its own peak."""
+        return build_curve(_journal_path(services), source=_source(source))
+
+    @app.get("/api/portfolio/settings", response_model=SettingsView)
+    def settings() -> SettingsView:
+        """What the engine is configured to do. Read-only on purpose."""
+        return build_settings(services.config)
+
+    @app.post("/api/portfolio/{symbol}/topup")
+    def topup(symbol: str, request: TopUpRequest) -> dict[str, Any]:
+        """Add paper money to one account.
+
+        Paper only -- there is no code path from here to an exchange. Added to
+        the balance rather than replacing it, so a deposit reads like a deposit.
+        """
+        _known(services, symbol)
+        row = top_up(_state_path(services), services.config, TopUp(symbol, request.amount))
+        return {"symbol": symbol, "equity": row.equity}
+
+    @app.post("/api/portfolio/{symbol}/reset")
+    def reset(symbol: str) -> dict[str, Any]:
+        """Start one account over at the configured balance.
+
+        The journal is untouched: what happened happened, and a reset is about
+        the account rather than about the record.
+        """
+        _known(services, symbol)
+        reset_account(_state_path(services), symbol)
+        return {"symbol": symbol, "equity": services.config.engine.simulation.initial_equity}
+
     @app.get("/api/market/{symbol}/score", response_model=ScoreRead)
     def score(symbol: str) -> ScoreRead:
         """Every indicator, reconciled by family, across every timeframe.
@@ -449,6 +544,33 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
         to stop doing.
         """
         return _score_for(services, symbol)
+
+
+def _state_path(services: Services) -> Path:
+    return services.config.engine.paths.data_dir / "paper.sqlite"
+
+
+def _journal_path(services: Services) -> Path:
+    return services.config.engine.paths.data_dir / "journal.sqlite"
+
+
+def _source(value: str) -> Source:
+    """The journal kind named in a query string, or a 400.
+
+    Not a default: asking for a kind that does not exist is a caller bug, and
+    quietly serving the other one is how a screen ends up showing replayed
+    trades under a heading that says forward.
+    """
+    try:
+        return Source(value)
+    except ValueError:
+        raise HTTPException(400, f"unknown source {value!r}; use live or replay") from None
+
+
+def _known(services: Services, symbol: str) -> None:
+    """Refuse a symbol nobody follows, so a typo cannot create an account."""
+    if symbol not in services.config.engine.symbols.active:
+        raise HTTPException(404, f"{symbol} is not one of the followed markets")
 
 
 def _followed_symbols(services: Services) -> list[str]:

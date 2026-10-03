@@ -120,8 +120,19 @@ trigger:
   min_bars_between_calls: 4
 
 simulation:
-  # Starting equity for a backtest, in quote currency (USDT).
-  initial_equity: 10000.0
+  # Starting equity per market, in quote currency (USDT).
+  #
+  # Severin's own number: a thousand is roughly what he expects to have when he
+  # starts, and each of the four markets keeps its own account, so the paper
+  # portfolio is four thousand. It was ten thousand, which made every figure on
+  # the screen a size he has never held.
+  #
+  # Small enough to matter. At 0.5% risk this is five francs a trade, and the
+  # venue refuses anything under fifty USDT of notional -- so a setup with a very
+  # wide stop can now be too small to place, where at ten thousand it never was.
+  # That is a real constraint rather than a bug: it is the one a thousand francs
+  # actually imposes, and seeing it here is the point of using the real number.
+  initial_equity: 1000.0
 
   # Slippage applied to fills that cross the spread: market entries, stop exits and
   # liquidations. Limit orders that get filled do not pay it -- they were sitting

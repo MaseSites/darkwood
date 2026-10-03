@@ -16,9 +16,19 @@
     <div class="shell">
       <header class="masthead">
         <h1 class="wordmark">traidingBrain</h1>
-        <!-- The asset rail sits in the masthead because picking one is the first
-             thing anybody does here, and a control you have to look for is a
-             control that gets missed. -->
+
+        <!-- Four places, not four tabs. Each answers a different question, and
+             the order is the order a person asks them: what is the market
+             doing, what have I got, what did I trade, is it going up. -->
+        <nav class="views" id="views" aria-label="Ansicht wählen">
+          <a class="views__item" href="#/markt" data-view="markt">Markt</a>
+          <a class="views__item" href="#/konto" data-view="konto">Konto</a>
+          <a class="views__item" href="#/trades" data-view="trades">Trades</a>
+          <a class="views__item" href="#/verlauf" data-view="verlauf">Verlauf</a>
+        </nav>
+
+        <!-- The asset rail belongs to the market view and hides with it: a
+             market picker on the account page is a control with nothing to do. -->
         <nav class="rail" id="rail" aria-label="Markt wählen">
           <span class="rail__loading">Märkte&hellip;</span>
         </nav>
@@ -27,38 +37,110 @@
 
       <div id="banners"></div>
 
-      <!-- The market, always. Most hours have no setup, and a screen only worth
-           opening when one appears is a screen nobody learns the market on. -->
-      <section class="market panel" id="market" aria-label="Marktansicht">
-        <div class="placeholder"><span class="pulse"></span><p>Lese den Markt&hellip;</p></div>
-      </section>
+      <!-- ------------------------------------------------------- Markt -- -->
+      <div class="view" id="view-markt">
+        <!-- The market, always. Most hours have no setup, and a screen only
+             worth opening when one appears is a screen nobody learns the
+             market on. -->
+        <section class="market panel" id="market" aria-label="Marktansicht">
+          <div class="placeholder"><span class="pulse"></span><p>Lese den Markt&hellip;</p></div>
+        </section>
 
-      <!-- The proposals. One screen, no scrolling into view: everything that
-           matters for a decision should be visible at the moment it is made. -->
-      <section class="panel" aria-labelledby="decision-head">
-        <h2 class="panel__head" id="decision-head">
-          Entscheidung
-          <span class="panel__hint">Hier erscheint ein Trade, wenn einer vorbereitet ist</span>
-        </h2>
-        <main class="stack" id="list" aria-live="polite">
-          <div class="placeholder"><span class="pulse"></span><p>Lade&hellip;</p></div>
-        </main>
-      </section>
+        <!-- The proposals. One screen, no scrolling into view: everything that
+             matters for a decision should be visible at the moment it is made. -->
+        <section class="panel" aria-labelledby="decision-head">
+          <h2 class="panel__head" id="decision-head">
+            Entscheidung
+            <span class="panel__hint">Hier erscheint ein Trade, wenn einer vorbereitet ist</span>
+          </h2>
+          <main class="stack" id="list" aria-live="polite">
+            <div class="placeholder"><span class="pulse"></span><p>Lade&hellip;</p></div>
+          </main>
+        </section>
 
-      <!-- What the system did on its own, with fake money. Below the decision
-           panel on purpose: the thing that needs you stays above the thing that
-           is only worth knowing about. -->
-      <section class="panel" aria-labelledby="paper-head">
-        <h2 class="panel__head" id="paper-head">
-          Papertrading
-          <span class="panel__hint" id="paper-hint"
-            >Das System handelt hier selbst &mdash; ohne Konto, ohne Geld</span
-          >
-        </h2>
-        <div id="paper">
-          <div class="placeholder"><span class="pulse"></span><p>Lese die Konten&hellip;</p></div>
-        </div>
-      </section>
+        <!-- What the system did on its own, with fake money. Below the decision
+             panel on purpose: the thing that needs you stays above the thing
+             that is only worth knowing about. -->
+        <section class="panel" aria-labelledby="paper-head">
+          <h2 class="panel__head" id="paper-head">
+            Papertrading
+            <span class="panel__hint" id="paper-hint"
+              >Das System handelt hier selbst &mdash; ohne Konto, ohne Geld</span
+            >
+          </h2>
+          <div id="paper">
+            <div class="placeholder"><span class="pulse"></span><p>Lese die Konten&hellip;</p></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ------------------------------------------------------- Konto -- -->
+      <div class="view" id="view-konto" hidden>
+        <section class="panel" aria-labelledby="konto-head">
+          <h2 class="panel__head" id="konto-head">
+            Konto
+            <span class="panel__hint">Spielgeld. Kein Konto bei einer Börse, kein echtes Geld.</span>
+          </h2>
+          <div id="konto">
+            <div class="placeholder"><span class="pulse"></span><p>Lese die Konten&hellip;</p></div>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="einstellungen-head">
+          <h2 class="panel__head" id="einstellungen-head">
+            Einstellungen
+            <span class="panel__hint">Die Bedingungen, unter denen alles gemessen wurde</span>
+          </h2>
+          <div id="einstellungen">
+            <div class="placeholder"><span class="pulse"></span><p>Lade&hellip;</p></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ------------------------------------------------------ Trades -- -->
+      <div class="view" id="view-trades" hidden>
+        <section class="panel" aria-labelledby="trades-head">
+          <h2 class="panel__head" id="trades-head">
+            Trades
+            <span class="panel__hint" id="trades-hint">Jeder abgeschlossene Trade, neuester zuerst</span>
+          </h2>
+          <!-- Forward and replayed trades are never shown together and never
+               averaged. The switch is explicit so that which kind you are
+               looking at is a thing you chose, not a default you inherited. -->
+          <div class="segmented" id="trades-source" role="group" aria-label="Art der Trades">
+            <button class="segmented__item" type="button" data-source="live">
+              Vorwärts <span class="segmented__note">echt entschieden</span>
+            </button>
+            <button class="segmented__item" type="button" data-source="replay">
+              Nachgespielt <span class="segmented__note">über alte Kerzen</span>
+            </button>
+          </div>
+          <div id="trades">
+            <div class="placeholder"><span class="pulse"></span><p>Lade&hellip;</p></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ----------------------------------------------------- Verlauf -- -->
+      <div class="view" id="view-verlauf" hidden>
+        <section class="panel" aria-labelledby="verlauf-head">
+          <h2 class="panel__head" id="verlauf-head">
+            Verlauf
+            <span class="panel__hint">Summe in R &mdash; in Vielfachen dessen, was riskiert wurde</span>
+          </h2>
+          <div class="segmented" id="verlauf-source" role="group" aria-label="Art der Trades">
+            <button class="segmented__item" type="button" data-source="live">
+              Vorwärts <span class="segmented__note">echt entschieden</span>
+            </button>
+            <button class="segmented__item" type="button" data-source="replay">
+              Nachgespielt <span class="segmented__note">über alte Kerzen</span>
+            </button>
+          </div>
+          <div id="verlauf">
+            <div class="placeholder"><span class="pulse"></span><p>Lade&hellip;</p></div>
+          </div>
+        </section>
+      </div>
 
       <footer class="footnote">
         <span>
