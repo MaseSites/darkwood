@@ -51,6 +51,7 @@ from traidingbrain.config.settings import load_config
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
+from traidingbrain.reporting.resume import Partial
 from traidingbrain.sim.engine import BacktestEngine
 from traidingbrain.strategies.guide import GuidePool
 
@@ -92,10 +93,23 @@ def main() -> int:
     funding_store = FundingStore(base.engine.paths.funding_dir)
     symbols = list(base.engine.symbols.active)
 
-    results: dict[float, list[float]] = {c: [] for c in CEILINGS}
-    refused: dict[float, int] = {c: 0 for c in CEILINGS}
+    # Resumable, because this run has now been killed twice by a shutdown and
+    # each death threw away hours. The signature carries the ceilings: the first
+    # version of this study measured (0.15, 0.25, 0.40, 1.00), and a file that
+    # silently mixed those cells with these would read as one curve over eight
+    # points that was never measured as one.
+    signature = f"{base.engine.simulation.initial_equity}|{base.engine.setups.enabled}|{CEILINGS}"
+    partial = Partial.load(base.engine.paths.data_dir / "study_cost_floor.json", signature)
+
+    labels = {c: f"Decke {c:5.3f}" for c in CEILINGS}
+    done = partial.symbols_done(labels[CEILINGS[0]])
+    if done:
+        print(f"Fortsetzung: {', '.join(done)} liegen vor", flush=True)
+        print(flush=True)
 
     for symbol in symbols:
+        if all(partial.has(symbol, labels[c]) for c in CEILINGS):
+            continue
         started = time.perf_counter()
         frames = {tf: store.read(symbol, tf) for tf in base.engine.timeframes.context}
         minutes = store.read(symbol, base.engine.timeframes.execution)
@@ -109,6 +123,8 @@ def main() -> int:
         print(f"{symbol}: Analyse in {time.perf_counter() - started:.0f}s", flush=True)
 
         for ceiling in CEILINGS:
+            if partial.has(symbol, labels[ceiling]):
+                continue
             config = base.model_copy(
                 update={
                     "risk": base.risk.model_copy(
@@ -130,8 +146,12 @@ def main() -> int:
                 history=None,
             )
             result = engine.run(GuidePool.for_config(config))
-            results[ceiling].extend(f.r_multiple for f in result.fills)
-            refused[ceiling] += result.intents_rejected_by_risk
+            partial.put(
+                symbol,
+                labels[ceiling],
+                [f.r_multiple for f in result.fills],
+                refused=result.intents_rejected_by_risk,
+            )
             print(
                 f"   Decke {ceiling:4.2f}: {len(result.fills):4d} Trades, "
                 f"{result.intents_rejected_by_risk:4d} abgelehnt",
@@ -140,30 +160,35 @@ def main() -> int:
 
     print("\n" + "=" * 78)
     print("Alle vier Märkte, vier Jahre\n")
+    pooled = {c: partial.collect(labels[c]) for c in CEILINGS}
     for ceiling in CEILINGS:
-        rs = results[ceiling]
+        rs = pooled[ceiling]
         if not rs:
             continue
         wins = sum(1 for r in rs if r > 0)
+        refused = sum(
+            int(partial.note(sym, labels[ceiling], "refused") or 0)
+            for sym in partial.symbols_done(labels[ceiling])
+        )
         print(
-            f"Decke {ceiling:4.2f}  n={len(rs):5d}  {np.mean(rs):+.4f} R  "
+            f"Decke {ceiling:5.3f}  n={len(rs):5d}  {np.mean(rs):+.4f} R  "
             f"Treffer {100 * wins / len(rs):3.0f}%  Summe {sum(rs):+8.1f} R  "
-            f"abgelehnt {refused[ceiling]:5d}  {interval(rs)}"
+            f"abgelehnt {refused:5d}  {interval(rs)}"
         )
 
     # The question is not whether more trades is better but what the extra ones
     # did. Everything above the shipped ceiling is a trade the floor refuses.
     print("\nWas die zusätzlichen Trades allein gebracht hätten:")
-    baseline = len(results[CEILINGS[0]])
+    tightest = pooled[CEILINGS[0]]
     for ceiling in CEILINGS[1:]:
-        rs = results[ceiling]
-        extra = len(rs) - baseline
+        rs = pooled[ceiling]
+        extra = len(rs) - len(tightest)
         if extra <= 0:
             continue
         print(
-            f"  bis {ceiling:4.2f}: {extra:5d} Trades mehr, "
-            f"Summe {sum(rs) - sum(results[CEILINGS[0]]):+7.1f} R, "
-            f"im Mittel {(sum(rs) - sum(results[CEILINGS[0]])) / extra:+.4f} R pro Stück"
+            f"  bis {ceiling:5.3f}: {extra:5d} Trades mehr, "
+            f"Summe {sum(rs) - sum(tightest):+7.1f} R, "
+            f"im Mittel {(sum(rs) - sum(tightest)) / extra:+.4f} R pro Stück"
         )
     return 0
 
