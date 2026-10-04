@@ -97,7 +97,28 @@ class Partial:
         return sorted(k.split("|")[0] for k in self.cells if k.endswith(f"|{variant}"))
 
     def save(self) -> None:
+        """Write, keeping cells another process wrote while this one computed.
+
+        A study is now split across processes -- one per market, because a whole
+        run outlives the window any single process gets. Each holds the dict it
+        loaded at startup and writes the whole thing, so without this the last
+        process to finish would silently erase the others' work: no corruption,
+        no error, just a file missing two thirds of a measurement that took an
+        hour.
+
+        So the file is re-read and merged on every write. This process's own
+        cells win -- it computed them -- and anything it has never seen is
+        carried over. There is no lock, and the window between reading and
+        replacing is milliseconds against twenty-two minutes of computation;
+        the processes also own disjoint keys, so a collision would have to
+        overwrite a cell with the same cell.
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        disk = Partial.load(self.path, self.signature)
+        # Merged back into this process too, so its own summary reports the
+        # whole measurement rather than its slice of it.
+        self.cells = {**disk.cells, **self.cells}
+        self.notes = {**disk.notes, **self.notes}
         payload = {"signature": self.signature, "cells": self.cells, "notes": self.notes}
         # Written beside the target and moved into place, so a shutdown during
         # the write leaves the previous file intact rather than a truncated one.

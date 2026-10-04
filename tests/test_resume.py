@@ -113,3 +113,63 @@ def test_notes_travel_with_their_cell(tmp_path: Path) -> None:
     assert resumed.note("BTCUSDT", "H1", "first_ts") == 100
     assert resumed.note("BTCUSDT", "H1", "last_ts") == 900
     assert resumed.note("ETHUSDT", "H1", "first_ts") is None
+
+
+def test_one_process_does_not_erase_another_s_cells(tmp_path: Path) -> None:
+    """The failure the split run would otherwise have produced.
+
+    A study is split across processes, one per market, because a whole run
+    outlives the window any single process gets. Each loads the file at startup
+    and writes the whole dict back, so the last to finish would erase the
+    others: no corruption, no error, just a file missing two thirds of a
+    measurement that took an hour.
+
+    Both processes here start from the same empty file, exactly as they do in
+    the real run, and neither has any way to learn about the other except
+    through the file.
+    """
+    path = tmp_path / "study.json"
+    signature = "same-settings"
+
+    eth = Partial.load(path, signature)
+    sol = Partial.load(path, signature)
+
+    eth.put("ETHUSDT", "Decke 0.100", [0.5, -1.0], refused=11)
+    sol.put("SOLUSDT", "Decke 0.100", [1.5], refused=7)
+
+    final = Partial.load(path, signature)
+
+    assert final.has("ETHUSDT", "Decke 0.100"), "the first market's cell was erased"
+    assert final.has("SOLUSDT", "Decke 0.100")
+    assert final.collect("Decke 0.100") == [0.5, -1.0, 1.5]
+    assert final.note("ETHUSDT", "Decke 0.100", "refused") == 11
+    assert final.note("SOLUSDT", "Decke 0.100", "refused") == 7
+
+
+def test_a_process_reports_the_whole_measurement_not_its_slice(tmp_path: Path) -> None:
+    """Each process prints a summary when it finishes, and that summary should
+    describe what has been measured rather than what this process measured."""
+    path = tmp_path / "study.json"
+    first = Partial.load(path, "sig")
+    first.put("ETHUSDT", "arm", [1.0])
+
+    second = Partial.load(path, "sig")
+    second.put("SOLUSDT", "arm", [2.0])
+
+    assert sorted(second.symbols_done("arm")) == ["ETHUSDT", "SOLUSDT"]
+
+
+def test_a_foreign_study_is_still_discarded_rather_than_merged(tmp_path: Path) -> None:
+    """Merging must not become a way for a different configuration to leak in.
+
+    Half a comparison across two settings is worse than none, and the merge
+    added on account of the split run is the obvious place for that to slip
+    through.
+    """
+    path = tmp_path / "study.json"
+    Partial.load(path, "old-settings").put("ETHUSDT", "arm", [9.9])
+
+    fresh = Partial.load(path, "new-settings")
+    fresh.put("SOLUSDT", "arm", [1.0])
+
+    assert Partial.load(path, "new-settings").collect("arm") == [1.0]
