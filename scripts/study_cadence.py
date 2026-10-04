@@ -16,6 +16,24 @@ is too strict, a chart nobody read.
 So this measures the cadence rather than arguing about it. Same rules, same
 markets, same four years; only how often the loop asks changes.
 
+**Measured on 04.10.2026, four markets, four years.** The cadence is worth
+half again as many trades and costs nothing per trade:
+
+    Takt H1    n=2768   1.93 Trades/Tag   -0.0920 R   Summe -254.8 R
+    Takt M15   n=4138   2.89 Trades/Tag   -0.0768 R   Summe -317.7 R
+
+    the extra trades alone: 1370 of them, -0.0460 R each
+
+The extra trades are *better* than the average they join, so the expectancy per
+trade improves slightly while the count rises by half. Set that against
+`study_cost_floor.py`, where loosening a rule bought twice the trades at three
+times the loss: that is what a rule doing its job looks like, and this is what
+a chart nobody was reading looks like.
+
+What it does not do is make the system profitable. More trades at a negative
+expectancy is more loss -- the sum goes from -255 R to -318 R. Trading faster
+does not improve the direction, it only gets there sooner.
+
 **What moves with the cadence, and is held fixed here.** A pending order waits
 `entry_expiry_bars` *signal candles*, so at M15 it would wait two hours instead
 of eight. That is a different rule, not a different cadence, and changing two
