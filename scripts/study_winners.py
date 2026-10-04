@@ -7,6 +7,17 @@ Severin's question, and the right one to ask. It is also the single easiest
 analysis in this field to fool yourself with, so the shape of it matters more
 than the result.
 
+**The trap this already fell into once, so it is named rather than implied.**
+The first version priced each trade's cost from `fill.fees`, which looks like an
+entry-time property and is not: a winner leaves at its target and pays the
+maker fee, a loser leaves at its stop and pays taker. The contrast came out at
+-3.001 with interval [-3.346, -2.642] and the rule column read **+0.65 R per
+trade** -- a result that would have ended the search. The two group means stood
+in a ratio of 1.896, and the two fee schedules differ by 1.875. It was the
+maker/taker split restated. Cost is now priced at the taker rate on both legs,
+which is knowable before the exit route is, and the honest version of the same
+question -- the stop width -- shows nothing.
+
 **Only what was knowable before the entry.** Winners held longer than losers in
 every trading system ever built, because a loser hits a stop that sits close by
 and a winner runs to a target that does not. "Winners are held longer" is a
@@ -101,8 +112,18 @@ class Trade:
     """Stop distance as a fraction of the entry price. The number the whole
     cost argument turns on: fees scale with position size and risk does not."""
     reward_risk: float
-    cost_fraction: float
-    """What the round trip cost, as a share of what was risked."""
+    planned_cost_fraction: float
+    """What the round trip was *going* to cost at entry, as a share of risk.
+
+    Priced at the taker rate on both legs on purpose. The realised figure is
+    worthless here and dangerously convincing: a winner leaves at its target
+    and pays maker, a loser leaves at its stop and pays taker, so realised cost
+    is a consequence of the outcome. Measured that way the contrast came out at
+    -3.001 with interval [-3.346, -2.642], and as a rule it read +0.65 R per
+    trade -- the ratio of the two group means was 1.896 against the 1.875 the
+    two fee schedules differ by. It was the maker/taker split restated, nothing
+    else, and it is the most convincing wrong number this project has produced.
+    """
     leverage: float
     hour: int
     weekday: int
@@ -111,7 +132,7 @@ class Trade:
     exit_reason: str
 
 
-def to_trade(symbol: str, fill: Fill, signal_ms: int) -> Trade | None:
+def to_trade(symbol: str, fill: Fill, signal_ms: int, taker_fee: float) -> Trade | None:
     stop_distance = fill.risk_amount / fill.qty if fill.qty > 0 else 0.0
     if stop_distance <= 0 or fill.entry_price <= 0 or fill.risk_amount <= 0:
         return None
@@ -127,7 +148,8 @@ def to_trade(symbol: str, fill: Fill, signal_ms: int) -> Trade | None:
         # fill; this stands in for "how far did it have to go", and it is only
         # used for the descriptive block for that reason.
         reward_risk=target_distance / stop_distance,
-        cost_fraction=fill.fees / fill.risk_amount,
+        # Both legs at taker: knowable before the exit route is.
+        planned_cost_fraction=(2 * taker_fee * fill.qty * fill.entry_price / fill.risk_amount),
         leverage=fill.leverage,
         hour=opened.hour,
         weekday=opened.weekday(),
@@ -163,7 +185,7 @@ def contrast(
 #: The features, and whether the system had them before it submitted.
 BEFORE: dict[str, Callable[[Trade], float]] = {
     "Stopweite % vom Preis": lambda t: 100 * t.stop_pct,
-    "Kostenanteil % vom Risiko": lambda t: 100 * t.cost_fraction,
+    "geplante Kosten % vom Risiko": lambda t: 100 * t.planned_cost_fraction,
     "Hebel": lambda t: t.leverage,
     "Stunde (UTC)": lambda t: float(t.hour),
     "Wochentag": lambda t: float(t.weekday),
@@ -210,17 +232,22 @@ def main() -> int:
             print(f"{symbol}: keine Daten", flush=True)
             continue
         analysis = MultiFrameAnalysis(frames, config.engine)
+        spec = SymbolSpec(symbol=symbol, **DEFAULT_SPEC)
         engine = BacktestEngine(
             symbol,
             analysis,
             minute_frame=minutes,
-            spec=SymbolSpec(symbol=symbol, **DEFAULT_SPEC),
+            spec=spec,
             config=config,
             funding=funding_store.read(symbol),
             history=None,
         )
         result = engine.run(GuidePool.for_config(config))
-        fresh = [t for f in result.fills if (t := to_trade(symbol, f, signal_ms)) is not None]
+        fresh = [
+            t
+            for f in result.fills
+            if (t := to_trade(symbol, f, signal_ms, spec.taker_fee)) is not None
+        ]
         trades.extend(fresh)
         print(
             f"{symbol}: {len(fresh)} Trades in {time.perf_counter() - started:.0f}s",
