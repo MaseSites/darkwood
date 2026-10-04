@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import pytest
 
+from traidingbrain.brain.fake import FakeBrain
+from traidingbrain.brain.judging import JudgingBrain, JudgingSubscriptionBrain
 from traidingbrain.domain.enums import Decision, Side
 from traidingbrain.domain.verdict import BrainDecision, GuardVerdict
 from traidingbrain.sim.plan import TradeIntent
@@ -81,7 +83,7 @@ class StubBrain:
         self.plan_wanted = plan
         self.asked = 0
 
-    def decide(self, snapshot: object, brain_input: object | None = None) -> object:
+    def judge(self, snapshot: object, intent: object) -> object:
         self.asked += 1
         return StubDecision(
             tradeable=self.tradeable,
@@ -302,3 +304,16 @@ def test_the_decision_type_this_wrapper_expects_still_looks_like_this() -> None:
     assert "confidence" in fields
     assert "guard" in fields
     assert hasattr(BrainDecision, "is_tradeable")
+
+
+def test_every_brain_offers_the_judging_entry_point() -> None:
+    """The guard that fired in the first real run, turned into a test.
+
+    BrainJudged asked `decide` while the judging brains answer through
+    `judge`, and the probe died on its first call -- correctly, because the
+    alternative was a scanning answer filed as a judgement. The fix was to put
+    `judge` on every brain so the caller never branches on which kind it holds,
+    and this asserts that is still true for all three.
+    """
+    for kind in (FakeBrain, JudgingBrain, JudgingSubscriptionBrain):
+        assert callable(getattr(kind, "judge", None)), f"{kind.__name__} has no judge()"

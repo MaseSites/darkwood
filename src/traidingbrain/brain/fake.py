@@ -149,6 +149,17 @@ class FakeBrain:
         #: question.
         self.prompt_version = prompts.PROMPT_VERSION
 
+    def judge(self, snapshot: MarketSnapshot, intent: object) -> BrainDecision:
+        """The same arithmetic, ignoring the proposal it was asked about.
+
+        Present so that a caller never has to ask which kind of brain it holds:
+        branching on that is how a judging run ends up asking the scanning
+        question. The proposal is discarded rather than read, which is exactly
+        why this is a yardstick and not an answer -- it cannot agree or
+        disagree with a candidate, only restate its own reading of the bar.
+        """
+        return self.decide(snapshot)
+
     def decide(self, snapshot: MarketSnapshot, brain_input: object | None = None) -> BrainDecision:
         self.calls += 1
         reads = self._read(snapshot)

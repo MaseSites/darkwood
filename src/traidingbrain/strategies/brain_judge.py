@@ -49,9 +49,17 @@ from traidingbrain.strategies.guide import GuidePool
 class BrainLike(Protocol):
     """What this needs from a brain. Satisfied by all three of them."""
 
-    def decide(
-        self, snapshot: MarketSnapshot, brain_input: object | None = None
-    ) -> BrainDecision: ...
+    def judge(self, snapshot: MarketSnapshot, intent: TradeIntent) -> BrainDecision:
+        """A decision about one proposal.
+
+        `judge` and not `decide`, because a judging brain handed `decide`
+        renders the *scanning* question and files the answer under the judging
+        cache version -- a scanning answer recorded as a judgement, invisible
+        afterwards. Every brain offers `judge`, so this caller never has to ask
+        which kind it holds; branching on that is how the wrong question gets
+        asked.
+        """
+        ...
 
 
 @dataclass
@@ -111,7 +119,7 @@ class BrainJudged:
             self.tally.no_snapshot += 1
             return intent
 
-        decision = self.brain.decide(snapshot)
+        decision = self.brain.judge(snapshot, intent)
         self.decisions.append(decision)
 
         if not decision.is_tradeable:
