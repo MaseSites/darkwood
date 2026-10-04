@@ -130,6 +130,12 @@ def report(partial: Partial, brain_name: str) -> None:
     base = pool(PLAIN)
     for label in arms:
         rs = pool(label)
+        if not rs:
+            # A judge can refuse everything, and then there is nothing to
+            # average. Saying so is the result; dividing by zero loses the one
+            # number the run produced, which is the refusal rate above.
+            print(f"{label:12s} kein einziger Trade -- jeder Vorschlag abgelehnt")
+            continue
         wins = 100 * sum(1 for r in rs if r > 0) / len(rs)
         vetoed = sum(int(partial.note(sym, label, "vetoed") or 0) for sym in sorted(shared))
         diff = "" if label == PLAIN else f"  Differenz {sum(rs) - sum(base):+7.1f} R"
@@ -141,8 +147,15 @@ def report(partial: Partial, brain_name: str) -> None:
 
     print("\nJe Markt, weil der gepoolte Mittelwert verdeckt, ob sie sich einig sind:")
     for sym in sorted(shared):
-        a = float(np.mean(partial.cells[Partial.key(sym, PLAIN)]))
-        b = float(np.mean(partial.cells[Partial.key(sym, JUDGED)]))
+        left = partial.cells[Partial.key(sym, PLAIN)]
+        right = partial.cells[Partial.key(sym, JUDGED)]
+        if not left or not right:
+            # A judge that refuses everything leaves an empty arm. `np.mean`
+            # answers nan and the row printed "schadet", which is a verdict
+            # drawn from no trades at all -- worse than printing nothing.
+            print(f"  {sym:10s} ein Arm ohne Trades, nicht vergleichbar")
+            continue
+        a, b = float(np.mean(left)), float(np.mean(right))
         print(f"  {sym:10s} ohne {a:+.4f}   mit {b:+.4f}   {'hilft' if b > a else 'schadet'}")
 
     print(
