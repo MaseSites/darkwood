@@ -14,6 +14,7 @@ neither.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -114,9 +115,7 @@ def test_a_trade_round_trips_through_json() -> None:
     """Every field, including the nested reason and post-mortem. A journal that
     lost its families on the way to disk would still print a tidy report."""
     original = entry()
-    original.reason.families.append(
-        FamilyNote("structure", "bullish", 0.57, 0.67, 0.65, False)
-    )
+    original.reason.families.append(FamilyNote("structure", "bullish", 0.57, 0.67, 0.65, False))
 
     restored = JournalEntry.from_json(original.to_json())
 
@@ -322,6 +321,7 @@ def test_the_decision_bar_is_recovered_from_the_proposal_id() -> None:
     link. The engine builds `{symbol}-{close_of_decision_bar}`; if that format
     changes, every journal row silently loses its reasoning and the report
     still prints. This test is what makes that loud."""
+
     class FakeMulti:
         class signal:  # noqa: N801 - a stand-in, not a type
             @staticmethod
@@ -341,3 +341,22 @@ def test_an_id_without_a_timestamp_yields_nothing_rather_than_a_wrong_bar() -> N
                 return np.arange(10, dtype="int64") * H1_MS
 
     assert decision_index(FakeMulti, "no-timestamp-here", Timeframe.H1) is None  # type: ignore[arg-type]
+
+
+def test_a_row_written_before_the_cadence_was_recorded_still_opens() -> None:
+    """The field was added on 04.10.2026, when the loop moved from hourly to
+    fifteen-minute decisions. Rows already in the journal have no such key, and
+    a journal that could not read its own history would have thrown away the
+    only forward trades the project has.
+
+    Empty is the right answer for those rows rather than a guess: they are the
+    hourly ones, and the emptiness says when they were written.
+    """
+    built = entry()
+    payload = json.loads(built.to_json())
+    del payload["reason"]["signal_timeframe"]
+
+    restored = JournalEntry.from_json(json.dumps(payload))
+
+    assert restored.reason.signal_timeframe == ""
+    assert restored.reason.setup_key == built.reason.setup_key

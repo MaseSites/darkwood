@@ -95,6 +95,22 @@ class TradeReason:
     breadth: int
     readings: int
     regime: str
+    signal_timeframe: str = ""
+    """How often the loop was looking when this trade was decided.
+
+    Not the same question as `setup_timeframe`. A four-hour setup found by an
+    hourly loop and the same setup found by a fifteen-minute loop are the same
+    trade; what differs is how many *other* chances were seen and taken around
+    it, which changes how often the account was occupied and therefore which
+    trades happened at all.
+
+    Recorded because the cadence changed mid-run, on 04.10.2026, from H1 to
+    M15. Without it the journal would hold trades from two different systems in
+    one table with nothing to separate them -- and the separation cannot be
+    reconstructed afterwards from anything else in the record. Empty on rows
+    written before the field existed, which is itself the answer for those:
+    they are the hourly ones."""
+
     families: list[FamilyNote] = field(default_factory=list)
 
     @property

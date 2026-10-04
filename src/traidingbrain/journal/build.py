@@ -105,6 +105,7 @@ def reason_at(multi: MultiFrameAnalysis, index: int, side: Side) -> TradeReason 
         setup_name=setup.name if setup else UNKNOWN_SETUP,
         setup_source=setup.source if setup else UNKNOWN_SETUP,
         setup_timeframe=setup.timeframe.value if setup else UNKNOWN_SETUP,
+        signal_timeframe=multi.signal_timeframe.value,
         side=str(side),
         entry=entry,
         stop=stop,

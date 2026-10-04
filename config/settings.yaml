@@ -82,7 +82,18 @@ timeframes:
   # backtest has to guess, and guessing optimistically is how a strategy looks
   # profitable on paper and is not.
   context: [W1, D1, H4, H1, M15]
-  signal: H1
+  # The loop decides once per signal candle. At H1 that meant the fifteen-minute
+  # chart finished four candles an hour and seventy-two of its ninety-six a day
+  # were never examined -- a setup that formed at 08:15 and completed by 08:45
+  # was never offered, because nobody looked until 09:00.
+  #
+  # Severin asked for this directly ("du kannst doch auch in 15 Minuten Trades
+  # machen") and it is a defect rather than a preference: it makes no rule more
+  # generous, it reads the chart as often as the chart changes. Measured on BTC
+  # and ETH it is worth 31-41% more trades; what it costs is still being
+  # measured by study_cadence.py, and the journal records the cadence per trade
+  # so the two eras can be told apart afterwards.
+  signal: M15
   execution: M1
 
 indicators:
@@ -201,7 +212,11 @@ simulation:
 
   # How long a pending entry waits before it is abandoned. A setup that has not
   # triggered within this window is a different setup.
-  entry_expiry_bars: 8
+  # Counted in signal candles, so the move to M15 would have cut a resting
+  # order's life from eight hours to two. That is a different rule, not a
+  # different cadence -- thirty-two keeps the same eight hours the measurements
+  # were taken under.
+  entry_expiry_bars: 32
 
   # When a single minute contains both the stop and the target, the stop wins.
   # There is no way to know the order from OHLC alone, and guessing in our favour
