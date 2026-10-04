@@ -279,9 +279,7 @@ class SupplyDemandRetest:
                     "aggressive move that broke structure",
                     "first return into the zone",
                     f"approach {touch.approach_atr_per_bar:.2f} ATR per bar, not sharp",
-                    "gap at the origin"
-                    if zone.has_fvg
-                    else "no gap at the origin, weaker per V09",
+                    "gap at the origin" if zone.has_fvg else "no gap at the origin, weaker per V09",
                 ),
                 reference_level=entry,
             )
@@ -577,9 +575,7 @@ MAX_EXCURSION_ATR = 1.2
 POKE_WINDOW_BARS = 6
 
 
-def _weak_poke_above(
-    analysis: FrameAnalysis, index: int, *, unit: float
-) -> Trendline | None:
+def _weak_poke_above(analysis: FrameAnalysis, index: int, *, unit: float) -> Trendline | None:
     """A resistance line price drifted over without conviction, recently.
 
     Returns the line rather than a boolean so the caller can put the stop above
@@ -617,9 +613,7 @@ def _weak_poke_above(
     return None
 
 
-def _lower_level(
-    analysis: FrameAnalysis, index: int, *, below: float, fallback: float
-) -> float:
+def _lower_level(analysis: FrameAnalysis, index: int, *, below: float, fallback: float) -> float:
     """V06's "tiefere Levels": the nearest pool of equal lows under price.
 
     A pool rather than a measured move, because that is what the guide means by
@@ -633,6 +627,146 @@ def _lower_level(
     return max(beneath, key=lambda pool: pool.high).high
 
 
+# --------------------------------------------------------------------------- #
+# Setup E -- order block after Noc Trading (V11)
+# --------------------------------------------------------------------------- #
+
+
+#: How far beyond the block the stop sits, in ATR.
+#:
+#: V11 says "hinter/über den gesamten Block; exakter Buffer nicht spezifiziert",
+#: so the *shape* of the stop is the card's and only this number is mine.
+#: A quarter of an ATR, for the reason the card itself gives in its list of
+#: common mistakes -- "exakten Kantentreffer verlangen". A stop exactly on the
+#: block's edge is taken out by the same imprecision the card warns against
+#: demanding on entry, and a buffer in ATR means the same thing on BTC as on
+#: XRP where a buffer in price would not.
+BLOCK_STOP_BUFFER_ATR = 0.25
+
+#: How long after the change of character the block may still be entered.
+#:
+#: The card's precondition is "unmitigiert bis nach CHoCH" -- the block has to
+#: survive until the character changes, and the trade is what happens when price
+#: comes back to it. Without a limit the setup would offer a block from months
+#: ago whose CHoCH nobody remembers.
+MAX_BARS_SINCE_CHOCH = 12
+
+
+@dataclass(frozen=True)
+class NocOrderBlock:
+    """V11. The last candle before the turn, validated three ways.
+
+    The card's own three: a sweep to the left, displacement away from the block
+    (a fair value gap), and a change of character. Its warning is that any last
+    candle will do if you only look for one of them -- "beliebige letzte Kerze
+    als OB" -- so all three are required and the setup stays silent otherwise.
+
+    **Two of its four numbers are the card's and two are mine, and the
+    difference is recorded.** Entry and the shape of the stop come from V11:
+    enter at the block, stop behind the whole block. The buffer beyond it and
+    the target do not exist in the video. The buffer is `BLOCK_STOP_BUFFER_ATR`.
+    The target is the opposite external liquidity -- which is not invented out
+    of nothing either: it is the guide's own phrase for a reversal target in
+    V10's card ("gegenüberliegende 4H-ERL"), applied to a reversal setup whose
+    own card is silent. The reasons list says which is which, so a later
+    measurement can tell the video's rule from my reading of it.
+    """
+
+    key: str = "E"
+    name: str = "Orderblock nach Noc Trading"
+    source: str = "V11"
+
+    def _validated(
+        self, analysis: FrameAnalysis, index: int
+    ) -> tuple[StructuralZone, bool, int] | None:
+        """The block, if all three of V11's checks pass on this bar.
+
+        Split out because the card asks for three validations and a coherence
+        check, and a single method doing all four is a ladder of early returns
+        nobody can follow. The warning it encodes is V11's own: "beliebige
+        letzte Kerze als OB" -- any last candle will do if you only look for
+        one of them.
+        """
+        structure = analysis.structure.state_at(index)
+        # "Invalidierung: ... fehlender CHoCH." The change of character is what
+        # makes the block the last candle before a turn rather than a candle in
+        # a trend, so it is asked first.
+        since = structure.bars_since_choch
+        if not structure.choch or since is None or since > MAX_BARS_SINCE_CHOCH:
+            return None
+
+        bullish = structure.break_direction is Bias.BULLISH
+        liquidity = analysis.liquidity.state_at(index)
+        # "Erkennung: Sweep links." A bullish block formed where sell-side
+        # liquidity was taken; mirrored for a short.
+        if not (liquidity.sweep_down if bullish else liquidity.sweep_up):
+            return None
+
+        wanted = ZoneRole.BULLISH_ORDER_BLOCK if bullish else ZoneRole.BEARISH_ORDER_BLOCK
+        # Untouched going *into* this bar, for the same off-by-one reason setup
+        # F documents: the first touch is what the setup waits for, and asking
+        # about this bar excludes exactly that.
+        live = [z for z in analysis.zones.unmitigated_at(index - 1) if z.role is wanted]
+        if not live:
+            return None
+
+        close = analysis.close_at(index)
+        # Nearest to price. The card's entry is "bereits im FVG" -- the block
+        # price has actually come back to, not the most distant one that
+        # happens to qualify.
+        chosen = min(live, key=lambda z: abs(close - z.mid))
+        touch = analysis.zones.touch_at(chosen, index)
+        if touch is None or not touch.is_first:
+            return None
+
+        # "Erkennung: ... FVG/Displacement." The zone already knows: `has_fvg`
+        # exists in `zones.py` for this card specifically -- "V09 prefers a gap
+        # at the origin; V11 requires one". Asking the zone is both the faithful
+        # reading and the one that cannot drift from how the zone was built.
+        return (chosen, bullish, since) if chosen.has_fvg else None
+
+    def evaluate(self, analysis: FrameAnalysis, index: int) -> SetupSignal | None:
+        if not analysis.is_ready(index):
+            return None
+        unit = analysis.atr_at(index)
+        if not unit or unit <= 0:
+            return None
+        found = self._validated(analysis, index)
+        if found is None:
+            return None
+        chosen, bullish, since = found
+
+        target = _previous_extreme(analysis, index, bullish=bullish)
+        if target is None:
+            return None
+
+        # "Stop Loss: Hinter/über den gesamten Block." The whole block, not its
+        # near edge -- plus the buffer, which is the one number here that the
+        # video does not give.
+        buffer = BLOCK_STOP_BUFFER_ATR * unit
+        signal = SetupSignal(
+            timeframe=analysis.timeframe,
+            setup=self.key,
+            name=self.name,
+            source=self.source,
+            side=Side.LONG if bullish else Side.SHORT,
+            entry=chosen.high if bullish else chosen.low,
+            stop=(chosen.low - buffer) if bullish else (chosen.high + buffer),
+            target=target,
+            bar_index=index,
+            reasons=(
+                "V11: Sweep links vor dem Block",
+                "V11: Displacement weg vom Block (FVG)",
+                f"V11: CHoCH vor {since} Kerzen, Block bis dahin unberuehrt",
+                "V11: Stop hinter dem gesamten Block",
+                f"ergaenzt: Puffer {BLOCK_STOP_BUFFER_ATR} ATR hinter dem Block",
+                "ergaenzt: Ziel an der gegenueberliegenden Liquiditaet (V10s ERL)",
+            ),
+            reference_level=chosen.high if bullish else chosen.low,
+        )
+        return signal if signal.is_coherent() else None
+
+
 INCOMPLETE: tuple[Incomplete, ...] = (
     Incomplete(
         key="D",
@@ -641,13 +775,6 @@ INCOMPLETE: tuple[Incomplete, ...] = (
         missing="stop",
         quote="Stop Loss: Für dieses Beispiel nicht numerisch bzw. positionsbezogen spezifiziert.",
     ),
-    Incomplete(
-        key="E",
-        name="Orderblock nach Noc Trading",
-        source="V11",
-        missing="target",
-        quote="Take Profit: Nicht spezifiziert.",
-    ),
 )
 
 
@@ -655,6 +782,7 @@ TRADEABLE: tuple[Setup, ...] = (
     MomentumBreakout(),
     TrendlineFakeout(),
     SupplyDemandRetest(),
+    NocOrderBlock(),
     InducementOrderBlock(),
     SixFactorGap(),
 )
@@ -728,9 +856,7 @@ def _bar_reaches(analysis: FrameAnalysis, index: int, low: float, high: float) -
     bar price spends in the neighbourhood of a gap it reacted to once, which is
     the same mistake the breakout made against its level.
     """
-    return bool(
-        analysis.column("low")[index] <= high and analysis.column("high")[index] >= low
-    )
+    return bool(analysis.column("low")[index] <= high and analysis.column("high")[index] >= low)
 
 
 def _gap_candle_extreme(analysis: FrameAnalysis, gap: Zone, *, bullish: bool) -> float | None:
@@ -754,9 +880,7 @@ def _gap_candle_extreme(analysis: FrameAnalysis, gap: Zone, *, bullish: bool) ->
     return float(analysis.column(column)[displacement])
 
 
-def _move_end(
-    analysis: FrameAnalysis, gap: Zone, index: int, *, bullish: bool
-) -> float | None:
+def _move_end(analysis: FrameAnalysis, gap: Zone, index: int, *, bullish: bool) -> float | None:
     """V13's target: "Hoch/Tief des Moves" that made the gap.
 
     Measured from the gap's creation bar to now, which is the move as it stands

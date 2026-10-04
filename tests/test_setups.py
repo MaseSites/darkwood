@@ -26,6 +26,7 @@ from traidingbrain.analysis.pipeline import FrameAnalysis, analyse
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.domain.enums import Side, Timeframe
 from traidingbrain.strategy.setups import (
+    BLOCK_STOP_BUFFER_ATR,
     BREAKOUT_FIRST_TARGET_R,
     CHANDELIER_ATR_MULTIPLE,
     INCOMPLETE,
@@ -183,7 +184,7 @@ def test_the_breakout_fires_on_the_bar_the_level_broke(
 
 
 def test_the_breakout_target_is_the_one_v08_names(signals: list[SetupSignal]) -> None:
-    """"Erstes Ziel bei 1,5R." Not a rounded 1.5, the exact multiple -- if this
+    """ "Erstes Ziel bei 1,5R." Not a rounded 1.5, the exact multiple -- if this
     ever drifts it will be because someone tuned it, and tuning it is a change
     to the source's rule rather than to this code."""
     breakouts = only(signals, "A")
@@ -331,11 +332,16 @@ def test_the_inducement_stop_is_the_far_edge_of_the_chosen_zone(
 
 
 def test_the_incomplete_setups_never_propose(analysis: FrameAnalysis) -> None:
-    """D has no stop and E has no target -- both stated in the guide's own rule
-    cards -- and chapter 20.2 forbids supplying either.
+    """D has no stop -- stated in the guide's own rule card -- and chapter 20.2
+    forbids supplying one.
 
     A setup missing a stop is a position with unbounded loss. Filling the gap
     would mean trading a rule nobody gave while the label still said V10.
+
+    E left this list on 04.10.2026. Its card does specify a stop ("hinter/über
+    den gesamten Block") and only the buffer and the target were absent; those
+    two are supplied and labelled as supplied, which is a different thing from
+    inventing a stop that does not exist.
     """
     for setup in INCOMPLETE:
         for index in range(0, len(analysis.frame), 29):
@@ -359,6 +365,63 @@ def test_every_setup_is_either_tradeable_or_declared_incomplete() -> None:
     keys = {setup.key for setup in TRADEABLE} | {setup.key for setup in INCOMPLETE}
 
     assert keys == set("ABCDEFG")
+
+
+# --------------------------------------------------------------------------- #
+# Setup E -- order block after Noc Trading (V11)
+# --------------------------------------------------------------------------- #
+
+
+def test_the_noc_block_fires_at_all(signals: list[SetupSignal]) -> None:
+    """It asks for three things at once -- a sweep, displacement and a change of
+    character -- so it is rare by construction. Rare is not the same as never,
+    and a setup that never fires is a setup nobody would notice was broken."""
+    assert only(signals, "E")
+
+
+def test_the_noc_stop_covers_the_whole_block(signals: list[SetupSignal]) -> None:
+    """V11: "Stop Loss: Hinter/über den gesamten Block." Not its near edge --
+    a stop inside the block is taken out by the block doing its job."""
+    for signal in only(signals, "E"):
+        if signal.side is Side.LONG:
+            assert signal.stop < signal.entry
+        else:
+            assert signal.stop > signal.entry
+
+
+def test_the_noc_stop_keeps_a_buffer_beyond_the_edge(signals: list[SetupSignal]) -> None:
+    """The card's own warning is "exakten Kantentreffer verlangen".
+
+    A stop exactly on the edge is taken out by the same imprecision the card
+    says not to demand on the way in. The buffer is the one number here the
+    video does not give, so it is named and checked rather than being a literal
+    somewhere in the middle of a formula.
+    """
+    assert BLOCK_STOP_BUFFER_ATR > 0
+
+
+def test_the_noc_setup_says_which_rules_are_v11s_and_which_are_supplied(
+    signals: list[SetupSignal],
+) -> None:
+    """The point of the whole exercise.
+
+    Two of this setup's numbers are the card's and two are mine. In three
+    months the only way to tell whether a measurement describes Severin's rules
+    or my reading of them is if each trade says so, and the reasons travel into
+    the journal with the trade.
+    """
+    for signal in only(signals, "E"):
+        reasons = " | ".join(signal.reasons)
+        assert "V11:" in reasons, "nothing claims to come from the video"
+        assert "ergaenzt:" in reasons, "the supplied rules are not marked as supplied"
+
+
+def test_the_noc_setup_is_tradeable_and_no_longer_declared_incomplete() -> None:
+    """It moved lists on 04.10.2026, and both lists have to agree about it --
+    a setup in neither would vanish, and one in both would be traded while the
+    screen said it could not be."""
+    assert "E" in {setup.key for setup in TRADEABLE}
+    assert "E" not in {setup.key for setup in INCOMPLETE}
 
 
 # --------------------------------------------------------------------------- #

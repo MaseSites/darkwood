@@ -25,6 +25,7 @@ import pytest
 
 from traidingbrain.analysis.pipeline import MultiFrameAnalysis, decision_time_ms
 from traidingbrain.config.settings import AppConfig, load_config
+from traidingbrain.data.grid import timeframe_ms
 from traidingbrain.domain.enums import Side, Timeframe
 from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.sim.engine import BacktestEngine, TradeIntent, wants_analysis
@@ -373,13 +374,24 @@ def test_a_four_hour_candle_is_offered_once_not_four_times(
             hits += 1
 
     assert checked > 100, "nothing was ready; this test proved nothing"
-    # One hour in four, give or take the window's edges.
-    assert checked // 5 <= hits <= checked // 3
+    # One step in `steps`, give or take the window's edges. Derived rather than
+    # written down: this was `checked // 4` while the loop stepped hourly, and
+    # it broke the day the cadence moved to fifteen minutes -- when a four-hour
+    # candle closes on one step in sixteen, not one in four. The property is
+    # about the ratio of the two timeframes, so the test says that.
+    steps = timeframe_ms(Timeframe.H4) // timeframe_ms(analysis.signal_timeframe)
+    assert checked // (steps + 2) <= hits <= checked // max(1, steps - 1)
 
 
 def test_the_frame_the_loop_steps_on_closes_every_step(engine: BacktestEngine) -> None:
-    """The degenerate case the rule must not break: hourly setups have to keep
-    firing exactly as often as before."""
+    """The degenerate case the rule must not break: a setup on the frame the
+    loop steps on has to fire on every step.
+
+    Asked about `signal_timeframe` rather than about H1. The test named the
+    property correctly and then hardcoded the frame, which was the same thing
+    only while the loop stepped hourly -- and silently stopped being the same
+    thing on 04.10.2026.
+    """
     analysis = engine.analysis
     ready = [i for i in range(200, 300) if analysis.aligned_indices(i) is not None]
 
@@ -388,7 +400,7 @@ def test_the_frame_the_loop_steps_on_closes_every_step(engine: BacktestEngine) -
         for i in ready
         if _just_closed(
             analysis,
-            Timeframe.H1,
+            analysis.signal_timeframe,
             decision_time_ms(analysis.signal.ts_at(i), analysis.signal_timeframe),
         )
     ]
