@@ -27,7 +27,7 @@ from tests.factories import make_symbol_spec
 from tests.fakes import EPOCH, aggregate, fast_engine_config, multi_frame_fixture
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.frames import timeframe_ms
-from traidingbrain.domain.enums import Timeframe
+from traidingbrain.domain.enums import ExitReason, Timeframe
 from traidingbrain.domain.market import FundingRate
 from traidingbrain.sim.engine import BacktestResult, MissingMinuteDataError, load_engine
 from traidingbrain.sim.metrics import compare
@@ -264,6 +264,50 @@ def test_the_baseline_run_is_frozen(
     noticed when they are made rather than wondered about later.
     """
     golden("backtest_baseline", fingerprint(baseline_run))
+
+
+#: Seed whose run exits through the target as often as through the stop.
+#:
+#: The baseline run above is 7 stops and 1 forced close -- not one take profit
+#: in it. So the frozen guard covered only the losing path, and the change that
+#: made a target exit earn the maker fee instead of the taker one moved real
+#: money through code no golden file was watching. It was caught by a unit test
+#: that happened to assert the old rate; had that test not existed, nothing
+#: would have failed.
+#:
+#: 31 targets against 23 stops, which is the mix the guard was missing.
+TARGET_SEED = 1
+
+
+@pytest.fixture(scope="module")
+def target_run(engine) -> BacktestResult:
+    return engine.run(RandomEntry(seed=TARGET_SEED, trade_probability=0.1))
+
+
+def test_the_fixture_still_exits_through_the_target(target_run: BacktestResult) -> None:
+    """Guard on the guard below.
+
+    The run exists only for its take profits, and it reaches them through the
+    strategy's own entries rather than by construction. A change elsewhere could
+    leave it passing with nothing but stops in it -- a frozen file over the wrong
+    mix, which is worse than no file because it looks like coverage.
+    """
+    reasons = {fill.reason for fill in target_run.fills}
+
+    assert ExitReason.TARGET in reasons, f"no take profit left in the run, only {reasons}"
+    assert ExitReason.STOP in reasons, "both paths belong in one frozen run"
+
+
+def test_the_winning_path_is_frozen(
+    target_run: BacktestResult, golden: Callable[[str, object], None]
+) -> None:
+    """The same freeze as the baseline, over a run that actually wins.
+
+    Fees differ by exit route -- a target rests in the book and earns maker, a
+    stop leaves at market and pays taker -- so the two paths are separate code
+    with separate arithmetic, and one frozen run cannot speak for both.
+    """
+    golden("backtest_target_exits", fingerprint(target_run))
 
 
 def test_funding_changes_the_result(
