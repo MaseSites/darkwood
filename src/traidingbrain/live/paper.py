@@ -113,6 +113,15 @@ CATCHUP_PAGE = 1000
 #: 14:04 at the earliest, whatever this is set to.
 POLL_SECONDS = 30
 
+#: How often one signal bar may throw before the loop gives up on it.
+#:
+#: Three, because the failures this guards against are transient -- a
+#: timed-out fetch, a frame that arrived short -- and three cycles is a
+#: minute and a half at the poll interval. Retrying for ever would let one
+#: unreadable bar stop an account from deciding again; not retrying at all
+#: loses the signal, which at roughly two signals a day is expensive.
+MAX_DECISION_ATTEMPTS = 3
+
 
 @dataclass
 class PaperStats:
@@ -193,6 +202,13 @@ class PaperTrader:
         # three days, not "since I was last started".
         self.stats.tally = self.state.tally
         self._reason: TradeReason | None = self.state.reason
+        #: (bar, attempts) for the signal bar currently being retried.
+        #:
+        #: In memory on purpose. A restart retrying a bar once more is the
+        #: right behaviour -- the thing that failed was usually the fetch --
+        #: and persisting the count would make a restart the way to get past
+        #: a genuinely unreadable bar, which is worse.
+        self._attempts: tuple[int, int] = (0, 0)
         #: Newest closed signal bar seen by the last refresh. Carried between
         #: the two halves of a cycle so deciding does not have to re-fetch.
         self._newest = 0
@@ -321,12 +337,42 @@ class PaperTrader:
         if not newest or newest == self.state.last_decided_ts:
             return
         try:
-            self.state.last_decided_ts = newest
-            self.stats.tally.bars_seen += 1
             self._maybe_open(newest)
         except Exception as exc:
+            # The cursor stays where it is, so the bar is read again next cycle.
+            # Marking it decided here -- which is what this method used to do,
+            # before `_maybe_open` -- burned the bar permanently: the persist
+            # below runs after the except too, so one timed-out fetch silently
+            # destroyed that signal and nothing in the record said so. Forward
+            # evidence is the only kind the plan calls decisive, and it arrives
+            # at about two signals a day.
+            self._attempts = (newest, self._attempts[1] + 1 if self._attempts[0] == newest else 1)
             self._failed(f"Entscheiden fehlgeschlagen: {exc}")
+            if self._attempts[1] < MAX_DECISION_ATTEMPTS:
+                self._persist()
+                return
+            # Retrying for ever would let one unreadable bar stop this account
+            # from ever deciding again. Giving up is the lesser harm, but it is
+            # a loss of evidence either way, so it is counted rather than
+            # quietly skipped.
+            self.stats.tally.abandoned_bars += 1
+            self._failed(
+                f"Signalbalken aufgegeben nach {MAX_DECISION_ATTEMPTS} Versuchen: {newest}"
+            )
+
+        # Only now, and only once, is the bar actually decided.
+        self.stats.tally.bars_seen += 1
+        self.state.last_decided_ts = newest
         self._persist()
+
+    def refresh_funding(self, rates: list[FundingRate]) -> int:
+        """Hand the broker funding rates that settled after it was built.
+
+        The broker took its schedule once, in the constructor. Everything due
+        after that was charged against the end of that list, which is to say
+        charged as nothing.
+        """
+        return self.broker.refresh_funding(rates)
 
     @property
     def wants_decision(self) -> bool:

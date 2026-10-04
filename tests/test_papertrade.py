@@ -917,3 +917,113 @@ def test_deciding_twice_on_one_bar_does_nothing_the_second_time(
     trader.decide()
 
     assert strategy.asked == asked, "the same bar was decided more than once"
+
+
+# --------------------------------------------------------------------------- #
+# A cycle that throws must not spend the bar
+# --------------------------------------------------------------------------- #
+
+
+class ThrowingIntent(FixedIntent):
+    """A strategy that fails the first `fails` times it is asked.
+
+    Standing in for what actually goes wrong on the forward path: a fetch that
+    timed out, a frame that arrived one bar short. The failure is transient, and
+    what mattered was whether the signal survived it.
+    """
+
+    def __init__(self, *, fails: int) -> None:
+        super().__init__()
+        self.fails = fails
+        self.thrown = 0
+
+    def propose_at(self, analysis: object, index: int) -> TradeIntent | None:
+        if self.thrown < self.fails:
+            self.thrown += 1
+            raise RuntimeError("Rahmen unvollständig")
+        return super().propose_at(analysis, index)
+
+
+def test_a_cycle_that_throws_does_not_burn_the_signal_bar(
+    tmp_path: Path, config: AppConfig, tape: dict[Timeframe, pd.DataFrame]
+) -> None:
+    """The bar is read again next cycle, because the signal is the scarce thing.
+
+    `decide` used to mark the bar decided *before* asking the setups, and
+    persisted afterwards even from the except branch -- so one timed-out fetch
+    destroyed that signal permanently and nothing in the record said so. At
+    roughly two signals a day across twelve markets, and with forward evidence
+    the only kind section 9 calls decisive, that is the most expensive silent
+    loss in the loop.
+    """
+    start = EPOCH + timeframe_ms(Timeframe.H1) * START_BAR
+    strategy = ThrowingIntent(fails=1)
+    trader, _source, states, _journal = build(
+        tmp_path, config, tape, now_ms=start, strategy=strategy
+    )
+
+    trader.step()
+    assert strategy.thrown == 1, "the strategy was never asked"
+    assert trader.stats.tally.failures == 1
+    assert trader.wants_decision, "the bar was marked decided although the cycle threw"
+    assert trader.stats.tally.bars_seen == 0, "a bar nobody decided was counted as seen"
+
+    # The same bar, asked again, now succeeds -- and the signal is not lost.
+    trader.step()
+    assert not trader.wants_decision
+    assert trader.stats.tally.bars_seen == 1
+    saved = states.load(SYMBOL)
+    assert saved is not None
+    assert saved.pending is not None or saved.position is not None, "the signal was lost"
+
+
+def test_an_unreadable_bar_is_given_up_on_and_counted(
+    tmp_path: Path, config: AppConfig, tape: dict[Timeframe, pd.DataFrame]
+) -> None:
+    """Retrying for ever would stop the account deciding anything again.
+
+    So the bar is abandoned -- but it is still evidence that was lost rather
+    than measured, and `abandoned_bars` is separate from `failures` for exactly
+    that reason: a cycle that threw and then succeeded cost nothing.
+    """
+    start = EPOCH + timeframe_ms(Timeframe.H1) * START_BAR
+    strategy = ThrowingIntent(fails=99)
+    trader, _source, _states, _journal = build(
+        tmp_path, config, tape, now_ms=start, strategy=strategy
+    )
+
+    for _ in range(3):
+        trader.step()
+
+    assert trader.stats.tally.abandoned_bars == 1
+    assert not trader.wants_decision, "the loop is still stuck on one bar"
+    assert trader.stats.tally.bars_seen == 1
+    # And it moves on: the next bar gets its own attempts rather than inheriting
+    # the exhausted count.
+    assert trader.stats.tally.failures >= 3
+
+
+def test_the_abandoned_counter_survives_a_restart(
+    tmp_path: Path, config: AppConfig, tape: dict[Timeframe, pd.DataFrame]
+) -> None:
+    """Lost evidence has to stay visible, or the loop looks like a quiet market."""
+    start = EPOCH + timeframe_ms(Timeframe.H1) * START_BAR
+    trader, source, states, journal = build(
+        tmp_path, config, tape, now_ms=start, strategy=ThrowingIntent(fails=99)
+    )
+    for _ in range(3):
+        trader.step()
+    assert trader.stats.tally.abandoned_bars == 1
+
+    resumed = PaperTrader(
+        SYMBOL,
+        config,
+        source=source,
+        store=ParquetStore(tmp_path / "ohlcv"),
+        state=states,
+        journal=journal,
+        spec=make_symbol_spec(),
+        clock=FixedClock(source.now_ms),
+        strategy=FixedIntent(),  # type: ignore[arg-type]
+    )
+    assert resumed.stats.tally.abandoned_bars == 1

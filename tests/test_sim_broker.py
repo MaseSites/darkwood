@@ -543,3 +543,86 @@ def test_a_target_exit_pays_the_maker_fee_and_a_stop_pays_taker() -> None:
     assert won.fees == pytest.approx(entry_fee + 120.0 * spec.maker_fee)
     assert lost.reason is ExitReason.STOP
     assert lost.fees == pytest.approx(entry_fee + 90.0 * spec.taker_fee)
+
+
+# --------------------------------------------------------------------------- #
+# Funding that arrives after the broker was built
+# --------------------------------------------------------------------------- #
+
+
+def test_a_settlement_the_broker_was_never_given_costs_nothing() -> None:
+    """The defect, stated as a test before the fix is shown to cure it.
+
+    This is the forward paper trader's situation: it hands each broker a
+    funding schedule once, in the constructor, and keeps running for days. Rates
+    that settle later are simply absent, and absent costs nothing.
+    """
+    broker = SimBroker(free_spec(), config(), funding=[])
+    broker.submit(long_entry())
+    minutes(broker, [(100.0, 101.0, 99.0)])
+
+    fills = minutes(
+        broker, [(105, 106, 104), (105, 106, 104), (110, 121, 109)], start=EPOCH + MINUTE
+    )
+    fill = next(f for f in fills if f is not None)
+    assert fill.funding == pytest.approx(0.0)
+
+
+def test_refresh_charges_a_settlement_that_has_already_gone_past() -> None:
+    """The fix, and the reason it cannot be keyed on the clock.
+
+    A rate is published at its own settlement time and fetched by the next
+    top-up minutes afterwards, so by the time it arrives the broker's clock is
+    already past it. A cursor placed by the clock would discard it as history --
+    the same silence, one level down. It is placed by what was actually
+    consumed instead, so the settlement is charged on the next minute step.
+    """
+    broker = SimBroker(free_spec(), config(), funding=[])
+    broker.submit(long_entry())
+    minutes(broker, [(100.0, 101.0, 99.0)])
+    # Two minutes pass with the schedule still empty.
+    minutes(broker, [(105, 106, 104), (105, 106, 104)], start=EPOCH + MINUTE)
+
+    pending = broker.refresh_funding([FundingRate(ts=EPOCH + 2 * MINUTE, rate=0.0001)])
+    assert pending == 1, "the settlement was dropped as already past"
+
+    fills = minutes(broker, [(110, 121, 109)], start=EPOCH + 3 * MINUTE)
+    fill = next(f for f in fills if f is not None)
+    assert fill.funding == pytest.approx(-0.01)
+
+
+def test_refresh_does_not_charge_a_settlement_twice() -> None:
+    """A top-up re-reads the whole series, so it re-offers what was paid."""
+    rate = FundingRate(ts=EPOCH + 2 * MINUTE, rate=0.0001)
+    broker = SimBroker(free_spec(), config(), funding=[rate])
+    broker.submit(long_entry())
+    minutes(broker, [(100.0, 101.0, 99.0)])
+    minutes(broker, [(105, 106, 104), (105, 106, 104)], start=EPOCH + MINUTE)
+
+    # The same rate comes back, plus one that has not settled yet.
+    pending = broker.refresh_funding([rate, FundingRate(ts=EPOCH + 9 * MINUTE, rate=0.0001)])
+    assert pending == 1, "the already-settled rate was offered again"
+
+    fills = minutes(broker, [(110, 121, 109)], start=EPOCH + 3 * MINUTE)
+    fill = next(f for f in fills if f is not None)
+    assert fill.funding == pytest.approx(-0.01), "charged twice for one settlement"
+
+
+def test_refresh_keeps_the_cursor_when_the_new_series_starts_earlier() -> None:
+    """A longer history must not shift the cursor onto a different settlement.
+
+    The reason the index is rebuilt rather than carried: a backfill that reaches
+    further back changes what position 3 means.
+    """
+    settled = FundingRate(ts=EPOCH + 2 * MINUTE, rate=0.0001)
+    broker = SimBroker(free_spec(), config(), funding=[settled])
+    broker.submit(long_entry())
+    minutes(broker, [(100.0, 101.0, 99.0)])
+    minutes(broker, [(105, 106, 104), (105, 106, 104)], start=EPOCH + MINUTE)
+
+    older = [FundingRate(ts=EPOCH - 10 * MINUTE, rate=0.05)] * 3
+    assert broker.refresh_funding([*older, settled]) == 0
+
+    fills = minutes(broker, [(110, 121, 109)], start=EPOCH + 3 * MINUTE)
+    fill = next(f for f in fills if f is not None)
+    assert fill.funding == pytest.approx(-0.01), "an older rate leaked in"

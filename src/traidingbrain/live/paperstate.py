@@ -77,6 +77,13 @@ class Tally:
     opened: int = 0
     closed: int = 0
     expired: int = 0
+    abandoned_bars: int = 0
+    """Signal bars given up on after repeated failures.
+
+    Evidence that was lost rather than measured. Separate from `failures`
+    because a cycle that threw and then succeeded on retry cost nothing, while
+    this is a signal the system never got to have an opinion about."""
+
     failures: int = 0
     """Cycles that threw. A loop failing every pass reads on the screen exactly
     like a quiet market, so the sentence below has to be able to say it."""

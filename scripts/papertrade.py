@@ -125,23 +125,40 @@ def _spec(source: MarketData | None, symbol: str) -> SymbolSpec:
         return SymbolSpec(symbol=symbol, **DEFAULT_SPEC)
 
 
-def top_up_funding(source: MarketData | None, symbols: list[str]) -> None:
-    """Fetch the funding rates that have settled since the last run."""
+def top_up_funding(source: MarketData | None, traders: list[PaperTrader]) -> None:
+    """Fetch the funding rates that settled since the last run, and hand them over.
+
+    Writing them to disk was only half the job, and the missing half was
+    silent. Each broker took its schedule once, in its constructor, so every
+    settlement falling due after the process started was charged against the
+    end of that list -- charged as zero. A position held across two days of
+    positive funding paid nothing, and the forward journal recorded a profit
+    the account did not make. This function fetched the rates faithfully every
+    twenty cycles and nothing ever read them.
+
+    The whole series is read back from the store rather than only the rates
+    that just arrived: the broker wants a complete schedule, and it places its
+    own cursor from the account clock. Handed over even when the fetch brought
+    nothing, because the list the constructor was given may already have been
+    stale.
+    """
     if source is None:
         return
     config = load_config()
     store = FundingStore(config.engine.paths.funding_dir)
     now = SystemClock().now_ms()
-    for symbol in symbols:
+    for trader in traders:
+        symbol = trader.symbol
         last = store.last_ts(symbol)
         since = (last + 1) if last else now - FUNDING_DAYS * DAY_MS
         try:
             rates = source.fetch_funding(symbol, since)
         except Exception as exc:
             print(f"  {symbol}: Funding nicht abrufbar ({exc})", file=sys.stderr)
-            continue
+            rates = []
         if rates:
             store.write(symbol, rates)
+        trader.refresh_funding(store.read(symbol))
 
 
 def bars_needed(config: object) -> int:
@@ -212,6 +229,23 @@ def announce(entry: JournalEntry) -> None:
     print(f"      {verdict}")
 
 
+def tend_open_positions(traders: list[PaperTrader]) -> None:
+    """Settle whatever is open, even when the run is about to give up.
+
+    Section 14 of the masterplan says it outright: missing or stale data stops
+    new entries, never the management of a position that is already open. The
+    thin-history exit below used to return before a single settle() ran, which
+    left a live stop unwatched for as long as the data stayed thin -- and there
+    were open positions when this was found.
+    """
+    for trader in traders:
+        if trader.broker.is_flat:
+            continue
+        for entry in trader.settle():
+            announce(entry)
+        print(f"  {trader.status()}")
+
+
 def run(traders: list[PaperTrader], source: MarketData | None, *, cycles: int | None) -> int:
     symbols = [trader.symbol for trader in traders]
     print(f"Papertrading läuft: {', '.join(symbols)}")
@@ -224,17 +258,18 @@ def run(traders: list[PaperTrader], source: MarketData | None, *, cycles: int | 
 
     if not report_history(traders):
         print(
-            "\nStart abgebrochen: ohne Historie kann die Bewertung nicht gelesen werden,\n"
-            "und ohne Bewertung wird kein Trade eröffnet.",
+            "\nKeine neuen Einstiege: ohne Historie kann die Bewertung nicht gelesen\n"
+            "werden, und ohne Bewertung wird kein Trade eröffnet.",
             file=sys.stderr,
         )
+        tend_open_positions(traders)
         return 1
 
     done = 0
     try:
         while cycles is None or done < cycles:
             if done % 20 == 0:
-                top_up_funding(source, symbols)
+                top_up_funding(source, traders)
             # Two passes, and the order is the point. Settling is what an
             # open position depends on and costs a fetch; deciding costs ten
             # to fifteen seconds of analysis per market. Interleaved, one

@@ -183,6 +183,14 @@ class SimBroker:
         self.config = config
         self.funding = sorted(funding or [], key=lambda f: f.ts)
         self._funding_cursor = 0
+        #: The settlement time of the last funding rate the cursor consumed.
+        #:
+        #: Tracked separately from the cursor so `refresh_funding` can place a
+        #: new schedule without trusting an index into the old one -- and
+        #: deliberately not the clock, because a rate is published at its own
+        #: settlement time and fetched minutes later, so "in the past" and
+        #: "already settled" are different questions.
+        self._funding_settled_ts = 0
 
         self.ledger = _Ledger(equity=config.initial_equity, peak_equity=config.initial_equity)
         self.pending: PendingEntry | None = None
@@ -486,6 +494,45 @@ class SimBroker:
 
     # -- funding ------------------------------------------------------------ #
 
+    def refresh_funding(self, rates: list[FundingRate]) -> int:
+        """Replace the funding schedule with a longer one, mid-run.
+
+        The forward paper trader runs for days against a schedule it was handed
+        once, at construction. Funding settles every eight hours, so every
+        settlement falling due after the process started was charged against an
+        empty tail of that list -- which is to say charged as zero. A long held
+        two days in a positive-funding market pays for it, and the account did
+        not. `scripts/papertrade.py` was already fetching the new rates every
+        twenty cycles and writing them to disk, where nothing read them.
+
+        The cursor is rebuilt from the last settlement actually *consumed*, not
+        from how far the clock has run, and the difference is the whole fix. A
+        rate for 08:00 is published at 08:00 and fetched by the next top-up a
+        few minutes later, by which time the clock is already past it. Placing
+        the cursor by the clock would discard it as "in the past" -- which is
+        the behaviour this method exists to correct, reproduced one level down.
+        Placing it by what was consumed charges it on the next minute step,
+        where `_charge_funding` still checks that the position was open before
+        the settlement.
+
+        An index into the old list cannot be carried over, because the new list
+        may start earlier or hold rates the old one lacked, and the same index
+        would then point at a different settlement.
+
+        The conservative edge: a rate arriving *older* than the last consumed
+        one is skipped. That loses a late backfilled settlement rather than
+        risking a second charge for one already paid, and double-charging is
+        the error that would quietly make every held trade look worse.
+
+        Returns how many settlements are now pending, so a caller can say
+        whether the top-up actually brought anything.
+        """
+        self.funding = sorted(rates, key=lambda f: f.ts)
+        self._funding_cursor = sum(
+            1 for rate in self.funding if rate.ts <= self._funding_settled_ts
+        )
+        return len(self.funding) - self._funding_cursor
+
     def _charge_funding(self, ts: int) -> None:
         """Settle any funding whose settlement time has passed.
 
@@ -502,6 +549,9 @@ class SimBroker:
                     -self.position.notional * rate.rate * self.position.side.sign
                 )
             self._funding_cursor += 1
+            # What has been consumed, which is what a later `refresh_funding`
+            # must not offer again.
+            self._funding_settled_ts = max(self._funding_settled_ts, rate.ts)
 
     def skip_to(self, ts: int) -> None:
         """Advance the clock without walking every minute.
