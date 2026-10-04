@@ -1967,6 +1967,22 @@ function renderCurve(curve, source) {
          ein Mittelwert mehr über den Zufall als über die Regeln.</p>`
       : "";
 
+  /* What R is, where the numbers are. Severin asked what it meant after
+   * reading it in four places on this page -- which means the page was using a
+   * unit it never defined, and a reader who has to ask is a reader the screen
+   * failed. Worth four lines it will never need again. */
+  const unit = `
+    <p class="settings__note">
+      <b>R</b> ist ein Risiko &mdash; der Betrag, den ein Trade verliert, wenn der Stop
+      greift. Bei 1&thinsp;000 CHF Konto und 0,5&thinsp;% Risiko sind das 5 CHF.
+      <b>+1.00 R</b> heisst also: so viel gewonnen, wie riskiert wurde.
+      Gerechnet wird in R statt in Franken, weil Franken nur auf einem Konto
+      vergleichbar sind &mdash; derselbe Trade auf einem Konto von 10&thinsp;000 ergäbe
+      die zehnfache Zahl, ohne dass er besser gelaufen wäre.
+      Ein Verlust über 1.00 R entsteht, wenn der Markt durch den Stop läuft und der
+      Ausstieg schlechter ausfällt als geplant.
+    </p>`;
+
   host.innerHTML = `
     ${curveSvg(curve.points)}
     <div class="figures">
@@ -1992,7 +2008,8 @@ function renderCurve(curve, source) {
       </div>
     </div>
     ${breakdown("Nach Markt", curve.by_symbol)}
-    ${breakdown("Nach Setup", curve.by_setup)}`;
+    ${breakdown("Nach Setup", curve.by_setup)}
+    ${unit}`;
 }
 
 async function loadCurve() {
