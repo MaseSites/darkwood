@@ -141,6 +141,13 @@ class FakeBrain:
         self.config = config
         self.calls = 0
         self.guard_rejections = 0
+        #: Which question this yardstick stands in for.
+        #:
+        #: Settable for the same reason as on the real brain: a judging run and
+        #: a scanning run are different measurements, and a decision recorded
+        #: under the wrong version would be compared against answers to another
+        #: question.
+        self.prompt_version = prompts.PROMPT_VERSION
 
     def decide(self, snapshot: MarketSnapshot, brain_input: object | None = None) -> BrainDecision:
         self.calls += 1
@@ -158,7 +165,7 @@ class FakeBrain:
         return BrainDecision(
             snapshot_hash=snapshot.to_brain_input().content_hash(),
             model_id=FAKE_MODEL,
-            prompt_version=prompts.PROMPT_VERSION,
+            prompt_version=self.prompt_version,
             verdict=verdict,
             confidence=breakdown.confidence,
             plan=plan,

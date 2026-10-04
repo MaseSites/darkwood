@@ -30,8 +30,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from traidingbrain.brain.client import AnthropicBrain
 from traidingbrain.domain.enums import Side
-from traidingbrain.domain.snapshot import MarketSnapshot
+from traidingbrain.domain.snapshot import BrainInput, MarketSnapshot
+from traidingbrain.domain.verdict import BrainDecision
 from traidingbrain.sim.plan import TradeIntent
 
 #: The judging question's version, distinct from the scanner's.
@@ -144,3 +146,47 @@ def user_content(snapshot: MarketSnapshot, intent: TradeIntent) -> str:
         + "\n\nMarket state:\n\n"
         + snapshot.to_brain_input().canonical_json()
     )
+
+
+class JudgingBrain(AnthropicBrain):
+    """The same brain, asked whether to take a trade rather than to find one.
+
+    Only two things differ from the scanner, and they are overridden together
+    on purpose: the question (`render_user`) and the version string it is
+    cached under (`prompt_version`). Changing one without the other is the
+    silent collision described at the top of this module, so they sit side by
+    side where a reader cannot miss that both moved.
+
+    Everything else -- the system prompt, the schema, the guard, the scoring,
+    the budget, the cache -- is inherited rather than reimplemented, which is
+    what makes a judging run comparable to a scanning one.
+    """
+
+    prompt_version: str = JUDGE_VERSION
+    _pending: tuple[MarketSnapshot, TradeIntent] | None = None
+
+    def judge(self, snapshot: MarketSnapshot, intent: TradeIntent) -> BrainDecision:
+        """One judgement on one proposal.
+
+        The proposal travels on the instance because `decide` is handed a market
+        state and not a candidate. Set immediately before the call and read
+        inside it: the backtest is single-threaded and the forward trader
+        decides one symbol at a time, so there is no window in which a second
+        proposal could be pending. `render_user` raises rather than falling back
+        if that assumption is ever broken, because a judgement rendered without
+        its proposal would be a scanning answer recorded as a judging one.
+        """
+        self._pending = (snapshot, intent)
+        try:
+            return self.decide(snapshot)
+        finally:
+            self._pending = None
+
+    def render_user(self, payload: BrainInput) -> str:
+        pending = self._pending
+        if pending is None:
+            raise RuntimeError(
+                "JudgingBrain was asked without a proposal. Call judge(), not decide()."
+            )
+        snapshot, intent = pending
+        return user_content(snapshot, intent)

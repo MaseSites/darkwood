@@ -142,6 +142,15 @@ class _Refusal:
 class AnthropicBrain:
     """Turns a market snapshot into a checked, scored decision."""
 
+    #: Which question this brain asks, and therefore which cache it reads.
+    #:
+    #: A class attribute so a subclass can change it. The judging path asks a
+    #: *different* question about the same bar, and the cache is keyed on
+    #: snapshot hash, model, prompt version and schema version -- sharing a
+    #: version string would serve the judge the scanner's answer, and the
+    #: collision is silent because a cache hit looks like a cache hit.
+    prompt_version: str = prompts.PROMPT_VERSION
+
     def __init__(
         self,
         config: AppConfig,
@@ -161,6 +170,16 @@ class AnthropicBrain:
         self.usage = Usage(model=self.model)
         self.guard_rejections = 0
 
+    def render_user(self, payload: BrainInput) -> str:
+        """The volatile half of the request, from one market state.
+
+        A method rather than a stored function so that a subclass asking a
+        different question overrides it alongside `prompt_version`. The two
+        must always move together: a new question under the old version string
+        is exactly the silent cache collision the version exists to prevent.
+        """
+        return prompts.user_content(payload)
+
     # -- the main path ------------------------------------------------------ #
 
     def decide(
@@ -169,7 +188,7 @@ class AnthropicBrain:
         """One decision, from cache if possible."""
         payload = brain_input or snapshot.to_brain_input()
         snapshot_hash = payload.content_hash()
-        key = cache_key(snapshot_hash, self.model, prompts.PROMPT_VERSION)
+        key = cache_key(snapshot_hash, self.model, self.prompt_version)
 
         if self.cache is not None:
             cached = self.cache.get(key)
@@ -205,7 +224,7 @@ class AnthropicBrain:
             max_tokens=self.config.engine.brain.max_tokens,
             output_config={"effort": self.config.engine.brain.effort},
             system=prompts.system_blocks(),
-            messages=[{"role": "user", "content": prompts.user_content(payload)}],
+            messages=[{"role": "user", "content": self.render_user(payload)}],
             output_format=BrainVerdict,
         )
 
@@ -260,6 +279,7 @@ class AnthropicBrain:
                 self.model,
                 f"model did not answer: {verdict.category} {verdict.explanation}".strip(),
                 request_id,
+                self.prompt_version,
             )
 
         breakdown = score(verdict, self.config.weights, snapshot.history)
@@ -274,7 +294,7 @@ class AnthropicBrain:
         return BrainDecision(
             snapshot_hash=snapshot_hash,
             model_id=self.model,
-            prompt_version=prompts.PROMPT_VERSION,
+            prompt_version=self.prompt_version,
             verdict=verdict,
             confidence=breakdown.confidence,
             plan=plan,
@@ -303,7 +323,7 @@ class AnthropicBrain:
         sample = self.client.messages.count_tokens(
             model=self.model,
             system=prompts.system_blocks(),
-            messages=[{"role": "user", "content": prompts.user_content(payloads[0])}],
+            messages=[{"role": "user", "content": self.render_user(payloads[0])}],
         )
         per_call_input = int(getattr(sample, "input_tokens", 0))
         # Output is dominated by the reasoning text; measured runs land near this.
@@ -336,7 +356,11 @@ class BatchOutcome:
 
 
 def _no_trade_decision(
-    snapshot_hash: str, model: str, reason: str, request_id: str | None
+    snapshot_hash: str,
+    model: str,
+    reason: str,
+    request_id: str | None,
+    prompt_version: str = prompts.PROMPT_VERSION,
 ) -> BrainDecision:
     """A decision that says nothing happened, and why.
 
@@ -352,7 +376,7 @@ def _no_trade_decision(
     return BrainDecision(
         snapshot_hash=snapshot_hash,
         model_id=model,
-        prompt_version=prompts.PROMPT_VERSION,
+        prompt_version=prompt_version,
         verdict=BrainVerdict(
             schema_version=1,
             bias=Bias.NEUTRAL,

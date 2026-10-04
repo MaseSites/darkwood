@@ -19,13 +19,16 @@ import json
 import pytest
 
 from tests.factories import make_snapshot
+from traidingbrain.brain.client import AnthropicBrain
 from traidingbrain.brain.judging import (
     JUDGE_VERSION,
     NEAR_ATR,
+    JudgingBrain,
     describe,
     user_content,
 )
 from traidingbrain.brain.prompt import PROMPT_VERSION
+from traidingbrain.config.settings import load_config
 from traidingbrain.domain.enums import Side
 from traidingbrain.sim.plan import TradeIntent
 
@@ -223,3 +226,50 @@ def test_the_question_tells_the_model_the_levels_are_not_its_to_move() -> None:
 
     assert "not yours to change" in text
     assert "Do not move the entry, the stop or the target" in text
+
+
+# --------------------------------------------------------------------------- #
+# The brain that asks it
+# --------------------------------------------------------------------------- #
+
+
+def judging_brain() -> JudgingBrain:
+    """A judging brain with no client, since nothing here reaches the network."""
+    return JudgingBrain(load_config(), client=object())
+
+
+def test_the_judging_brain_is_cached_apart_from_the_scanner() -> None:
+    assert JudgingBrain.prompt_version == JUDGE_VERSION
+    assert JudgingBrain.prompt_version != AnthropicBrain.prompt_version
+
+
+def test_asking_it_to_scan_raises_instead_of_answering() -> None:
+    """The one hazard of carrying the proposal on the instance.
+
+    `decide` is inherited and would otherwise render the *scanning* question
+    while recording the answer under the judging version -- a scanning answer
+    filed as a judgement, cached under a key that says it is one, and invisible
+    afterwards. Raising is the only honest outcome.
+    """
+    brain = judging_brain()
+
+    with pytest.raises(RuntimeError, match="without a proposal"):
+        brain.render_user(make_snapshot().to_brain_input())
+
+
+def test_the_proposal_is_released_after_each_judgement() -> None:
+    """Otherwise a later call could be answered about an earlier candidate.
+
+    The failure would be near-invisible: a plausible judgement about the wrong
+    trade, on a bar where the model was never actually asked about that trade.
+    """
+    brain = judging_brain()
+    snapshot = make_snapshot(price=10_000.0, atr=100.0)
+    brain._pending = (snapshot, intent_at(10_000.0))
+
+    rendered = brain.render_user(snapshot.to_brain_input())
+    assert "not yours to change" in rendered
+
+    brain._pending = None
+    with pytest.raises(RuntimeError):
+        brain.render_user(snapshot.to_brain_input())
