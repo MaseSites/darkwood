@@ -287,10 +287,16 @@ def test_fees_are_charged_on_both_sides() -> None:
     fills = minutes(broker, [(110, 121, 109)], start=EPOCH + 5 * MINUTE)
     fill = next(f for f in fills if f is not None)
 
-    # A resting limit entry earns maker (100 * 0.0005 = 0.05); the exit crosses
-    # the spread and pays taker (120 * 0.001 = 0.12).
-    assert fill.fees == pytest.approx(0.05 + 0.12)
-    assert fill.net_pnl == pytest.approx(20.0 - 0.17)
+    # Both legs rest in the book here and both earn maker: the entry is a limit
+    # order (100 * 0.0005) and so is the target (120 * 0.0005).
+    #
+    # This test asserted taker on the exit until 04.10.2026, because every exit
+    # was charged as taker regardless of why it happened -- including a take
+    # profit, which does not cross the spread to get out. The stop case below
+    # covers the other side.
+    assert fill.reason is ExitReason.TARGET
+    assert fill.fees == pytest.approx(0.05 + 0.06)
+    assert fill.net_pnl == pytest.approx(20.0 - 0.11)
 
 
 def test_slippage_only_ever_runs_against_us() -> None:
@@ -490,3 +496,50 @@ def test_the_rule_is_off_unless_it_is_configured() -> None:
 
     assert broker.position is not None
     assert broker.position.stop == pytest.approx(90.0)
+
+
+def test_a_target_exit_pays_the_maker_fee_and_a_stop_pays_taker() -> None:
+    """A take profit rests in the book; a stop crosses the spread to get out.
+
+    Entries already made this distinction and exits did not, so every winner
+    was charged as though it had paid to leave. Worth 0.0092 R a trade over the
+    journalled record -- a seventh of all fees, in a system whose entire net
+    loss is fees.
+
+    The test pins both sides, because charging *everything* as maker would be
+    the same mistake in the flattering direction.
+    """
+    spec = make_symbol_spec(maker_fee=0.0002, taker_fee=0.0006)
+    settings = config(slippage_bps=0.0)
+
+    def run(hit_target: bool) -> object:
+        broker = SimBroker(spec, settings)
+        broker.submit(
+            PendingEntry(
+                side=Side.LONG,
+                order_type=OrderType.LIMIT,
+                limit_price=100.0,
+                stop=90.0,
+                target=120.0,
+                qty=1.0,
+                leverage=1.0,
+                created_ts=0,
+                expires_ts=10_000_000,
+                risk_amount=10.0,
+            )
+        )
+        broker.on_minute(1_000, 100.0, 100.0, 100.0)
+        assert broker.position is not None
+        reach = 120.0 if hit_target else 90.0
+        fill = broker.on_minute(2_000, 100.0, max(100.0, reach), min(100.0, reach))
+        assert fill is not None
+        return fill
+
+    won = run(hit_target=True)
+    lost = run(hit_target=False)
+
+    entry_fee = 100.0 * spec.maker_fee
+    assert won.reason is ExitReason.TARGET
+    assert won.fees == pytest.approx(entry_fee + 120.0 * spec.maker_fee)
+    assert lost.reason is ExitReason.STOP
+    assert lost.fees == pytest.approx(entry_fee + 90.0 * spec.taker_fee)

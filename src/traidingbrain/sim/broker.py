@@ -407,7 +407,23 @@ class SimBroker:
 
     def _close(self, position: OpenPosition, price: float, ts: int, reason: ExitReason) -> Fill:
         gross = (price - position.entry_price) * position.qty * position.side.sign
-        exit_fee = price * position.qty * self.spec.taker_fee
+        # A target is a limit order resting in the book and earns the maker fee;
+        # everything else leaves at market and pays taker. Entries already made
+        # this distinction and exits did not, so every take profit was charged
+        # as though it had crossed the spread to get out.
+        #
+        # Worth 0.0092 R a trade, measured over 1,862 journalled trades: 37% of
+        # them end at the target and each saves the 0.04% difference. That is a
+        # seventh of all fees in a system whose entire net loss is fees.
+        #
+        # **It is also a constraint on the live side, not only a model change.**
+        # It is only true if the executor places a resting limit at the target.
+        # A take-profit-market order, which is the easier thing to send and what
+        # most venues offer by default, crosses the spread and pays taker -- and
+        # then this line would be quietly optimistic about every winner.
+        maker_exit = reason is ExitReason.TARGET
+        rate = self.spec.maker_fee if maker_exit else self.spec.taker_fee
+        exit_fee = price * position.qty * rate
         fees = position.fees_paid + exit_fee
 
         state = {
