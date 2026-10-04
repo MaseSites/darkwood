@@ -81,6 +81,10 @@ CEILINGS = (0.05, 0.075, 0.10, 0.15)
 #: rather than more precision.
 MARKETS = 4
 
+#: Below this the per-market table has nothing to say: agreement between
+#: markets is the whole point of printing it, and one market cannot disagree.
+MIN_MARKETS_TO_COMPARE = 2
+
 #: Fewest trades before a group's mean is worth an interval. Below this the
 #: interval is wider than the scale and says so by being absurd, which is less
 #: useful than saying the sample is too small.
@@ -117,6 +121,49 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def per_market(partial: Partial, labels: dict[float, str]) -> None:
+    """The same ceilings, one market per row.
+
+    The pooled mean hides the one thing that separates an effect from noise:
+    whether the markets agree. BTC made the 0.100 ceiling look like the first
+    positive expectancy the project had produced, at +0.0455 R; XRP put the
+    same ceiling at -0.0958 R, worse than the one that ships. A rule whose sign
+    flips between markets is describing those markets.
+
+    It is printed rather than tested because four markets cannot settle it
+    either way -- but a reader who sees the row cannot mistake the pooled
+    number for agreement.
+    """
+    markets = sorted({sym for label in labels.values() for sym in partial.symbols_done(label)})
+    if len(markets) < MIN_MARKETS_TO_COMPARE:
+        return
+
+    print("\nJe Markt, weil der gepoolte Mittelwert verdeckt, ob sie sich einig sind:")
+    head = "".join(f"{labels[c].replace('Decke ', ''):>12s}" for c in CEILINGS)
+    print(f"  {'Markt':10s}{head}")
+    for sym in markets:
+        cells = []
+        for ceiling in CEILINGS:
+            key = Partial.key(sym, labels[ceiling])
+            values = partial.cells.get(key)
+            cells.append(f"{np.mean(values):+12.4f}" if values else f"{'—':>12s}")
+        print(f"  {sym:10s}{''.join(cells)}")
+
+    # Which ceiling won, market by market. Unanimity is the claim; a split is
+    # the absence of one.
+    best: list[str] = []
+    for sym in markets:
+        scored = {
+            c: float(np.mean(v))
+            for c in CEILINGS
+            if (v := partial.cells.get(Partial.key(sym, labels[c])))
+        }
+        if len(scored) > 1:
+            best.append(f"{sym[:3]}:{max(scored, key=lambda c: scored[c]):g}")
+    if best:
+        print(f"  beste Decke je Markt -> {', '.join(best)}")
+
+
 def report(partial: Partial, labels: dict[float, str]) -> None:
     """The curve as it stands, over whatever cells have landed.
 
@@ -144,6 +191,8 @@ def report(partial: Partial, labels: dict[float, str]) -> None:
             f"Treffer {100 * wins / len(rs):3.0f}%  Summe {sum(rs):+8.1f} R  "
             f"abgelehnt {refused:5d}  {interval(rs)}  [{markets}]"
         )
+
+    per_market(partial, labels)
 
     # Only comparable where the same markets were measured at both ceilings. A
     # difference taken across two different market sets is not a difference,
