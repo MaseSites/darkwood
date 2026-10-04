@@ -71,6 +71,15 @@ BOOT = 2000
 # right place.
 CEILINGS = (0.05, 0.075, 0.10, 0.15)
 
+#: How many markets the curve is measured over.
+#:
+#: Four, the same four as every other study here, so the numbers can be read
+#: next to each other. It used to be all twelve, which at the M15 cadence is
+#: one cell every twenty-two minutes and seventeen hours for the run -- longer
+#: than the laptop stays on, so the extra eight markets produced nothing at all
+#: rather than more precision.
+MARKETS = 4
+
 #: Fewest trades before a group's mean is worth an interval. Below this the
 #: interval is wider than the scale and says so by being absurd, which is less
 #: useful than saying the sample is too small.
@@ -91,7 +100,7 @@ def main() -> int:
     base = load_config()
     store = ParquetStore(base.engine.paths.parquet_dir)
     funding_store = FundingStore(base.engine.paths.funding_dir)
-    symbols = list(base.engine.symbols.active)
+    symbols = list(base.engine.symbols.active[:MARKETS])
 
     # Resumable, because this run has now been killed twice by a shutdown and
     # each death threw away hours. The signature carries the ceilings: the first
