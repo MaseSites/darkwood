@@ -46,13 +46,17 @@ from traidingbrain.api.paper import PaperReadout, build_paper_readout
 from traidingbrain.api.portfolio import (
     Curve,
     Ledger,
+    OpenTrade,
     Portfolio,
+    PositionChart,
     SettingsView,
     TopUp,
     TopUpRequest,
     build_curve,
     build_ledger,
+    build_open,
     build_portfolio,
+    build_position_chart,
     build_settings,
     reset_account,
     top_up,
@@ -491,6 +495,20 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
             services.config,
             now_ms=int(time.time() * 1000),
         )
+
+    @app.get("/api/portfolio/open", response_model=list[OpenTrade])
+    def open_trades() -> list[OpenTrade]:
+        """Every position still running, with where it stands right now."""
+        return build_open(_state_path(services), services.config, now_ms=int(time.time() * 1000))
+
+    @app.get("/api/portfolio/open/{symbol}/chart", response_model=PositionChart)
+    def open_chart(symbol: str) -> PositionChart:
+        """The candles behind one running trade, with its stop and target."""
+        _known(services, symbol)
+        chart = build_position_chart(_state_path(services), services.config, symbol)
+        if chart is None:
+            raise HTTPException(404, f"{symbol} has no open position")
+        return chart
 
     @app.get("/api/portfolio/ledger", response_model=Ledger)
     def ledger(source: str = "live", symbol: str | None = None) -> Ledger:

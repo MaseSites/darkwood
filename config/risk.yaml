@@ -14,7 +14,17 @@ sizing:
   # Below min_confidence there is no trade at all.
   min_confidence: 60
   tiers:
-    - { min_confidence: 60, risk_pct: 0.005 }
+    # Severin looked at the first four trades and said the positions were too
+    # small -- "du kannst wirklich auch mit irgendwie 100 Franken mit einem
+    # Zehnerhebel reingehen". That is this number: a hundred francs of margin at
+    # ten times is a thousand of notional, which at a one percent stop is ten
+    # francs of risk, which is one percent of a thousand-franc account.
+    #
+    # It is also the ceiling. `uncalibrated_cap_risk_pct` below holds every tier
+    # at one percent until the history engine shows that higher confidence
+    # really does perform better, so the bands above are unreachable and this
+    # change moves the floor up to meet the cap rather than past it.
+    - { min_confidence: 60, risk_pct: 0.010 }
     - { min_confidence: 70, risk_pct: 0.010 }
     - { min_confidence: 80, risk_pct: 0.020 }
     - { min_confidence: 90, risk_pct: 0.030 }

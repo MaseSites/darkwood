@@ -2703,3 +2703,241 @@ body:not([data-view="markt"]) .rail,
 body:not([data-view="markt"]) .status-strip {
   display: none;
 }
+
+/* ------------------------------------------------- running trades --------- */
+
+/* A trade that has not finished is a different object from one that has, and it
+ * looks different on purpose: a card you can open rather than a row in a table.
+ * It has no exit, no result and no verdict -- what it has is where it stands,
+ * and the thing worth looking at is whether it is heading for the stop or the
+ * target, which no column of numbers answers at a glance.
+ */
+
+.open-list {
+  display: grid;
+  gap: var(--s4);
+  margin: 0 0 var(--s4);
+  padding: 0;
+  list-style: none;
+}
+
+.open-card {
+  padding: var(--s4);
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--panel-high);
+}
+
+.open-card--long {
+  border-left-color: var(--long);
+}
+
+.open-card--short {
+  border-left-color: var(--short);
+}
+
+.open-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2) var(--s3);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 120ms var(--ease-out);
+}
+
+.open-card__head:active {
+  transform: scale(0.995);
+}
+
+.open-card__head:focus-visible {
+  outline: 2px solid var(--rule-strong);
+  outline-offset: 4px;
+}
+
+.open-card__sym {
+  font: 500 15px/1 var(--sans);
+  letter-spacing: 0.03em;
+}
+
+.open-card__side {
+  font: 400 11px/1 var(--sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.open-card__setup {
+  font: 400 11px/1.4 var(--sans);
+  color: var(--dimmer);
+}
+
+.open-card__r {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 17px;
+}
+
+.open-card__money {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.open-card__r.up,
+.open-card__money.up {
+  color: var(--long);
+}
+
+.open-card__r.down,
+.open-card__money.down {
+  color: var(--short);
+}
+
+.open-card__chevron {
+  width: 12px;
+  color: var(--dimmer);
+  font-size: 11px;
+}
+
+/* The plan on one rail, drawn to scale. Three prices in a list do not answer
+   "nearly done or nearly wrong"; the distance between them does. */
+.rail-plan {
+  position: relative;
+  height: 30px;
+  margin: var(--s4) 0 var(--s2);
+}
+
+.rail-plan__track {
+  position: absolute;
+  top: 11px;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  border-radius: 1px;
+  background: var(--rule);
+}
+
+.rail-plan__mark {
+  position: absolute;
+  top: 5px;
+  width: 2px;
+  height: 16px;
+  margin-left: -1px;
+}
+
+.rail-plan__mark--entry {
+  background: var(--dim);
+}
+
+/* Where price is now: taller, lighter, and the only thing on the rail that
+   moves. A marker the same weight as the fixed ones would make you look twice
+   to find out which is which. */
+.rail-plan__mark--now {
+  top: 0;
+  width: 3px;
+  height: 26px;
+  margin-left: -1.5px;
+  border-radius: 1px;
+  background: var(--text);
+}
+
+.rail-plan__end {
+  position: absolute;
+  top: 18px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--dimmer);
+}
+
+.rail-plan__end--left {
+  left: 0;
+}
+
+.rail-plan__end--right {
+  right: 0;
+}
+
+.open-card__chart {
+  margin-top: var(--s4);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--rule);
+}
+
+.open-card__chart[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------- candles ---------------- */
+
+.cndl-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.cndl {
+  stroke-width: 1;
+}
+
+.cndl--up {
+  fill: var(--long);
+  stroke: var(--long);
+}
+
+.cndl--down {
+  fill: var(--short);
+  stroke: var(--short);
+}
+
+.plan {
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.plan--entry {
+  stroke: var(--dim);
+}
+
+.plan--stop {
+  stroke: var(--short);
+}
+
+.plan--target {
+  stroke: var(--long);
+}
+
+.plan__label {
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.plan__label.plan--entry {
+  fill: var(--dim);
+}
+
+.plan__label.plan--stop {
+  fill: var(--short);
+}
+
+.plan__label.plan--target {
+  fill: var(--long);
+}
+
+@media (max-width: 640px) {
+  .open-card__setup {
+    width: 100%;
+  }
+
+  .open-card__r {
+    margin-left: 0;
+  }
+}

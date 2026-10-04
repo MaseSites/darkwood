@@ -284,9 +284,7 @@ def _context_lines(reading: ScoreReading) -> list[str]:
     return []
 
 
-def build_score_view(
-    symbol: str, analysis: MultiFrameAnalysis, ts: int
-) -> ScoreRead | None:
+def build_score_view(symbol: str, analysis: MultiFrameAnalysis, ts: int) -> ScoreRead | None:
     """The score at the bar the chart is drawn for, or None if it is not ready."""
     index = signal_index_at(analysis, ts)
     if index is None:

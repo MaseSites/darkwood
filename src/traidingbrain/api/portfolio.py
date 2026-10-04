@@ -30,9 +30,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import pandas as pd
 from pydantic import BaseModel, Field
 
+from traidingbrain.api.chart import Candle
 from traidingbrain.config.settings import AppConfig
+from traidingbrain.data.store import ParquetStore
+from traidingbrain.domain.enums import Side
 from traidingbrain.journal.record import JournalEntry, Source
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.live.paperstate import PaperState, PaperStateStore
@@ -44,6 +48,14 @@ from traidingbrain.strategy.setups import TRADEABLE
 #: trades are far fewer and are never truncated, because those are the ones the
 #: whole exercise is about.
 MAX_LEDGER = 400
+
+#: Candles shown behind an open trade.
+#:
+#: Enough to see the approach, not so many that the plan lines are a smudge at
+#: the right-hand edge. A trade can run for days -- Severin said so explicitly --
+#: so this is a window on the recent past rather than the whole holding period.
+CHART_CANDLES = 90
+
 
 #: Minutes behind before an account is called stale.
 #:
@@ -178,6 +190,188 @@ class TopUp:
 
 class TopUpRequest(BaseModel):
     amount: float = Field(gt=0, le=1_000_000)
+
+
+class OpenTrade(BaseModel):
+    """A position that is still running.
+
+    Its own shape rather than a `LedgerRow` with blanks: a trade that has not
+    finished has no exit, no result and no verdict, and a row carrying three
+    empty columns invites them to be read as zeroes. What it has instead is
+    where it stands right now, which a closed trade does not.
+    """
+
+    symbol: str
+    side: str
+    entry: float
+    stop: float
+    target: float
+    qty: float
+    leverage: float
+    notional: float
+    margin: float
+    opened_ts: int
+    held_minutes: int
+    last_price: float
+    unrealised: float
+    risk_amount: float
+    r_now: float
+    """Where it stands in units of the risk. +1.0 means it is a full risk ahead;
+    the target sits at the reward-to-risk ratio and the stop at -1.0."""
+
+    progress: float
+    """How far along the path from stop to target, 0 to 1, with the entry
+    wherever it falls between them. The one number that says "nearly there" or
+    "nearly wrong" without needing the prices read off."""
+
+    reward_risk: float
+    setup: str
+    setup_name: str
+    setup_timeframe: str
+    signal_timeframe: str
+    rating: int
+    rating_band: str
+    agreed_with_score: bool
+    stop_moved: bool
+
+
+class PositionChart(BaseModel):
+    """Candles behind an open trade, with the three lines that decide it."""
+
+    symbol: str
+    timeframe: str
+    bar_ms: int
+    side: str
+    entry: float
+    stop: float
+    target: float
+    opened_ts: int
+    candles: list[Candle]
+    note: str = ""
+
+
+def _candles(frame: pd.DataFrame) -> list[Candle]:
+    """Bars as a list, read off numpy rather than row by row.
+
+    `itertuples` hands back loosely typed rows that the type checker cannot see
+    the columns of, and the arrays are what every other reader in this project
+    uses anyway.
+    """
+    ts = frame["ts"].to_numpy(dtype="int64")
+    opens = frame["open"].to_numpy(dtype="float64")
+    highs = frame["high"].to_numpy(dtype="float64")
+    lows = frame["low"].to_numpy(dtype="float64")
+    closes = frame["close"].to_numpy(dtype="float64")
+    volumes = frame["volume"].to_numpy(dtype="float64")
+    return [
+        Candle(
+            ts=int(ts[i]),
+            open=float(opens[i]),
+            high=float(highs[i]),
+            low=float(lows[i]),
+            close=float(closes[i]),
+            volume=float(volumes[i]),
+        )
+        for i in range(len(ts))
+    ]
+
+
+def build_open(state_path: Path, config: AppConfig, *, now_ms: int) -> list[OpenTrade]:
+    """Every position still running, newest first.
+
+    Read from the trader's state file rather than from the journal, because the
+    journal only learns about a trade when it ends. These are the ones that have
+    not.
+    """
+    states = PaperStateStore(state_path)
+    out: list[OpenTrade] = []
+    for symbol in config.engine.symbols.active:
+        saved = states.load(symbol)
+        if saved is None or saved.position is None:
+            continue
+        position = saved.position
+        reason = saved.reason
+        risk = position.risk_price
+        price = saved.last_price or position.entry_price
+        sign = 1.0 if position.side is Side.LONG else -1.0
+        r_now = ((price - position.entry_price) * sign / risk) if risk else 0.0
+
+        low, high = sorted((position.stop, position.target))
+        span = high - low
+        progress = (price - low) / span if span > 0 else 0.0
+        if position.side is Side.SHORT:
+            progress = 1.0 - progress
+
+        out.append(
+            OpenTrade(
+                symbol=symbol,
+                side=str(position.side),
+                entry=position.entry_price,
+                stop=position.stop,
+                target=position.target,
+                qty=position.qty,
+                leverage=position.leverage,
+                notional=round(position.notional, 2),
+                margin=round(position.margin, 2),
+                opened_ts=position.opened_ts,
+                held_minutes=int(max(0, (now_ms - position.opened_ts) // 60_000)),
+                last_price=price,
+                unrealised=round(position.unrealised(price), 2),
+                risk_amount=round(position.risk_amount, 2),
+                r_now=round(r_now, 3),
+                progress=round(min(1.0, max(0.0, progress)), 4),
+                reward_risk=round(abs(position.target - position.entry_price) / risk, 2)
+                if risk
+                else 0.0,
+                setup=reason.setup_key if reason else "—",
+                setup_name=reason.setup_name if reason else "—",
+                setup_timeframe=reason.setup_timeframe if reason else "—",
+                signal_timeframe=reason.signal_timeframe if reason else "",
+                rating=reason.rating if reason else 0,
+                rating_band=reason.rating_band if reason else "",
+                agreed_with_score=reason.rating_agreed_with_setup if reason else False,
+                stop_moved=position.stop_moved,
+            )
+        )
+    out.sort(key=lambda t: t.opened_ts, reverse=True)
+    return out
+
+
+def build_position_chart(state_path: Path, config: AppConfig, symbol: str) -> PositionChart | None:
+    """The recent candles behind one open trade, on the chart it was found on.
+
+    On the setup's own timeframe rather than the decision cadence: a four-hour
+    setup read off fifteen-minute candles is ninety candles of noise around a
+    plan drawn from something else. Falls back to the signal frame when the
+    setup is unknown.
+    """
+    saved = PaperStateStore(state_path).load(symbol)
+    if saved is None or saved.position is None:
+        return None
+    position = saved.position
+
+    wanted = config.engine.timeframes.signal
+    if saved.reason is not None:
+        for candidate in config.engine.timeframes.context:
+            if candidate.value == saved.reason.setup_timeframe:
+                wanted = candidate
+                break
+
+    frame = ParquetStore(config.engine.paths.parquet_dir).read(symbol, wanted)
+    if frame.empty:
+        return None
+    tail = frame.tail(CHART_CANDLES)
+    return PositionChart(
+        symbol=symbol,
+        timeframe=wanted.value,
+        bar_ms=wanted.minutes * 60_000,
+        side=str(position.side),
+        entry=position.entry_price,
+        stop=position.stop,
+        target=position.target,
+        opened_ts=position.opened_ts,
+        candles=_candles(tail),
+    )
 
 
 def _account_row(state: PaperState, *, start: float, now_ms: int) -> AccountRow:

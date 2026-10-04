@@ -244,9 +244,7 @@ def build_chart(
         plan=_plan_lines(proposal),
         events=_event_lines(proposal, timeframe, bar_ms, len(candles)),
         levels_hidden=hidden,
-        note=(
-            "Bars stop at the decision. Anything after it would be showing you the answer."
-        ),
+        note=("Bars stop at the decision. Anything after it would be showing you the answer."),
     )
 
 

@@ -102,8 +102,22 @@
         <section class="panel" aria-labelledby="trades-head">
           <h2 class="panel__head" id="trades-head">
             Trades
-            <span class="panel__hint" id="trades-hint">Jeder abgeschlossene Trade, neuester zuerst</span>
+            <span class="panel__hint" id="trades-hint">Was gerade läuft und was fertig ist</span>
           </h2>
+          <!-- Running trades first and in their own section. A position that
+               has not finished has no exit, no result and no verdict, and
+               putting it in the same table would mean three empty columns that
+               invite being read as zeroes. What it has instead is where it
+               stands right now, which a finished trade does not. -->
+          <div id="open">
+            <div class="placeholder"><span class="pulse"></span><p>Lese offene Trades&hellip;</p></div>
+          </div>
+
+          <h3 class="panel__head" style="margin-top: var(--gap-lg)">
+            Abgeschlossen
+            <span class="panel__hint">Fertig &mdash; mit Ergebnis und Begründung</span>
+          </h3>
+
           <!-- Forward and replayed trades are never shown together and never
                averaged. The switch is explicit so that which kind you are
                looking at is a thing you chose, not a default you inherited. -->

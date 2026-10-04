@@ -1612,7 +1612,10 @@ function showView(name) {
   document.body.dataset.view = name;
 
   if (name === "konto") loadKonto();
-  if (name === "trades") loadLedger();
+  if (name === "trades") {
+    loadOpen();
+    loadLedger();
+  }
   if (name === "verlauf") loadCurve();
 }
 
@@ -2039,3 +2042,241 @@ document.querySelectorAll("#verlauf-source .segmented__item").forEach((item) => 
 
 window.addEventListener("hashchange", () => showView(currentView()));
 showView(currentView());
+
+/* ------------------------------------------------------ running trades -- */
+
+/* A trade that has not finished is a different object from one that has, and
+ * gets its own section rather than a row in the ledger with three columns
+ * blanked. It has no exit, no result and no verdict; what it has instead is
+ * where it stands right now, and that is what this shows.
+ *
+ * Severin asked to click one and watch it: the candles, the stop and the
+ * target, and whether it is heading for one or the other. A trade can run for
+ * days -- he said so -- so the chart is a window on the recent past rather than
+ * the whole holding period.
+ *
+ * Polled faster than the records pages, because unlike them it moves.
+ */
+const OPEN_POLL_MS = 15000;
+const expandedTrades = new Set();
+
+function heldText(minutes) {
+  if (minutes < 60) return `${minutes} Min.`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours} Std. ${minutes % 60} Min.`;
+  return `${Math.floor(hours / 24)} Tage ${hours % 24} Std.`;
+}
+
+/* Stop, entry and target on one rail, with price where it actually is. The
+ * three numbers alone do not answer "is this nearly done or nearly wrong"; the
+ * distance between them, drawn to scale, does. */
+function progressRail(trade) {
+  const low = Math.min(trade.stop, trade.target);
+  const high = Math.max(trade.stop, trade.target);
+  const span = high - low || 1;
+  const at = (value) => ((value - low) / span) * 100;
+  const long = trade.side === "long";
+  return `
+    <div class="rail-plan" role="img"
+         aria-label="Kurs ${fmt.price(trade.last_price)}, Stop ${fmt.price(
+           trade.stop
+         )}, Ziel ${fmt.price(trade.target)}">
+      <span class="rail-plan__track"></span>
+      <span class="rail-plan__zone ${long ? "down" : "up"}"
+            style="left:0;width:${at(long ? trade.entry : trade.entry).toFixed(1)}%"></span>
+      <span class="rail-plan__mark rail-plan__mark--entry"
+            style="left:${at(trade.entry).toFixed(1)}%"></span>
+      <span class="rail-plan__mark rail-plan__mark--now"
+            style="left:${Math.min(100, Math.max(0, at(trade.last_price))).toFixed(1)}%"></span>
+      <span class="rail-plan__end rail-plan__end--left">${fmt.price(low)}</span>
+      <span class="rail-plan__end rail-plan__end--right">${fmt.price(high)}</span>
+    </div>`;
+}
+
+function openCard(trade) {
+  const ahead = trade.r_now >= 0;
+  const expanded = expandedTrades.has(trade.symbol);
+  const flag = trade.agreed_with_score
+    ? ""
+    : `<span class="ledger__flag">Bild dagegen</span>`;
+
+  return `
+    <li class="open-card open-card--${trade.side === "long" ? "long" : "short"}">
+      <button class="open-card__head" type="button" data-open="${escapeHtml(trade.symbol)}"
+              aria-expanded="${expanded}">
+        <span class="open-card__sym">${escapeHtml(trade.symbol.replace("USDT", ""))}</span>
+        <span class="open-card__side">${trade.side === "long" ? "Long" : "Short"}</span>
+        <span class="open-card__setup">
+          Setup ${escapeHtml(trade.setup)} auf ${escapeHtml(trade.setup_timeframe)}${flag}
+        </span>
+        <span class="open-card__r ${ahead ? "up" : "down"}">
+          ${signed(trade.r_now)} R
+        </span>
+        <span class="open-card__money ${ahead ? "up" : "down"}">
+          ${signed(trade.unrealised)} CHF
+        </span>
+        <span class="open-card__chevron">${expanded ? "▾" : "▸"}</span>
+      </button>
+
+      ${progressRail(trade)}
+
+      <dl class="paper__plan">
+        <div><dt>Entry</dt><dd>${fmt.price(trade.entry)}</dd></div>
+        <div><dt>Stop</dt><dd>${fmt.price(trade.stop)}</dd></div>
+        <div><dt>Ziel</dt><dd>${fmt.price(trade.target)}</dd></div>
+      </dl>
+      <p class="konto__state">
+        ${fmt.money(trade.notional)} CHF Volumen &middot; ${trade.leverage}× Hebel &middot;
+        ${fmt.money(trade.margin)} CHF Margin &middot; ${fmt.money(trade.risk_amount)} CHF im Risiko
+        &middot; CRV ${trade.reward_risk} &middot; seit ${heldText(trade.held_minutes)}
+        ${trade.stop_moved ? "&middot; Stop auf Einstand" : ""}
+      </p>
+
+      <div class="open-card__chart" id="chart-${escapeHtml(trade.symbol)}" ${
+        expanded ? "" : "hidden"
+      }></div>
+    </li>`;
+}
+
+/* Candles as inline SVG. Same reasoning as the curve: the shape is a few dozen
+ * rectangles and three lines, and a charting library for that is more code than
+ * the code. */
+function candleSvg(chart) {
+  const candles = chart.candles;
+  if (!candles.length) return "";
+  const width = 1000;
+  const height = 300;
+  const pad = { top: 12, right: 74, bottom: 18, left: 8 };
+
+  const levels = [chart.entry, chart.stop, chart.target];
+  const low = Math.min(...candles.map((c) => c.low), ...levels);
+  const high = Math.max(...candles.map((c) => c.high), ...levels);
+  const span = high - low || 1;
+
+  const y = (v) => pad.top + ((high - v) / span) * (height - pad.top - pad.bottom);
+  const step = (width - pad.left - pad.right) / candles.length;
+  const body = Math.max(1, step * 0.6);
+
+  const bars = candles
+    .map((c, i) => {
+      const x = pad.left + i * step + step / 2;
+      const up = c.close >= c.open;
+      const top = y(Math.max(c.open, c.close));
+      const bottom = y(Math.min(c.open, c.close));
+      return (
+        `<line x1="${x.toFixed(1)}" y1="${y(c.high).toFixed(1)}" x2="${x.toFixed(1)}" ` +
+        `y2="${y(c.low).toFixed(1)}" class="cndl ${up ? "cndl--up" : "cndl--down"}"/>` +
+        `<rect x="${(x - body / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${body.toFixed(1)}" ` +
+        `height="${Math.max(1, bottom - top).toFixed(1)}" class="cndl ${
+          up ? "cndl--up" : "cndl--down"
+        }"/>`
+      );
+    })
+    .join("");
+
+  const line = (value, cls, label) => {
+    const at = y(value).toFixed(1);
+    return (
+      `<line x1="${pad.left}" y1="${at}" x2="${width - pad.right}" y2="${at}" class="plan ${cls}"/>` +
+      `<text x="${width - pad.right + 6}" y="${(Number(at) + 3).toFixed(1)}" class="plan__label ${cls}">` +
+      `${label} ${fmt.price(value)}</text>`
+    );
+  };
+
+  /* The entry only exists from the moment the trade opened; drawing it across
+   * the whole window would say it was a level before it was a decision. */
+  const openedAt = candles.findIndex((c) => c.ts >= chart.opened_ts);
+  const entryFrom = openedAt < 0 ? pad.left : pad.left + openedAt * step;
+
+  return `
+    <svg class="cndl-chart" viewBox="0 0 ${width} ${height}" role="img"
+         aria-label="${escapeHtml(chart.symbol)} auf ${escapeHtml(chart.timeframe)},
+                     Stop ${fmt.price(chart.stop)}, Ziel ${fmt.price(chart.target)}">
+      ${line(chart.target, "plan--target", "Ziel")}
+      ${line(chart.stop, "plan--stop", "Stop")}
+      <line x1="${entryFrom.toFixed(1)}" y1="${y(chart.entry).toFixed(1)}"
+            x2="${width - pad.right}" y2="${y(chart.entry).toFixed(1)}" class="plan plan--entry"/>
+      <text x="${width - pad.right + 6}" y="${(y(chart.entry) + 3).toFixed(1)}"
+            class="plan__label plan--entry">Entry ${fmt.price(chart.entry)}</text>
+      ${bars}
+    </svg>
+    <p class="figure__note">
+      ${escapeHtml(chart.timeframe)}-Kerzen &middot; ${candles.length} Stück &middot;
+      Einstieg ${viewClock(chart.opened_ts)}
+    </p>`;
+}
+
+async function loadChart(symbol) {
+  const host = document.getElementById(`chart-${symbol}`);
+  if (!host) return;
+  host.innerHTML = `<div class="placeholder"><span class="pulse"></span><p>Lese Kerzen&hellip;</p></div>`;
+  try {
+    host.innerHTML = candleSvg(await api(`/api/portfolio/open/${symbol}/chart`));
+  } catch {
+    host.innerHTML = `<p class="konto__state">Chart nicht lesbar.</p>`;
+  }
+}
+
+function renderOpen(trades) {
+  const host = document.getElementById("open");
+  if (!host) return;
+  if (trades === "unavailable") {
+    host.innerHTML = `<p class="konto__state">Offene Trades nicht lesbar.</p>`;
+    return;
+  }
+  if (!trades.length) {
+    host.innerHTML = `
+      <h3 class="panel__head">Läuft gerade
+        <span class="panel__hint">nichts offen</span></h3>
+      <p class="konto__state">Kein Trade offen. Das ist der Normalzustand &mdash;
+        die Regeln feuern ein paarmal am Tag, nicht ständig.</p>`;
+    return;
+  }
+
+  const sum = trades.reduce((total, t) => total + t.unrealised, 0);
+  const risk = trades.reduce((total, t) => total + t.risk_amount, 0);
+  host.innerHTML = `
+    <h3 class="panel__head">Läuft gerade
+      <span class="panel__hint">
+        ${trades.length} offen &middot; ${signed(sum)} CHF unrealisiert &middot;
+        ${fmt.money(risk)} CHF im Risiko
+      </span>
+    </h3>
+    <ul class="open-list">${trades.map(openCard).join("")}</ul>`;
+
+  host.querySelectorAll("[data-open]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const symbol = button.dataset.open;
+      const panel = document.getElementById(`chart-${symbol}`);
+      if (!panel) return;
+      const show = panel.hidden;
+      panel.hidden = !show;
+      button.setAttribute("aria-expanded", String(show));
+      button.querySelector(".open-card__chevron").textContent = show ? "▾" : "▸";
+      if (show) {
+        expandedTrades.add(symbol);
+        loadChart(symbol);
+      } else {
+        expandedTrades.delete(symbol);
+      }
+    });
+  });
+
+  /* A chart left open stays open across the poll, and reloads with it: the
+   * point of opening one is watching it move. */
+  expandedTrades.forEach((symbol) => {
+    if (document.getElementById(`chart-${symbol}`)) loadChart(symbol);
+  });
+}
+
+async function loadOpen() {
+  try {
+    renderOpen(await api("/api/portfolio/open"));
+  } catch {
+    renderOpen("unavailable");
+  }
+}
+
+setInterval(() => {
+  if (currentView() === "trades") loadOpen();
+}, OPEN_POLL_MS);
