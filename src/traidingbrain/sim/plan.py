@@ -119,6 +119,10 @@ def plan_entry(
 
     return PendingEntry(
         proposal_id=f"{symbol}-{created_ts}",
+        # The rule's own name, taken from the head of its reason text. The
+        # setups write "A: Zone", "V11: Block" and so on, so the part before
+        # the colon is the label and the rest is the argument.
+        setup=intent.reason.split(":")[0].strip(),
         side=intent.side,
         order_type=OrderType.LIMIT,
         limit_price=intent.entry,

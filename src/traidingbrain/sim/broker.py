@@ -69,6 +69,13 @@ class PendingEntry:
     risk_amount: float
     snapshot_hash: str = ""
     proposal_id: str = ""
+    #: Which rule proposed this, by name.
+    #:
+    #: Carried through to the Fill so that "which setup wins" is answerable per
+    #: trade. Without it the only way to ask was to re-run the whole backtest
+    #: with one setup switched off -- which answers a different question,
+    #: because removing a setup frees its slots for the others.
+    setup: str = ""
 
 
 @dataclass
@@ -89,6 +96,7 @@ class OpenPosition:
     funding_paid: float = 0.0
     snapshot_hash: str = ""
     proposal_id: str = ""
+    setup: str = ""
     stop_moved: bool = False
     """True once the breakeven rule has pulled the stop up. Checked so the
     move happens once; without it a later dip would re-arm it and the stop
@@ -130,6 +138,7 @@ class Fill:
     fees: float
     funding: float
     risk_amount: float
+    setup: str = ""
 
     @property
     def net_pnl(self) -> float:
@@ -313,6 +322,7 @@ class SimBroker:
             ),
             opened_ts=ts,
             margin=margin,
+            setup=pending.setup,
             risk_amount=pending.risk_amount,
             fees_paid=notional * fee_rate,
             snapshot_hash=pending.snapshot_hash,
@@ -461,6 +471,7 @@ class SimBroker:
             fees=fees,
             funding=position.funding_paid,
             risk_amount=position.risk_amount,
+            setup=position.setup,
         )
         self.ledger.fills.append(fill)
         self.position = None

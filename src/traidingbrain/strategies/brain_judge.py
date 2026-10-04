@@ -71,13 +71,25 @@ class Tally:
     vetoed: int = 0
     wrong_side: int = 0
     kept: int = 0
+    #: Refused by the model's own reading: it said WAIT or INVALID TRADE.
+    said_no: int = 0
+    #: The model agreed but its plan failed the guard.
+    #:
+    #: Counted apart from `said_no` because the two are opposite findings and
+    #: `is_tradeable` collapses them. "The model refuses almost everything"
+    #: means the direction is dead; "the model agrees and the guard throws its
+    #: plan away" means the measurement is broken. Reporting the first when the
+    #: second is true would retire a usable idea.
+    guard_threw_out: int = 0
 
     def sentence(self) -> str:
         if not self.proposed:
             return "kein Setup hat ausgelöst"
         parts = [f"{self.proposed} vorgeschlagen", f"{self.kept} behalten"]
         if self.vetoed:
-            parts.append(f"{self.vetoed} abgelehnt")
+            parts.append(
+                f"{self.vetoed} abgelehnt (Modell {self.said_no}, Guard {self.guard_threw_out})"
+            )
         if self.wrong_side:
             parts.append(f"{self.wrong_side} Gegenrichtung")
         if self.no_snapshot:
@@ -124,6 +136,10 @@ class BrainJudged:
 
         if not decision.is_tradeable:
             self.tally.vetoed += 1
+            if not decision.guard.passed:
+                self.tally.guard_threw_out += 1
+            else:
+                self.tally.said_no += 1
             return None
 
         # A model that wants the other direction is disagreeing with the setup,
@@ -145,6 +161,22 @@ class BrainJudged:
             reason=intent.reason,
         )
 
+    def guard_complaints(self) -> dict[str, int]:
+        """Which guard check threw a plan out, counted.
+
+        The number that says whether a refusal was a judgement or a schema
+        problem. A rising reward-to-risk count is a prompt that keeps producing
+        targets too close to its stops, not a model with an opinion.
+        """
+        counts: dict[str, int] = {}
+        for decision in self.decisions:
+            if decision.guard.passed:
+                continue
+            for violation in decision.guard.violations:
+                key = violation.split(",")[0].split(" is ")[0]
+                counts[key] = counts.get(key, 0) + 1
+        return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
+
     def summary(self) -> str:
         cached = sum(1 for d in self.decisions if d.from_cache)
         vetoes = self.tally.vetoed + self.tally.wrong_side
@@ -153,6 +185,10 @@ class BrainJudged:
             f"  gefragt         {len(self.decisions):,} ({cached:,} aus dem Cache)\n"
             f"  abgelehnt       {vetoes:,} von {self.tally.proposed:,} ({share:.0f}%)\n"
             f"  {self.tally.sentence()}"
+            + "".join(
+                f"\n  Guard: {count:5d}x {check}"
+                for check, count in self.guard_complaints().items()
+            )
         )
 
 
