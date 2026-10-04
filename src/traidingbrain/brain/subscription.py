@@ -257,7 +257,7 @@ class SubscriptionBrain(AnthropicBrain):
     def _request_text(self, payload: BrainInput) -> str:
         """The user turn, plus the schema the API would otherwise enforce."""
         return (
-            f"{prompts.user_content(payload)}\n\n"
+            f"{self.render_user(payload)}\n\n"
             "Reply with a single JSON object and nothing else -- no prose before or "
             "after it, no markdown fence. It must validate against this schema:\n\n"
             f"{self._schema_text}"

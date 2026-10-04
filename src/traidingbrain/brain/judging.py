@@ -31,6 +31,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from traidingbrain.brain.client import AnthropicBrain
+from traidingbrain.brain.subscription import SubscriptionBrain
 from traidingbrain.domain.enums import Side
 from traidingbrain.domain.snapshot import BrainInput, MarketSnapshot
 from traidingbrain.domain.verdict import BrainDecision
@@ -148,18 +149,14 @@ def user_content(snapshot: MarketSnapshot, intent: TradeIntent) -> str:
     )
 
 
-class JudgingBrain(AnthropicBrain):
-    """The same brain, asked whether to take a trade rather than to find one.
+class _Judges:
+    """The two overrides that turn a scanner into a judge.
 
-    Only two things differ from the scanner, and they are overridden together
-    on purpose: the question (`render_user`) and the version string it is
-    cached under (`prompt_version`). Changing one without the other is the
-    silent collision described at the top of this module, so they sit side by
-    side where a reader cannot miss that both moved.
-
-    Everything else -- the system prompt, the schema, the guard, the scoring,
-    the budget, the cache -- is inherited rather than reimplemented, which is
-    what makes a judging run comparable to a scanning one.
+    A mixin rather than a copy in each subclass, because the two things that
+    change -- the question and the version string it is cached under -- must
+    always move together. Writing them twice is how one of them gets forgotten,
+    and a forgotten version string is the silent cache collision described at
+    the top of this module.
     """
 
     prompt_version: str = JUDGE_VERSION
@@ -169,16 +166,16 @@ class JudgingBrain(AnthropicBrain):
         """One judgement on one proposal.
 
         The proposal travels on the instance because `decide` is handed a market
-        state and not a candidate. Set immediately before the call and read
-        inside it: the backtest is single-threaded and the forward trader
-        decides one symbol at a time, so there is no window in which a second
-        proposal could be pending. `render_user` raises rather than falling back
-        if that assumption is ever broken, because a judgement rendered without
-        its proposal would be a scanning answer recorded as a judging one.
+        state and not a candidate. Set immediately before the call and cleared
+        immediately after: the backtest is single-threaded and the forward
+        trader decides one symbol at a time, so no second proposal can be
+        pending. `render_user` raises rather than falling back if that ever
+        stops holding, because a judgement rendered without its proposal would
+        be a scanning answer recorded as a judging one.
         """
         self._pending = (snapshot, intent)
         try:
-            return self.decide(snapshot)
+            return self.decide(snapshot)  # type: ignore[attr-defined,no-any-return]
         finally:
             self._pending = None
 
@@ -186,7 +183,25 @@ class JudgingBrain(AnthropicBrain):
         pending = self._pending
         if pending is None:
             raise RuntimeError(
-                "JudgingBrain was asked without a proposal. Call judge(), not decide()."
+                "A judging brain was asked without a proposal. Call judge(), not decide()."
             )
         snapshot, intent = pending
         return user_content(snapshot, intent)
+
+
+class JudgingBrain(_Judges, AnthropicBrain):
+    """Claude via the API, asked whether to take a trade rather than to find one.
+
+    Everything except the question and its cache version is inherited -- system
+    prompt, schema, guard, scoring, budget, cache -- which is what makes a
+    judging run comparable to a scanning one.
+    """
+
+
+class JudgingSubscriptionBrain(_Judges, SubscriptionBrain):
+    """The same judge, asked through a signed-in Claude account.
+
+    No per-call bill and no API key, at a synchronous second or two per call.
+    That is the difference between a few hundred judgements as a probe, which
+    this makes free, and a full four-year run, which it does not.
+    """

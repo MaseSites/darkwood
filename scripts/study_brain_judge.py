@@ -45,6 +45,7 @@ import numpy as np
 from traidingbrain.analysis.pipeline import MultiFrameAnalysis
 from traidingbrain.analysis.snapshot import SnapshotBuilder
 from traidingbrain.brain.factory import BRAIN_NAMES, make_brain
+from traidingbrain.brain.judging import JudgingBrain, JudgingSubscriptionBrain
 from traidingbrain.config.settings import load_config
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
@@ -76,12 +77,40 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--symbols", help="Comma-separated markets. Default: the first four.")
     parser.add_argument(
+        "--max-bars",
+        type=int,
+        help=(
+            "Judge only the first N signal bars. A short run is a transport and "
+            "veto-rate check, not a comparison: one period, chosen by nobody, is "
+            "still one period."
+        ),
+    )
+    parser.add_argument(
         "--brain",
         default="fake",
         choices=BRAIN_NAMES,
         help="Whose judgement. 'fake' is arithmetic and free; the others cost money or quota.",
     )
     return parser.parse_args()
+
+
+def build_judge(name: str, config: object) -> object:
+    """The brain that answers the judging question, by name.
+
+    `fake` is arithmetic and ignores the prompt entirely, so it needs no
+    judging variant -- which is also why it is a yardstick rather than an
+    answer. The other two must be the judging subclasses: a plain brain asked
+    through BrainJudged would render the *scanning* question and file the
+    answer under the scanner's cache version, and nothing downstream could tell.
+    """
+    if name == "fake":
+        return make_brain(name, config)  # type: ignore[arg-type]
+    if name == "subscription":
+        return JudgingSubscriptionBrain(config)  # type: ignore[arg-type]
+    if name == "api":
+        make_brain(name, config)  # type: ignore[arg-type]  # raises if the key is missing
+        return JudgingBrain(config)  # type: ignore[arg-type]
+    raise ValueError(f"unbekanntes Brain {name!r}")
 
 
 def report(partial: Partial, brain_name: str) -> None:
@@ -134,7 +163,7 @@ def main() -> int:
     # report a comparison nobody made.
     signature = (
         f"{config.engine.simulation.initial_equity}|{config.engine.setups.enabled}|"
-        f"judge-{args.brain}"
+        f"judge-{args.brain}" + (f"-{args.max_bars}bars" if args.max_bars else "")
     )
     partial = Partial.load(config.engine.paths.data_dir / "study_brain_judge.json", signature)
 
@@ -173,7 +202,7 @@ def main() -> int:
             if label == JUDGED:
                 strategy = BrainJudged(
                     inner=pool,
-                    brain=make_brain(args.brain, config),
+                    brain=build_judge(args.brain, config),
                     builder=SnapshotBuilder(symbol, analysis, config.engine),
                 )
 
@@ -186,7 +215,7 @@ def main() -> int:
                 funding=funding,
                 history=None,
             )
-            result = engine.run(strategy)  # type: ignore[arg-type]
+            result = engine.run(strategy, max_bars=args.max_bars)  # type: ignore[arg-type]
             tally = getattr(strategy, "tally", None)
             partial.put(
                 symbol,
