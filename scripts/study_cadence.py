@@ -41,6 +41,7 @@ from traidingbrain.data.grid import timeframe_ms
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Timeframe
 from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
+from traidingbrain.reporting.resume import Partial
 from traidingbrain.sim.engine import BacktestEngine
 from traidingbrain.strategies.guide import GuidePool
 
@@ -90,10 +91,20 @@ def main() -> int:
     store = ParquetStore(base.engine.paths.parquet_dir)
     funding_store = FundingStore(base.engine.paths.funding_dir)
 
+    # Four markets at a fifteen-minute cadence is hours of work, and the laptop
+    # gets shut down. Two runs have now died on the last of four markets and
+    # thrown away the first three, which makes the study unfinishable rather
+    # than slow. Each market is written as it completes.
+    signature = f"{base.engine.simulation.initial_equity}|{[tf.value for tf in CADENCES]}"
+    partial = Partial.load(base.engine.paths.data_dir / "study_cadence.json", signature)
+    done = partial.symbols_done(CADENCES[-1].value)
+    if done:
+        print(f"Fortsetzung: {', '.join(done)} liegen schon vor\n", flush=True)
+
     results: dict[str, list[float]] = {tf.value: [] for tf in CADENCES}
     spans: dict[str, tuple[int, int]] = {}
 
-    for symbol in base.engine.symbols.active:
+    for symbol in base.engine.symbols.active[:4]:
         started = time.perf_counter()
         frames = {tf: store.read(symbol, tf) for tf in base.engine.timeframes.context}
         minutes = store.read(symbol, base.engine.timeframes.execution)
@@ -106,6 +117,8 @@ def main() -> int:
         print(f"{symbol}: gelesen in {time.perf_counter() - started:.0f}s", flush=True)
 
         for signal in CADENCES:
+            if partial.has(symbol, signal.value):
+                continue
             config = tuned(base, signal)
             # The analysis depends on the signal timeframe, so it cannot be
             # shared across cadences the way the other studies share it.
@@ -120,19 +133,35 @@ def main() -> int:
                 history=None,
             )
             result = engine.run(GuidePool())
-            results[signal.value].extend(f.r_multiple for f in result.fills)
-            if result.fills:
-                span = spans.get(signal.value, (result.first_ts, result.last_ts))
-                spans[signal.value] = (
-                    min(span[0], result.first_ts),
-                    max(span[1], result.last_ts),
-                )
+            partial.put(
+                symbol,
+                signal.value,
+                [f.r_multiple for f in result.fills],
+                first_ts=result.first_ts,
+                last_ts=result.last_ts,
+                refused=result.intents_rejected_by_risk,
+            )
             print(
                 f"   Takt {signal.value:3s}: {len(result.fills):5d} Trades, "
                 f"{result.intents_rejected_by_risk:5d} abgelehnt "
                 f"({time.perf_counter() - started:.0f}s)",
                 flush=True,
             )
+
+    # Pooled from disk rather than from this process, so a resumed run reports
+    # every market and not only the ones it happened to compute itself.
+    for signal in CADENCES:
+        results[signal.value] = partial.collect(signal.value)
+        stamps = [
+            (
+                partial.note(sym, signal.value, "first_ts"),
+                partial.note(sym, signal.value, "last_ts"),
+            )
+            for sym in partial.symbols_done(signal.value)
+        ]
+        usable = [(a, b) for a, b in stamps if a and b]
+        if usable:
+            spans[signal.value] = (min(a for a, _ in usable), max(b for _, b in usable))
 
     print("\n" + "=" * 78)
     print("Alle vier Märkte, vier Jahre\n")

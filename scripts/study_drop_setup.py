@@ -38,6 +38,7 @@ from traidingbrain.config.settings import load_config
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
+from traidingbrain.reporting.resume import Partial
 from traidingbrain.sim.engine import BacktestEngine
 from traidingbrain.strategies.guide import GuidePool
 from traidingbrain.strategy.setups import TRADEABLE
@@ -72,9 +73,18 @@ def main() -> int:
     store = ParquetStore(config.engine.paths.parquet_dir)
     funding_store = FundingStore(config.engine.paths.funding_dir)
 
+    # Written per market as it completes. Two earlier runs died on the last of
+    # four and lost the first three; the laptop gets shut down more often than
+    # a four-hour study finishes.
+    signature = f"{config.engine.simulation.initial_equity}|{[k for k, _ in variants()]}"
+    partial = Partial.load(config.engine.paths.data_dir / "study_drop_setup.json", signature)
+    done = partial.symbols_done("alle")
+    if done:
+        print(f"Fortsetzung: {', '.join(done)} liegen schon vor\n", flush=True)
+
     results: dict[str, list[float]] = {label: [] for label, _ in variants()}
 
-    for symbol in config.engine.symbols.active:
+    for symbol in config.engine.symbols.active[:4]:
         started = time.perf_counter()
         frames = {tf: store.read(symbol, tf) for tf in config.engine.timeframes.context}
         minutes = store.read(symbol, config.engine.timeframes.execution)
@@ -88,6 +98,8 @@ def main() -> int:
         print(f"{symbol}: Analyse in {time.perf_counter() - started:.0f}s", flush=True)
 
         for label, pool in variants():
+            if partial.has(symbol, label):
+                continue
             engine = BacktestEngine(
                 symbol,
                 analysis,
@@ -98,8 +110,11 @@ def main() -> int:
                 history=None,
             )
             result = engine.run(pool)
-            results[label].extend(f.r_multiple for f in result.fills)
+            partial.put(symbol, label, [f.r_multiple for f in result.fills])
             print(f"   {label:10s} {len(result.fills):5d} Trades", flush=True)
+
+    for label, _ in variants():
+        results[label] = partial.collect(label)
 
     print("\n" + "=" * 78)
     print("Alle vier Märkte, vier Jahre\n")
