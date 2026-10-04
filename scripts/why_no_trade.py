@@ -52,9 +52,7 @@ def clock(ts: int) -> str:
     return time.strftime("%d.%m %H:%M", time.gmtime(ts / 1000))
 
 
-def _describe_pools(
-    liquidity: object, *, close: float, previous: float, unit: float
-) -> None:
+def _describe_pools(liquidity: object, *, close: float, previous: float, unit: float) -> None:
     """The pools setup A breaks, and what this bar did to them.
 
     Split out because the three states it separates are the whole point:
@@ -95,15 +93,10 @@ def describe_bar(multi: MultiFrameAnalysis, index: int) -> None:
     previous = analysis.close_at(index - 1) if index else close
 
     print(f"\n{'=' * 74}")
-    print(
-        f"{clock(ts)} UTC   C {close:,.1f}   H {high:,.1f}   "
-        f"L {low:,.1f}   ATR {unit:,.1f}"
-    )
+    print(f"{clock(ts)} UTC   C {close:,.1f}   H {high:,.1f}   L {low:,.1f}   ATR {unit:,.1f}")
 
     structure = analysis.structure.state_at(index)
-    print(
-        f"  Struktur     Trend {structure.trend.value}, Folge [{structure.sequence_text()}]"
-    )
+    print(f"  Struktur     Trend {structure.trend.value}, Folge [{structure.sequence_text()}]")
     breaks = []
     if structure.bos:
         breaks.append(f"Bruch vor {structure.bars_since_bos} Kerzen")

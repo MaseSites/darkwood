@@ -71,9 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     for symbol in args.symbols:
         for kind in args.kinds:
             try:
-                fetch = (
-                    source.open_interest if kind == "open_interest" else source.account_ratio
-                )
+                fetch = source.open_interest if kind == "open_interest" else source.account_ratio
                 frame = fetch(symbol, interval=args.interval, since_ms=since, until_ms=until)
             except DerivativesUnavailableError as error:
                 print(f"  {symbol} {kind}: {error}")

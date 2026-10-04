@@ -200,8 +200,7 @@ def main() -> int:
             continue
         low, high = interval(values)
         print(
-            f"  wenn {word} gelehnt, lief der Markt "
-            f"{values.mean():+.3f}  [{low:+.3f}, {high:+.3f}]"
+            f"  wenn {word} gelehnt, lief der Markt {values.mean():+.3f}  [{low:+.3f}, {high:+.3f}]"
         )
 
     # The question in one line: do the clear bars beat the messy ones?

@@ -136,9 +136,7 @@ def _public_checks(args: argparse.Namespace, config: object) -> int:
     return failures
 
 
-def _private_checks(
-    args: argparse.Namespace, config: object, chosen: object, testnet: bool
-) -> int:
+def _private_checks(args: argparse.Namespace, config: object, chosen: object, testnet: bool) -> int:
     """Read-only account checks. Skipped entirely when there are no credentials."""
     print("\naccount (read-only -- no order is placed, nothing is cancelled)")
     secrets = load_secrets()

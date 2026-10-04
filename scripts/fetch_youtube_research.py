@@ -128,10 +128,7 @@ def main() -> None:
         try:
             transcript = choose_transcript(api, str(video["id"]))
             fetched = transcript.fetch()
-            lines = [
-                f"[{item.start:09.3f}] {item.text.replace(chr(10), ' ')}"
-                for item in fetched
-            ]
+            lines = [f"[{item.start:09.3f}] {item.text.replace(chr(10), ' ')}" for item in fetched]
             output_path = args.output / f"{position:02d}_{video['id']}.txt"
             output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
             record.update(

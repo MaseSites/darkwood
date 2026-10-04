@@ -95,9 +95,7 @@ def main() -> None:
 
     cache_path = base / "transcript_status.json"
     if cache_path.exists():
-        cache: dict[str, dict[str, Any]] = json.loads(
-            cache_path.read_text(encoding="utf-8")
-        )
+        cache: dict[str, dict[str, Any]] = json.loads(cache_path.read_text(encoding="utf-8"))
     else:
         cache = {}
 
@@ -190,9 +188,7 @@ def main() -> None:
     for video_id in sorted(selected_ids):
         item = dict(by_id[video_id])
         topics = [topic for topic, ids in selected_by_topic.items() if video_id in ids]
-        chapters = sorted(
-            {chapter for topic in topics for chapter in TOPIC_CHAPTERS[topic]}
-        )
+        chapters = sorted({chapter for topic in topics for chapter in TOPIC_CHAPTERS[topic]})
         item.update(cache[video_id])
         item["topics"] = topics
         item["chapters"] = chapters
@@ -211,9 +207,7 @@ def main() -> None:
             {
                 "checked": len(cache),
                 "selected_unique": len(manifest),
-                "per_topic": {
-                    topic: len(ids) for topic, ids in selected_by_topic.items()
-                },
+                "per_topic": {topic: len(ids) for topic, ids in selected_by_topic.items()},
             },
             ensure_ascii=False,
             indent=2,

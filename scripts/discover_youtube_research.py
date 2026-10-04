@@ -57,9 +57,7 @@ def main() -> None:
                         "matches": [],
                     },
                 )
-                record["matches"].append(
-                    {"topic": topic, "query": query, "rank": rank}
-                )
+                record["matches"].append({"topic": topic, "query": query, "rank": rank})
 
     ranked = sorted(
         records.values(),

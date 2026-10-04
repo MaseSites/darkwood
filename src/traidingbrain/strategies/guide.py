@@ -33,6 +33,7 @@ from traidingbrain.analysis.pipeline import (
     decision_time_ms,
     index_at_or_before,
 )
+from traidingbrain.config.settings import AppConfig
 from traidingbrain.data.grid import timeframe_ms
 from traidingbrain.domain.enums import Timeframe
 from traidingbrain.sim.engine import TradeIntent
@@ -116,6 +117,24 @@ def _just_closed(analysis: MultiFrameAnalysis, timeframe: Timeframe, decision_ms
     return now is not None and now != before
 
 
+def enabled_setups(config: AppConfig) -> tuple[Setup, ...]:
+    """The setups configuration allows, in `TRADEABLE` order.
+
+    Measured on 04.10.2026 over four markets and four years, which is why this
+    function exists at all: with setup C in, the pool runs at -0.0920 R and the
+    interval excludes zero; without it, -0.0583 R over a third fewer trades and
+    the interval includes zero for the first time. More than half the loss is
+    one setup.
+
+    The distinction that makes it a real finding rather than "trade less":
+    dropping setup A also improves the *sum*, by trading 730 fewer times at a
+    negative expectancy, while making the per-trade number worse. Dropping C
+    improves both, and the hit rate with them -- 32% to 37%.
+    """
+    allowed = set(config.engine.setups.enabled)
+    return tuple(setup for setup in TRADEABLE if setup.key in allowed)
+
+
 @dataclass
 class GuidePool:
     """Every tradeable setup on every chart, first one to fire.
@@ -144,11 +163,21 @@ class GuidePool:
 
     A field rather than the module constant read directly, so that asking
     "what would this look like without setup C" is a different pool rather than
-    a patched global. Setup C loses on all four timeframes with an interval
-    that excludes zero, and whether to switch it off is Severin's decision
-    about his own rules -- but the measurement supporting it has to be
-    repeatable without editing the module it measures.
+    a patched global -- a measurement you can only take by editing the module
+    you are measuring is not one you get the same way twice.
+
+    **The default is every setup, and that is deliberately not what ships.**
+    Anything that trades should build its pool with `for_config`, so the
+    configured list decides. A default of "all of them" means a forgotten call
+    site keeps trading a setup the configuration switched off, and the switch
+    looks like it works for as long as nobody checks.
     """
+
+    @classmethod
+    def for_config(cls, config: AppConfig, *, name: str = "guide-all") -> GuidePool:
+        """The pool as configured -- what the live system and every measurement
+        of "the shipped system" should use."""
+        return cls(name=name, setups=enabled_setups(config))
 
     def propose_at(self, analysis: MultiFrameAnalysis, index: int) -> TradeIntent | None:
         aligned = analysis.aligned_indices(index)

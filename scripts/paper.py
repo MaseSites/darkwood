@@ -113,7 +113,7 @@ def replay(limit: int, symbols: list[str]) -> list[JournalEntry]:
             funding=FundingStore(config.engine.paths.funding_dir).read(symbol),
             history=None,
         )
-        strategy = GuidePool()
+        strategy = GuidePool.for_config(config)
         result = engine.run(strategy)
         built = entries_from(
             engine.analysis,
@@ -154,9 +154,7 @@ def _overview(entries: list[JournalEntry]) -> None:
 
     wicked = [e for e in entries if e.post_mortem.stopped_by_wick]
     never = [e for e in entries if e.post_mortem.never_in_profit]
-    gave_back = [
-        e for e in entries if not e.won and e.post_mortem.max_favourable_r >= 1.0
-    ]
+    gave_back = [e for e in entries if not e.won and e.post_mortem.max_favourable_r >= 1.0]
     print(f"\n  Vom Docht geholt          {len(wicked):4d}")
     print(f"  Nie im Plus               {len(never):4d}")
     print(f"  1 R im Plus und verloren  {len(gave_back):4d}")

@@ -65,9 +65,7 @@ def main() -> int:
     # Exactly what the collector writes -- one definition, so the two cannot
     # drift. They did: the first draft drained the context frames only, which
     # left M1 accumulating in the landing zone with nothing to empty it.
-    timeframes = collected_timeframes(
-        config.timeframes.context, config.timeframes.execution
-    )
+    timeframes = collected_timeframes(config.timeframes.context, config.timeframes.execution)
 
     if args.dry_run:
         # Counting without writing, so that "how far behind is the archive?"

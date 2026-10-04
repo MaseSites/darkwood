@@ -46,9 +46,7 @@ def run(symbol: str, breakeven: float | None) -> list[float]:
     """Every trade's R for one symbol under one exit rule."""
     config = load_config()
     if breakeven is not None:
-        simulation = config.engine.simulation.model_copy(
-            update={"breakeven_at_r": breakeven}
-        )
+        simulation = config.engine.simulation.model_copy(update={"breakeven_at_r": breakeven})
         engine_config = config.engine.model_copy(update={"simulation": simulation})
         config = config.model_copy(update={"engine": engine_config})
 
@@ -67,7 +65,7 @@ def run(symbol: str, breakeven: float | None) -> list[float]:
         funding=FundingStore(config.engine.paths.funding_dir).read(symbol),
         history=None,
     )
-    result = engine.run(GuidePool())
+    result = engine.run(GuidePool.for_config(config))
     return [fill.r_multiple for fill in result.fills]
 
 

@@ -75,6 +75,18 @@ symbols:
       ATOMUSDT,
     ]
 
+# Which of the guide's setups may trade. Leaving one out does not delete it --
+# it keeps its tests, its rule card and its row in every comparison.
+setups:
+  enabled: [A, B, E, F, G]
+  disabled_note: >-
+    C ist am 04.10.2026 abgeschaltet worden. Gemessen ueber vier Maerkte und
+    vier Jahre: mit C laeuft der Pool auf -0.0920 R und das Intervall
+    schliesst die Null aus; ohne C auf -0.0583 R bei einem Drittel weniger
+    Trades, Trefferquote 32 auf 37 Prozent, und das Intervall enthaelt zum
+    ersten Mal die Null. Mehr als die Haelfte des Gesamtverlusts kommt aus
+    diesem einen Setup. Rueckgaengig: C wieder in die Liste oben.
+
 timeframes:
   # W1 and D1 give the macro read, H4 the intermediate structure, H1 the setup,
   # M15 the entry timing. M1 is not analysed -- it exists so the simulator can tell

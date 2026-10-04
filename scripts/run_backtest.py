@@ -46,7 +46,7 @@ def _make(name: str, config, *, kind: str = "fake"):
     if name.startswith("guide-"):
         key = name.removeprefix("guide-")
         if key == "all":
-            return GuidePool()
+            return GuidePool.for_config(config)
         setup = next((item for item in TRADEABLE if item.key == key), None)
         if setup is None:
             raise ValueError(
@@ -83,6 +83,7 @@ STRATEGY_NAMES = [
     *(f"guide-{setup.key}" for setup in TRADEABLE),
     "guide-all",
 ]
+
 
 #: Fallback instrument rules, used when running offline. Taken from Bybit's
 #: BTCUSDT perpetual; `--live-spec` fetches the real ones.
@@ -188,9 +189,9 @@ def main(argv: list[str] | None = None) -> int:
 
 def _symbol_spec(symbol: str, *, use_live: bool, config: AppConfig) -> SymbolSpec:
     if use_live:
-        return MarketData(
-            venue_name=config.engine.exchange.name, testnet=False
-        ).fetch_symbol_spec(symbol)
+        return MarketData(venue_name=config.engine.exchange.name, testnet=False).fetch_symbol_spec(
+            symbol
+        )
     return SymbolSpec(symbol=symbol, **DEFAULT_SPEC)
 
 

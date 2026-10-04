@@ -127,6 +127,7 @@ def context_frames(hourly: pd.DataFrame) -> dict[Timeframe, pd.DataFrame]:
     indicators never warm up, `first_ready_index` never returns, and the engine
     exits before the loop. Zero trades, no error, and nothing to point at.
     """
+
     def higher(seed: int, hours: int) -> pd.DataFrame:
         step = H1_MS * hours
         return walk(BARS, seed=seed, step_ms=step, start_ts=EPOCH - WARMUP_BARS * step)
@@ -222,9 +223,7 @@ def test_every_guide_strategy_reports_the_same_confidence() -> None:
     its entries.
     """
     signal = next(
-        strategy
-        for strategy in per_setup()
-        if strategy.name == f"guide-{TRADEABLE[0].key}"
+        strategy for strategy in per_setup() if strategy.name == f"guide-{TRADEABLE[0].key}"
     )
 
     assert signal is not None
@@ -438,3 +437,34 @@ def test_a_signal_remembers_which_chart_it_came_from() -> None:
     )
 
     assert signal.timeframe is Timeframe.H4
+
+
+def test_the_configured_pool_leaves_out_what_configuration_switched_off(
+    config: AppConfig,
+) -> None:
+    """The switch has to reach the thing that trades.
+
+    `GuidePool()` defaults to every setup, which is right for a study that
+    overrides the list and wrong for anything that trades. A forgotten call
+    site would keep trading a setup the configuration turned off, and the
+    switch would look like it worked for as long as nobody checked -- which is
+    the only failure mode a settings flag really has.
+    """
+    pool = GuidePool.for_config(config)
+
+    assert {s.key for s in pool.setups} == set(config.engine.setups.enabled)
+    assert {s.key for s in pool.setups} <= {s.key for s in TRADEABLE}
+
+
+def test_switching_a_setup_off_does_not_delete_it(config: AppConfig) -> None:
+    """It keeps its tests, its rule card and its row in every comparison.
+
+    A setup that vanished from TRADEABLE when disabled could not be measured
+    again, and the measurement that justified switching it off would be the
+    last one anybody could take.
+    """
+    disabled = {s.key for s in TRADEABLE} - set(config.engine.setups.enabled)
+
+    for key in disabled:
+        assert key in {s.key for s in TRADEABLE}, f"{key} disappeared instead of being disabled"
+    assert config.engine.setups.disabled_note, "something is off and nothing says why"

@@ -180,7 +180,7 @@ class PaperTrader:
         self.journal = journal
         self.spec = spec
         self.clock = clock
-        self.strategy = strategy or GuidePool()
+        self.strategy = strategy or GuidePool.for_config(config)
         self.stats = PaperStats()
 
         self.broker = SimBroker(spec, config.engine.simulation, funding)

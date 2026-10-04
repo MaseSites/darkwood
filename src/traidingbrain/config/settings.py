@@ -219,9 +219,27 @@ class PathsConfig(_Frozen):
         )
 
 
+class SetupsConfig(_Frozen):
+    """Which of the guide's setups may trade.
+
+    A setting rather than an edit to the tuple in `setups.py`, because
+    switching one off is a decision about Severin's rules and belongs
+    somewhere he can see it and change it back. The screen reads this list, and
+    so does the pool.
+
+    Leaving a setup out does not delete it: it keeps its tests, its rule card
+    and its place in the comparison table. It simply does not get traded.
+    """
+
+    enabled: list[str]
+    disabled_note: str = ""
+    """Why something is off, in one line, next to the fact that it is."""
+
+
 class EngineConfig(_Frozen):
     exchange: ExchangeConfig
     symbols: SymbolsConfig
+    setups: SetupsConfig
     timeframes: TimeframesConfig
     indicators: IndicatorsConfig
     structure: StructureConfig

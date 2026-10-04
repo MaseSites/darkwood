@@ -150,7 +150,7 @@ def main() -> int:
                 funding=funding,
                 history=None,
             )
-            result = engine.run(GuidePool())
+            result = engine.run(GuidePool.for_config(config))
             partial.put(
                 symbol,
                 signal.value,

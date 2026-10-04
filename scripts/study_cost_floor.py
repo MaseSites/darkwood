@@ -116,7 +116,7 @@ def main() -> int:
                 funding=funding,
                 history=None,
             )
-            result = engine.run(GuidePool())
+            result = engine.run(GuidePool.for_config(config))
             results[ceiling].extend(f.r_multiple for f in result.fills)
             refused[ceiling] += result.intents_rejected_by_risk
             print(
