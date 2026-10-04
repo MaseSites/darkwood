@@ -37,6 +37,7 @@ seconds per symbol to recompute the same numbers -- most of the run.
 
 from __future__ import annotations
 
+import argparse
 import sys
 import time
 from pathlib import Path
@@ -96,11 +97,94 @@ def interval(values: list[float], seed: int = 11) -> str:
     return f"[{low:+.3f}, {high:+.3f}]" + ("" if low < 0 < high else "  <- Null ausgeschlossen")
 
 
+def parse_args() -> argparse.Namespace:
+    """Which cells this process is responsible for.
+
+    A whole run is twelve cells at twenty-two minutes each, which outlives the
+    window any single process gets here. Splitting it by cell rather than
+    shortening it keeps the measurement intact: every process writes into the
+    same resumable file, and the summary reads whatever has landed.
+    """
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--symbols",
+        help="Comma-separated markets to compute, e.g. ETHUSDT,SOLUSDT. Default: the first four.",
+    )
+    parser.add_argument(
+        "--ceilings",
+        help="Comma-separated subset of the ceilings to compute, e.g. 0.10. Default: all of them.",
+    )
+    return parser.parse_args()
+
+
+def report(partial: Partial, labels: dict[float, str]) -> None:
+    """The curve as it stands, over whatever cells have landed.
+
+    Read from the file rather than from this process's own results, because the
+    run is split across processes and no single one of them has measured the
+    whole thing.
+    """
+    print("\n" + "=" * 78)
+    counted = sorted({sym for c in CEILINGS for sym in partial.symbols_done(labels[c])})
+    print(f"{len(counted)} Märkte: {', '.join(counted)}\n")
+
+    pooled = {c: partial.collect(labels[c]) for c in CEILINGS}
+    for ceiling in CEILINGS:
+        rs = pooled[ceiling]
+        if not rs:
+            continue
+        wins = sum(1 for r in rs if r > 0)
+        refused = sum(
+            int(partial.note(sym, labels[ceiling], "refused") or 0)
+            for sym in partial.symbols_done(labels[ceiling])
+        )
+        markets = ",".join(s[:3] for s in partial.symbols_done(labels[ceiling]))
+        print(
+            f"Decke {ceiling:5.3f}  n={len(rs):5d}  {np.mean(rs):+.4f} R  "
+            f"Treffer {100 * wins / len(rs):3.0f}%  Summe {sum(rs):+8.1f} R  "
+            f"abgelehnt {refused:5d}  {interval(rs)}  [{markets}]"
+        )
+
+    # Only comparable where the same markets were measured at both ceilings. A
+    # difference taken across two different market sets is not a difference,
+    # and the run is now split across processes, so that case is reachable.
+    print("\nWas die zusätzlichen Trades allein gebracht hätten:")
+    tightest = pooled[CEILINGS[0]]
+    base_markets = set(partial.symbols_done(labels[CEILINGS[0]]))
+    for ceiling in CEILINGS[1:]:
+        rs = pooled[ceiling]
+        if set(partial.symbols_done(labels[ceiling])) != base_markets:
+            print(f"  bis {ceiling:5.3f}: andere Märkte gemessen, nicht vergleichbar")
+            continue
+        extra = len(rs) - len(tightest)
+        if extra <= 0:
+            continue
+        print(
+            f"  bis {ceiling:5.3f}: {extra:5d} Trades mehr, "
+            f"Summe {sum(rs) - sum(tightest):+7.1f} R, "
+            f"im Mittel {(sum(rs) - sum(tightest)) / extra:+.4f} R pro Stück"
+        )
+
+
 def main() -> int:
+    args = parse_args()
     base = load_config()
     store = ParquetStore(base.engine.paths.parquet_dir)
     funding_store = FundingStore(base.engine.paths.funding_dir)
-    symbols = list(base.engine.symbols.active[:MARKETS])
+    symbols = (
+        [s.strip().upper() for s in args.symbols.split(",")]
+        if args.symbols
+        else list(base.engine.symbols.active[:MARKETS])
+    )
+    # Which cells to *compute*. The signature below stays on the full tuple on
+    # purpose: a subset must not look like a different study, or selecting one
+    # ceiling would discard every cell already measured.
+    wanted = tuple(float(c) for c in args.ceilings.split(",")) if args.ceilings else CEILINGS
+    unknown = [c for c in wanted if c not in CEILINGS]
+    if unknown:
+        parser_choices = ", ".join(f"{c:g}" for c in CEILINGS)
+        print(f"Unbekannte Decke {unknown}; zur Wahl stehen {parser_choices}", flush=True)
+        return 2
 
     # Resumable, because this run has now been killed twice by a shutdown and
     # each death threw away hours. The signature carries the ceilings: the first
@@ -117,7 +201,7 @@ def main() -> int:
         print(flush=True)
 
     for symbol in symbols:
-        if all(partial.has(symbol, labels[c]) for c in CEILINGS):
+        if all(partial.has(symbol, labels[c]) for c in wanted):
             continue
         started = time.perf_counter()
         frames = {tf: store.read(symbol, tf) for tf in base.engine.timeframes.context}
@@ -131,7 +215,7 @@ def main() -> int:
         spec = SymbolSpec(symbol=symbol, **DEFAULT_SPEC)
         print(f"{symbol}: Analyse in {time.perf_counter() - started:.0f}s", flush=True)
 
-        for ceiling in CEILINGS:
+        for ceiling in wanted:
             if partial.has(symbol, labels[ceiling]):
                 continue
             config = base.model_copy(
@@ -167,38 +251,7 @@ def main() -> int:
                 flush=True,
             )
 
-    print("\n" + "=" * 78)
-    print("Alle vier Märkte, vier Jahre\n")
-    pooled = {c: partial.collect(labels[c]) for c in CEILINGS}
-    for ceiling in CEILINGS:
-        rs = pooled[ceiling]
-        if not rs:
-            continue
-        wins = sum(1 for r in rs if r > 0)
-        refused = sum(
-            int(partial.note(sym, labels[ceiling], "refused") or 0)
-            for sym in partial.symbols_done(labels[ceiling])
-        )
-        print(
-            f"Decke {ceiling:5.3f}  n={len(rs):5d}  {np.mean(rs):+.4f} R  "
-            f"Treffer {100 * wins / len(rs):3.0f}%  Summe {sum(rs):+8.1f} R  "
-            f"abgelehnt {refused:5d}  {interval(rs)}"
-        )
-
-    # The question is not whether more trades is better but what the extra ones
-    # did. Everything above the shipped ceiling is a trade the floor refuses.
-    print("\nWas die zusätzlichen Trades allein gebracht hätten:")
-    tightest = pooled[CEILINGS[0]]
-    for ceiling in CEILINGS[1:]:
-        rs = pooled[ceiling]
-        extra = len(rs) - len(tightest)
-        if extra <= 0:
-            continue
-        print(
-            f"  bis {ceiling:5.3f}: {extra:5d} Trades mehr, "
-            f"Summe {sum(rs) - sum(tightest):+7.1f} R, "
-            f"im Mittel {(sum(rs) - sum(tightest)) / extra:+.4f} R pro Stück"
-        )
+    report(partial, labels)
     return 0
 
 
