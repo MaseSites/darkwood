@@ -125,14 +125,29 @@ def main() -> int:
             )
 
     print("\n" + "=" * 78)
-    print("Alle vier Märkte, vier Jahre\n")
-    base_sum = None
-    for label in ("ohne Filter", "mit Filter"):
-        rs = partial.collect(label)
+    # Only the markets both arms have finished. A market whose unfiltered arm is
+    # done and whose filtered arm is still running would otherwise be counted on
+    # one side only, and the difference that falls out of that is an artefact of
+    # which arm got there first rather than anything the filter did.
+    arms = ("ohne Filter", "mit Filter")
+    shared = set.intersection(*(set(partial.symbols_done(label)) for label in arms))
+    if not shared:
+        print("Noch kein Markt in beiden Armen fertig")
+        return 0
+
+    print(f"{len(shared)} Märkte, vier Jahre: {', '.join(sorted(shared))}\n")
+
+    def pool(label: str) -> list[float]:
+        out: list[float] = []
+        for sym in sorted(shared):
+            out.extend(partial.cells[Partial.key(sym, label)])
+        return out
+
+    base_sum = sum(pool(arms[0]))
+    for label in arms:
+        rs = pool(label)
         if not rs:
             continue
-        if base_sum is None:
-            base_sum = sum(rs)
         wins = sum(1 for r in rs if r > 0)
         diff = "" if label == "ohne Filter" else f"  Differenz {sum(rs) - base_sum:+7.1f} R"
         print(

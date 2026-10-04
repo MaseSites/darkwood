@@ -37,6 +37,7 @@ does here is decided by the size of the gap, not by argument.
 
 from __future__ import annotations
 
+import argparse
 import sys
 import time
 from pathlib import Path
@@ -73,7 +74,70 @@ def interval(values: list[float], seed: int = 11) -> str:
     return f"[{low:+.3f}, {high:+.3f}]" + ("" if low < 0 < high else "  <- Null ausgeschlossen")
 
 
+def parse_args() -> argparse.Namespace:
+    """Which markets this process is responsible for.
+
+    Three arms at twenty-two minutes each is over an hour per market, which
+    outlives the window a single process gets here. One process per market
+    fits, they all write into the same resumable file, and the summary reads
+    whatever has landed.
+    """
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--symbols",
+        help="Comma-separated markets to compute, e.g. ETHUSDT. Default: the first four.",
+    )
+    return parser.parse_args()
+
+
+def report(partial: Partial, labels: list[str], ceiling: float) -> None:
+    """The arms as they stand, over whatever cells have landed.
+
+    Read from the file rather than from this process own results: the run
+    is split one process per market, and none of them measures the whole.
+    """
+    print("\n" + "=" * 78)
+    # Only the markets every arm has finished. The run is split one process per
+    # market and they do not finish together, so pooling whatever is present
+    # would compare an arm measured on two markets against one measured on one
+    # -- and that difference is an artefact of which process got there first.
+    # It read as +42.9 R in favour of widening before this line existed.
+    shared = set.intersection(*(set(partial.symbols_done(label)) for label in labels))
+    if not shared:
+        print(f"Kostendecke {ceiling:.2f}: noch kein Markt in allen Armen fertig")
+        return
+
+    print(f"{len(shared)} Märkte, Kostendecke {ceiling:.2f}: {', '.join(sorted(shared))}\n")
+
+    def pool(label: str) -> list[float]:
+        out: list[float] = []
+        for sym in sorted(shared):
+            out.extend(partial.cells[Partial.key(sym, label)])
+        return out
+
+    base = pool(PLAIN)
+    for label in labels:
+        rs = pool(label)
+        if not rs:
+            continue
+        wins = 100 * sum(1 for r in rs if r > 0) / len(rs)
+        widened = sum(int(partial.note(sym, label, "widened") or 0) for sym in sorted(shared))
+        diff = "" if label == PLAIN else f"  Differenz {sum(rs) - sum(base):+7.1f} R"
+        print(
+            f"{label:18s} n={len(rs):5d}  {np.mean(rs):+.4f} R  Treffer {wins:3.0f}%  "
+            f"Summe {sum(rs):+8.1f} R  {interval(rs)}{diff}"
+            + (f"  ({widened} verbreitert)" if widened else "")
+        )
+
+    print(
+        "\nDie Trefferquote ist hier die ehrlichste Spalte. Ein verbreiterter Stop\n"
+        "steht nicht mehr dort, wo das Setup die Idee fuer widerlegt haelt; faellt\n"
+        "die Quote nicht, ist das eher ein Fehler als ein Fund."
+    )
+
+
 def main() -> int:
+    args = parse_args()
     config = load_config()
     store = ParquetStore(config.engine.paths.parquet_dir)
     funding_store = FundingStore(config.engine.paths.funding_dir)
@@ -90,7 +154,13 @@ def main() -> int:
         print(f"Fortsetzung: {', '.join(done)} liegen vor", flush=True)
         print(flush=True)
 
-    for symbol in config.engine.symbols.active[:MARKETS]:
+    symbols = (
+        [s.strip().upper() for s in args.symbols.split(",")]
+        if args.symbols
+        else list(config.engine.symbols.active[:MARKETS])
+    )
+
+    for symbol in symbols:
         if all(partial.has(symbol, label) for label in labels):
             continue
         started = time.perf_counter()
@@ -145,29 +215,7 @@ def main() -> int:
                 flush=True,
             )
 
-    print("\n" + "=" * 78)
-    print(f"{MARKETS} Märkte, vier Jahre, Kostendecke {ceiling:.2f}\n")
-    base = partial.collect(PLAIN)
-    for label in labels:
-        rs = partial.collect(label)
-        if not rs:
-            continue
-        wins = 100 * sum(1 for r in rs if r > 0) / len(rs)
-        widened = sum(
-            int(partial.note(sym, label, "widened") or 0) for sym in partial.symbols_done(label)
-        )
-        diff = "" if label == PLAIN else f"  Differenz {sum(rs) - sum(base):+7.1f} R"
-        print(
-            f"{label:18s} n={len(rs):5d}  {np.mean(rs):+.4f} R  Treffer {wins:3.0f}%  "
-            f"Summe {sum(rs):+8.1f} R  {interval(rs)}{diff}"
-            + (f"  ({widened} verbreitert)" if widened else "")
-        )
-
-    print(
-        "\nDie Trefferquote ist hier die ehrlichste Spalte. Ein verbreiterter Stop\n"
-        "steht nicht mehr dort, wo das Setup die Idee fuer widerlegt haelt; faellt\n"
-        "die Quote nicht, ist das eher ein Fehler als ein Fund."
-    )
+    report(partial, labels, ceiling)
     return 0
 
 
