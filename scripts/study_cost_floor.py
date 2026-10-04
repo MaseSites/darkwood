@@ -55,7 +55,20 @@ from traidingbrain.sim.engine import BacktestEngine
 from traidingbrain.strategies.guide import GuidePool
 
 BOOT = 2000
-CEILINGS = (0.15, 0.25, 0.40, 1.00)
+# Tighter, not looser. The first run of this study went the other way -- 0.15
+# up to 1.00 -- and answered a question Severin had asked ("why so few
+# trades?"). The question that matters came later: with the entries measured at
+# a gross expectancy of -0.01 R [-0.070, +0.051], indistinguishable from zero,
+# the whole net loss of -0.063 R is the toll. Fees scale with position size and
+# risk does not, so the cost in R is set by how wide the stop is -- and a
+# tighter ceiling admits only the wider stops.
+#
+# What this cannot do is make the system profitable. If the gross edge really
+# is zero, cutting the toll walks the result up towards zero and stops there.
+# It is worth measuring because the gross interval reaches +0.05, and because
+# knowing the shape of the curve says whether the ceiling that ships is in the
+# right place.
+CEILINGS = (0.05, 0.075, 0.10, 0.15)
 
 #: Fewest trades before a group's mean is worth an interval. Below this the
 #: interval is wider than the scale and says so by being absurd, which is less
