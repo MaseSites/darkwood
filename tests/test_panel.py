@@ -19,6 +19,7 @@ from traidingbrain.learn.panel import (
     GROUPS,
     HOUR_MS,
     SOURCES,
+    USABLE,
     WARMUP_DAYS,
     Panel,
     Provenance,
@@ -223,16 +224,27 @@ def test_walk_forward_refuses_too_few_timestamps() -> None:
         walk_forward(START_MS + np.arange(3) * DAY_MS, folds=5, horizon_hours=24)
 
 
-def test_provenance_gate_blocks_the_derivative_group() -> None:
-    """P+D needs sources whose origin this project cannot state."""
-    with pytest.raises(ValueError, match="ohne belegte Herkunft"):
+def test_provenance_gate_blocks_only_what_is_still_unaccounted() -> None:
+    """P+D is blocked by funding alone now, and says so specifically.
+
+    The two derivative sources were blocked until 05.10.2026 and are not any
+    more: `scripts/verify_provenance.py` re-fetched their rows and they match
+    Bybit to the last decimal. What still blocks the group is funding, which
+    mixes two exchanges across markets -- a different and real defect.
+    """
+    with pytest.raises(ValueError, match="ohne belegte Herkunft") as raised:
         check_provenance("P+D", allow_unverified=False)
+    message = str(raised.value)
+    assert "funding" in message
+    assert "open_interest" not in message, "Die Herkunft ist belegt; nicht mehr sperren"
+    assert "account_ratio" not in message
 
     suspect, notes = check_provenance("P+D", allow_unverified=True)
-    assert any("open_interest" in s for s in suspect)
-    assert any("account_ratio" in s for s in suspect)
     assert any("funding" in s for s in suspect)
-    assert notes, "Der Stempel muss sagen, was bekannt ist"
+    assert not any("open_interest" in s for s in suspect)
+    # The cross-venue caveat still earns a note even though it passes.
+    assert any("open_interest" in n for n in notes)
+    assert any("BINANCE" in n for n in notes), "Preise und Positionierung sind verschiedene Boersen"
 
 
 def test_provenance_gate_lets_the_price_group_through() -> None:
@@ -376,8 +388,13 @@ def test_the_register_marks_exactly_the_sources_coverage_questioned() -> None:
     assert SOURCES["flow"][0] is Provenance.VERIFIED
     assert SOURCES["sentiment"][0] is Provenance.VERIFIED
     assert SOURCES["funding"][0] is Provenance.MIXED
-    assert SOURCES["open_interest"][0] is Provenance.UNKNOWN
-    assert SOURCES["account_ratio"][0] is Provenance.UNKNOWN
+    # Measured, not assumed: both match Bybit exactly, 2021 rows included.
+    # They are nonetheless not VERIFIED, because the prices come from Binance.
+    assert SOURCES["open_interest"][0] is Provenance.CROSS_VENUE
+    assert SOURCES["account_ratio"][0] is Provenance.CROSS_VENUE
+    assert Provenance.CROSS_VENUE in USABLE
+    assert Provenance.MIXED not in USABLE
+    assert Provenance.UNKNOWN not in USABLE
     # Every unverified source carries a note saying what is known about it.
     for name, (state, _, note) in SOURCES.items():
         if state is not Provenance.VERIFIED:

@@ -43,11 +43,32 @@ HOUR_MS = 3_600_000
 
 
 class Provenance(StrEnum):
-    """Whether this project can say where a source's rows came from."""
+    """Whether this project can say where a source's rows came from.
+
+    `CROSS_VENUE` is the state that matters and that a two-value flag would
+    have collapsed: the rows are fully accounted for, they are simply from a
+    different exchange than the price series. That is a weaker hypothesis, not
+    an unusable one, so it passes the gate and lands in the report. `MIXED` is
+    worse -- the series contradicts *itself* across markets -- and `UNKNOWN`
+    means nobody can say where the numbers came from at all.
+    """
 
     VERIFIED = "belegt"
+    CROSS_VENUE = "belegt, andere Boerse als die Preise"
     MIXED = "gemischte Boerse"
     UNKNOWN = "unbekannt"
+
+
+#: States a feature group may be built from without an explicit override.
+#:
+#: `CROSS_VENUE` is in here deliberately. On 05.10.2026 the two derivative
+#: sources were marked UNKNOWN because their files begin 2021-10-01 while
+#: `backfill_derivatives.py` claimed in its docstring that Bybit serves only
+#: back to March 2023. `scripts/verify_provenance.py` re-fetched the rows and
+#: they match Bybit to the last decimal, 2021 included -- the docstring was
+#: wrong, and a wrong sentence in a comment blocked a whole research axis for
+#: a day, because nobody re-measures a comment.
+USABLE: frozenset[Provenance] = frozenset({Provenance.VERIFIED, Provenance.CROSS_VENUE})
 
 
 #: Where each source stands, and the lag before a row is knowable.
@@ -83,17 +104,22 @@ SOURCES: dict[str, tuple[Provenance, int, str]] = {
         "Datensatz. Zusaetzlich BNBUSDT mit 49,6% exakten Nullen.",
     ),
     "open_interest": (
-        Provenance.UNKNOWN,
+        Provenance.CROSS_VENUE,
         0,
-        "Beginnt 2021-10-01, lueckenlos. backfill_derivatives.py baut "
-        "ccxt.bybit, das laut eigenem Docstring erst ab Maerz 2023 liefert. "
-        "Herkunft steht in keiner Datei dieses Projekts.",
+        "Bybit linear, nachgemessen: Bybit liefert 16419.749 fuer BTCUSDT am "
+        "2021-10-01 00:00 und genau das steht gespeichert. Gegengeprueft gegen "
+        "das Binance-Archiv, das 47921.245 fuer dieselbe Stunde hat -- zwei "
+        "Boersen verschiedener Groesse, nicht zwei Lesungen einer. Die Preise "
+        "kommen laut config/settings.yaml von BINANCE, also ist das "
+        "Positionierung der einen gegen Kurse der anderen Boerse.",
     ),
     "account_ratio": (
-        Provenance.UNKNOWN,
+        Provenance.CROSS_VENUE,
         0,
-        "Wie open_interest. Zusaetzlich tragen ETH/SOL/XRP alle Werte auf vier "
-        "Dezimalstellen, BTC nicht -- innerhalb derselben Quelle.",
+        "Wie open_interest, dieselbe Pruefung. Die fehlende "
+        "Vier-Dezimalstellen-Markierung bei BTC war echt und hatte eine "
+        "Ursache: 35 Zeilen am Ende trugen sechs Dezimalstellen und "
+        "widersprachen Bybit; sie liegen jetzt in data/quarantine/.",
     ),
 }
 
@@ -170,8 +196,12 @@ def check_provenance(
             suspect.append(f"{source} (kein Connector)")
             continue
         state, _, note = entry
-        if state is not Provenance.VERIFIED:
+        if state not in USABLE:
             suspect.append(f"{source} ({state})")
+        if state is not Provenance.VERIFIED:
+            # A cross-venue source passes the gate and still earns a line in
+            # the report: it is a real caveat about what the model can mean,
+            # not a reason to refuse the measurement.
             notes.append(f"{source}: {note}")
 
     if suspect and not allow_unverified:

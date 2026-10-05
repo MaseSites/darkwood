@@ -60,7 +60,7 @@ from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Timeframe
 from traidingbrain.domain.market import DEFAULT_SPEC
 from traidingbrain.journal.version import run_signature
-from traidingbrain.learn.panel import DAY_MS, build_panel, walk_forward
+from traidingbrain.learn.panel import DAY_MS, build_panel, common_window, walk_forward
 from traidingbrain.learn.register import Register, Stage
 from traidingbrain.learn.register import Result as ArmResult
 
@@ -374,6 +374,14 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--horizon", type=int, choices=list(HORIZONS), help="Stunden voraus.")
     parser.add_argument("--features", default="P", help="P, P+D, P+D+M oder P+D+M+O.")
+    parser.add_argument(
+        "--compare",
+        help=(
+            "Komma-getrennte Gruppen auf dem GEMEINSAMEN Fenster vergleichen, "
+            "z.B. P,P+D. Ohne das misst ein Vergleich die Abdeckung mit: P "
+            "reicht bis 2021, P+D erst ab der Derivate-Historie."
+        ),
+    )
     parser.add_argument("--model", default="logistic", choices=["logistic", "lightgbm"])
     parser.add_argument("--pairs", nargs="*", help="Default: die ersten drei aktiven.")
     parser.add_argument(
@@ -431,9 +439,31 @@ def main() -> int:
             allow_unverified=args.allow_unverified,
         )
         print(f"  {panel.describe()}")
+        panels = [panel]
+        if args.compare:
+            # Every named group on the same rows. The order requires it, and
+            # the reason is concrete: adding a source that starts in 2021
+            # shortens the window, and a difference that comes from measuring
+            # a different era reads exactly like information.
+            others = [
+                build_panel(
+                    markets=markets,
+                    group=name.strip(),
+                    horizon_hours=horizon,
+                    read_ohlcv=read_ohlcv,
+                    read_extra=read_extra,
+                    allow_unverified=args.allow_unverified,
+                )
+                for name in args.compare.split(",")
+                if name.strip() != args.features
+            ]
+            panels = common_window([panel, *others])
+            for trimmed in panels:
+                print(f"  {trimmed.describe()}")
+
         shares = ACT_SHARES if args.abstain else (1.0,)
-        for share in shares:
-            result = evaluate(panel, model=args.model, cost=cost, act_share=share)
+        for current, share in [(p, sh) for p in panels for sh in shares]:
+            result = evaluate(current, model=args.model, cost=cost, act_share=share)
             if result.rows < MIN_ACTED and share < 1.0:
                 print(
                     f"    top {100 * share:.0f}%: nur {result.rows} gehandelte Zeilen, "
@@ -458,7 +488,11 @@ def main() -> int:
         now_ms = int(time.time() * 1000)
         for result in results:
             share = "alle" if result.act_share >= 1.0 else f"top{100 * result.act_share:.0f}"
-            name = f"panel_{result.horizon}h_{result.group}_{result.model}_{share}"
+            # A common-window run measures the same group on fewer rows,
+            # so it is a different arm and must not overwrite the full-
+            # history one under the same name.
+            window = "_gemeinsam" if args.compare else ""
+            name = f"panel_{result.horizon}h_{result.group}_{result.model}_{share}{window}"
             register.record(
                 ArmResult(
                     arm=name.replace("+", ""),

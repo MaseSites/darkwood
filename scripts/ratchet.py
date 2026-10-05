@@ -271,8 +271,9 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
     ),
     (
         "Laengere Horizonte (mit Derivaten)",
-        "gesperrt",
-        "Herkunft von Open Interest und Kontoverhaeltnis ungeklaert -- siehe coverage.py.",
+        "erledigt",
+        "Herkunft nachgemessen (Bybit, exakt). P gegen P+D auf gemeinsamem Fenster: "
+        "Unterschied +-1.6 Punkte ohne Richtung, jedes Intervall mit Null.",
     ),
 )
 

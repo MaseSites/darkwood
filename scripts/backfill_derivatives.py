@@ -7,10 +7,26 @@ Price says what happened; open interest says whether it happened because money
 arrived or because money left. A rally on rising open interest and a rally on
 falling open interest look identical on a chart and are opposite trades.
 
-Bybit serves these back to roughly March 2023 and simply stops there without
-saying so, which is earlier than the candles but not as early. A range this
-cannot cover stays uncovered: the analysis reads a missing value as unknown, and
-turning it into a zero would assert that positioning did not change.
+**This file used to say Bybit serves these back to roughly March 2023. That
+was wrong, and the wrong sentence did real damage.** On 05.10.2026 an audit
+read it, saw that the stored files begin 2021-10-01, and concluded their origin
+was unaccountable -- which blocked the whole non-price research axis for a day.
+`scripts/verify_provenance.py` then re-fetched the rows: Bybit returns
+16419.749 for BTCUSDT at 2021-10-01 00:00 and exactly that is stored. Bybit
+answers for every sample tried across 1,500+ days.
+
+Nobody re-measures a comment, which is why a wrong one outlives a wrong number.
+The default below is `--since 2023-01-01` and that is a *choice about cost*,
+not a venue limit; pass an earlier date and it fetches.
+
+A range that genuinely cannot be covered stays uncovered: the analysis reads a
+missing value as unknown, and turning it into a zero would assert that
+positioning did not change.
+
+**What this does not fetch is the price series.** `config/settings.yaml` takes
+candles from Binance, so these rows are one exchange's positioning against
+another's prices. `learn/panel.py` records that as `Provenance.CROSS_VENUE` --
+usable, and a caveat that belongs in any report rather than in a footnote.
 """
 
 from __future__ import annotations
