@@ -36,6 +36,7 @@ exists to prevent -- and it would do it invisibly.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -48,7 +49,7 @@ from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
-from traidingbrain.journal.version import run_signature
+from traidingbrain.journal.version import code_version, run_signature
 from traidingbrain.learn.register import (
     MIN_HOLDOUT_TRADES,
     Register,
@@ -68,6 +69,18 @@ DAY_MS = 86_400_000
 #: and a verdict needs tens of trades. Shorter and the holdout cannot answer;
 #: longer and there is too little left to find anything with.
 HOLDOUT_DAYS = 180.0
+
+#: Where a measured trade series is saved, so a crash after the expensive
+#: part does not lose it.
+#:
+#: The research orders both ask for this -- "sichere Ergebnisse nach jeder
+#: Charge" -- and the reason is concrete: on 05.10.2026 this script measured
+#: four backtests over forty minutes, printed the result, and then died on a
+#: TypeError while filing it. The numbers were on screen and unrecoverable.
+#:
+#: Always written, never read unless `--reuse` asks. A cache that is read by
+#: default is how a stale series becomes a finding.
+SERIES_DIR = "arms"
 
 
 def parse_args() -> argparse.Namespace:
@@ -99,6 +112,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--holdout-days", type=float, default=HOLDOUT_DAYS)
+    parser.add_argument(
+        "--reuse",
+        action="store_true",
+        help=(
+            "Read a saved trade series instead of re-running the backtest. For "
+            "recovering from a crash or re-reporting, never for a new result: a "
+            "series saved under different code is a stale number with a fresh date."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -169,6 +191,49 @@ def run_arm(
     return pooled
 
 
+def series_path(config: AppConfig, *, arm: str, window: str) -> Path:
+    directory = config.engine.paths.data_dir / SERIES_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / f"{arm}-{window}.json"
+
+
+def measure(
+    symbols: list[str],
+    config: AppConfig,
+    *,
+    arm: str,
+    window: str,
+    start_ts: int | None,
+    end_ts: int | None,
+    strategy: str,
+    reuse: bool,
+) -> list[float]:
+    """Run an arm and save what it produced, or reload it when asked."""
+    path = series_path(config, arm=arm, window=window)
+    if reuse and path.exists():
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        print(f"  {window}: {len(saved['net_r'])} Trades aus {path.name} geladen")
+        return [float(x) for x in saved["net_r"]]
+    values = run_arm(
+        symbols, config, start_ts=start_ts, end_ts=end_ts, strategy=strategy
+    )
+    path.write_text(
+        json.dumps(
+            {
+                "arm": arm,
+                "window": window,
+                "symbols": symbols,
+                "strategy": strategy,
+                "code_version": code_version(),
+                "net_r": values,
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
+    return values
+
+
 def line(name: str, values: list[float]) -> str:
     if not values:
         return f"  {name:22s} keine Trades"
@@ -219,27 +284,44 @@ def main() -> int:
     # verdict on an arm nobody had ever looked at.
     print("\n--- vor dem Prueffenster (so oft lesbar wie man will, kein Urteil) ---")
     print("Champion:", flush=True)
-    base_open = run_arm(symbols, config, start_ts=None, end_ts=boundary)
+    base_open = measure(
+        symbols, config, arm="champion", window="offen",
+        start_ts=None, end_ts=boundary, strategy="champion", reuse=args.reuse,
+    )
     print("Herausforderer:", flush=True)
-    arm_open = run_arm(
-        symbols, challenger, start_ts=None, end_ts=boundary, strategy=args.strategy
+    arm_open = measure(
+        symbols, challenger, arm=args.arm, window="offen",
+        start_ts=None, end_ts=boundary, strategy=args.strategy, reuse=args.reuse,
     )
     print()
     print(line("Champion", base_open))
     print(line(args.arm, arm_open))
+
+    # The interval on the *difference*, which is the number that decides whether
+    # a holdout consultation is worth spending. Two separate intervals that both
+    # span zero say nothing about whether the arms differ -- and a point estimate
+    # alone is how three claims nearly went out wrong today.
+    gap = two_group_difference(arm_open, base_open)
+    mean_r = sum(arm_open) / len(arm_open) if arm_open else 0.0
+    low = high = 0.0
+    if gap is not None:
+        base_mean = sum(base_open) / len(base_open)
+        low, high = base_mean + gap.low, base_mean + gap.high
+        carries = "Null ausgeschlossen" if gap.excludes_zero else "enthaelt die Null"
+        print(f"\n  Unterschied {gap.mean:+.4f} R   {gap.labelled()} -> {carries}")
+
     register.record(
         Result(
             arm=args.arm,
             stage=Stage.TEST,
             n=len(arm_open),
-            mean_r=sum(arm_open) / len(arm_open) if arm_open else 0.0,
-            low=0.0,
-            high=0.0,
+            mean_r=mean_r,
+            low=low,
+            high=high,
             note=f"{change}; vor dem Prueffenster, kein Urteil",
         ),
         run_signature=run_signature(config),
         now_ms=int(datetime.now(tz=UTC).timestamp() * 1000),
-        strategy=args.strategy,
     )
 
     if not args.holdout:
