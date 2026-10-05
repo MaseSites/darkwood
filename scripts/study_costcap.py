@@ -49,6 +49,7 @@ from traidingbrain.config.settings import load_config
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.grid import timeframe_ms
 from traidingbrain.data.store import ParquetStore
+from traidingbrain.domain.enums import Rule
 from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
 from traidingbrain.journal.signals import Action, SignalStore
 from traidingbrain.journal.version import run_signature
@@ -78,6 +79,15 @@ FIT_SHARE = 0.5
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--symbols", help="Comma-separated. Default: the first four.")
+    parser.add_argument(
+        "--with-refused",
+        action="store_true",
+        help=(
+            "Die auf Kosten abgelehnten Signale mitlesen. Noetig, sobald der "
+            "Deckel wirkt: dann sind die teuren Trades abgelehnt und nicht "
+            "genommen, und ein Lauf ohne sie vergleicht guenstige gegen nichts."
+        ),
+    )
     parser.add_argument(
         "--any",
         action="store_true",
@@ -198,6 +208,52 @@ def decompose(work: list, cap: float, config: object) -> None:
     )
 
 
+def load_both(config: object, *, symbols: list[str], any_signature: bool) -> list:
+    """Taken signals AND the ones the cost rule refused, in one population.
+
+    Needed once the cap is in force. Before 05.10.2026 the cap stood at 0.15
+    and the expensive trades were taken, so reading `Action.TAKEN` covered
+    both groups. At 0.08 the expensive ones are refused, and a study that read
+    only taken signals would compare cheap trades against nothing and find a
+    difference of zero by construction.
+
+    `Rule.COSTS` refusals are exactly the expensive population, with their
+    `cost_fraction` recorded. They were never filled, so this is a
+    counterfactual: what those trades would have done. That is the right
+    comparison for the question -- would taking them have been worse -- and it
+    is a different claim from what the account experienced.
+    """
+    store = ParquetStore(config.engine.paths.parquet_dir)  # type: ignore[attr-defined]
+    signals = SignalStore(config.engine.paths.data_dir / "signals.sqlite")  # type: ignore[attr-defined]
+    funding_store = FundingStore(config.engine.paths.funding_dir)  # type: ignore[attr-defined]
+
+    sig, note = signals.resolve(run_signature(config), fallback=any_signature)
+    print(f"  {note}\n")
+
+    work = []
+    for symbol in symbols:
+        records = [
+            record
+            for record in signals.all(symbol=symbol, run_signature=sig)
+            if record.action is Action.TAKEN
+            or (record.action is Action.REFUSED and record.refused_by == Rule.COSTS)
+        ]
+        frame = store.read(symbol, config.engine.timeframes.execution)  # type: ignore[attr-defined]
+        if not records or frame.empty:
+            print(f"{symbol}: keine Signale")
+            continue
+        records.sort(key=lambda r: r.decided_ts)
+        work.append(
+            (
+                SymbolSpec(symbol=symbol, **DEFAULT_SPEC),
+                records,
+                Minutes.of(frame),
+                funding_store.read(symbol),
+            )
+        )
+    return work
+
+
 def load_work(config: object, *, symbols: list[str], any_signature: bool) -> list:
     """Taken signals, minute candles and funding, per market.
 
@@ -247,7 +303,8 @@ def main() -> int:
         if args.symbols
         else list(config.engine.symbols.active[:4])
     )
-    work = load_work(config, symbols=symbols, any_signature=args.any_signature)
+    loader = load_both if args.with_refused else load_work
+    work = loader(config, symbols=symbols, any_signature=args.any_signature)
     if not work:
         print("Nichts zu rechnen.")
         return 1
