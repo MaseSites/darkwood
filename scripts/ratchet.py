@@ -61,46 +61,21 @@ CHAMPION = Result(
     note="4 Maerkte, 12.843 gelabelte Signale, Setups A/B/E/F/G, M15, Kostendeckel 0.15",
 )
 
-#: The declared horizon series: 24, 72 and 168 hours, two models, the
-#: price-only feature group, three markets. Registered in full including the
-#: failures, because the research order asks for that and because the best of
-#: six attempts looks good by construction.
+#: The declared horizon series used to be a hand-copied table here. It is
+#: gone, and the reason is worth keeping.
 #:
-#: The number recorded is the **directional hit rate minus the base rate** --
-#: what "always long" achieves on the same rows. Measuring against 0.5 would
-#: credit a model for the market's upward drift, and at 72 hours the base rate
-#: is 52.06%, so a model at 51.86% looks skilful against 0.5 and is in fact
-#: worse than doing nothing. The unit is foreign, so `Register.judge` cannot
-#: crown anything from it.
+#: It recorded "directional hit rate minus base rate" as the arm's value --
+#: two quantities estimated separately from the same rows and subtracted. That
+#: is not a test, and it fired: a 358-row subset showed 59.50% against a
+#: 46.65% base rate and was reported as beating it, while the net interval
+#: still spanned zero. The paired difference -- the model's hit minus
+#: always-long's hit, row by row, so the market's drift cancels -- gives
+#: +12.85 points with an interval of [-3.52, +27.17]. Undecided, like the
+#: other twenty-three cells.
 #:
-#: Source: `scripts/study_panel.py --all-horizons --features P`, 05.10.2026,
-#: BTC/ETH/SOL, 3 purged walk-forward folds, weekly-block intervals.
-_PANEL_ROWS: tuple[tuple[str, str, int, float, float, float, float], ...] = (
-    # arm, model, n, hit, base, low, high  (hit/base/low/high as fractions)
-    ("panel_24h_P", "logistic", 3984, 0.5128, 0.5043, 0.4935, 0.5337),
-    ("panel_72h_P", "logistic", 3978, 0.5186, 0.5206, 0.4941, 0.5441),
-    ("panel_168h_P", "logistic", 3969, 0.4961, 0.5163, 0.4628, 0.5290),
-    ("panel_24h_P_lgbm", "lightgbm", 3984, 0.5053, 0.5043, 0.4890, 0.5216),
-    ("panel_72h_P_lgbm", "lightgbm", 3978, 0.4977, 0.5206, 0.4767, 0.5177),
-    ("panel_168h_P_lgbm", "lightgbm", 3969, 0.5193, 0.5163, 0.4949, 0.5436),
-)
-
-PANEL: tuple[Result, ...] = tuple(
-    Result(
-        arm=arm,
-        stage=Stage.TEST,
-        n=n,
-        mean_r=hit - base,
-        low=low - base,
-        high=high - base,
-        unit="Richtungstreffer minus Basisquote",
-        note=(
-            f"{model}, Treffer {100 * hit:.2f}% gegen Basisquote {100 * base:.2f}%. "
-            f"Intervall aus Wochenbloecken schliesst die Basisquote nicht aus."
-        ),
-    )
-    for arm, model, n, hit, base, low, high in _PANEL_ROWS
-)
+#: `scripts/study_panel.py --register` now writes those arms itself, with the
+#: paired interval. Twenty-four rows copied by hand is also how a wrong `n`
+#: reaches a register, which happened once today already.
 
 
 #: Moving the entry away from the market, in fractions of the stop distance.
@@ -244,7 +219,6 @@ TRIED: tuple[Result, ...] = (
         unit="Rangkorrelation",
         note="35 Merkmale, p 0.26-0.48. Das Modell waehlte schlechter als der Durchschnitt.",
     ),
-    *PANEL,
     *ENTRY_OFFSET,
 )
 

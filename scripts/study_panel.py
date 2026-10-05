@@ -59,7 +59,10 @@ from traidingbrain.data.sentiment import SentimentStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Timeframe
 from traidingbrain.domain.market import DEFAULT_SPEC
+from traidingbrain.journal.version import run_signature
 from traidingbrain.learn.panel import DAY_MS, build_panel, walk_forward
+from traidingbrain.learn.register import Register, Stage
+from traidingbrain.learn.register import Result as ArmResult
 
 #: Horizons the order fixes. Registered here so a fourth cannot be slipped in
 #: and then compared against three that were declared in advance.
@@ -124,6 +127,7 @@ class Result:
     horizon: int
     group: str
     model: str
+    act_share: float
     rows: int
     markets: int
     folds: int
@@ -135,28 +139,41 @@ class Result:
     net_low: float
     net_high: float
     base_rate: float
+    edge: float
+    edge_low: float
+    edge_high: float
     toll: float
     unverified: tuple[str, ...]
 
     @property
     def beats_chance(self) -> bool:
-        """Whether the interval excludes the base rate, not whether it excludes 0.5.
+        """Whether the PAIRED difference against always-long excludes zero.
 
-        The base rate is what a constant 'always long' call achieves, and in a
-        rising market that is well above half. Measuring against 0.5 would
-        credit a model for the market's drift.
+        An earlier version compared `directional_low > base_rate`, which is
+        not a test: it holds an interval on one quantity against a point
+        estimate of another, both computed from the same rows. On a 358-row
+        subset that comparison fired while the net interval still spanned
+        zero, which is exactly the shape of the four false findings this
+        project shipped and withdrew on 05.10.2026.
+
+        The difference is paired per row -- the model's hit minus always-long's
+        hit on the same day and market -- so the market's drift cancels
+        instead of being estimated separately and subtracted.
         """
-        return self.directional_low > self.base_rate
+        return self.edge_low > 0.0
 
     def line(self) -> str:
         stamp = " [HERKUNFT UNGEKLAERT]" if self.unverified else ""
-        verdict = "ueber der Basisquote" if self.beats_chance else "nicht von ihr zu trennen"
+        share = "alle" if self.act_share >= 1.0 else f"top {100 * self.act_share:.0f}%"
+        verdict = "SCHLAEGT immer-long" if self.beats_chance else "nicht davon zu trennen"
         return (
-            f"{self.group:9s} {self.horizon:>4d}h {self.model:9s} "
+            f"{self.group:7s} {self.horizon:>4d}h {self.model:9s} {share:>8s} "
             f"n={self.rows:>6,d} {self.markets:>2d}M  "
             f"Richtung {100 * self.directional:5.2f}% "
             f"[{100 * self.directional_low:5.2f}, {100 * self.directional_high:5.2f}]  "
             f"Basis {100 * self.base_rate:5.2f}%  "
+            f"Vorsprung {100 * self.edge:+5.2f} "
+            f"[{100 * self.edge_low:+5.2f}, {100 * self.edge_high:+5.2f}]  "
             f"netto {100 * self.net_mean:+.3f}% "
             f"[{100 * self.net_low:+.3f}, {100 * self.net_high:+.3f}]  "
             f"{verdict}{stamp}"
@@ -245,6 +262,7 @@ def evaluate(panel: object, *, model: str, cost: float, act_share: float = 1.0) 
     hits: list[np.ndarray] = []
     nets: list[np.ndarray] = []
     days: list[np.ndarray] = []
+    acted: list[np.ndarray] = []
     for fold in folds:
         score = fit_predict(model, matrix[fold.train], target[fold.train], matrix[fold.validate])
         actual = target[fold.validate]
@@ -271,6 +289,7 @@ def evaluate(panel: object, *, model: str, cost: float, act_share: float = 1.0) 
         # Net: the move the call captured, minus one round trip.
         nets.append(side * actual - cost)
         days.append(stamps[fold.validate][keep])
+        acted.append(actual)
 
     hit = np.concatenate(hits)
     net = np.concatenate(nets)
@@ -281,14 +300,20 @@ def evaluate(panel: object, *, model: str, cost: float, act_share: float = 1.0) 
 
     # The base rate: what "always long" achieves on the rows actually acted on.
     # In a rising market it is above half, and a model must clear it rather
-    # than 0.5. Computed on the acted subset, not on every validation row --
-    # with abstention the two are different populations, and comparing a
-    # filtered model against an unfiltered base rate compares two things on
-    # different days.
-    acted_targets = np.concatenate(
-        [np.sign(side_actual) for side_actual in _acted_targets(hits, nets, cost)]
-    ) if False else None
-    base = float((np.concatenate(nets) + cost > 0).mean())
+    # than 0.5. Computed on the acted subset, because with abstention the acted
+    # rows and all validation rows are different populations -- judging a
+    # filtered model against an unfiltered base rate compares two things
+    # measured on different days.
+    actual_all = np.concatenate(acted)
+    base = float((actual_all > 0).mean())
+
+    # The paired difference, which is the only valid comparison of the two on
+    # the same rows: for each acted day and market, did the model call the
+    # direction right, minus did "always long" call it right. The market's
+    # drift appears in both terms and cancels.
+    long_hit = (actual_all > 0).astype(float)
+    edge_values = hit - long_hit
+    edge_low, edge_high = block_interval(edge_values, day)
 
     return Result(
         horizon=panel.horizon_hours,  # type: ignore[attr-defined]
@@ -306,6 +331,9 @@ def evaluate(panel: object, *, model: str, cost: float, act_share: float = 1.0) 
         net_low=net_low,
         net_high=net_high,
         base_rate=base,
+        edge=float(edge_values.mean()),
+        edge_low=edge_low,
+        edge_high=edge_high,
         toll=cost,
         unverified=panel.unverified,  # type: ignore[attr-defined]
     )
@@ -354,6 +382,23 @@ def parse_args() -> argparse.Namespace:
         help="Quellen ohne belegte Herkunft zulassen. Jedes Ergebnis traegt dann den Stempel.",
     )
     parser.add_argument("--all-horizons", action="store_true", help="24, 72 und 168 vergleichen.")
+    parser.add_argument(
+        "--abstain",
+        action="store_true",
+        help=(
+            "Auch auf Teilmengen handeln: die staerksten 50/20/10%% der Vorhersagen. "
+            "Die Schwelle kommt aus dem Trainingsfold, nie aus der Validierung."
+        ),
+    )
+    parser.add_argument(
+        "--register",
+        action="store_true",
+        help=(
+            "Jede gemessene Zelle als Arm ins Versuchsregister eintragen. Der "
+            "Forschungsauftrag verlangt das auch fuer die erfolglosen, und die "
+            "Zahl der Versuche korrigiert die spaetere Pruefschwelle."
+        ),
+    )
     parser.add_argument("--json", action="store_true")
     return parser.parse_args()
 
@@ -386,7 +431,16 @@ def main() -> int:
             allow_unverified=args.allow_unverified,
         )
         print(f"  {panel.describe()}")
-        results.append(evaluate(panel, model=args.model, cost=cost))
+        shares = ACT_SHARES if args.abstain else (1.0,)
+        for share in shares:
+            result = evaluate(panel, model=args.model, cost=cost, act_share=share)
+            if result.rows < MIN_ACTED and share < 1.0:
+                print(
+                    f"    top {100 * share:.0f}%: nur {result.rows} gehandelte Zeilen, "
+                    f"unter {MIN_ACTED} -- nicht berichtet"
+                )
+                continue
+            results.append(result)
 
     print(
         f"\n{'Gruppe':9s} {'Hor':>5s} {'Modell':9s} {'n':>8s} {'M':>3s}  "
@@ -394,6 +448,37 @@ def main() -> int:
     )
     for result in results:
         print("  " + result.line())
+
+    if args.register:
+        # Written by the script that measured them rather than copied into a
+        # literal table by hand. Twenty-four rows transcribed by hand is how a
+        # wrong `n` gets registered, which happened once already today.
+        register = Register(config.engine.paths.data_dir / "experiments.sqlite")
+        signature = run_signature(config)
+        now_ms = int(time.time() * 1000)
+        for result in results:
+            share = "alle" if result.act_share >= 1.0 else f"top{100 * result.act_share:.0f}"
+            name = f"panel_{result.horizon}h_{result.group}_{result.model}_{share}"
+            register.record(
+                ArmResult(
+                    arm=name.replace("+", ""),
+                    stage=Stage.TEST,
+                    n=result.rows,
+                    mean_r=result.edge,
+                    low=result.edge_low,
+                    high=result.edge_high,
+                    unit="Vorsprung gegen immer-long (Anteil)",
+                    note=(
+                        f"Richtung {100 * result.directional:.2f}% gegen Basis "
+                        f"{100 * result.base_rate:.2f}%, netto "
+                        f"{100 * result.net_mean:+.3f}%. "
+                        f"{'Intervall ohne Null' if result.beats_chance else 'Intervall mit Null'}."
+                    ),
+                ),
+                run_signature=signature,
+                now_ms=now_ms,
+            )
+        print(f"\n{len(results)} Zellen im Register eingetragen.")
 
     elapsed = time.time() - started
     print(f"\nLaufzeit {elapsed / 60:.1f} min, {THREADS} Threads je Modell.")
