@@ -35,6 +35,7 @@ from traidingbrain.learn.outlook import (
     build_cases,
     features_at,
     horizon_bars,
+    level_context,
 )
 
 MINUTE_MS = 60_000
@@ -108,7 +109,7 @@ def test_no_feature_sees_the_future(analysis: MultiFrameAnalysis) -> None:
     index = 3000
     indices = analysis.aligned_indices(index)
     assert indices is not None, "fixture too short to produce a complete picture"
-    before = features_at(analysis, index, indices)
+    before = features_at(analysis, index, indices, level_context(analysis))
     assert before is not None
 
     rng = np.random.default_rng(99)
@@ -126,7 +127,7 @@ def test_no_feature_sees_the_future(analysis: MultiFrameAnalysis) -> None:
     mutated = MultiFrameAnalysis(frames, config.engine)
     indices_after = mutated.aligned_indices(index)
     assert indices_after == indices
-    assert features_at(mutated, index, indices_after) == before, (
+    assert features_at(mutated, index, indices_after, level_context(mutated)) == before, (
         "a feature changed when only future bars changed, so it reads the future"
     )
 
@@ -176,7 +177,7 @@ def test_every_feature_has_a_name(analysis: MultiFrameAnalysis) -> None:
     index = 3000
     indices = analysis.aligned_indices(index)
     assert indices is not None
-    row = features_at(analysis, index, indices)
+    row = features_at(analysis, index, indices, level_context(analysis))
     assert row is not None
     assert len(row) == len(NAMES)
     assert len(set(NAMES)) == len(NAMES), "a feature name is used twice"

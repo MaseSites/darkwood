@@ -60,17 +60,50 @@ A separate number worth keeping from the same run: buying every bar and
 holding ten hours earns +0.0441% of price against a round trip of 0.0750%. The
 blind trade loses, over a period when BTC rose strongly.
 
-**What this run does not test, and it is the thing that prompted it.** There is
-no distance feature here -- not to the nearest untouched zone, not to the last
-swing, not to the nearest fair-value gap. All three were left out because
-`ZoneTimeline.known_at` and `unmitigated_at` copy a list per call and go
-quadratic over a full pass. That is a compute reason, not a substantive one,
-and it removed exactly the family the ADA reading pointed at: 85/100 bullish,
-"125 zones untouched, 0 in reach", no setup fired, and ADA ran +10.84% that
-day. So the finding is that indicators, structure state, regime, candle shape,
-sweep age and higher-timeframe lean do not rank the next 5-10 hours. Position
-relative to levels remains open, and precomputing those distances once per
-frame is what makes it testable.
+**Then the level distances were added, and the answer is still no.** The first
+run had no distance feature at all -- not to the nearest untouched zone, not to
+the last swing, not to the nearest fair-value gap -- because
+`ZoneTimeline.known_at` copies a list per call and goes quadratic over a full
+pass. That was a compute reason, not a substantive one, and it removed exactly
+the family the ADA reading pointed at. `learn/levels.py` makes the sweep linear
+(2.3 s for 175,537 bars, 11,492 zones and 18,311 gaps), so the hypothesis
+became testable. With 35 features instead of 28:
+
+    Rangkorrelation   +0.0039 (5h)   +0.0045 (10h)
+
+    5h  kaufen      alle +0.0213%   gewaehlt +0.0237%   p 0.516
+    5h  verkaufen   alle -0.0213%   gewaehlt -0.0232%   p 0.581
+    10h kaufen      alle +0.0441%   gewaehlt +0.0495%   p 0.484
+    10h verkaufen   alle -0.0441%   gewaehlt -0.0099%   p 0.258
+
+Slightly *worse* than without them, which is noise either way. The decile table
+is flat with hit rates of 47-49% and its highest band is the fourth.
+
+**The most convincing single observation is not a p-value.** Across the two
+runs exactly one of ten decile rows excluded zero, and it moved -- the fifth
+band without the level features, the fourth with them. A real effect does not
+wander between adjacent runs; ten uncorrected comparisons produce one such row
+by construction.
+
+**Three facts about market structure fell out of the sweep itself**, before any
+model ran, and they outlive this negative result:
+
+* 93% of bars have no zone within one ATR. The median distance to the nearest
+  untouched zone is 7.6 ATR up and 7.3 ATR down. ADA's "125 untouched, 0 in
+  reach" is the normal state, so a zone-based entry structurally waits.
+* A fair-value gap on M15 has a median lifetime of one bar and only 0.8% are
+  never filled, which is why no gap is ever pending nearby. The column is kept
+  because the standardiser already guards zero variance, and dropping it would
+  be judgement placed above data.
+* The median distance to the last confirmed swing is about 1.6 ATR, so swings
+  are the only one of the three that is usually close enough to matter.
+
+**What is left unexplored, honestly.** Ridge is linear, so interactions between
+these features are invisible to it -- but the permutation null already measures
+what fitting and thresholding manufacture, and a more flexible model would have
+to clear a correspondingly wider null. At a rank correlation of 0.004 the
+honest reading is that the information is not in these features at this
+horizon, not that the model was too simple.
 """
 
 from __future__ import annotations

@@ -48,6 +48,13 @@ import numpy as np
 from traidingbrain.analysis.pipeline import MultiFrameAnalysis, decision_time_ms
 from traidingbrain.data.frames import timeframe_ms
 from traidingbrain.domain.enums import Bias, RegimeKind, Timeframe
+from traidingbrain.learn.levels import (
+    Distances,
+    gaps_of,
+    pending_distances,
+    swing_distances,
+    zones_of,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -148,11 +155,65 @@ NAMES: tuple[str, ...] = (
     "w1_lean",
     "hour_sin",
     "hour_cos",
+    # Position relative to the levels nobody has traded through yet. Omitted
+    # from the first run of this module for compute cost, which removed exactly
+    # the family the ADA reading pointed at; `learn/levels.py` makes them cheap.
+    "zone_above_atr",
+    "zone_below_atr",
+    "zone_in_reach",
+    "gap_above_atr",
+    "gap_below_atr",
+    "swing_high_atr",
+    "swing_low_atr",
 )
 
 
+@dataclass(frozen=True)
+class LevelContext:
+    """Per-bar level distances, swept once for a whole frame.
+
+    Built by `level_context` and handed to `features_at`, which is the only way
+    these can be affordable: the public `ZoneTimeline` accessors copy a list
+    per call and would put a quadratic cost back into the pass.
+    """
+
+    zones: Distances
+    gaps: Distances
+    swings: Distances
+
+
+def level_context(analysis: MultiFrameAnalysis) -> LevelContext:
+    """Sweep the signal frame once for every level distance it will need.
+
+    Measured on BTC's 175,537 M15 bars: 0.9 s for 11,492 zones, 0.8 s for
+    18,311 fair-value gaps, 0.6 s for the swings.
+    """
+    signal = analysis.signal
+    frame = signal.frame
+    highs = frame["high"].to_numpy(dtype="float64")
+    lows = frame["low"].to_numpy(dtype="float64")
+    closes = frame["close"].to_numpy(dtype="float64")
+    atr = signal.indicators.values("atr")
+    return LevelContext(
+        zones=pending_distances(
+            highs=highs, lows=lows, closes=closes, atr=atr, levels=zones_of(signal.zones)
+        ),
+        gaps=pending_distances(
+            highs=highs,
+            lows=lows,
+            closes=closes,
+            atr=atr,
+            levels=gaps_of(list(signal.fair_value_gaps)),
+        ),
+        swings=swing_distances(closes=closes, atr=atr, structure=signal.structure),
+    )
+
+
 def features_at(
-    analysis: MultiFrameAnalysis, index: int, indices: dict[Timeframe, int]
+    analysis: MultiFrameAnalysis,
+    index: int,
+    indices: dict[Timeframe, int],
+    levels: LevelContext,
 ) -> tuple[float, ...] | None:
     """The state of the market at one bar, using only O(1) reads.
 
@@ -243,6 +304,13 @@ def features_at(
         *(_frame_lean(analysis, indices, tf) for tf in higher),
         float(np.sin(angle)),
         float(np.cos(angle)),
+        float(levels.zones.above[index]),
+        float(levels.zones.below[index]),
+        float(levels.zones.in_reach[index]),
+        float(levels.gaps.above[index]),
+        float(levels.gaps.below[index]),
+        float(levels.swings.above[index]),
+        float(levels.swings.below[index]),
     )
     return row if all(np.isfinite(value) for value in row) else None
 
@@ -312,6 +380,7 @@ def build_cases(
     signal = analysis.signal
     timeframe = analysis.signal_timeframe
     ahead = horizon_bars(hours, timeframe)
+    levels = level_context(analysis)
     closes = signal.column("close")
     total = len(signal)
 
@@ -329,7 +398,7 @@ def build_cases(
         if indices is None:
             tally.unaligned += 1
             continue
-        row = features_at(analysis, index, indices)
+        row = features_at(analysis, index, indices, levels)
         if row is None:
             tally.no_features += 1
             continue
