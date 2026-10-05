@@ -52,13 +52,32 @@ from traidingbrain.domain.market import DEFAULT_SPEC
 #: comparison across horizons is not also a comparison of data sources.
 HOURS: tuple[int, ...] = (1, 2, 4, 8, 16, 24, 48, 96, 168, 336, 720)
 
-#: Blended round trip at the measured hit rate: limit entry pays maker, a target
-#: exit pays maker, a stop or time exit pays taker, plus slippage both sides.
+#: Share of exits that actually pay the maker rate: the ones that reach a limit
+#: target.
 #:
-#: Not the worst case. Checked rather than assumed -- `sim/broker.py:323` takes
-#: the maker rate for a LIMIT entry and `sim/plan.py:297` is what submits one,
-#: so a winning trade already costs maker twice.
-HIT_RATE = 0.386
+#: This was wrong until 05.10.2026 and carried 0.386, the *hit rate*. The two
+#: differ because a winning trade need not win at its target: of the champion's
+#: 3,300 labelled signals, 1,118 exit at the target (33.879%) and 157 exit
+#: positively on time -- and a time exit is a market order paying taker
+#: (`learn/labels.py:424`). Using the hit rate therefore credited 157 trades
+#: with a maker rebate they never earned, and made the toll 1.34% too low.
+#:
+#: An audit found the hit rate is also the wrong *kind* of number here: it comes
+#: from barrier-labelled trades, while this script measures a barrier-free
+#: directional bet whose exit has no limit target at all. The honest figure for
+#: a pure directional bet is therefore taker on both sides; `--round-trip`
+#: exists to price that, and the default below stays comparable with the rest of
+#: the project's reporting.
+TARGET_EXIT_SHARE = 0.33879
+
+#: Whether the *entry* maker rate is earned is a separate and larger question.
+#: `sim/broker.py:322-324` charges maker for every LIMIT entry, but 97.5% of
+#: fills take the open branch and in 96.2% of those the open equals the limit
+#: in the first minute the order is alive -- economically a market entry billed
+#: as a resting one. Correcting it moves the system's measured expectancy from
+#: -0.0340 R to -0.0615 R. That belongs in the simulator, not in this script's
+#: constant, and `audit/ZIELRECHNUNG.md` section 3 is where it is recorded.
+ENTRY_PAYS_MAKER = True
 
 #: Hours in a day, for labelling horizons as days once they pass one.
 DAY_HOURS = 24
@@ -67,14 +86,28 @@ DAY_HOURS = 24
 def toll(slippage_bps: float) -> float:
     maker = float(DEFAULT_SPEC["maker_fee"])
     taker = float(DEFAULT_SPEC["taker_fee"])
-    exit_fee = HIT_RATE * maker + (1.0 - HIT_RATE) * taker
-    return maker + exit_fee + 2.0 * slippage_bps / 10_000.0
+    entry_fee = maker if ENTRY_PAYS_MAKER else taker
+    exit_fee = TARGET_EXIT_SHARE * maker + (1.0 - TARGET_EXIT_SHARE) * taker
+    return entry_fee + exit_fee + 2.0 * slippage_bps / 10_000.0
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--symbols", help="Comma-separated markets. Default: the first four.")
     parser.add_argument("--hours", help="Comma-separated horizons in hours.")
+    parser.add_argument(
+        "--round-trip",
+        type=float,
+        help=(
+            "Override the toll with a round trip in percent, to price a venue "
+            "this engine does not trade. Binance spot charges 0.1%% a side, so "
+            "--round-trip 0.2 is a spot round trip before slippage -- nearly "
+            "twice the 0.1215%% a USDT perpetual costs here. The move "
+            "distribution is a property of the market and does not change, so "
+            "the same table priced at a different toll is the honest way to "
+            "ask what a different venue would demand."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -96,7 +129,11 @@ def main() -> int:
     args = parse_args()
     config = load_config()
     store = ParquetStore(config.engine.paths.parquet_dir)
-    cost = toll(config.engine.simulation.slippage_bps)
+    cost = (
+        args.round_trip / 100.0
+        if args.round_trip is not None
+        else toll(config.engine.simulation.slippage_bps)
+    )
     symbols = (
         [s.strip().upper() for s in args.symbols.split(",")]
         if args.symbols
@@ -146,11 +183,17 @@ def main() -> int:
     print(
         "\n'Treffer noetig' ist die Richtungstreffsicherheit, bei der eine Wette die\n"
         "Maut genau bezahlt: p = (1 + Maut/Bewegung) / 2. Das ist die Zahl, die den\n"
-        "Horizont entscheidet -- eine Stunde verlangt 69.9%, eine Woche 51.2%.\n"
-        "Gemessen hat dieses System eine Rangkorrelation von 0.004, also praktisch\n"
-        "50.0%, und jede bisher gescheiterte Familie arbeitete auf Stunden oder\n"
-        "Minuten, wo 60 bis 70% verlangt sind. Dass sie scheiterten, war fast\n"
-        "vorbestimmt.\n"
+        "Horizont entscheidet -- eine Stunde verlangt rund 70%, eine Woche rund 51%.\n"
+        "Jede bisher gescheiterte Familie arbeitete auf Stunden oder Minuten, wo 60\n"
+        "bis 70% verlangt sind.\n"
+        "\nWas dieses System dagegen *erreicht*, steht hier absichtlich nicht. Eine\n"
+        "frueherere Fassung schrieb 'Rangkorrelation 0.004, also praktisch 50.0%' --\n"
+        "das war eine Umformulierung und keine Messung. Die Richtungstreffsicherheit\n"
+        "des Modells (sign(Vorhersage) == sign(Bewegung)) wird nirgends in diesem\n"
+        "Repository berechnet; 0.004 ist eine Spearman-Korrelation ueber mautbereinigte\n"
+        "signierte Renditen, und der Schritt von dort zu einer Prozentzahl ist einer,\n"
+        "den niemand gerechnet hat. Die unbedingte Basisquote liegt bei 50.8%.\n"
+        "Siehe audit/ZIELRECHNUNG.md, Abschnitt 2.\n"
         "\n'ueber Maut' ist der Anteil der Fenster, deren Bewegung die runde Fahrt\n"
         "uebersteigt -- also die, die sich ueberhaupt bezahlen KOENNTEN, wenn die\n"
         "Richtung bekannt waere. Sie ist nicht bekannt: drei Familien haben heute\n"
