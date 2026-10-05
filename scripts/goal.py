@@ -47,6 +47,13 @@ import numpy as np
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.journal.record import Source
 from traidingbrain.journal.store import JournalStore
+from traidingbrain.learn.target import (
+    Payout,
+    growth_at,
+    required_hit_rate,
+    required_mean_r,
+    shortfall_from_variance,
+)
 from traidingbrain.live.paperstate import PaperStateStore
 
 #: Expectancies worth asking about, as multiples of risk.
@@ -71,6 +78,11 @@ SCENARIOS: tuple[tuple[str, float], ...] = (
 
 #: Fewest forward trades before a cadence can be measured at all.
 MIN_FORWARD = 2
+
+#: Fewest journal trades before a payout is worth deriving. Below this the
+#: mean winner is one or two trades and the required hit rate it implies is
+#: noise wearing a decimal point.
+MIN_FOR_PAYOUT = 100
 
 
 def parse_args() -> argparse.Namespace:
@@ -162,7 +174,88 @@ def main() -> int:
 
     reachable(equity, args.target, trades, risk_fraction, ceiling)
     required(equity, args.target, trades, config)
+    measured_requirement(equity, args.target, trades, config)
     return 0
+
+
+def measured_requirement(
+    equity: float, target: float, trades: float, config: AppConfig
+) -> None:
+    """The required hit rate, with the payout read off the journal and printed.
+
+    This function exists because of a specific failure. On 05.10.2026 this
+    project reported that the target needed "56.6% weekly accuracy", computed
+    as an expression in a terminal and never committed. It silently assumed
+    winners of +1.371 R. Under a symmetric payout the same target needs
+    66.75%, and 56.6% reaches 2.99x -- a third of the way.
+
+    So the payout is no longer an assumption anywhere. It is measured from the
+    trades the broker actually booked, printed next to every percentage it
+    produces, and `learn/target.py` refuses to compute a required hit rate
+    without one.
+
+    **Which population.** The journal, not the labelled signals. Those two sit
+    0.058 R apart (-0.0918 R against -0.0340 R) and the journal is the one
+    that includes slot competition and liquidation -- the better number was
+    reported once and should not be again.
+    """
+    journal = JournalStore(config.engine.paths.data_dir / "journal.sqlite")
+    records = journal.all(source=Source.REPLAY)
+    if len(records) < MIN_FOR_PAYOUT:
+        print(f"\nZu wenige Journal-Trades ({len(records)}) fuer eine gemessene Auszahlung.")
+        return
+
+    values = np.array([t.r_multiple for t in records], dtype="float64")
+    wins = values[values > 0]
+    losses = values[values <= 0]
+    if wins.size == 0 or losses.size == 0:
+        print("\nJournal hat nur Gewinner oder nur Verlierer -- keine Auszahlung ableitbar.")
+        return
+
+    payout = Payout(win=float(wins.mean()), loss=float(abs(losses.mean())))
+    hit = float(wins.size / values.size)
+    growth = target / equity
+
+    print("\n" + "=" * 78)
+    print("Was das Ziel verlangt, mit der GEMESSENEN Auszahlung daneben")
+    print(f"  Auszahlung: {payout.describe()}  ({values.size:,} Journal-Trades)")
+    print(f"  Trefferquote gemessen: {100 * hit:.2f}%   Erwartung {values.mean():+.4f} R")
+    print(f"\n  {'Risiko':>8s} {'noetig R':>10s} {'noetige Treffer':>17s} {'Luecke':>12s}")
+
+    cap = config.risk.sizing.absolute_max_risk_pct
+    for risk in (0.005, 0.01, 0.02, 0.03):
+        need_r = required_mean_r(growth=growth, trades=trades, risk=risk)
+        try:
+            need_p = required_hit_rate(
+                growth=growth, trades=trades, risk=risk, payout=payout
+            )
+        except ValueError:
+            print(f"  {100 * risk:>7.1f}% {need_r:>+10.4f} {'Ruin':>17s} {'-':>12s}")
+            continue
+        over = "  (ueber dem Deckel)" if risk > cap else ""
+        shown = f"{100 * need_p:.2f}%" if need_p <= 1.0 else "unerreichbar"
+        gap = f"{100 * (need_p - hit):+.1f} Pp" if need_p <= 1.0 else "-"
+        print(f"  {100 * risk:>7.1f}% {need_r:>+10.4f} {shown:>17s} {gap:>12s}{over}")
+
+    # And the forward direction: what the measured rate actually reaches. The
+    # closed form assumes every trade returns the payout exactly, so the
+    # realised R sequence is compounded beside it -- it is always the lower of
+    # the two, by Jensen, and that gap is the optimism in every row above.
+    reached = growth_at(hit_rate=hit, trades=trades, risk=0.01, payout=payout)
+    actual, modelled = shortfall_from_variance(r_values=values, risk=0.01, trades=trades)
+    print(
+        f"\n  Bei 1% Risiko und gemessener Trefferquote: {equity * reached:>10,.0f} CHF"
+        f"\n  Mit der echten R-Streuung derselben Trades:  {equity * actual:>10,.0f} CHF"
+        f"\n  (Das konstante-R-Modell sagt {equity * modelled:,.0f} -- es ist optimistisch,"
+        f"\n   weil E[ln(1+fR)] < ln(1+f*E[R]), sobald R streut.)"
+    )
+    print(
+        "\n  Keine Prozentzahl hier ohne die Auszahlungszeile darueber. Genau diese\n"
+        "  fehlende Zeile machte die 56,6% falsch: sie setzte +1,371 R voraus, ohne\n"
+        "  es zu sagen. learn/target.py kann eine Trefferquote nicht mehr ohne\n"
+        "  Payout berechnen, und payout_implied_by holt eine verschwiegene Annahme\n"
+        "  aus jeder gemeldeten Quote heraus."
+    )
 
 
 def reachable(
