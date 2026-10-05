@@ -212,8 +212,24 @@ def measure(
     path = series_path(config, arm=arm, window=window)
     if reuse and path.exists():
         saved = json.loads(path.read_text(encoding="utf-8"))
-        print(f"  {window}: {len(saved['net_r'])} Trades aus {path.name} geladen")
-        return [float(x) for x in saved["net_r"]]
+        # Verified against what was asked for, not trusted because the filename
+        # matched. The name is arm plus window and knows nothing about which
+        # markets ran, so a two-market series and a twelve-market one land on
+        # the same path -- which is precisely how a cache turns into a wrong
+        # number with a fresh date. The content carries the truth, so the
+        # content is what gets checked.
+        mismatch = [
+            f"{field}: gespeichert {saved.get(field)!r}, gefragt {wanted!r}"
+            for field, wanted in (("symbols", symbols), ("strategy", strategy))
+            if saved.get(field) != wanted
+        ]
+        if mismatch:
+            print(f"  {window}: {path.name} passt nicht, wird neu gemessen")
+            for note in mismatch:
+                print(f"    {note}")
+        else:
+            print(f"  {window}: {len(saved['net_r'])} Trades aus {path.name} geladen")
+            return [float(x) for x in saved["net_r"]]
     values = run_arm(
         symbols, config, start_ts=start_ts, end_ts=end_ts, strategy=strategy
     )
