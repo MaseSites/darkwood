@@ -30,6 +30,7 @@ tightens the bar each time.
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -160,6 +161,74 @@ TRIED: tuple[Result, ...] = (
 )
 
 
+#: The nine strategy families the research order asks for, and where each
+#: stands. This is the quantity that can actually halve.
+#:
+#: Severin asked to be twice as good every day. Returns cannot do that -- from
+#: 1,000 CHF a daily doubling exceeds the whole Bitcoin market cap in 31 days
+#: and all the money in the world in 39, and doubling today's -0.034 R just
+#: makes it -0.068. What *can* halve is the space of places an edge might be,
+#: and every decisive test halves it. That is a real daily doubling pointed at
+#: the only thing that can take one.
+#:
+#: Kept here rather than in the register because it is a map of the question,
+#: not a record of answers: the register holds what was measured, this says
+#: what is left. A family moves only on a measurement, and the note says which.
+FAMILIES: tuple[tuple[str, str, str], ...] = (
+    (
+        "Fortsetzung / Zonen-Rueckkehr",
+        "erledigt",
+        "Die fünf ausgelieferten Setups. 9 Hypothesen, 8 tot, 1 unentschieden.",
+    ),
+    ("Volatilitaetsausbruch", "offen", "volatility_percentile existiert, war nie Ausloeser."),
+    ("VWAP und Tageszeit", "offen", "VWAP liegt in formulas.py, in keinem Setup benutzt."),
+    ("Mean Reversion", "offen", "Ungeprueft; alle Setups sind Fortsetzungslogik."),
+    ("Handelsspannen-Ausbruch", "offen", "Ungeprueft."),
+    ("Momentum mit Volumen", "offen", "Als Familie ungeprueft."),
+    ("Trendfolge mit Ruecksetzer", "offen", "Teilweise in den Setups, nie als Familie gemessen."),
+    ("Regime-Umschaltung", "offen", "Regime wird berechnet, schaltet aber nie die Strategie."),
+    ("Funding / Relative Value", "offen", "Daten liegen vor, nur als Kosten benutzt."),
+    (
+        "Orderflow",
+        "nicht testbar",
+        "Keine historischen Orderbuchdaten; heutige Snapshots genuegen nicht (§7).",
+    ),
+)
+
+
+def report_space() -> None:
+    """What is left to look at, and how many decisive tests that is.
+
+    Printed as a count rather than a promise. A daily target on *returns* is
+    the pressure that manufactures fake progress -- on 05.10.2026 three tables
+    looked like overwhelming findings and were artefacts, and a doubling target
+    would have shipped all three. A count of eliminated families cannot be
+    flattered: it moves only when something is measured.
+    """
+    done = [f for f in FAMILIES if f[1] == "erledigt"]
+    open_ = [f for f in FAMILIES if f[1] == "offen"]
+    blocked = [f for f in FAMILIES if f[1] == "nicht testbar"]
+
+    print("\n" + "=" * 78)
+    print("Der Suchraum -- die einzige Groesse hier, die sich halbieren laesst")
+    for name, status, note in FAMILIES:
+        mark = {"erledigt": "[x]", "offen": "[ ]", "nicht testbar": "[-]"}[status]
+        print(f"  {mark} {name:30s} {note}")
+    remaining = len(open_)
+    print(
+        f"\n  {len(done)} erledigt, {remaining} offen, {len(blocked)} nicht testbar.\n"
+        f"  Bei einem entscheidenden Test pro Familie: {remaining} Tests.\n"
+        f"  Halbiert sich der Rest mit jedem Test, sind es "
+        f"{math.ceil(math.log2(remaining)) if remaining > 1 else remaining} Schritte."
+    )
+    print(
+        "\n  Eine taegliche Verdoppelung der Rendite gibt es nicht: von 1.000 CHF\n"
+        "  waere das nach 31 Tagen die ganze Bitcoin-Marktkapitalisierung und nach\n"
+        "  39 Tagen alles Geld der Welt. Und doppelt so gut wie -0.034 R ist\n"
+        "  -0.068 R -- erst das Vorzeichen, dann der Faktor."
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -213,6 +282,7 @@ def main() -> int:
         "Kandidaten auf frueheren Daten auszuwaehlen ist gratis; was kostet, ist das\n"
         "Prueffenster selbst zu lesen, und genau das wird hier gezaehlt."
     )
+    report_space()
     return 0
 
 
