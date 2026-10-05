@@ -188,11 +188,22 @@ def required(equity: float, target: float, trades: float, config: AppConfig) -> 
     print(
         "\nUnd der Haken an der letzten Tabelle: der Deckel von "
         f"{sizing.uncalibrated_cap_risk_pct:.1%} haelt jede\n"
-        f"Zuversichtsstufe dort, bis {sizing.min_samples_for_uncap} "
-        "Faelle zeigen, dass die hoeheren Stufen es\nverdienen. Mehr Risiko ist "
-        "also kein Ersatz dafuer, einen Vorteil zu finden --\nder Deckel geht nur "
-        "auf, wenn der Vorteil belegt ist. Beides zusammen, oder\nkeines von beidem."
+        "Zuversichtsstufe dort, solange keine Messung zeigt, dass die hoeheren\n"
+        f"Stufen es verdienen -- und dann zusaetzlich erst ab "
+        f"{sizing.min_samples_for_uncap} Faellen.\n"
+        "Mehr Risiko ist also kein Ersatz dafuer, einen Vorteil zu finden --\n"
+        "der Deckel geht nur auf, wenn der Vorteil belegt ist. Beides zusammen,\n"
+        "oder keines von beidem."
     )
+    if not sizing.calibration_proven:
+        print(
+            "\n            Belegt ist er nicht: `calibration_proven` steht auf false.\n"
+            "            Bis 05.10.2026 war das kein Beschluss, sondern ein Rechenunfall "
+            "--\n            der Deckel verglich die Nachbarn EINER Kerze (hoechstens "
+            f"{config.engine.history.k_neighbours})\n            mit "
+            f"{sizing.min_samples_for_uncap}, konnte also nie aufgehen. Richtig gedeckelt, "
+            "falscher Grund."
+        )
 
 
 if __name__ == "__main__":

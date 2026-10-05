@@ -57,7 +57,9 @@ def test_below_the_minimum_confidence_there_is_no_trade(sizing: SizingConfig) ->
 
 
 def test_the_budget_rises_with_confidence(sizing: SizingConfig) -> None:
-    generous = SizingConfig.model_validate(sizing.model_dump() | {"min_samples_for_uncap": 0})
+    generous = SizingConfig.model_validate(
+        sizing.model_dump() | {"min_samples_for_uncap": 0, "calibration_proven": True}
+    )
     low = risk_budget(65.0, EQUITY, generous, history_samples=1000)
     high = risk_budget(92.0, EQUITY, generous, history_samples=1000)
 
@@ -80,12 +82,42 @@ def test_the_upper_tiers_stay_locked_until_history_earns_them(sizing: SizingConf
     assert "until" in budget.reason
 
 
+def test_no_sample_count_lifts_an_unproven_cap(sizing: SizingConfig) -> None:
+    """The test that would have caught the bug this file shipped with.
+
+    `test_the_cap_lifts_once_there_are_enough_cases` below hands the threshold in
+    by hand, so it proved the gate works in the abstract -- and the gate was
+    unreachable in practice for every real caller, because the number passed is
+    one bar's usable neighbours and cannot exceed `k_neighbours`. The cap was
+    doing the right thing for a reason that would have evaporated unnoticed.
+
+    So the property worth asserting is not "enough cases lifts it" but "nothing
+    about the count can lift it while the claim is unmeasured".
+    """
+    assert sizing.calibration_proven is False, "the shipped config must not claim this"
+    for samples in (0, 120, sizing.min_samples_for_uncap, 10_000, 10_000_000):
+        budget = risk_budget(95.0, EQUITY, sizing, history_samples=samples)
+        assert budget is not None
+        assert budget.capped_by_calibration is True, f"{samples} cases lifted the cap"
+        assert budget.risk_pct == pytest.approx(sizing.uncalibrated_cap_risk_pct)
+
+
 def test_the_cap_lifts_once_there_are_enough_cases(sizing: SizingConfig) -> None:
-    budget = risk_budget(95.0, EQUITY, sizing, history_samples=sizing.min_samples_for_uncap)
+    proven = SizingConfig.model_validate(sizing.model_dump() | {"calibration_proven": True})
+    budget = risk_budget(95.0, EQUITY, proven, history_samples=proven.min_samples_for_uncap)
 
     assert budget is not None
     assert budget.capped_by_calibration is False
-    assert budget.risk_pct > sizing.uncalibrated_cap_risk_pct
+    assert budget.risk_pct > proven.uncalibrated_cap_risk_pct
+
+
+def test_a_proven_calibration_still_needs_the_cases(sizing: SizingConfig) -> None:
+    """Both conditions, not either."""
+    proven = SizingConfig.model_validate(sizing.model_dump() | {"calibration_proven": True})
+    budget = risk_budget(95.0, EQUITY, proven, history_samples=proven.min_samples_for_uncap - 1)
+
+    assert budget is not None
+    assert budget.capped_by_calibration is True
 
 
 def test_nothing_exceeds_the_absolute_ceiling(sizing: SizingConfig) -> None:

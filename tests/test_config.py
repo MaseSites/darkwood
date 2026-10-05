@@ -18,6 +18,7 @@ from tests.conftest import PROJECT_ROOT
 from traidingbrain.config.settings import (
     AppConfig,
     HistoryConfig,
+    RiskConfig,
     Secrets,
     SizingConfig,
     SymbolsConfig,
@@ -276,6 +277,43 @@ def test_the_shipped_configuration_can_actually_reach_its_threshold() -> None:
     history = load_config().engine.history
 
     assert history.k_neighbours > history.min_samples_for_stats
+
+
+def test_claiming_calibration_forces_the_uncap_threshold_to_be_reachable(
+    app_config: AppConfig,
+) -> None:
+    """The same trap as above, across two files, which is why it got through.
+
+    `HistoryConfig` cannot see `k_neighbours` and `min_samples_for_uncap` at the
+    same time -- one is in settings.yaml, the other in risk.yaml. So risk.yaml
+    asked for 200 cases while the quantity it was compared against was one bar's
+    usable neighbours, capped at 120. The branch was true at every decision and
+    the 1% cap held by arithmetic accident.
+
+    The check binds when it starts to matter: marking calibration proven while
+    the threshold is unreachable is refused, so a cap can never again look
+    calibrated while being impossible to lift.
+    """
+    risk = app_config.risk.model_dump()
+    risk["sizing"]["calibration_proven"] = True
+    risk["sizing"]["min_samples_for_uncap"] = app_config.engine.history.k_neighbours
+
+    with pytest.raises(ValidationError, match="is not below"):
+        AppConfig(
+            engine=app_config.engine,
+            weights=app_config.weights,
+            risk=RiskConfig.model_validate(risk),
+        )
+
+
+def test_the_shipped_configuration_does_not_claim_calibration(app_config: AppConfig) -> None:
+    """Absence of a measurement is not a passing grade.
+
+    Nothing has yet shown that a high confidence number earns more risk -- on
+    05.10.2026 the measured expectancy of the signals the system takes is about
+    zero, and raising risk against zero expectancy scales variance, not return.
+    """
+    assert app_config.risk.sizing.calibration_proven is False
 
 
 def test_a_credential_is_read_under_its_own_name_as_well_as_the_prefix(

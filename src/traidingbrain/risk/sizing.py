@@ -81,14 +81,24 @@ def risk_budget(
 
     # The upper tiers stay locked until there is evidence that confidence means
     # anything. Until then the system is allowed to be confident, not to bet on it.
-    uncalibrated = history_samples < config.min_samples_for_uncap
-    if uncalibrated and risk_pct > config.uncalibrated_cap_risk_pct:
+    #
+    # Two conditions, and the first one is the gate. Until 05.10.2026 there was
+    # only the sample count, compared against one bar's usable neighbours -- a
+    # number that cannot exceed `k_neighbours`, so a threshold of 200 made this
+    # branch unconditionally true. The cap was right; the reason it held was not.
+    unproven = not config.calibration_proven
+    too_few = history_samples < config.min_samples_for_uncap
+    if (unproven or too_few) and risk_pct > config.uncalibrated_cap_risk_pct:
         risk_pct = config.uncalibrated_cap_risk_pct
         capped = True
+        why = (
+            "no measurement has shown the upper bands earn it"
+            if unproven
+            else f"only {history_samples} of {config.min_samples_for_uncap} cases"
+        )
         reason = (
             f"confidence {confidence:.0f} would allow {tier.risk_pct:.1%}, capped to "
-            f"{risk_pct:.1%} until {config.min_samples_for_uncap} historical cases "
-            f"show the upper bands earn it (have {history_samples})"
+            f"{risk_pct:.1%} until {why}"
         )
 
     risk_pct = min(risk_pct, config.absolute_max_risk_pct)

@@ -34,9 +34,33 @@ sizing:
   # down to it. A model's confidence is not a calibrated probability on day one,
   # and an uncalibrated number must not be allowed to size a position.
   #
-  # Raise this only once `history.min_samples_for_uncap` non-overlapping cases
-  # show a real edge for the upper bands.
   uncalibrated_cap_risk_pct: 0.010
+
+  # The gate. False until a reviewed measurement shows the upper confidence bands
+  # really do earn more risk, and while it is false the cap above holds no matter
+  # how much data exists.
+  #
+  # It exists because the sample count below was doing this job and could not.
+  # The count was compared against `snapshot.history.similar_situations_found` --
+  # the usable neighbours of a *single bar*, at most `history.k_neighbours` (120)
+  # and fewer after the distance filter and deduplication. Against a threshold of
+  # 200 the comparison was true at every decision, so the one percent cap that
+  # has held every trade so far held by arithmetic accident, not by decision. A
+  # safety property that holds for the wrong reason would have gone on holding
+  # silently on the day the evidence justified lifting it.
+  #
+  # It is also the wrong question: "this bar has 200 lookalikes" is a fact about
+  # locality, not evidence that a confidence number is calibrated. Answering the
+  # real question needs the confidence stored with each resolved case, which
+  # `history.Case` does not carry yet -- that is the open work, not this switch.
+  #
+  # Flipping this to true makes settings.py check that the threshold below is
+  # reachable, so the contradiction cannot come back quietly.
+  calibration_proven: false
+
+  # Necessary, not sufficient: even with calibration proven, this many cases must
+  # support it. Counted over the evidence base, which is what the caller must be
+  # changed to pass -- today it passes one bar's neighbourhood.
   min_samples_for_uncap: 200
 
   # Hard ceiling regardless of confidence, calibration or manual override.

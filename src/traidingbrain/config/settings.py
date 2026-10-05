@@ -314,6 +314,21 @@ class SizingConfig(_Frozen):
     min_samples_for_uncap: int = Field(ge=0)
     absolute_max_risk_pct: float = Field(gt=0, le=0.05)
 
+    #: Has the claim that higher confidence earns more risk actually been shown?
+    #:
+    #: Default false, because absence of a measurement is not a passing grade.
+    #: While this is false the cap holds no matter how many cases exist, and
+    #: `min_samples_for_uncap` is a necessary-but-not-sufficient second
+    #: condition rather than the whole gate.
+    #:
+    #: It is a separate switch because the sample count was doing a job it
+    #: cannot do. It was compared against the neighbours of *one bar*, and
+    #: "this bar has 200 lookalikes" is a fact about locality, not evidence
+    #: that a confidence number means anything. Answering the real question
+    #: needs the confidence recorded alongside each resolved case, which
+    #: `history.Case` does not carry yet.
+    calibration_proven: bool = False
+
     @model_validator(mode="after")
     def _tiers_ascend(self) -> SizingConfig:
         if not self.tiers:
@@ -452,6 +467,41 @@ class AppConfig(_Frozen):
     engine: EngineConfig
     weights: WeightsConfig
     risk: RiskConfig
+
+    @model_validator(mode="after")
+    def _the_uncap_threshold_is_reachable(self) -> AppConfig:
+        """The same trap as `HistoryConfig._the_threshold_is_reachable`, one file over.
+
+        That validator catches an unreachable threshold *within* settings.yaml.
+        This one shipped anyway, because the two numbers live in different files
+        and therefore in different models, which neither could see across:
+        `risk.yaml` asked for 200 cases, and the quantity it was compared
+        against -- `snapshot.history.similar_situations_found` -- is the
+        neighbour count of a single bar, capped at `k_neighbours` of 120 and cut
+        further by the distance filter and deduplication. So `<=120 < 200` was
+        true at every decision, and the 1% cap that has held every trade held by
+        arithmetic accident rather than by decision.
+
+        A safety property that holds for the wrong reason is not a safety
+        property: it would have gone on holding, silently, if the evidence had
+        one day justified lifting it. So the check binds exactly when it starts
+        to matter -- the moment somebody marks calibration proven.
+        """
+        sizing = self.risk.sizing
+        if not sizing.calibration_proven:
+            return self
+        k = self.engine.history.k_neighbours
+        if sizing.min_samples_for_uncap >= k:
+            raise ValueError(
+                f"min_samples_for_uncap ({sizing.min_samples_for_uncap}) is not below "
+                f"k_neighbours ({k}), and the sample count handed to risk_budget is one "
+                "bar's usable neighbours -- at most k, and fewer after the distance "
+                "filter and deduplication. The gate could never open, so the risk cap "
+                "would hold by accident while appearing to be calibrated. Either raise "
+                "k_neighbours well above the threshold, or count cases over the whole "
+                "evidence base instead of one bar's neighbourhood."
+            )
+        return self
 
 
 @functools.lru_cache(maxsize=1)
