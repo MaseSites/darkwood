@@ -38,3 +38,18 @@ dist/
 
 # Local tool state from the claude-flow swarm, not project source.
 /.swarm/
+
+# Freqtrade: der Ausfuehrungskern. Konfiguration und Strategien sind Quellcode
+# und werden verfolgt; Marktdaten, trainierte Modelle, Logs, Backtest-Ausgaben
+# und die Trade-Datenbank sind Laufzeitzustand dieser Maschine.
+/freqtrade/user_data/data/
+/freqtrade/user_data/models/
+/freqtrade/user_data/logs/
+/freqtrade/user_data/backtest_results/
+/freqtrade/user_data/notebooks/
+/freqtrade/user_data/plot/
+/freqtrade/user_data/hyperopt_results/
+
+# Enthaelt JWT- und WebSocket-Schluessel des lokalen API-Servers. Erzeugt von
+# scripts/freqtrade_setup.py, nie eingecheckt.
+/freqtrade/user_data/config.local.json
