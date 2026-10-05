@@ -49,21 +49,31 @@ and sits a full ATR below the average week. The slope grows linearly with the
 horizon -- -0.117, -0.224, -0.477, -0.710 at 24, 48, 96 and 168 bars -- which
 is a drift relationship rather than a short-lived inefficiency.
 
-**The intervals printed here are too narrow and the reason is in this script.**
-Forward returns from consecutive bars overlap: at a 168-bar horizon, two
-neighbouring observations share 167 of their 168 bars. The bootstrap resamples
-as though all 619,037 were independent, when the effective count is closer to
-619,037 / 168 ~ 3,700. The intervals should be roughly thirteen times wider,
-and "Null ausgeschlossen" is printed in lines that have not earned it. The
-effect survives that correction by a wide margin at the extreme bucket and
-almost certainly does not in the middle ones. Fixing this properly means a
-block bootstrap over non-overlapping windows; until then, read the point
-estimates and ignore the brackets.
+**The intervals were too narrow, and are now corrected.** Forward returns from
+consecutive bars overlap: at a 168-bar horizon two neighbouring observations
+share 167 of their 168 bars. The first version resampled all 619,037 as though
+they were independent, when the effective count is closer to 619,037 / 168 ~
+3,700 -- so it printed "Null ausgeschlossen" on lines that had not earned it,
+and said so in this docstring while shipping the verdict anyway.
+
+The fix is the block bootstrap from `reporting.intervals`, with the block long
+enough that overlapping observations cannot be split apart. For the baseline
+that length is the horizon. For a bucket it is the horizon scaled by the
+bucket's share of the bars, because a bucket holding a fifth of them has its
+members about five bars apart and a 168-bar window therefore spans about 34 of
+them, not 168. `suggested_block` is a floor on top of that, since a trending
+market carries serial correlation beyond the overlap alone.
+
+The report now prints the block length and how much wider the correction made
+the interval, so the factor is a measurement rather than this docstring's
+estimate. The slope line got the same treatment; it was the most confident line
+in the output and had exactly the same flaw.
 """
 
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from itertools import pairwise
 from pathlib import Path
@@ -79,6 +89,11 @@ from traidingbrain.analysis.structure import StructureTimeline
 from traidingbrain.config.settings import load_config
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Timeframe
+from traidingbrain.reporting.intervals import (
+    Interval,
+    block_bootstrap,
+    suggested_block,
+)
 
 BOOT = 3000
 
@@ -96,10 +111,75 @@ MIN_BUCKET = 200
 MIN_FOR_SHAPE = 3
 
 
-def interval(values: np.ndarray, seed: int = 11) -> tuple[float, float]:
+def report_widening(rets: np.ndarray, corrected: Interval) -> None:
+    """What the overlap correction cost, measured rather than estimated.
+
+    The docstring used to put the factor at "roughly thirteen times" from the
+    effective sample size. This prints the actual number, and with it the
+    verdict the uncorrected interval would have claimed -- which is the whole
+    point, because that verdict was printed for weeks.
+    """
+    naive = block_bootstrap(rets, block=1, draws=BOOT)
+    if naive is None or naive.high <= naive.low:
+        return
+    widening = (corrected.high - corrected.low) / (naive.high - naive.low)
+    claimed = " und schloss die Null aus" if naive.excludes_zero else ""
+    print(
+        f"  Blocklaenge {corrected.block} Kerzen -> {widening:.1f}x breiter "
+        "als ohne Ueberlappungskorrektur."
+    )
+    print(f"  Unkorrigiert waere es {naive}{claimed} gewesen.")
+
+
+def overlap_block(n_group: int, n_all: int, horizon: int) -> int:
+    """How many consecutive observations of a group share bars with each other.
+
+    Two forward returns starting fewer than `horizon` bars apart overlap, so a
+    resample that can split them apart treats dependent observations as
+    independent and reports an interval far narrower than the data supports.
+    Keeping them inside one block is the standard treatment for overlapping
+    returns.
+
+    The horizon alone would be right for the baseline, which uses every bar.
+    For a bucket it over-corrects: a bucket holding a share `p` of the bars has
+    its members roughly `1/p` bars apart, so a window of `horizon` bars spans
+    only about `horizon * p` of them. Scaling by the share is what makes the
+    correction match the actual overlap instead of the worst case.
+    """
+    share = n_group / n_all if n_all else 1.0
+    return max(1, math.ceil(horizon * share))
+
+
+def interval(values: np.ndarray, *, horizon: int, n_all: int, seed: int = 11) -> Interval | None:
+    """A block bootstrap, with the block long enough to hold the overlap.
+
+    `suggested_block` is a floor, not an override: it measures the serial
+    correlation that is actually in the series, which can run longer than the
+    overlap alone when the market itself trends.
+    """
+    block = max(overlap_block(len(values), n_all, horizon), suggested_block(values))
+    return block_bootstrap(values, block=block, draws=BOOT, seed=seed)
+
+
+def slope_interval(
+    leans: np.ndarray, rets: np.ndarray, *, horizon: int, draws: int = 400, seed: int = 5
+) -> tuple[float, float]:
+    """The same correction for the slope, which overlaps exactly as much.
+
+    The earlier version resampled indices independently, so it inherited the
+    whole problem the buckets had, and it was the line that printed "Null
+    ausgeschlossen" most confidently.
+    """
+    n = len(leans)
+    length = max(overlap_block(n, n, horizon), suggested_block(rets))
+    count = math.ceil(n / length)
     rng = np.random.default_rng(seed)
-    draws = rng.choice(values, size=(BOOT, len(values)), replace=True).mean(axis=1)
-    return float(np.percentile(draws, 2.5)), float(np.percentile(draws, 97.5))
+    starts = rng.integers(0, n, size=(draws, count))
+    offsets = np.arange(length)
+    picks = (starts[:, :, None] + offsets[None, None, :]) % n
+    flat = picks.reshape(draws, count * length)[:, :n]
+    slopes = np.array([np.polyfit(leans[row], rets[row], 1)[0] for row in flat])
+    return float(np.percentile(slopes, 2.5)), float(np.percentile(slopes, 97.5))
 
 
 def bucket_of(lean: float) -> int:
@@ -169,9 +249,19 @@ def report(horizon: int, pairs: list[tuple[float, float]]) -> None:
     # report printed the buckets and left out the line they have to be read
     # against, which made every number in it uninterpretable.
     base = float(np.mean(rets))
-    base_lo, base_hi = interval(rets)
-    print(f"\n{horizon} Kerzen voraus   ({len(pairs)} Beobachtungen)")
-    print(f"  Grundlinie (alle Kerzen) {base:+.4f} ATR   [{base_lo:+.4f}, {base_hi:+.4f}]")
+    n_all = len(rets)
+    base_iv = interval(rets, horizon=horizon, n_all=n_all)
+    if base_iv is None:
+        print(f"\n{horizon} Kerzen voraus: zu wenige Beobachtungen")
+        return
+    print(f"\n{horizon} Kerzen voraus   ({n_all} Beobachtungen)")
+    print(f"  Grundlinie (alle Kerzen) {base:+.4f} ATR   {base_iv.labelled()}")
+
+    # What the overlap correction costs, measured rather than estimated. The
+    # docstring used to say "roughly thirteen times wider" from the effective
+    # sample size; this prints the actual factor, and it is the number that
+    # decides which lines below have earned their verdict.
+    report_widening(rets, base_iv)
     print(
         f"  {'Gewicht oberhalb':24s} {'n':>7s} {'Rendite':>10s} "
         f"{'ggue. Grundlinie':>17s}   Intervall"
@@ -184,7 +274,12 @@ def report(horizon: int, pairs: list[tuple[float, float]]) -> None:
             print(f"  {label_of(i):24s} {len(group):>7d}   zu wenige")
             means.append(float("nan"))
             continue
-        lo, hi = interval(group)
+        group_iv = interval(group, horizon=horizon, n_all=n_all)
+        if group_iv is None:
+            print(f"  {label_of(i):24s} {len(group):>7d}   zu wenige")
+            means.append(float("nan"))
+            continue
+        lo, hi = group_iv.low, group_iv.high
         mean = float(np.mean(group))
         means.append(mean)
         # Against the drift, not against zero. In a market that tripled,
@@ -212,10 +307,7 @@ def report(horizon: int, pairs: list[tuple[float, float]]) -> None:
     # The straight line through the cloud. A monotone step pattern and a slope
     # are different claims, and the hypothesis is about both.
     slope, _ = np.polyfit(leans, rets, 1)
-    rng = np.random.default_rng(5)
-    idx = rng.integers(0, len(leans), size=(BOOT, len(leans)))
-    slopes = np.array([np.polyfit(leans[i], rets[i], 1)[0] for i in idx[:400]])
-    lo, hi = float(np.percentile(slopes, 2.5)), float(np.percentile(slopes, 97.5))
+    lo, hi = slope_interval(leans, rets, horizon=horizon)
     mark = "" if lo < 0 < hi else "  <- Null ausgeschlossen"
     print(f"  Steigung {slope:+.4f} ATR je Einheit lean   [{lo:+.4f}, {hi:+.4f}]{mark}")
 
