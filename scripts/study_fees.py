@@ -94,6 +94,16 @@ SCHEDULES: tuple[tuple[str, float], ...] = (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--symbols", help="Comma-separated markets. Default: the first four.")
+    parser.add_argument(
+        "--any",
+        action="store_true",
+        dest="any_signature",
+        help=(
+            "Die groesste gespeicherte Signatur lesen, auch wenn die aktuelle "
+            "Konfiguration eine andere ergibt. Jede Zahl beschreibt dann jenen "
+            "Lauf, nicht den heutigen -- die Ausgabe sagt das."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -167,22 +177,43 @@ def report_in_prices(
     )
 
 
+def chosen_symbols(args: argparse.Namespace, config: object) -> list[str]:
+    """The markets to measure: named, or the first four active."""
+    if args.symbols:
+        return [s.strip().upper() for s in args.symbols.split(",")]
+    return list(config.engine.symbols.active[:4])  # type: ignore[attr-defined]
+
+
+def opened(config: object, *, fallback: bool) -> tuple[object, object, object, int, str]:
+    """The three stores, the entry expiry, and the signature to read.
+
+    Returned together because the signature resolution needs the signal store
+    and nothing else here does, and because the whole block is setup rather
+    than measurement.
+
+    Resolved, not assumed: the signature contains the risk configuration, so
+    changing one cap orphans every stored signal. Lowering
+    `max_cost_fraction_of_risk` on 05.10.2026 made this study report "keine
+    genommenen Signale" with 12,843 of them in the file.
+    """
+    store = ParquetStore(config.engine.paths.parquet_dir)  # type: ignore[attr-defined]
+    signals = SignalStore(config.engine.paths.data_dir / "signals.sqlite")  # type: ignore[attr-defined]
+    funding_store = FundingStore(config.engine.paths.funding_dir)  # type: ignore[attr-defined]
+    expiry_ms = config.engine.simulation.entry_expiry_bars * timeframe_ms(  # type: ignore[attr-defined]
+        config.engine.timeframes.signal  # type: ignore[attr-defined]
+    )
+    sig, note = signals.resolve(run_signature(config), fallback=fallback)
+    print(f"  {note}\n")
+    return store, signals, funding_store, expiry_ms, sig
+
+
 def main() -> int:
     args = parse_args()
     config = load_config()
-    store = ParquetStore(config.engine.paths.parquet_dir)
-    signals = SignalStore(config.engine.paths.data_dir / "signals.sqlite")
-    funding_store = FundingStore(config.engine.paths.funding_dir)
-    expiry_ms = config.engine.simulation.entry_expiry_bars * timeframe_ms(
-        config.engine.timeframes.signal
+    store, signals, funding_store, expiry_ms, sig = opened(
+        config, fallback=getattr(args, "any_signature", False)
     )
-    sig = run_signature(config)
-
-    symbols = (
-        [s.strip().upper() for s in args.symbols.split(",")]
-        if args.symbols
-        else list(config.engine.symbols.active[:4])
-    )
+    symbols = chosen_symbols(args, config)
 
     work: list[tuple[SymbolSpec, list[object], Minutes, list[object]]] = []
     for symbol in symbols:

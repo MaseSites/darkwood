@@ -78,6 +78,16 @@ FIT_SHARE = 0.5
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--symbols", help="Comma-separated. Default: the first four.")
+    parser.add_argument(
+        "--any",
+        action="store_true",
+        dest="any_signature",
+        help=(
+            "Die groesste gespeicherte Signatur lesen, auch wenn die aktuelle "
+            "Konfiguration eine andere ergibt. Jede Zahl beschreibt dann jenen "
+            "Lauf, nicht den heutigen -- die Ausgabe sagt das."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -188,19 +198,23 @@ def decompose(work: list, cap: float, config: object) -> None:
     )
 
 
-def main() -> int:
-    args = parse_args()
-    config = load_config()
-    store = ParquetStore(config.engine.paths.parquet_dir)
-    signals = SignalStore(config.engine.paths.data_dir / "signals.sqlite")
-    funding_store = FundingStore(config.engine.paths.funding_dir)
-    sig = run_signature(config)
+def load_work(config: object, *, symbols: list[str], any_signature: bool) -> list:
+    """Taken signals, minute candles and funding, per market.
 
-    symbols = (
-        [s.strip().upper() for s in args.symbols.split(",")]
-        if args.symbols
-        else list(config.engine.symbols.active[:4])
-    )
+    The signature is resolved rather than assumed: it contains the risk
+    configuration, so changing one cap orphans every stored signal. Lowering
+    `max_cost_fraction_of_risk` on 05.10.2026 made this study print "keine
+    genommenen Signale" for all four markets while 12,843 signals sat in the
+    file. `SignalStore.resolve` is what says so instead of leaving it to be
+    guessed.
+    """
+    store = ParquetStore(config.engine.paths.parquet_dir)  # type: ignore[attr-defined]
+    signals = SignalStore(config.engine.paths.data_dir / "signals.sqlite")  # type: ignore[attr-defined]
+    funding_store = FundingStore(config.engine.paths.funding_dir)  # type: ignore[attr-defined]
+
+    sig, note = signals.resolve(run_signature(config), fallback=any_signature)
+    print(f"  {note}")
+    print()
 
     work = []
     for symbol in symbols:
@@ -209,7 +223,7 @@ def main() -> int:
             for record in signals.all(symbol=symbol, run_signature=sig)
             if record.action is Action.TAKEN
         ]
-        frame = store.read(symbol, config.engine.timeframes.execution)
+        frame = store.read(symbol, config.engine.timeframes.execution)  # type: ignore[attr-defined]
         if not records or frame.empty:
             print(f"{symbol}: keine genommenen Signale")
             continue
@@ -222,6 +236,18 @@ def main() -> int:
                 funding_store.read(symbol),
             )
         )
+    return work
+
+
+def main() -> int:
+    args = parse_args()
+    config = load_config()
+    symbols = (
+        [s.strip().upper() for s in args.symbols.split(",")]
+        if args.symbols
+        else list(config.engine.symbols.active[:4])
+    )
+    work = load_work(config, symbols=symbols, any_signature=args.any_signature)
     if not work:
         print("Nichts zu rechnen.")
         return 1

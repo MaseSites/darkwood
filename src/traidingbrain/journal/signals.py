@@ -308,6 +308,56 @@ class SignalStore:
             )
             return [SignalRecord.from_row(row) for row in cursor]
 
+    def signatures(self) -> list[tuple[str, int]]:
+        """Every stored run signature with its signal count, largest first.
+
+        Needed because the signature includes the risk configuration, so
+        changing a single cap orphans every stored signal from every study.
+        That is the mechanism working -- signals decided under one rule set
+        must not be averaged with another's -- but on 05.10.2026 lowering
+        `max_cost_fraction_of_risk` from 0.15 to 0.08 made four studies print
+        "keine genommenen Signale" and one advise re-running a backfill that
+        had already run. The data was there; nothing could say so.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT run_signature, COUNT(*) FROM signals "
+                "GROUP BY run_signature ORDER BY COUNT(*) DESC"
+            ).fetchall()
+        return [(str(row[0]), int(row[1])) for row in rows]
+
+    def resolve(self, wanted: str, *, fallback: bool = False) -> tuple[str, str]:
+        """The signature to read, and a line saying which and why.
+
+        Returns `wanted` untouched when signals exist under it. Otherwise, with
+        `fallback`, the largest stored signature and a note naming the
+        substitution -- never silently, because a study that quietly measures a
+        different run than it claims is worse than one that finds nothing.
+        """
+        stored = self.signatures()
+        counts = dict(stored)
+        if counts.get(wanted):
+            return wanted, f"{counts[wanted]:,} Signale unter der aktuellen Signatur."
+
+        if not stored:
+            return wanted, "Das Signalprotokoll ist leer."
+
+        listing = "\n".join(f"    {sig[:40]}...  {n:,} Signale" for sig, n in stored[:4])
+        if not fallback:
+            return wanted, (
+                "Keine Signale unter der AKTUELLEN Signatur -- die Konfiguration hat\n"
+                "  sich geaendert, die Daten sind aber da. Gespeichert:\n"
+                f"{listing}\n"
+                "  Mit --any die groesste davon lesen, oder die Konfiguration\n"
+                "  zurueckstellen. Neu erzeugen ist NICHT noetig."
+            )
+        chosen, count = stored[0]
+        return chosen, (
+            f"ERSATZ-SIGNATUR: {count:,} Signale aus einem Lauf mit ANDERER\n"
+            f"  Konfiguration ({chosen[:40]}...). Jede Zahl daraus beschreibt jenen\n"
+            "  Lauf, nicht den heutigen."
+        )
+
     def count(self, **filters: object) -> int:
         return len(self.all(**filters))  # type: ignore[arg-type]
 
