@@ -61,6 +61,48 @@ CHAMPION = Result(
     note="4 Maerkte, 12.843 gelabelte Signale, Setups A/B/E/F/G, M15, Kostendeckel 0.15",
 )
 
+#: The declared horizon series: 24, 72 and 168 hours, two models, the
+#: price-only feature group, three markets. Registered in full including the
+#: failures, because the research order asks for that and because the best of
+#: six attempts looks good by construction.
+#:
+#: The number recorded is the **directional hit rate minus the base rate** --
+#: what "always long" achieves on the same rows. Measuring against 0.5 would
+#: credit a model for the market's upward drift, and at 72 hours the base rate
+#: is 52.06%, so a model at 51.86% looks skilful against 0.5 and is in fact
+#: worse than doing nothing. The unit is foreign, so `Register.judge` cannot
+#: crown anything from it.
+#:
+#: Source: `scripts/study_panel.py --all-horizons --features P`, 05.10.2026,
+#: BTC/ETH/SOL, 3 purged walk-forward folds, weekly-block intervals.
+_PANEL_ROWS: tuple[tuple[str, str, int, float, float, float, float], ...] = (
+    # arm, model, n, hit, base, low, high  (hit/base/low/high as fractions)
+    ("panel_24h_P", "logistic", 3984, 0.5128, 0.5043, 0.4935, 0.5337),
+    ("panel_72h_P", "logistic", 3978, 0.5186, 0.5206, 0.4941, 0.5441),
+    ("panel_168h_P", "logistic", 3969, 0.4961, 0.5163, 0.4628, 0.5290),
+    ("panel_24h_P_lgbm", "lightgbm", 3984, 0.5053, 0.5043, 0.4890, 0.5216),
+    ("panel_72h_P_lgbm", "lightgbm", 3978, 0.4977, 0.5206, 0.4767, 0.5177),
+    ("panel_168h_P_lgbm", "lightgbm", 3969, 0.5193, 0.5163, 0.4949, 0.5436),
+)
+
+PANEL: tuple[Result, ...] = tuple(
+    Result(
+        arm=arm,
+        stage=Stage.TEST,
+        n=n,
+        mean_r=hit - base,
+        low=low - base,
+        high=high - base,
+        unit="Richtungstreffer minus Basisquote",
+        note=(
+            f"{model}, Treffer {100 * hit:.2f}% gegen Basisquote {100 * base:.2f}%. "
+            f"Intervall aus Wochenbloecken schliesst die Basisquote nicht aus."
+        ),
+    )
+    for arm, model, n, hit, base, low, high in _PANEL_ROWS
+)
+
+
 #: Every challenger measured on 05.10.2026, with the number actually obtained.
 #:
 #: Two are recorded in a foreign unit. The forward-score arms produced a rank
@@ -158,6 +200,7 @@ TRIED: tuple[Result, ...] = (
         unit="Rangkorrelation",
         note="35 Merkmale, p 0.26-0.48. Das Modell waehlte schlechter als der Durchschnitt.",
     ),
+    *PANEL,
 )
 
 
@@ -202,6 +245,16 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "nicht testbar",
         "Keine historischen Snapshots; heutige genuegen nicht. Taker-Volumen war das Erreichbare.",
     ),
+    (
+        "Laengere Horizonte (Preis allein)",
+        "erledigt",
+        "24/72/168h, 2 Modelle, 3 Maerkte: keine Konfiguration schlaegt ihre Basisquote.",
+    ),
+    (
+        "Laengere Horizonte (mit Derivaten)",
+        "gesperrt",
+        "Herkunft von Open Interest und Kontoverhaeltnis ungeklaert -- siehe coverage.py.",
+    ),
 )
 
 
@@ -217,19 +270,32 @@ def report_space() -> None:
     done = [f for f in FAMILIES if f[1] == "erledigt"]
     open_ = [f for f in FAMILIES if f[1] == "offen"]
     blocked = [f for f in FAMILIES if f[1] == "nicht testbar"]
+    # "gesperrt" is not "nicht testbar": the test is possible and the data is
+    # on disk, but its provenance is unexplained, so the result would not be
+    # interpretable. Counting it as untestable would hide work that one
+    # verified download unblocks.
+    gated = [f for f in FAMILIES if f[1] == "gesperrt"]
 
+    marks = {"erledigt": "[x]", "offen": "[ ]", "nicht testbar": "[-]", "gesperrt": "[!]"}
     print("\n" + "=" * 78)
     print("Der Suchraum -- die einzige Groesse hier, die sich halbieren laesst")
     for name, status, note in FAMILIES:
-        mark = {"erledigt": "[x]", "offen": "[ ]", "nicht testbar": "[-]"}[status]
-        print(f"  {mark} {name:30s} {note}")
+        print(f"  {marks[status]} {name:34s} {note}")
     remaining = len(open_)
     print(
-        f"\n  {len(done)} erledigt, {remaining} offen, {len(blocked)} nicht testbar.\n"
+        f"\n  {len(done)} erledigt, {remaining} offen, {len(blocked)} nicht testbar, "
+        f"{len(gated)} gesperrt.\n"
         f"  Bei einem entscheidenden Test pro Familie: {remaining} Tests.\n"
         f"  Halbiert sich der Rest mit jedem Test, sind es "
         f"{math.ceil(math.log2(remaining)) if remaining > 1 else remaining} Schritte."
     )
+    if gated:
+        print(
+            "\n  [!] heisst: messbar, aber das Ergebnis waere nicht deutbar. Die\n"
+            "  Derivate-Dateien beginnen 2021-10-01, waehrend das Skript, das sie\n"
+            "  holt, laut eigenem Docstring erst ab Maerz 2023 liefern kann. Ein\n"
+            "  belegter Neu-Download hebt die Sperre."
+        )
     print(
         "\n  Eine taegliche Verdoppelung der Rendite gibt es nicht: von 1.000 CHF\n"
         "  waere das nach 31 Tagen die ganze Bitcoin-Marktkapitalisierung und nach\n"
