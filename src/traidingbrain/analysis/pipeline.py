@@ -74,9 +74,31 @@ class FrameAnalysis:
     fair_value_gaps: list[Zone] = field(default_factory=list)
     _columns: dict[str, np.ndarray] = field(default_factory=dict, compare=False)
     _bank: dict[str, pd.Series] | None = field(default=None, compare=False)
+    _closes: np.ndarray | None = field(default=None, compare=False)
 
     def __len__(self) -> int:
         return len(self.frame)
+
+    def index_at_or_before(self, as_of_ms: int) -> int | None:
+        """Index of the newest bar that had *closed* by `as_of_ms`.
+
+        The cached form of the module-level function, and the one every hot
+        path should use. That one adds `timeframe_ms` to the whole `ts` column
+        on every call, which materialises a fresh full-length int64 array: the
+        `searchsorted` is a binary search, but the array it searches is rebuilt
+        each time. At one call per frame per bar over five frames and a few
+        hundred thousand bars that is hundreds of billions of additions and
+        terabytes of allocation churn -- enough to turn a feature pass from
+        minutes into days, and invisible because the line looks like a lookup.
+
+        Bar opens never change, so the close times are computed once here.
+        """
+        if self.frame.empty:
+            return None
+        if self._closes is None:
+            self._closes = self.column("ts").astype("int64") + timeframe_ms(self.timeframe)
+        position = int(np.searchsorted(self._closes, as_of_ms, side="right")) - 1
+        return position if position >= 0 else None
 
     def bank(self) -> dict[str, pd.Series]:
         """Every registered indicator over this frame, built on first ask.
@@ -225,7 +247,7 @@ class MultiFrameAnalysis:
         as_of = decision_time_ms(signal.ts_at(signal_index), self.signal_timeframe)
         indices: dict[Timeframe, int] = {}
         for timeframe, analysis in self.analyses.items():
-            index = index_at_or_before(analysis.frame, timeframe, as_of)
+            index = analysis.index_at_or_before(as_of)
             if index is None or not analysis.is_ready(index):
                 return None
             indices[timeframe] = index

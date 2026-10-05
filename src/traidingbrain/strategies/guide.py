@@ -31,7 +31,6 @@ from dataclasses import dataclass
 from traidingbrain.analysis.pipeline import (
     MultiFrameAnalysis,
     decision_time_ms,
-    index_at_or_before,
 )
 from traidingbrain.config.settings import AppConfig
 from traidingbrain.data.grid import timeframe_ms
@@ -112,8 +111,8 @@ def _just_closed(analysis: MultiFrameAnalysis, timeframe: Timeframe, decision_ms
     if frame is None:
         return False
     step = timeframe_ms(analysis.signal_timeframe)
-    now = index_at_or_before(frame.frame, timeframe, decision_ms)
-    before = index_at_or_before(frame.frame, timeframe, decision_ms - step)
+    now = frame.index_at_or_before(decision_ms)
+    before = frame.index_at_or_before(decision_ms - step)
     return now is not None and now != before
 
 
