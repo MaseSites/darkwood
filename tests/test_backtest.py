@@ -263,6 +263,12 @@ def test_the_baseline_run_is_frozen(
     This fails on any change to the simulator, the sizing or the strategy. That is
     the point: those changes move every number in every report, and they should be
     noticed when they are made rather than wondered about later.
+
+    **Re-frozen 05.10.2026**, when `max_cost_fraction_of_risk` moved from 0.15
+    to 0.08 (`scripts/study_costcap.py`, `config/risk.yaml`). The run now
+    refuses one more signal on cost: 7 trades and 8 risk rejections instead of
+    8 and 7. The file did its job -- it noticed -- and the change was intended,
+    so the reference moved with a reason recorded here rather than quietly.
     """
     golden("backtest_baseline", fingerprint(baseline_run))
 
@@ -276,7 +282,15 @@ def test_the_baseline_run_is_frozen(
 #: that happened to assert the old rate; had that test not existed, nothing
 #: would have failed.
 #:
-#: 31 targets against 23 stops, which is the mix the guard was missing.
+#: 6 targets against 4 stops and one forced close, which is the mix the guard
+#: was missing.
+#:
+#: It was 31 against 23 until 05.10.2026, when `max_cost_fraction_of_risk` went
+#: from 0.15 to 0.08 and the cost rule refused four fifths of this run. The
+#: property that matters survived the cut and was checked rather than assumed:
+#: targets still outnumber stops, so the winning path is still covered. Had
+#: they dropped to zero, re-freezing would have gutted the one thing this guard
+#: exists for, and the right move would have been a new seed instead.
 TARGET_SEED = 1
 
 

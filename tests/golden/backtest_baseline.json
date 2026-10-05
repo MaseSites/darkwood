@@ -1,28 +1,17 @@
 {
-  "equity_curve_sha256": "6ab1232af8a92cf7e7c4b947bcfa6b00bbbea543495a0db6a35acd3e1a7dd514",
-  "final_equity": 9296.041015,
-  "intents": 14,
-  "snapshots": 1144,
+  "equity_curve_sha256": "99a400094d7b3a48be2d6f6b553fb5c40b984e5c6054eac2cd8fe98f75e63736",
+  "final_equity": 9334.249201,
+  "intents": 15,
+  "snapshots": 1159,
   "strategy": "baseline",
   "trades": [
-    {
-      "closed": 1704829500000,
-      "entry": 42320.849441,
-      "exit": 42200.905676,
-      "leverage": 10.0,
-      "opened": 1704772800000,
-      "qty": 0.271,
-      "r": -0.411932,
-      "reason": "stop",
-      "side": "long"
-    },
     {
       "closed": 1706326200000,
       "entry": 41421.217357,
       "exit": 42177.998689,
       "leverage": 10.0,
       "opened": 1706241600000,
-      "qty": 0.133,
+      "qty": 0.134,
       "r": -1.059306,
       "reason": "stop",
       "side": "short"
@@ -44,7 +33,7 @@
       "exit": 42128.965706,
       "leverage": 10.0,
       "opened": 1707148800000,
-      "qty": 0.144,
+      "qty": 0.145,
       "r": -1.065363,
       "reason": "stop",
       "side": "short"
@@ -55,7 +44,7 @@
       "exit": 41894.688399,
       "leverage": 10.0,
       "opened": 1707610500000,
-      "qty": 0.172,
+      "qty": 0.173,
       "r": -1.109567,
       "reason": "stop",
       "side": "short"
@@ -77,7 +66,7 @@
       "exit": 42082.826738,
       "leverage": 10.0,
       "opened": 1708056000000,
-      "qty": 0.132,
+      "qty": 0.133,
       "r": -1.062049,
       "reason": "stop",
       "side": "short"

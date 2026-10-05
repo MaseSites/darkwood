@@ -81,8 +81,25 @@ def tape() -> dict[Timeframe, pd.DataFrame]:
 
 @pytest.fixture(scope="module")
 def config() -> AppConfig:
+    """The engine this file exercises, with the cost rule pinned.
+
+    The cost cap is pinned rather than inherited because these tests check
+    *mechanics* -- that an exit comes from the simulator, that a gap is closed
+    before a trade resolves, that a replay cannot overwrite a forward trade.
+    All of them need some trade to open, and none of them is about how strict
+    the risk layer happens to be today.
+
+    Inheriting it broke all six on 05.10.2026, when the production cap moved
+    from 0.15 to 0.08 and the synthetic signals stopped clearing it. The tests
+    were right to fail -- behaviour had changed -- but they were failing for a
+    reason none of them is about, which makes them a tripwire on an unrelated
+    tuning knob rather than a check on the thing they name.
+    """
     engine = fast_engine_config([Timeframe.H4, Timeframe.H1, Timeframe.M15])
-    return load_config().model_copy(update={"engine": engine})
+    base = load_config()
+    limits = base.risk.limits.model_copy(update={"max_cost_fraction_of_risk": 0.15})
+    risk = base.risk.model_copy(update={"limits": limits})
+    return base.model_copy(update={"engine": engine, "risk": risk})
 
 
 class TapeSource:

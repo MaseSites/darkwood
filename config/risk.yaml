@@ -95,9 +95,48 @@ limits:
   # is being risked, and no win rate recovers that.
   #
   # Enforcing a ratio rather than a minimum stop distance keeps the rule tied to
-  # the thing that actually matters: 0.15 means transaction costs may consume at
-  # most fifteen percent of the risk budget, whatever the volatility happens to be.
-  max_cost_fraction_of_risk: 0.15
+  # the thing that actually matters: 0.08 means transaction costs may consume at
+  # most eight percent of the risk budget, whatever the volatility happens to be.
+  #
+  # Lowered from 0.15 on 05.10.2026 by `scripts/study_costcap.py`, over 3,300
+  # labelled trades on four markets. Loosening this rule was already the worst
+  # group in the register (-0.2996 R); tightening it had never been measured.
+  #
+  #   cap    trades   share   R/trade   R TOTAL   vs 0.15
+  #   0.15    1652   99.3%   -0.0120     -19.7       --
+  #   0.08     786   47.2%   +0.0360     +28.3    +48.1
+  #   0.04     275   16.5%   +0.1148     +31.6    +51.3
+  #
+  # Decided on R TOTAL, not R per trade: a tighter cap takes fewer trades, so
+  # the mean can rise while the account loses the same.
+  #
+  # **What is certain and what is not, because the difference decides how much
+  # to believe this.** `net_r` is `gross - cost - funding` and the cost
+  # fraction IS the cost in R, so filtering on it raises net R partly by
+  # construction -- correlation +0.83 with the cost removed. Decomposed, cheap
+  # trades against the rest:
+  #
+  #   cost    -0.0395  [-0.041, -0.038]   certain, and arithmetic
+  #   gross   +0.0799  [-0.033, +0.195]   NOT established
+  #   net     +0.1190  [+0.005, +0.234]
+  #
+  # So a third of the gain is guaranteed and two thirds is an open question.
+  # Read conservatively -- gross difference zero, which its interval permits --
+  # this moves a trade from about -0.054 R to about -0.015 R. Still negative,
+  # 3.6 times less so, purely from paying the toll less often. It is not an
+  # edge and must not be reported as one.
+  #
+  # **Why 0.08 and not 0.04, which measured better.** 0.08 keeps 94% of the
+  # improvement with 2.9 times the trade flow. The forward journal is at seven
+  # trades and is the only evidence replay cannot produce; at 0.04 it would
+  # reach about eight by the end of October instead of about fifty. The
+  # criterion is evidence throughput, stated before the sweep was read, which
+  # is also what keeps this from being a parameter fitted to its own best cell.
+  #
+  # The holdout window is untouched (0 consultations) and was NOT spent on
+  # this. It did not need to be: the certain component is arithmetic, and the
+  # uncertain one is openly undecided above.
+  max_cost_fraction_of_risk: 0.08
 
 execution:
   # A confirmed proposal is re-priced before it is sent. Drift beyond this and the
