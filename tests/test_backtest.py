@@ -29,6 +29,7 @@ from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.frames import timeframe_ms
 from traidingbrain.domain.enums import ExitReason, Timeframe
 from traidingbrain.domain.market import FundingRate
+from traidingbrain.journal.signals import Action, SignalStore
 from traidingbrain.sim.engine import BacktestResult, MissingMinuteDataError, load_engine
 from traidingbrain.sim.metrics import compare
 from traidingbrain.strategies.baseline import RandomEntry, StructureBaseline
@@ -429,3 +430,83 @@ def test_minutes_ending_inside_the_last_signal_bar_are_tolerated(
     )
 
     engine.run(StructureBaseline())
+
+
+# --------------------------------------------------------------------------- #
+# The signals the run did not trade
+# --------------------------------------------------------------------------- #
+
+
+def test_the_run_records_the_signals_the_risk_rules_refused(
+    tmp_path, config: AppConfig, frames: dict[Timeframe, pd.DataFrame], minutes: pd.DataFrame
+) -> None:
+    """A refusal is a row, not an increment.
+
+    `intents_rejected_by_risk` counts them and nothing more, so the five rules
+    doing the refusing have never been checked against outcomes -- there was
+    nothing to check. The ledger is what makes that question askable, and this
+    test is what proves the ledger is actually being filled by a real run
+    rather than only by its own unit tests.
+    """
+    store = SignalStore(tmp_path / "signals.sqlite")
+    result = load_engine(
+        "TESTUSDT",
+        frames,
+        minute_frame=minutes,
+        spec=make_symbol_spec(),
+        config=config,
+        funding=[],
+        signals=store,
+        run_signature="test",
+    ).run(StructureBaseline())
+
+    recorded = store.all()
+    assert recorded, "the run wrote no signals at all"
+
+    # Every intent the engine assessed is one row, taken or refused.
+    assert len(recorded) == result.intents
+    taken = store.count(action=Action.TAKEN)
+    refused = store.count(action=Action.REFUSED)
+    assert taken + refused == result.intents
+    assert refused == result.intents_rejected_by_risk, (
+        "the ledger and the counter disagree about how many were refused"
+    )
+
+    # And a refusal names its rule and keeps the plan, so it can be labelled.
+    for signal in store.all(action=Action.REFUSED):
+        assert signal.refused_by is not None
+        assert signal.detail
+        assert signal.entry > 0 and signal.stop > 0 and signal.target > 0
+        assert signal.symbol == "TESTUSDT"
+
+    for signal in store.all(action=Action.TAKEN):
+        assert signal.refused_by is None
+        assert signal.qty > 0 and signal.leverage > 0
+
+
+def test_a_rerun_of_the_same_period_does_not_double_the_ledger(
+    tmp_path, config: AppConfig, frames: dict[Timeframe, pd.DataFrame], minutes: pd.DataFrame
+) -> None:
+    """Replaying the same bars under the same settings is a no-op.
+
+    Without this the population would grow every time a study was re-run, and
+    the counts would describe how often somebody pressed enter.
+    """
+    store = SignalStore(tmp_path / "signals.sqlite")
+
+    def once() -> int:
+        load_engine(
+            "TESTUSDT",
+            frames,
+            minute_frame=minutes,
+            spec=make_symbol_spec(),
+            config=config,
+            funding=[],
+            signals=store,
+            run_signature="same",
+        ).run(StructureBaseline())
+        return store.count()
+
+    first = once()
+    assert first > 0
+    assert once() == first, "the second run added rows"

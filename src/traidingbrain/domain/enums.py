@@ -218,3 +218,24 @@ class ExitReason(StrEnum):
     LIQUIDATION = "liquidation"
     MANUAL = "manual"
     INVALIDATION = "invalidation"
+
+
+class Rule(StrEnum):
+    """Which risk rule refused a signal.
+
+    Five members because `sim/plan.py` has five refusal branches, and the whole
+    point of naming them is that "refused" is not one population. A signal
+    turned down for a reward-to-risk of 1.4 and one turned down because the
+    venue will not place a position that small are different claims about
+    different trades, and lumping them cost the project the ability to ask
+    whether either rule earns its place.
+
+    Here rather than next to the rules themselves so the signal ledger can name
+    them without `journal/` having to import `sim/`.
+    """
+
+    REWARD_RISK = "chance_risiko"
+    CONFIDENCE = "zuversicht"
+    SIZE = "groesse"
+    COSTS = "kosten"
+    LIQUIDATION = "liquidation"

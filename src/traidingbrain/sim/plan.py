@@ -15,6 +15,20 @@ already use here.
 feature: too little confidence for any budget, a reward-to-risk that does not
 pay for the losses, a position too small for the venue, costs too large a share
 of what is at stake, or a stop so wide that liquidation arrives before it.
+
+**Which one, though?** For a long time the answer was nowhere. `plan_entry`
+returned a bare `None` for all five, the caller incremented a counter, and after
+a thousand refusals there was a number and not one recoverable signal. That cost
+more than it looks: the five rules below are themselves untested hypotheses.
+`scripts/study_cost_floor.py` varied the *threshold* of one of them across four
+markets, which is a different question from whether the rule should exist -- and
+the only way to ask the second is to keep the signals it threw away.
+
+So `assess` is the real function and returns the verdict: which rule refused,
+the sentence saying why, and the figures that were computed on the way,
+including the cost estimate that used to be discarded one line after it was
+calculated. `plan_entry` is now a thin wrapper over it, unchanged for callers
+that only want the order.
 """
 
 from __future__ import annotations
@@ -22,7 +36,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from traidingbrain.config.settings import AppConfig
-from traidingbrain.domain.enums import OrderType, Side
+from traidingbrain.domain.enums import OrderType, Rule, Side
 from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.domain.snapshot import MarketSnapshot
 from traidingbrain.risk.leverage import choose_leverage
@@ -59,7 +73,46 @@ class TradeIntent:
         return self.target < self.entry < self.stop
 
 
-def plan_entry(
+def setup_label(intent: TradeIntent) -> str:
+    """The rule's own name, taken from the head of its reason text.
+
+    The setups write "A: Zone", "V11: Block" and so on, so the part before the
+    colon is the label and the rest is the argument. Shared because a refused
+    signal has no `PendingEntry` to read it off, and the signal ledger groups
+    by exactly this string.
+    """
+    return intent.reason.split(":")[0].strip()
+
+
+@dataclass(frozen=True)
+class Assessment:
+    """What the risk layer decided about one signal, and everything it computed.
+
+    The figures are kept whether the signal was taken or refused. A refused
+    signal's cost estimate is the interesting one -- it is the number the rule
+    refused *on* -- and a taken signal's is what section 6 of the masterplan
+    asks for under "geschätzte Kosten", knowable before the entry and therefore
+    usable as a feature without the circularity that realised fees carry.
+    """
+
+    entry: PendingEntry | None
+    refused_by: Rule | None
+    detail: str
+    reward_risk: float
+    cost_fraction: float
+    """Round-trip cost as a share of the amount risked, as estimated at the
+    decision. Zero when a rule refused before it could be computed."""
+
+    risk_amount: float
+    qty: float
+    leverage: float
+
+    @property
+    def accepted(self) -> bool:
+        return self.entry is not None
+
+
+def assess(
     intent: TradeIntent,
     snapshot: MarketSnapshot | None,
     *,
@@ -69,11 +122,42 @@ def plan_entry(
     equity: float,
     created_ts: int,
     expires_ts: int,
-) -> PendingEntry | None:
-    """The order this intent becomes, or None if a risk rule refuses it."""
+) -> Assessment:
+    """Run every risk rule and say what happened, in order.
+
+    The order is the one the rules have always run in and it is load-bearing for
+    the record: a signal that fails two rules is attributed to the first, so the
+    counts stay a partition rather than overlapping sets.
+    """
     risk_config = config.risk
-    if intent.reward_risk < risk_config.limits.min_reward_risk:
-        return None
+    reward_risk = intent.reward_risk
+
+    def refused(
+        rule: Rule,
+        detail: str,
+        *,
+        cost_fraction: float = 0.0,
+        risk_amount: float = 0.0,
+        qty: float = 0.0,
+        leverage: float = 0.0,
+    ) -> Assessment:
+        return Assessment(
+            entry=None,
+            refused_by=rule,
+            detail=detail,
+            reward_risk=reward_risk,
+            cost_fraction=cost_fraction,
+            risk_amount=risk_amount,
+            qty=qty,
+            leverage=leverage,
+        )
+
+    if reward_risk < risk_config.limits.min_reward_risk:
+        return refused(
+            Rule.REWARD_RISK,
+            f"Chance-Risiko {reward_risk:.2f} unter dem Minimum "
+            f"{risk_config.limits.min_reward_risk:.2f}",
+        )
 
     # No snapshot means no history lookup, so no evidence that confidence
     # is calibrated -- and the sizing ladder stays capped. That is the right
@@ -87,16 +171,30 @@ def plan_entry(
         history_samples=samples,
     )
     if budget is None:
-        return None
+        return refused(
+            Rule.CONFIDENCE,
+            f"Zuversicht {intent.confidence:.0f} unter der Schwelle "
+            f"{risk_config.sizing.min_confidence:.0f}, also kein Budget",
+        )
 
     size = position_size(intent.side, intent.entry, intent.stop, budget.risk_amount, spec)
     if not size.is_viable:
-        return None
+        return refused(
+            Rule.SIZE,
+            f"Position zu klein fuer die Boerse: {budget.risk_amount:.2f} Risiko ueber "
+            f"{abs(intent.entry - intent.stop):.6f} Stopweite ergibt weniger als "
+            f"{spec.min_qty} Einheiten oder {spec.min_notional:.0f} Nominal",
+            risk_amount=budget.risk_amount,
+        )
 
     # Costs scale with the position, risk does not. A stop tight enough to
     # make the round trip cost a large share of what is at stake is a trade
     # that cannot win, whatever happens next.
-    affordable, _fraction = costs_are_affordable(
+    #
+    # The fraction is kept either way now. It used to be discarded on the line
+    # it was computed on -- `affordable, _fraction = ...` -- which made the one
+    # number this rule decides on unrecoverable for every signal it refused.
+    affordable, cost_fraction = costs_are_affordable(
         size.notional,
         size.risk_amount,
         spec,
@@ -104,7 +202,15 @@ def plan_entry(
         risk_config.limits.max_cost_fraction_of_risk,
     )
     if not affordable:
-        return None
+        return refused(
+            Rule.COSTS,
+            f"Kosten {cost_fraction:.1%} des Risikos, erlaubt sind "
+            f"{risk_config.limits.max_cost_fraction_of_risk:.1%} -- meist ein Stop, "
+            f"der fuer die Gebuehren zu eng ist",
+            cost_fraction=cost_fraction,
+            risk_amount=size.risk_amount,
+            qty=size.qty,
+        )
 
     leverage = choose_leverage(
         intent.side,
@@ -115,24 +221,88 @@ def plan_entry(
         config=risk_config.leverage,
     )
     if leverage is None:
-        return None
+        return refused(
+            Rule.LIQUIDATION,
+            f"Keine Hebelstufe bis {risk_config.leverage.max:.0f}x laesst die Liquidation "
+            f"{risk_config.leverage.min_liquidation_buffer_r:.1f} Stopweiten hinter dem Stop",
+            cost_fraction=cost_fraction,
+            risk_amount=size.risk_amount,
+            qty=size.qty,
+        )
 
+    return Assessment(
+        entry=_order(
+            intent,
+            snapshot,
+            symbol=symbol,
+            qty=size.qty,
+            leverage=leverage.leverage,
+            risk_amount=size.risk_amount,
+            created_ts=created_ts,
+            expires_ts=expires_ts,
+        ),
+        refused_by=None,
+        detail=budget.reason,
+        reward_risk=reward_risk,
+        cost_fraction=cost_fraction,
+        risk_amount=size.risk_amount,
+        qty=size.qty,
+        leverage=leverage.leverage,
+    )
+
+
+def plan_entry(
+    intent: TradeIntent,
+    snapshot: MarketSnapshot | None,
+    *,
+    symbol: str,
+    spec: SymbolSpec,
+    config: AppConfig,
+    equity: float,
+    created_ts: int,
+    expires_ts: int,
+) -> PendingEntry | None:
+    """The order this intent becomes, or None if a risk rule refuses it.
+
+    Kept as it was for callers that only need the order. It is `assess(...).entry`
+    and nothing else, so the two cannot drift apart.
+    """
+    return assess(
+        intent,
+        snapshot,
+        symbol=symbol,
+        spec=spec,
+        config=config,
+        equity=equity,
+        created_ts=created_ts,
+        expires_ts=expires_ts,
+    ).entry
+
+
+def _order(
+    intent: TradeIntent,
+    snapshot: MarketSnapshot | None,
+    *,
+    symbol: str,
+    qty: float,
+    leverage: float,
+    risk_amount: float,
+    created_ts: int,
+    expires_ts: int,
+) -> PendingEntry:
     return PendingEntry(
         proposal_id=f"{symbol}-{created_ts}",
-        # The rule's own name, taken from the head of its reason text. The
-        # setups write "A: Zone", "V11: Block" and so on, so the part before
-        # the colon is the label and the rest is the argument.
-        setup=intent.reason.split(":")[0].strip(),
+        setup=setup_label(intent),
         side=intent.side,
         order_type=OrderType.LIMIT,
         limit_price=intent.entry,
         stop=intent.stop,
         target=intent.target,
-        qty=size.qty,
-        leverage=leverage.leverage,
+        qty=qty,
+        leverage=leverage,
         created_ts=created_ts,
         expires_ts=expires_ts,
-        risk_amount=size.risk_amount,
+        risk_amount=risk_amount,
         # Empty for a bar-reading strategy, which has no normalised view
         # to hash. The field identifies the situation a model was shown, and
         # inventing one here would make two different things look alike in

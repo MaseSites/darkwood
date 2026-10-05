@@ -30,9 +30,11 @@ from traidingbrain.domain.enums import ExitReason, Timeframe
 from traidingbrain.domain.market import FundingRate, SymbolSpec
 from traidingbrain.domain.snapshot import MarketSnapshot
 from traidingbrain.history.engine import HistoryEngine
+from traidingbrain.journal.record import Source
+from traidingbrain.journal.signals import Action, SignalRecord, SignalStore
 from traidingbrain.sim.broker import Fill, PendingEntry, SimBroker
 from traidingbrain.sim.metrics import BacktestMetrics, compute_metrics, format_metrics
-from traidingbrain.sim.plan import TradeIntent, plan_entry
+from traidingbrain.sim.plan import Assessment, TradeIntent, assess, setup_label
 
 #: Re-exported: `TradeIntent` lives below the planner so that `plan` and
 #: `engine` do not import each other. Every existing caller imports it from
@@ -129,6 +131,8 @@ class BacktestEngine:
         config: AppConfig,
         funding: list[FundingRate] | None = None,
         history: HistoryEngine | None = None,
+        signals: SignalStore | None = None,
+        run_signature: str = "",
     ) -> None:
         self.symbol = symbol
         self.analysis = analysis
@@ -136,6 +140,12 @@ class BacktestEngine:
         self.config = config
         self.funding = funding or []
         self.history = history
+        # Optional on purpose: a study comparing two arms over the same period
+        # wants one of them writing signals, not both, or the ledger holds the
+        # same bar twice under one signature and the counts stop being a
+        # population.
+        self.signals = signals
+        self.run_signature = run_signature
         self._fills_seen = 0
         # Positioning and the calendar if they are on disk, nothing if not.
         # A period the venue does not cover is one fewer factor, not a failure.
@@ -406,13 +416,18 @@ class BacktestEngine:
         created_ts: int,
         expires_ts: int,
     ) -> PendingEntry | None:
-        """Turn a price plan into an order, or refuse it.
+        """Turn a price plan into an order, or refuse it -- and record either way.
 
         The rules themselves live in `sim/plan.py`, because the forward paper
         trader applies the same ones and a second copy of them would differ by
         about as much as the effects being measured.
+
+        The refusal used to vanish here into `intents_rejected_by_risk += 1`.
+        It is now a row, because the five rules doing the refusing have never
+        been tested against outcomes and cannot be while the signals they
+        refuse do not exist.
         """
-        return plan_entry(
+        verdict = assess(
             intent,
             snapshot,
             symbol=self.symbol,
@@ -421,6 +436,42 @@ class BacktestEngine:
             equity=equity,
             created_ts=created_ts,
             expires_ts=expires_ts,
+        )
+        if self.signals is not None:
+            self.signals.record([self._signal_row(intent, verdict, decided_ts=created_ts)])
+        return verdict.entry
+
+    def _signal_row(
+        self, intent: TradeIntent, verdict: Assessment, *, decided_ts: int
+    ) -> SignalRecord:
+        """One signal as the ledger stores it, taken or not.
+
+        `setup_timeframe` is left empty rather than guessed: the pool knows which
+        chart it found the setup on and does not pass it out, and a column filled
+        with the signal cadence instead would read as an answer. It is the one
+        field in this row that still has to be plumbed through.
+        """
+        return SignalRecord(
+            signal_id=f"{self.symbol}-{decided_ts}-{setup_label(intent)}",
+            run_signature=self.run_signature,
+            decided_ts=decided_ts,
+            symbol=self.symbol,
+            source=Source.REPLAY,
+            action=Action.TAKEN if verdict.accepted else Action.REFUSED,
+            refused_by=verdict.refused_by,
+            detail=verdict.detail,
+            setup_key=setup_label(intent),
+            setup_timeframe="",
+            signal_timeframe=self.config.engine.timeframes.signal.value,
+            side=intent.side,
+            entry=intent.entry,
+            stop=intent.stop,
+            target=intent.target,
+            reward_risk=verdict.reward_risk,
+            cost_fraction=verdict.cost_fraction,
+            risk_amount=verdict.risk_amount,
+            qty=verdict.qty,
+            leverage=verdict.leverage,
         )
 
     def _empty_result(
@@ -445,6 +496,8 @@ def load_engine(
     config: AppConfig,
     funding: list[FundingRate] | None = None,
     history: HistoryEngine | None = None,
+    signals: SignalStore | None = None,
+    run_signature: str = "",
 ) -> BacktestEngine:
     return BacktestEngine(
         symbol,
@@ -454,4 +507,6 @@ def load_engine(
         config=config,
         funding=funding,
         history=history,
+        signals=signals,
+        run_signature=run_signature,
     )
