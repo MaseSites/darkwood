@@ -24,6 +24,7 @@ from traidingbrain.reporting.intervals import (
     block_bootstrap,
     paired_difference,
     suggested_block,
+    two_group_difference,
 )
 
 N = 600
@@ -229,3 +230,50 @@ def test_pairing_finds_nothing_when_there_is_nothing() -> None:
     paired = paired_difference(left, right)
     assert paired is not None
     assert not paired.excludes_zero
+
+
+# -- two independent groups ---------------------------------------------- #
+
+
+def test_two_group_difference_finds_a_real_gap() -> None:
+    rng = np.random.default_rng(11)
+    low = rng.normal(0.0, 1.0, size=300)
+    high = rng.normal(0.8, 1.0, size=300)
+    result = two_group_difference(high, low)
+    assert result is not None
+    assert result.mean == pytest.approx(0.8, abs=0.2)
+    assert result.excludes_zero
+
+
+def test_two_group_difference_finds_nothing_in_noise() -> None:
+    rng = np.random.default_rng(12)
+    result = two_group_difference(rng.normal(size=300), rng.normal(size=300))
+    assert result is not None
+    assert not result.excludes_zero
+
+
+def test_a_stricter_level_widens_the_interval() -> None:
+    """The point of carrying `level`: a correction that binds.
+
+    A study printing a Bonferroni threshold and then reading a 95% interval has
+    corrected nothing, which is what `scripts/study_winners.py` did.
+    """
+    rng = np.random.default_rng(13)
+    a, b = rng.normal(0.4, 1.0, size=300), rng.normal(size=300)
+    nominal = two_group_difference(a, b, level=0.95)
+    corrected = two_group_difference(a, b, level=1 - 0.05 / 10)
+    assert nominal is not None and corrected is not None
+    assert width(corrected) > width(nominal)
+
+
+def test_groups_of_unequal_size_are_fine() -> None:
+    """Unlike the paired version, which must refuse them."""
+    rng = np.random.default_rng(14)
+    result = two_group_difference(rng.normal(size=400), rng.normal(size=90))
+    assert result is not None
+    assert result.n == 90
+
+
+def test_a_group_too_small_gives_no_interval() -> None:
+    rng = np.random.default_rng(15)
+    assert two_group_difference(rng.normal(size=300), [1.0, 2.0, 3.0]) is None

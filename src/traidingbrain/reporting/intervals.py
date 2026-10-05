@@ -223,3 +223,49 @@ def paired_difference(
         block=length,
         n=n,
     )
+
+
+def two_group_difference(
+    left: Numbers,
+    right: Numbers,
+    *,
+    level: float = 0.95,
+    draws: int = DRAWS,
+    seed: int = 11,
+) -> Interval | None:
+    """An interval on `mean(left) - mean(right)` for two independent groups.
+
+    Not `paired_difference`: winners and losers are disjoint sets of different
+    sizes, so there is nothing to pair. Each group is block-resampled on its own
+    -- both are time-ordered subsequences and both carry the dependence that
+    makes the iid version too narrow -- and the two resampled means are
+    differenced.
+
+    `level` is here because a study that prints a multiple-testing threshold and
+    then decides with the nominal one has corrected nothing.
+    `scripts/study_winners.py` did exactly that: it announced a Bonferroni
+    threshold of 0.005 for ten comparisons and then read a 95% interval, while
+    its own docstring promised the opposite. Pass `1 - alpha / tests` and the
+    correction binds.
+
+    Returns None when either group is too small to say anything about.
+    """
+    a = np.asarray(left, dtype="float64")
+    b = np.asarray(right, dtype="float64")
+    if a.size < MIN_OBSERVATIONS or b.size < MIN_OBSERVATIONS:
+        return None
+
+    means = _resampled_means(
+        a, length=suggested_block(a), draws=draws, seed=seed
+    ) - _resampled_means(b, length=suggested_block(b), draws=draws, seed=seed + 1)
+
+    half = (1.0 - level) / 2.0
+    return Interval(
+        mean=float(a.mean() - b.mean()),
+        low=float(np.percentile(means, 100 * half)),
+        high=float(np.percentile(means, 100 * (1 - half))),
+        # Two groups, two block lengths; the larger is the honest label for a
+        # width that depends on both.
+        block=max(suggested_block(a), suggested_block(b)),
+        n=min(a.size, b.size),
+    )

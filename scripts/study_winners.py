@@ -76,6 +76,7 @@ from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Side
 from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
+from traidingbrain.reporting.intervals import block_bootstrap, two_group_difference
 from traidingbrain.sim.broker import Fill
 from traidingbrain.sim.engine import BacktestEngine
 from traidingbrain.strategies.guide import GuidePool
@@ -159,27 +160,33 @@ def to_trade(symbol: str, fill: Fill, signal_ms: int, taker_fee: float) -> Trade
 
 
 def interval(values: list[float], seed: int = 11) -> tuple[float, float]:
-    rng = np.random.default_rng(seed)
-    sample = np.array(values, dtype="float64")
-    draws = rng.choice(sample, size=(BOOT, len(sample)), replace=True).mean(axis=1)
-    return float(np.percentile(draws, 2.5)), float(np.percentile(draws, 97.5))
+    """A block-bootstrap interval, because trades are not independent draws.
+
+    This used to resample single trades. Trades from one strategy overlap in
+    time and sit in the same regime, so the iid version returns bounds that are
+    too narrow -- confidently too narrow, which is what makes a non-finding
+    look like one.
+    """
+    result = block_bootstrap(values, draws=BOOT, seed=seed)
+    if result is None:
+        return 0.0, 0.0
+    return result.low, result.high
 
 
 def contrast(
-    winners: list[float], losers: list[float], seed: int = 11
+    winners: list[float], losers: list[float], seed: int = 11, level: float = 0.95
 ) -> tuple[float, float, float]:
-    """Winners minus losers, with a bootstrap interval on the difference."""
-    rng = np.random.default_rng(seed)
-    w = np.array(winners, dtype="float64")
-    s = np.array(losers, dtype="float64")
-    draws = rng.choice(w, size=(BOOT, len(w)), replace=True).mean(axis=1) - rng.choice(
-        s, size=(BOOT, len(s)), replace=True
-    ).mean(axis=1)
-    return (
-        float(w.mean() - s.mean()),
-        float(np.percentile(draws, 2.5)),
-        float(np.percentile(draws, 97.5)),
-    )
+    """Winners minus losers, on an interval that respects time and the level.
+
+    `level` exists because this script printed a Bonferroni threshold of 0.005
+    for ten comparisons and then decided with a nominal 95% interval, while its
+    own docstring promised the correction was applied. It is applied now: the
+    caller passes `1 - ALPHA / tests` and the bounds widen accordingly.
+    """
+    result = two_group_difference(winners, losers, level=level, draws=BOOT, seed=seed)
+    if result is None:
+        return 0.0, 0.0, 0.0
+    return result.mean, result.low, result.high
 
 
 #: The features, and whether the system had them before it submitted.
@@ -282,14 +289,18 @@ def report(trades: list[Trade], symbols: list[str]) -> None:
     )
 
     tests = len(BEFORE) + len(AFTER) + 2  # plus the setup and exit tables
+    level = 1.0 - ALPHA / tests
     print(f"\nBonferroni: {tests} Vergleiche, Schwelle {ALPHA / tests:.4f} statt {ALPHA}")
-    print("Ein Intervall, das die Null enthaelt, ist kein Befund.\n")
+    print(
+        f"Die Intervalle unten sind {100 * level:.1f}%-Intervalle, also wirklich korrigiert.\n"
+        "Ein Intervall, das die Null enthaelt, ist kein Befund.\n"
+    )
 
-    findings = feature_table(winners, losers, symbols, trades)
+    findings = feature_table(winners, losers, symbols, trades, level=level)
     setup_table(trades)
     print("\n--- nur im Rueckblick bekannt, keine Hebel ---")
     for name, read in AFTER.items():
-        diff, lo, hi = contrast([read(t) for t in winners], [read(t) for t in losers])
+        diff, lo, hi = contrast([read(t) for t in winners], [read(t) for t in losers], level=level)
         print(f"  {name:28s} {diff:+8.2f}   [{lo:+.2f}, {hi:+.2f}]")
     print("  (Gewinner halten laenger, weil sie gewinnen. Das ist keine Ursache.)")
 
@@ -297,14 +308,19 @@ def report(trades: list[Trade], symbols: list[str]) -> None:
 
 
 def feature_table(
-    winners: list[Trade], losers: list[Trade], symbols: list[str], trades: list[Trade]
+    winners: list[Trade],
+    losers: list[Trade],
+    symbols: list[str],
+    trades: list[Trade],
+    *,
+    level: float = 0.95,
 ) -> list[Finding]:
     print(f"{'Merkmal':28s}{'Gewinner':>10s}{'Verlierer':>11s}{'Differenz':>11s}  Intervall")
     findings: list[Finding] = []
     for name, read in BEFORE.items():
         w = [read(t) for t in winners]
         s = [read(t) for t in losers]
-        diff, lo, hi = contrast(w, s)
+        diff, lo, hi = contrast(w, s, level=level)
         excludes_zero = lo > 0 or hi < 0
 
         agree = True

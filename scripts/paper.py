@@ -29,7 +29,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
-import numpy as np
+from traidingbrain.reporting.intervals import block_bootstrap
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -65,16 +65,18 @@ def interval(values: list[float], seed: int = 11) -> str:
     comparing groups, and a column of means invites exactly the conclusion the
     sample cannot support. Three times in this project a difference between two
     small groups looked real and was not.
+
+    Block-resampled rather than iid. This was the twelfth hand-rolled
+    `rng.choice` bootstrap in the repository and the only one running on the
+    forward journal -- the evidence section 9 calls decisive -- where
+    pretending trades are independent draws is least affordable. The block
+    length is printed with the bounds, because a width that depends on a
+    parameter has to state it.
     """
-    if len(values) < MIN_GROUP:
+    result = block_bootstrap(values, draws=BOOTSTRAP, seed=seed)
+    if result is None:
         return "zu wenige Fälle"
-    rng = np.random.default_rng(seed)
-    sample = np.array(values, dtype="float64")
-    draws = rng.choice(sample, size=(BOOTSTRAP, len(sample)), replace=True).mean(axis=1)
-    low = float(np.percentile(draws, 2.5))
-    high = float(np.percentile(draws, 97.5))
-    verdict = "" if low < 0 < high else "  <- schliesst die Null aus"
-    return f"[{low:+.3f}, {high:+.3f}]{verdict}"
+    return result.labelled()
 
 
 def human(ts: int) -> str:
