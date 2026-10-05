@@ -58,6 +58,7 @@ from traidingbrain.learn.register import (
 from traidingbrain.reporting.intervals import block_bootstrap, two_group_difference
 from traidingbrain.sim.engine import BacktestEngine
 from traidingbrain.strategies.guide import GuidePool
+from traidingbrain.strategies.vol_breakout import VolBreakout
 
 DAY_MS = 86_400_000
 
@@ -73,6 +74,16 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--arm", required=True, help="Name under which this is filed, for good.")
     parser.add_argument("--symbols", help="Comma-separated markets. Default: the first four.")
+    parser.add_argument(
+        "--strategy",
+        default="champion",
+        choices=("champion", "vol-breakout"),
+        help=(
+            "Which entry logic the challenger uses. 'champion' keeps the shipped "
+            "setups and varies only configuration; 'vol-breakout' replaces the "
+            "entry logic entirely, which is how a whole strategy family is tested."
+        ),
+    )
     parser.add_argument(
         "--max-hold-hours",
         type=float,
@@ -124,8 +135,15 @@ def run_arm(
     *,
     start_ts: int | None,
     end_ts: int | None,
+    strategy: str = "champion",
 ) -> list[float]:
-    """One arm over one window, pooled across markets."""
+    """One arm over one window, pooled across markets.
+
+    `strategy` chooses the entry logic. The champion's own logic is the
+    default so that a configuration-only arm is compared against exactly the
+    same entries, and a whole-family arm replaces them -- the engine tells
+    the two apart through `wants_analysis`, so neither needs a snapshot it
+    will not read."""
     store = ParquetStore(config.engine.paths.parquet_dir)
     funding = FundingStore(config.engine.paths.funding_dir)
     pooled: list[float] = []
@@ -143,7 +161,8 @@ def run_arm(
             config=config,
             funding=funding.read(symbol),
         )
-        result = engine.run(GuidePool.for_config(config), start_ts=start_ts, end_ts=end_ts)
+        arm = VolBreakout() if strategy == "vol-breakout" else GuidePool.for_config(config)
+        result = engine.run(arm, start_ts=start_ts, end_ts=end_ts)
         trades = net_r(result)
         pooled.extend(trades)
         print(f"  {symbol}: {len(trades)} Trades", flush=True)
@@ -184,11 +203,12 @@ def main() -> int:
     boundary = last - int(args.holdout_days * DAY_MS)
 
     challenger = challenger_config(config, max_hold_hours=args.max_hold_hours)
-    change = (
-        f"max_hold_hours = {args.max_hold_hours}"
-        if args.max_hold_hours is not None
-        else "nichts geaendert"
-    )
+    parts = []
+    if args.strategy != "champion":
+        parts.append(f"Einstiegslogik = {args.strategy}")
+    if args.max_hold_hours is not None:
+        parts.append(f"max_hold_hours = {args.max_hold_hours}")
+    change = ", ".join(parts) if parts else "nichts geaendert"
 
     print("=" * 78)
     print(champion.describe())
@@ -201,7 +221,9 @@ def main() -> int:
     print("Champion:", flush=True)
     base_open = run_arm(symbols, config, start_ts=None, end_ts=boundary)
     print("Herausforderer:", flush=True)
-    arm_open = run_arm(symbols, challenger, start_ts=None, end_ts=boundary)
+    arm_open = run_arm(
+        symbols, challenger, start_ts=None, end_ts=boundary, strategy=args.strategy
+    )
     print()
     print(line("Champion", base_open))
     print(line(args.arm, arm_open))
@@ -217,6 +239,7 @@ def main() -> int:
         ),
         run_signature=run_signature(config),
         now_ms=int(datetime.now(tz=UTC).timestamp() * 1000),
+        strategy=args.strategy,
     )
 
     if not args.holdout:
@@ -253,6 +276,7 @@ def consult_holdout(
     boundary: int,
     change: str,
     now_ms: int,
+    strategy: str,
 ) -> int:
     """Read the reserved window once, at a level fixed before the reading."""
     planned = register.judge(
@@ -266,7 +290,9 @@ def consult_holdout(
     print("Champion:", flush=True)
     base_hold = run_arm(symbols, config, start_ts=boundary, end_ts=None)
     print("Herausforderer:", flush=True)
-    arm_hold = run_arm(symbols, challenger, start_ts=boundary, end_ts=None)
+    arm_hold = run_arm(
+        symbols, challenger, start_ts=boundary, end_ts=None, strategy=strategy
+    )
     print()
     print(line("Champion", base_hold))
     print(line(arm, arm_hold))
