@@ -61,7 +61,7 @@ from traidingbrain.config.settings import load_config
 from traidingbrain.data.frames import timeframe_ms
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
-from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
+from traidingbrain.domain.market import DEFAULT_SPEC, FundingRate, SymbolSpec
 from traidingbrain.journal.signals import Action, SignalRecord, SignalStore
 from traidingbrain.learn.labels import Label, Minutes, Tally, label_signal
 from traidingbrain.reporting.intervals import block_bootstrap
@@ -154,9 +154,17 @@ def collect(
 
 
 def label_all(
-    records: list[SignalRecord], minutes: Minutes, config: object
+    records: list[SignalRecord],
+    minutes: Minutes,
+    config: object,
+    funding: list[FundingRate],
 ) -> list[tuple[SignalRecord, Label]]:
-    """Every signal against the same three barriers, taken or not."""
+    """Every signal against the same three barriers, taken or not.
+
+    Funding is passed in because a 48-hour horizon spans up to six settlements,
+    and at a typical 1.5% stop a single one is worth roughly 0.02 R -- against
+    an expectancy of -0.09 R, which is not a rounding error.
+    """
     spec = SymbolSpec(symbol=records[0].symbol if records else "BTCUSDT", **DEFAULT_SPEC)
     simulation = config.engine.simulation  # type: ignore[attr-defined]
     expiry_ms = simulation.entry_expiry_bars * timeframe_ms(
@@ -175,6 +183,7 @@ def label_all(
             config=simulation,
             horizon_ms=HORIZON_HOURS * HOUR_MS,
             expiry_ms=expiry_ms,
+            funding=funding,
         )
         if label.resolved:
             out.append((record, label))
@@ -186,12 +195,14 @@ def line(name: str, pairs: list[tuple[SignalRecord, Label]]) -> str:
         return f"  {name:28s} keine"
     gross = [label.gross_r for _, label in pairs]
     net = [label.net_r for _, label in pairs]
+    funding = [label.funding_r for _, label in pairs]
     hits = 100 * sum(1 for value in net if value > 0) / len(net)
     interval = block_bootstrap(gross)
     bounds = interval.labelled() if interval is not None else "zu wenige"
     return (
         f"  {name:28s} n={len(pairs):5d}  brutto {sum(gross) / len(gross):+.4f}  "
-        f"netto {sum(net) / len(net):+.4f}  Treffer {hits:3.0f}%  {bounds}"
+        f"netto {sum(net) / len(net):+.4f}  Funding {sum(funding) / len(funding):+.4f}  "
+        f"Treffer {hits:3.0f}%  {bounds}"
     )
 
 
@@ -235,6 +246,7 @@ def main() -> int:
     config = load_config()
     store = ParquetStore(config.engine.paths.parquet_dir)
     signals = SignalStore(config.engine.paths.data_dir / "signals.sqlite")
+    funding_store = FundingStore(config.engine.paths.funding_dir)
     sig = signature(config, args.max_bars)
 
     symbols = (
@@ -252,7 +264,7 @@ def main() -> int:
         minutes = store.read(symbol, config.engine.timeframes.execution)
         if minutes.empty or not records:
             continue
-        labelled = label_all(records, Minutes.of(minutes), config)
+        labelled = label_all(records, Minutes.of(minutes), config, funding_store.read(symbol))
         for _, label in labelled:
             tally.add(label)
         # Unfilled signals are dropped by `label_all`, so count them here: a

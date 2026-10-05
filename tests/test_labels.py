@@ -23,6 +23,7 @@ from tests.factories import make_symbol_spec
 from tests.fakes import EPOCH
 from traidingbrain.config.settings import SimulationConfig
 from traidingbrain.domain.enums import ExitReason, OrderType, Side
+from traidingbrain.domain.market import FundingRate
 from traidingbrain.learn.labels import Barrier, Minutes, Tally, label_signal
 from traidingbrain.sim.broker import PendingEntry, SimBroker
 
@@ -61,6 +62,7 @@ def label(
     horizon_ms: int = 48 * HOUR,
     spec: object | None = None,
     cfg: SimulationConfig | None = None,
+    funding: list[FundingRate] | None = None,
 ):
     settings = cfg or config()
     return label_signal(
@@ -74,6 +76,7 @@ def label(
         config=settings,
         horizon_ms=horizon_ms,
         expiry_ms=settings.entry_expiry_bars * 15 * MINUTE,
+        funding=funding,
     )
 
 
@@ -259,13 +262,14 @@ def _broker_verdict(
     target: float,
     spec: object,
     cfg: SimulationConfig,
+    funding: list[FundingRate] | None = None,
 ) -> tuple[ExitReason, float, float] | None:
     """Run the authority: a real broker, stepped minute by minute.
 
     qty is 1 and `risk_amount` is the planned risk per unit, so the broker's
     `r_multiple` is directly comparable to the labeller's `net_r`.
     """
-    broker = SimBroker(spec, cfg)  # type: ignore[arg-type]
+    broker = SimBroker(spec, cfg, funding)  # type: ignore[arg-type]
     assert broker.submit(
         PendingEntry(
             side=side,
@@ -285,6 +289,18 @@ def _broker_verdict(
         if fill is not None:
             return fill.reason, fill.exit_price, fill.r_multiple
     return None
+
+
+#: Settlements inside the window the random paths cover.
+#:
+#: The agreement test ran without any funding at all, so it could not have
+#: caught the labeller ignoring it -- which it did. Rates here make the two
+#: implementations disagree unless both charge them.
+RATES = [
+    FundingRate(ts=EPOCH + 20 * MINUTE, rate=0.0001),
+    FundingRate(ts=EPOCH + 60 * MINUTE, rate=-0.00008),
+    FundingRate(ts=EPOCH + 100 * MINUTE, rate=0.00012),
+]
 
 
 def _random_paths(count: int, seed: int = 4) -> list[list[tuple[float, float, float]]]:
@@ -333,9 +349,17 @@ def test_the_labeller_agrees_with_the_broker() -> None:
                 config=cfg,
                 horizon_ms=120 * MINUTE,
                 expiry_ms=cfg.entry_expiry_bars * 15 * MINUTE,
+                funding=RATES,
             )
             theirs = _broker_verdict(
-                rows, side=side, entry=100.0, stop=stop, target=target, spec=spec, cfg=cfg
+                rows,
+                side=side,
+                entry=100.0,
+                stop=stop,
+                target=target,
+                spec=spec,
+                cfg=cfg,
+                funding=RATES,
             )
             compared[mine.barrier] += 1
 
@@ -370,3 +394,83 @@ def test_the_tally_reports_how_often_the_horizon_binds() -> None:
     assert tally.resolved == 3
     assert "33.3%" in tally.summary()
     assert "zu oft" in tally.summary()
+
+
+# --------------------------------------------------------------------------- #
+# Funding over the hold
+# --------------------------------------------------------------------------- #
+
+
+def test_a_long_pays_funding_while_the_rate_is_positive() -> None:
+    """A real cost that only runs one way, and the labeller used to ignore it.
+
+    Caught by the audit rather than by a test, because the agreement test built
+    its broker without any rates and so could not have noticed.
+    """
+    held = [(105, 106, 101), (102, 103, 98)] + [(100, 101, 99)] * 10
+    rates = [FundingRate(ts=EPOCH + 5 * MINUTE, rate=0.001)]
+    without = label(held, horizon_ms=10 * MINUTE)
+    with_rates = label(held, horizon_ms=10 * MINUTE, funding=rates)
+
+    assert without.funding_r == 0.0
+    # Long, filled at 100, risk 10 per unit, one settlement at 10bp.
+    assert with_rates.funding_r == pytest.approx(-100.0 * 0.001 / 10.0)
+    assert with_rates.net_r < without.net_r, "funding made no difference"
+
+
+def test_a_short_is_paid_when_the_rate_is_positive() -> None:
+    result = label(
+        [(95, 99, 94), (98, 103, 97)] + [(100, 101, 99)] * 10,
+        side=Side.SHORT,
+        entry=100.0,
+        stop=110.0,
+        target=80.0,
+        horizon_ms=10 * MINUTE,
+        funding=[FundingRate(ts=EPOCH + 5 * MINUTE, rate=0.001)],
+    )
+    assert result.funding_r == pytest.approx(+100.0 * 0.001 / 10.0)
+
+
+def test_funding_that_settled_before_the_fill_is_not_charged() -> None:
+    """The position was not there for it."""
+    result = label(
+        [(105, 106, 101), (102, 103, 98)] + [(100, 101, 99)] * 10,
+        horizon_ms=10 * MINUTE,
+        funding=[FundingRate(ts=EPOCH, rate=0.01)],
+    )
+    assert result.funding_r == 0.0
+
+
+def test_a_long_hold_crosses_several_settlements() -> None:
+    """The reason this matters for the time barrier specifically.
+
+    A 48-hour horizon spans up to six eight-hourly settlements, and those are
+    exactly the labels the horizon keeps open longest.
+    """
+    held = [(105, 106, 101), (102, 103, 98)] + [(100, 101, 99)] * 30
+    rates = [FundingRate(ts=EPOCH + m * MINUTE, rate=0.0005) for m in (5, 10, 15, 20)]
+    result = label(held, horizon_ms=25 * MINUTE, funding=rates)
+    assert result.barrier is Barrier.TIME
+    assert result.funding_r == pytest.approx(-4 * 100.0 * 0.0005 / 10.0)
+
+
+def test_funding_does_not_move_when_the_prices_do() -> None:
+    """Scale-free like the rest of the label.
+
+    The broker charges notional * rate and the R denominator carries the same
+    quantity, so it cancels. A funding term that scaled with the price level
+    would make BTC and XRP folds incomparable.
+    """
+    rows = [(105, 106, 101), (102, 103, 98)] + [(100, 101, 99)] * 10
+    rates = [FundingRate(ts=EPOCH + 5 * MINUTE, rate=0.001)]
+    small = label(rows, horizon_ms=10 * MINUTE, funding=rates)
+    scale = 1000.0
+    big = label(
+        [(o * scale, h * scale, lo * scale) for o, h, lo in rows],
+        entry=100.0 * scale,
+        stop=90.0 * scale,
+        target=120.0 * scale,
+        horizon_ms=10 * MINUTE,
+        funding=rates,
+    )
+    assert big.funding_r == pytest.approx(small.funding_r)

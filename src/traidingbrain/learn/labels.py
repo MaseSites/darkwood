@@ -50,7 +50,7 @@ import numpy as np
 
 from traidingbrain.config.settings import SimulationConfig
 from traidingbrain.domain.enums import Side
-from traidingbrain.domain.market import SymbolSpec
+from traidingbrain.domain.market import FundingRate, SymbolSpec
 
 #: Basis points, as `sim/broker.py` defines them.
 BPS = 1e-4
@@ -101,11 +101,20 @@ class Label:
     cost_r: float
     """Fees and slippage, as a fraction of the planned risk. Always positive."""
 
+    funding_r: float
+    """Funding settled over the hold, as a fraction of the planned risk.
+
+    Signed: negative when the position paid, positive when it was paid. Longs
+    pay shorts while the rate is positive, which over a trade held for days is
+    a real cost running one way -- and a label that ignored it would be
+    optimistic about exactly the trades the time barrier keeps open longest. A
+    48-hour horizon spans up to six settlements."""
+
     minutes_held: int
 
     @property
     def net_r(self) -> float:
-        return self.gross_r - self.cost_r
+        return self.gross_r - self.cost_r + self.funding_r
 
     @property
     def resolved(self) -> bool:
@@ -130,6 +139,7 @@ UNFILLED = Label(
     exit_price=0.0,
     gross_r=0.0,
     cost_r=0.0,
+    funding_r=0.0,
     minutes_held=0,
 )
 
@@ -224,6 +234,35 @@ def _gap_aware(
     return _slipped(price, side, slippage_bps, adverse=adverse) if adverse else price
 
 
+def _funding_over(
+    funding: list[FundingRate] | None,
+    *,
+    side: Side,
+    fill_price: float,
+    risk: float,
+    opened_ts: int,
+    closed_ts: int,
+) -> float:
+    """Funding settled while the position was open, in multiples of the risk.
+
+    Mirrors `sim/broker.py:489`: charged against the open position only, and
+    only for settlements strictly after it opened -- a rate that settled in the
+    same minute the trade was entered is one the position was not yet there for.
+
+    Scale-free like everything else here. The broker charges
+    `-notional * rate * sign` with `notional = qty * entry_price`, and the R
+    denominator is `qty * risk`, so the quantity cancels exactly and what
+    remains depends only on prices.
+    """
+    if not funding or risk <= 0:
+        return 0.0
+    total = 0.0
+    for rate in funding:
+        if opened_ts < rate.ts <= closed_ts:
+            total += -fill_price * rate.rate * side.sign
+    return total / risk
+
+
 def _entry_index(
     minutes: Minutes,
     *,
@@ -270,6 +309,7 @@ def label_signal(
     config: SimulationConfig,
     horizon_ms: int,
     expiry_ms: int,
+    funding: list[FundingRate] | None = None,
 ) -> Label:
     """Replay one signal against its three barriers.
 
@@ -344,6 +384,14 @@ def label_signal(
                 exit_price=exit_price,
                 gross_r=sign * (exit_price - fill_price) / risk,
                 cost_r=(fill_price * spec.maker_fee + exit_price * exit_rate) / risk,
+                funding_r=_funding_over(
+                    funding,
+                    side=side,
+                    fill_price=fill_price,
+                    risk=risk,
+                    opened_ts=filled_ts,
+                    closed_ts=closed_ts,
+                ),
                 minutes_held=start + k - at,
             )
 
@@ -364,5 +412,13 @@ def label_signal(
         exit_price=exit_price,
         gross_r=sign * (exit_price - fill_price) / risk,
         cost_r=(fill_price * spec.maker_fee + exit_price * spec.taker_fee) / risk,
+        funding_r=_funding_over(
+            funding,
+            side=side,
+            fill_price=fill_price,
+            risk=risk,
+            opened_ts=filled_ts,
+            closed_ts=int(minutes.ts[last]),
+        ),
         minutes_held=last - at,
     )
