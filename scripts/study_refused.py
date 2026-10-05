@@ -66,7 +66,7 @@ from traidingbrain.domain.market import DEFAULT_SPEC, FundingRate, SymbolSpec
 from traidingbrain.journal.signals import Action, SignalRecord, SignalStore
 from traidingbrain.journal.version import run_signature, spread
 from traidingbrain.learn.labels import Label, Minutes, Tally, label_signal
-from traidingbrain.reporting.intervals import block_bootstrap
+from traidingbrain.reporting.intervals import block_bootstrap, two_group_difference
 from traidingbrain.sim.engine import BacktestEngine
 from traidingbrain.strategies.guide import GuidePool
 
@@ -247,12 +247,26 @@ def report_shadow(
         print(line(f"davon abgelehnt: {rule}", group))
 
     if would and taken:
+        # With an interval, not as a point estimate. A difference of means is
+        # exactly what each of the nine rejected hypotheses looked like first,
+        # and three times today a point estimate pointed somewhere the interval
+        # did not support.
+        difference = two_group_difference(
+            [label.net_r for _record, label in would],
+            [label.net_r for _record, label in taken],
+        )
         gap = _mean_net(would) - _mean_net(taken)
         verdict = "besser" if gap > 0 else "schlechter"
         print(
             f"\n  Die verdeckten handelbaren Signale sind {abs(gap):.4f} R pro Trade "
-            f"{verdict}\n  als das, was das System tatsaechlich genommen hat. Das ist die Zahl, "
-            "die sagt,\n  ob ein zweiter Platz bessere Trades gekauft haette -- nicht ihre Anzahl."
+            f"{verdict}\n  als das, was das System tatsaechlich genommen hat."
+        )
+        if difference is not None:
+            carries = "Null ausgeschlossen" if difference.excludes_zero else "enthaelt die Null"
+            print(f"  Unterschied {difference.labelled()} -> {carries}")
+        print(
+            "  Das ist die Zahl, die sagt, ob ein zweiter Platz bessere Trades gekauft\n"
+            "  haette -- nicht ihre Anzahl."
         )
 
 
