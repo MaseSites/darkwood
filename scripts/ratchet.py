@@ -265,8 +265,19 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "erledigt",
         "Bewegung gekreuzt mit Relativvolumen: kein Band ohne Null.",
     ),
-    ("Trendfolge mit Ruecksetzer", "offen", "Teilweise in den Setups, nie als Familie gemessen."),
-    ("Regime-Umschaltung", "offen", "Regime wird berechnet, schaltet aber nie die Strategie."),
+    (
+        "Trendfolge mit Ruecksetzer",
+        "erledigt",
+        "Umgekehrt widerlegt: OHNE Ruecksetzer ist am besten (+0.367%), und das "
+        "wiederholt sich im anderen Fenster nur zu 0.29x. Tiefe Ruecksetzer sind "
+        "schlechter, nicht besser.",
+    ),
+    (
+        "Regime-Umschaltung",
+        "erledigt",
+        "Umschaltgewinn als Differenz der Differenzen: +0.257% [-0.073, +0.609] auf "
+        "24h, +0.007% [-1.139, +1.121] auf 168h. Beide mit Null.",
+    ),
     (
         "Funding / Relative Value",
         "erledigt",
@@ -322,11 +333,33 @@ def report_space() -> None:
     remaining = len(open_)
     print(
         f"\n  {len(done)} erledigt, {remaining} offen, {len(blocked)} nicht testbar, "
-        f"{len(gated)} gesperrt.\n"
-        f"  Bei einem entscheidenden Test pro Familie: {remaining} Tests.\n"
-        f"  Halbiert sich der Rest mit jedem Test, sind es "
-        f"{math.ceil(math.log2(remaining)) if remaining > 1 else remaining} Schritte."
+        f"{len(gated)} gesperrt."
     )
+    if remaining:
+        print(
+            f"  Bei einem entscheidenden Test pro Familie: {remaining} Tests.\n"
+            f"  Halbiert sich der Rest mit jedem Test, sind es "
+            f"{math.ceil(math.log2(remaining)) if remaining > 1 else remaining} Schritte."
+        )
+    else:
+        # An exhausted map is a state, not a bug, and "0 Tests, 0 Schritte"
+        # read like one. It is also the most informative thing this register
+        # has ever printed, so it says so in words.
+        print(
+            "\n  DIE KARTE IST ABGEARBEITET. Jede Familie, die der Forschungsauftrag\n"
+            "  benannt hat, ist gemessen, und keine ist positiv. Das ist kein\n"
+            "  Scheitern des Suchens, sondern sein Ergebnis: der angemeldete Raum\n"
+            "  ist leer.\n"
+            "\n  Was daraus NICHT folgt: dass es nichts gibt. Es folgt, dass es nicht\n"
+            "  in diesem Raum liegt -- in Preis, Volumen, Volatilitaet, Spanne,\n"
+            "  Tageszeit, Orderfluss, Positionierung, Funding, Regime oder Horizont.\n"
+            "  Diese Liste war der Auftrag, nicht die Welt.\n"
+            "\n  Was offen bleibt, steht ausserhalb der Karte: Makrodaten (FRED),\n"
+            "  Stablecoin-Liquiditaet (DefiLlama) und On-Chain-Aktivitaet -- Phase C\n"
+            "  des Forschungsauftrags, ausdruecklich erlaubt und noch nicht gebaut.\n"
+            "  Und das Vorwaerts-Protokoll, das einzige Beweismittel, das Replay\n"
+            "  nicht erzeugen kann."
+        )
     if gated:
         print(
             "\n  [!] heisst: messbar, aber das Ergebnis waere nicht deutbar. Die\n"
