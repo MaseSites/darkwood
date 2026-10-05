@@ -91,6 +91,16 @@ class Outcome:
     errors: list[float] = field(default_factory=list)
     folds_used: int = 0
 
+    #: What the model predicted, aligned element-wise with `everything`.
+    #:
+    #: Needed for a calibration table -- "bars the model rated in its top tenth
+    #: earned X" -- and that table is only meaningful when the bands come from
+    #: the *prediction*. Bucketing by the realised outcome instead produces a
+    #: perfectly monotone table that says only "the worst cases were bad", and
+    #: it looks like an overwhelming result. That mistake was made here on
+    #: 05.10.2026 and this field exists so it cannot be made again by accident.
+    predicted: list[float] = field(default_factory=list)
+
     @property
     def error(self) -> float:
         return float(np.mean(self.errors)) if self.errors else float("nan")
@@ -177,6 +187,7 @@ def evaluate(
 
         outcome.errors.append(mean_squared_error(predicted, actual))
         outcome.everything.extend(actual.tolist())
+        outcome.predicted.extend(predicted.tolist())
         outcome.kept.extend(actual[predicted >= threshold].tolist())
         outcome.taken.extend(case.target for case in test if case.taken)
     return outcome
