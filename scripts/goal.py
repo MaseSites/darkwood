@@ -51,13 +51,21 @@ from traidingbrain.live.paperstate import PaperStateStore
 
 #: Expectancies worth asking about, as multiples of risk.
 #:
-#: The first three are measured on 05.10.2026 at three fee schedules; the fourth
-#: is what a genuinely good system of this kind would do, and is included so the
-#: table has an optimistic row that is not a fantasy.
+#: Measured on 05.10.2026 over **four** markets and 3,300 taken signals
+#: (`scripts/study_fees.py`), at four fee schedules. The last row is what a
+#: genuinely good system of this kind would do, so the table has an optimistic
+#: row that is not a fantasy.
+#:
+#: These replaced BTC-only figures of -0.0016, +0.0037 and +0.0116, which were
+#: wrong in the way that matters: they put break-even within a 3% fee discount
+#: when four markets put it at 69%. BTC was the best of four and quoting it as
+#: the system's number was selection among four candidates. Note that even the
+#: zero-fee row is still short of what the target needs.
 SCENARIOS: tuple[tuple[str, float], ...] = (
-    ("heute gemessen (BTC, netto)", -0.0016),
-    ("mit 10% Gebuehrenrabatt", 0.0037),
-    ("mit 25% Gebuehrenrabatt", 0.0116),
+    ("heute gemessen (4 Maerkte)", -0.0340),
+    ("mit 10% Gebuehrenrabatt", -0.0291),
+    ("mit 25% Gebuehrenrabatt", -0.0217),
+    ("ganz ohne Gebuehr", 0.0151),
     ("ein sehr gutes System", 0.15),
 )
 

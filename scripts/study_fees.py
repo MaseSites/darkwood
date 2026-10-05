@@ -18,12 +18,26 @@ it was meant to improve on. What remains is the toll, and the toll is not a
 strategy question. It is `round_trip_fee / stop_fraction`, and the numerator is
 a number somebody sets.
 
-**What this is not.** Every interval here contains zero, it is per-signal
-labelling without slot competition, and it is one market. It does not say the
-system is profitable at a lower fee. It says something narrower and more
-useful: the distance between this system and break-even is about the size of a
-routine fee discount, which is a different kind of problem from needing to find
-an edge.
+**What this script found, and then unfound.** On BTC alone on 05.10.2026 the
+answer was that break-even sits at 97.0% of today's fee -- a 3% discount, where
+BNB alone gives 10%. That made the gap look like a setting rather than a
+problem, and it was the one actionable conclusion of the day.
+
+Run over all four markets the same afternoon, break-even is at 30.8% of
+today's fee: a **69% discount**, which is not on offer. Gross expectancy across
+4 markets and 3,324 taken signals is +0.0136 R against a toll of 0.0491 R, and
+even at a fee of zero the net is +0.0151 R with an interval that still contains
+zero. BTC's +0.0480 R gross was the best of four, and taking it for the system
+was selection among four candidates -- which is exactly what the journal had
+already warned, four markets in, with BTC the only positive one.
+
+The lesson is cheap to state and was expensive to learn twice today: a number
+measured on one market is a number about that market. The fix is not a better
+estimate, it is refusing to quote the single-market figure at all.
+
+**What this is still not.** Every interval contains zero, and it is per-signal
+labelling without slot competition. It does not say the system is profitable at
+any fee.
 
 **The arithmetic is exact, which is why it is worth stating despite the
 intervals.** Gross is held fixed by construction and the toll is linear in the
@@ -58,6 +72,9 @@ HORIZON_MS = 48 * 3_600_000
 #: Rows needed before the break-even fee can be interpolated.
 NEEDED_FOR_SLOPE = 2
 
+#: The schedule factor that means "the fee we actually pay".
+UNCHANGED = 1.00
+
 #: The schedules worth asking about, as multiples of the shipped fee.
 #:
 #: Not invented: Binance takes 10% off for paying fees in BNB and 25% off at
@@ -80,6 +97,74 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+
+
+def report_breakeven(rows: list[tuple[float, float]]) -> None:
+    """Where the fee would have to be for the net to reach zero.
+
+    Read off two rows rather than searched for: gross is held fixed by
+    construction and the toll is linear in the fee rate, so the crossing is
+    exact. The uncertainty is all in the gross figure, and the *difference*
+    between rows carries none of it.
+    """
+    if len(rows) < NEEDED_FOR_SLOPE:
+        return
+    (f1, n1), (f2, n2) = rows[0], rows[1]
+    if n2 == n1:
+        return
+    breakeven = f1 - n1 * (f2 - f1) / (n2 - n1)
+    print(
+        f"Die Null liegt bei {100 * breakeven:.1f}% der heutigen Gebuehr, "
+        f"also {100 * (1 - breakeven):.1f}% Rabatt."
+    )
+
+
+def report_in_prices(
+    gross: list[float], cost: list[float], stop_fractions: list[float]
+) -> None:
+    """The same result in percent of price, where the problem is one line long.
+
+    `net_r = (captured move - fee - funding) / stop fraction`, and every term in
+    that numerator is a fraction of the entry price. Stop width, position size
+    and leverage appear only in the denominator, so they scale both sides
+    equally and cannot change the sign -- only how large the R number is.
+
+    That is why the widen-stop and target-cap levers failed and had to: both
+    move the denominator, and the sign lives entirely in the numerator. Stated
+    in R the result is "-0.0016", which sounds like a near miss of something
+    unknown. Stated in price it is a specific quantity of movement the average
+    trade does not capture, and there are exactly two ways to change it.
+
+    The caveat: a stop also decides *which* trades are stopped out, so changing
+    it does change the captured-move distribution. Widening a stop is not a
+    no-op -- but it can only help by capturing more movement, never by making
+    the toll cheaper.
+    """
+    if not stop_fractions or len(stop_fractions) != len(gross):
+        return
+    # From DEFAULT_SPEC, not from one market's spec: the round trip is a
+    # property of the fee schedule, and taking it off whichever market came
+    # first would quietly assume every market shares it.
+    taker = float(DEFAULT_SPEC["taker_fee"])
+    maker = float(DEFAULT_SPEC["maker_fee"])
+    round_trip = 100.0 * (taker + maker)
+    moves = sorted(100.0 * g * s for g, s in zip(gross, stop_fractions, strict=True))
+    middle = moves[len(moves) // 2]
+    pays = sum(1 for g, c in zip(gross, cost, strict=True) if g > c)
+
+    print("\n--- dasselbe in Prozent des Preises, wo das Problem eine Zeile lang ist ---")
+    print(f"  Runde Fahrt Gebuehr          {round_trip:.4f}% des Preises")
+    print(f"  Erfasste Bewegung, Mittel    {sum(moves) / len(moves):+.4f}%")
+    print(f"  Erfasste Bewegung, Median    {middle:+.4f}%")
+    share = 100 * pays / len(gross)
+    print(f"  Trades, die sich selbst bezahlen: {pays} von {len(gross)} ({share:.0f}%)")
+    print(
+        "\n  Stopweite, Groesse und Hebel stehen nur im Nenner von\n"
+        "  (Bewegung - Gebuehr) / Stopanteil. Sie skalieren beide Seiten gleich und\n"
+        "  koennen das Vorzeichen nicht drehen -- nur die R-Zahl groesser machen.\n"
+        "  Deshalb mussten der weitere Stop und der Zieldeckel scheitern. Es bleiben\n"
+        "  zwei Dinge: mehr Bewegung pro Trade erfassen, oder weniger Gebuehr zahlen."
+    )
 
 
 def main() -> int:
@@ -131,6 +216,8 @@ def main() -> int:
     print(f"{'Gebuehr':>22s} {'brutto':>9s} {'Maut':>8s} {'netto':>9s}  Intervall auf netto")
 
     rows: list[tuple[float, float]] = []
+    stop_fractions: list[float] = []
+    today: tuple[list[float], list[float]] | None = None
     for label, factor in SCHEDULES:
         gross: list[float] = []
         cost: list[float] = []
@@ -162,8 +249,14 @@ def main() -> int:
                     gross.append(result.gross_r)
                     cost.append(result.cost_r)
                     net.append(result.net_r)
+                    if factor == UNCHANGED:
+                        entry = float(record.entry)  # type: ignore[attr-defined]
+                        stop = float(record.stop)  # type: ignore[attr-defined]
+                        stop_fractions.append(abs(entry - stop) / entry if entry else 0.0)
         if not net:
             continue
+        if factor == UNCHANGED:
+            today = (list(gross), list(cost))
         interval = block_bootstrap(net)
         rows.append((factor, float(np.mean(net))))
         print(
@@ -172,21 +265,15 @@ def main() -> int:
         )
 
     print("\nBrutto aendert sich nicht -- eine Gebuehr veraendert keinen Kursverlauf.")
-    if len(rows) >= NEEDED_FOR_SLOPE:
-        (f1, n1), (f2, n2) = rows[0], rows[1]
-        if n2 != n1:
-            # Linear in the fee rate, so two rows locate the crossing exactly.
-            breakeven = f1 - n1 * (f2 - f1) / (n2 - n1)
-            print(
-                f"Die Null liegt bei {100 * breakeven:.1f}% der heutigen Gebuehr, "
-                f"also {100 * (1 - breakeven):.1f}% Rabatt."
-            )
+    report_breakeven(rows)
+    if today is not None:
+        report_in_prices(today[0], today[1], stop_fractions)
     print(
-        "\nJedes Intervall oben enthaelt die Null, es ist Signal-Ebene ohne\n"
-        "Platzkonkurrenz, und es sind wenige Maerkte. Das hier sagt nicht, dass\n"
-        "das System bei weniger Gebuehren profitabel ist. Es sagt, dass der\n"
-        "Abstand zur Null die Groesse eines gewoehnlichen Rabatts hat -- und das\n"
-        "ist eine andere Art von Problem als einen Vorteil finden zu muessen."
+        "\nJedes Intervall oben enthaelt die Null, und es ist Signal-Ebene ohne\n"
+        "Platzkonkurrenz. Lies die Rabattzeile gegen das, was zu haben ist: BNB\n"
+        "gibt 10%, VIP 1 mit BNB 25%. Verlangt die Null deutlich mehr als das,\n"
+        "ist die Gebuehr nicht der Hebel, sondern nur der kleinere von zwei\n"
+        "Abstaenden -- und der groessere ist die erfasste Bewegung selbst."
     )
     return 0
 
