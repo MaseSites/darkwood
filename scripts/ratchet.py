@@ -206,12 +206,12 @@ def main() -> int:
         f"ausschliesst, und mindestens {MIN_HOLDOUT_TRADES} Trades darin."
     )
     print(
-        "\nDie neun Zeilen oben sind auf Testfenstern gemessen, die bei jeder neuen Idee\n"
-        "wieder gelesen wurden -- darum ist keine davon ein Urteil. Das zurueckbehaltene\n"
-        "Fenster hat noch nie jemand angesehen (jede Studie hat holdout_days=0 uebergeben),\n"
-        "also ist die naechste Konsultation wirklich die erste. Einen Kandidaten auf\n"
-        "frueheren Daten auszuwaehlen ist gratis; was kostet, ist das Prueffenster selbst\n"
-        "zu lesen, und genau das wird hier gezaehlt."
+        f"\nDie {len(rows)} Zeilen oben sind auf Testfenstern gemessen, die bei jeder neuen\n"
+        "Idee wieder gelesen wurden -- darum ist keine davon ein Urteil. Das zurueck-\n"
+        "behaltene Fenster hat noch nie jemand angesehen (jede Studie hat holdout_days=0\n"
+        "uebergeben), also ist die naechste Konsultation wirklich die erste. Einen\n"
+        "Kandidaten auf frueheren Daten auszuwaehlen ist gratis; was kostet, ist das\n"
+        "Prueffenster selbst zu lesen, und genau das wird hier gezaehlt."
     )
     return 0
 
