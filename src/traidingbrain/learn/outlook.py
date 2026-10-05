@@ -36,6 +36,37 @@ first instrument here that can see that time.
 1-100. That mapping belongs with the measurement that earns it, in
 `scripts/study_outlook.py`, and only if the thing survives a permutation null.
 Shipping the number first is how the 85 happened.
+
+**Are these 35 features actually 35?** Measured on 9,981 BTC cases, because a
+research note put the question well: three nearly identical models give no
+three independent advantages. The answer removes an excuse rather than
+providing one.
+
+    effective rank (eigenvalue entropy)   21.4 of 33
+    principal components for 90% variance 20
+    constant features                     2
+
+So the set is not degenerate: twenty-one effectively independent features found
+a rank correlation of 0.004. Had they been effectively three, redundancy would
+have explained the negative result; at twenty-one it does not, which makes that
+result stronger rather than weaker.
+
+The redundancy that does exist is worth knowing before anyone extends the set:
+
+    rsi            <-> close_vs_ema_fast_atr  +0.982
+    percent_b      <-> close_vs_ema_fast_atr  +0.908
+    rsi            <-> percent_b              +0.874
+    ema_spread_atr <-> trend_strength         +0.827
+
+Four of these are one quantity measured four ways, so another momentum
+oscillator would add a name and no information.
+
+`gap_above_atr` and `gap_below_atr` are the two constant columns, and that is
+the fair-value-gap finding showing up as a measurable zero: a gap on M15 has a
+median lifetime of one bar, so one is essentially never pending nearby. They
+are kept because `Standardiser.fit` guards zero variance, and removing them
+would change the feature count that every stored result was measured at -- but
+nothing should be built on them.
 """
 
 from __future__ import annotations
