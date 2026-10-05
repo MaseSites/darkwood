@@ -55,6 +55,7 @@ from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
 from traidingbrain.journal.signals import Action, SignalRecord, SignalStore
+from traidingbrain.journal.version import run_signature
 from traidingbrain.learn.evaluate import Outcome, evaluate, permutation_null, position
 from traidingbrain.learn.features import row
 from traidingbrain.learn.labels import Label, Minutes, label_signal
@@ -122,13 +123,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def signature(config: object) -> str:
-    engine = config.engine  # type: ignore[attr-defined]
-    risk = config.risk  # type: ignore[attr-defined]
-    return (
-        f"{engine.simulation.initial_equity}|{engine.setups.enabled}|"
-        f"{risk.limits.max_cost_fraction_of_risk}|{engine.timeframes.signal.value}|refused-v1"
-    )
 
 
 def load_cases(symbols: list[str], config: object) -> list[Case]:
@@ -140,7 +134,7 @@ def load_cases(symbols: list[str], config: object) -> list[Case]:
     expiry_ms = simulation.entry_expiry_bars * timeframe_ms(
         config.engine.timeframes.signal  # type: ignore[attr-defined]
     )
-    sig = signature(config)
+    sig = run_signature(config)
 
     cases: list[Case] = []
     for symbol in symbols:

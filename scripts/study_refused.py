@@ -63,6 +63,7 @@ from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import DEFAULT_SPEC, FundingRate, SymbolSpec
 from traidingbrain.journal.signals import Action, SignalRecord, SignalStore
+from traidingbrain.journal.version import run_signature
 from traidingbrain.learn.labels import Label, Minutes, Tally, label_signal
 from traidingbrain.reporting.intervals import block_bootstrap
 from traidingbrain.sim.engine import BacktestEngine
@@ -89,26 +90,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def signature(config: object, max_bars: int | None) -> str:
-    """What makes two runs the same run.
-
-    The setups, the cost ceiling and the cadence, because each of them changes
-    which signals exist or how they are judged. A run under different settings
-    writes beside this one rather than over it.
-
-    `max_bars` is in here too, and it has to be: a truncated transport check
-    covers one short period and would otherwise occupy the same rows as the
-    full run, which then gets skipped as "already collected" and reports
-    fourteen signals as though they were the answer. That very nearly happened.
-    """
-    engine = config.engine  # type: ignore[attr-defined]
-    risk = config.risk  # type: ignore[attr-defined]
-    bars = f"|{max_bars}bars" if max_bars else ""
-    return (
-        f"{engine.simulation.initial_equity}|{engine.setups.enabled}|"
-        f"{risk.limits.max_cost_fraction_of_risk}|{engine.timeframes.signal.value}"
-        f"|refused-v1{bars}"
-    )
 
 
 def collect(
@@ -120,7 +101,7 @@ def collect(
     max_bars: int | None,
 ) -> bool:
     """Walk one market and write every signal it produced. True if anything ran."""
-    sig = signature(config, max_bars)
+    sig = run_signature(config, max_bars=max_bars)
     if signals.count(symbol=symbol, run_signature=sig):
         print(f"{symbol}: Signale liegen vor", flush=True)
         return True
@@ -247,7 +228,7 @@ def main() -> int:
     store = ParquetStore(config.engine.paths.parquet_dir)
     signals = SignalStore(config.engine.paths.data_dir / "signals.sqlite")
     funding_store = FundingStore(config.engine.paths.funding_dir)
-    sig = signature(config, args.max_bars)
+    sig = run_signature(config, max_bars=args.max_bars)
 
     symbols = (
         [s.strip().upper() for s in args.symbols.split(",")]
