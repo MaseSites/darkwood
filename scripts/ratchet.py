@@ -242,18 +242,36 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "erledigt",
         "Die fünf ausgelieferten Setups. 9 Hypothesen, 8 tot, 1 unentschieden.",
     ),
-    ("Volatilitaetsausbruch", "offen", "volatility_percentile existiert, war nie Ausloeser."),
-    ("VWAP und Tageszeit", "offen", "VWAP liegt in formulas.py, in keinem Setup benutzt."),
+    (
+        "Volatilitaetsausbruch",
+        "erledigt",
+        "42 Zustandszellen, 2 Horizonte: kein Treffer. Der eine Kandidat (hohe "
+        "ATR-Perzentile) scheitert an der Korrektur UND wiederholt sich im "
+        "anderen Fenster nur zu 0.16-0.26x.",
+    ),
+    (
+        "VWAP und Tageszeit",
+        "erledigt",
+        "Drei Sessions, 2 Horizonte: Differenz unter 0.01%, Intervalle mit Null.",
+    ),
     (
         "Mean Reversion",
         "erledigt",
         "Brutto 0.17 bp auf M15 (700k Beobachtungen), reproduziert das Preprint. Maut 79x.",
     ),
-    ("Handelsspannen-Ausbruch", "offen", "Ungeprueft."),
-    ("Momentum mit Volumen", "offen", "Als Familie ungeprueft."),
+    ("Handelsspannen-Ausbruch", "erledigt", "Donchian-Position in Terzilen: kein Band ohne Null."),
+    (
+        "Momentum mit Volumen",
+        "erledigt",
+        "Bewegung gekreuzt mit Relativvolumen: kein Band ohne Null.",
+    ),
     ("Trendfolge mit Ruecksetzer", "offen", "Teilweise in den Setups, nie als Familie gemessen."),
     ("Regime-Umschaltung", "offen", "Regime wird berechnet, schaltet aber nie die Strategie."),
-    ("Funding / Relative Value", "offen", "Daten liegen vor, nur als Kosten benutzt."),
+    (
+        "Funding / Relative Value",
+        "erledigt",
+        "Funding als Perzentil-Merkmal, 2 Horizonte: kein Band ohne Null.",
+    ),
     (
         "Orderflow (Taker-Volumen)",
         "erledigt",
