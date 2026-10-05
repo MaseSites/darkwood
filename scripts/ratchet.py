@@ -103,6 +103,50 @@ PANEL: tuple[Result, ...] = tuple(
 )
 
 
+#: Moving the entry away from the market, in fractions of the stop distance.
+#:
+#: The last mechanical lever this project's own arithmetic left open. `net_r` is
+#: `(captured move - fee) / stop fraction`, so stop, size and leverage cancel
+#: and only a lower fee or more captured movement can change the sign. An audit
+#: found the limit sits at the market -- 97.5% of fills take the open branch,
+#: 96.2% of those at a price identical to the limit -- so placing it better was
+#: the one untried way to capture more, and it would have earned the maker
+#: rebate honestly rather than by accounting.
+#:
+#: It is worse, monotonically, at every offset. `netto je Fill` gets worse too,
+#: which is the opposite of what the reward-to-risk arithmetic predicts: a
+#: closer stop is hit more often, and the hold duration falls from 11h to 5h
+#: across the range. The 0.00 row reproduces the champion's -0.0340 R, which
+#: is what makes the rest of the column trustworthy.
+#:
+#: Recorded per *signal offered*, with an unfilled signal counted as zero. The
+#: per-fill figure is a selection number: a larger offset fills fewer and more
+#: favourable signals, so it improves even when the account does worse.
+#:
+#: Source: `scripts/study_entry.py`, 3,324 taken signals, 4 markets, 05.10.2026.
+_ENTRY_ROWS: tuple[tuple[float, int, float, float, float, str], ...] = (
+    # offset, fills, net per signal, low, high, note
+    (0.05, 3187, -0.0473, -0.092, -0.001, "95.9% gefuellt, Intervall ohne Null"),
+    (0.10, 3089, -0.0460, -0.092, 0.001, "92.9% gefuellt"),
+    (0.20, 2869, -0.0482, -0.097, 0.002, "86.3% gefuellt"),
+    (0.30, 2654, -0.0603, -0.113, -0.006, "79.8% gefuellt, Intervall ohne Null"),
+    (0.50, 2269, -0.1075, -0.169, -0.046, "68.3% gefuellt, Haltedauer 5h statt 11h"),
+)
+
+ENTRY_OFFSET: tuple[Result, ...] = tuple(
+    Result(
+        arm=f"einstieg_versatz_{offset:.2f}".replace(".", "_"),
+        stage=Stage.TEST,
+        n=3324,
+        mean_r=mean,
+        low=low,
+        high=high,
+        note=f"{note}. Schlechter als die -0.0338 R bei Versatz null.",
+    )
+    for offset, _fills, mean, low, high, note in _ENTRY_ROWS
+)
+
+
 #: Every challenger measured on 05.10.2026, with the number actually obtained.
 #:
 #: Two are recorded in a foreign unit. The forward-score arms produced a rank
@@ -201,6 +245,7 @@ TRIED: tuple[Result, ...] = (
         note="35 Merkmale, p 0.26-0.48. Das Modell waehlte schlechter als der Durchschnitt.",
     ),
     *PANEL,
+    *ENTRY_OFFSET,
 )
 
 

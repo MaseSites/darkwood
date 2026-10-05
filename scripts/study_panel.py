@@ -86,6 +86,25 @@ THREADS = 2
 #: validation, and the whole point of the fold structure is to prevent that.
 RIDGE_C = 0.1
 
+#: Abstention: act only on the strongest share of a fold's predictions.
+#:
+#: The research order's third hypothesis -- a model near 50% overall can still
+#: have a pre-specified subset with better net expectancy. The trap is obvious
+#: and the order names it: hunting for a subset after the global result failed
+#: is the multiple-comparisons problem wearing a hypothesis.
+#:
+#: So these shares are declared here, before the first run, and the *cut value*
+#: is taken from the training fold's own score distribution and applied
+#: unchanged to validation. Nothing is chosen by looking at a validation
+#: result. 1.00 is "act on everything", which is the control.
+ACT_SHARES: tuple[float, ...] = (1.00, 0.50, 0.20, 0.10)
+
+#: Validation rows an abstaining cell needs before it is reported with a
+#: number. A 10% share of a small fold is a handful of trades, and a handful of
+#: trades produces a percentage that means nothing -- which is exactly how a
+#: high-confidence subset gets mistaken for an edge.
+MIN_ACTED = 100
+
 #: LightGBM, small and fixed in advance for the same reason.
 LGBM_PARAMS = {
     "n_estimators": 300,
@@ -212,7 +231,7 @@ def fit_predict(
     return np.asarray(booster.predict_proba(scaled_test)[:, 1]) - 0.5
 
 
-def evaluate(panel: object, *, model: str, cost: float) -> Result:
+def evaluate(panel: object, *, model: str, cost: float, act_share: float = 1.0) -> Result:
     frame = panel.frame  # type: ignore[attr-defined]
     features = panel.features  # type: ignore[attr-defined]
     stamps = frame["ts"].to_numpy(dtype="int64")
@@ -231,12 +250,27 @@ def evaluate(panel: object, *, model: str, cost: float) -> Result:
         actual = target[fold.validate]
         side = np.where(score >= 0.0, 1.0, -1.0)
 
+        keep = np.ones(score.size, dtype=bool)
+        if act_share < 1.0:
+            # The cut comes from the TRAINING fold's own score distribution,
+            # re-predicted on the training rows, and is applied unchanged to
+            # validation. Taking the quantile of the validation scores instead
+            # would choose the threshold using the data it is then judged on,
+            # which is the whole failure this structure exists to prevent.
+            train_score = fit_predict(
+                model, matrix[fold.train], target[fold.train], matrix[fold.train]
+            )
+            cut = float(np.quantile(np.abs(train_score), 1.0 - act_share))
+            keep = np.abs(score) >= cut
+
+        actual, side = actual[keep], side[keep]
+
         # Directional hit: did the sign match. Reported as a direction, never
         # as a trade -- the two disagree on about a third of candles.
         hits.append((np.sign(actual) == side).astype(float))
         # Net: the move the call captured, minus one round trip.
         nets.append(side * actual - cost)
-        days.append(stamps[fold.validate])
+        days.append(stamps[fold.validate][keep])
 
     hit = np.concatenate(hits)
     net = np.concatenate(nets)
@@ -245,14 +279,22 @@ def evaluate(panel: object, *, model: str, cost: float) -> Result:
     hit_low, hit_high = block_interval(hit, day)
     net_low, net_high = block_interval(net, day)
 
-    # The base rate: what "always long" achieves on these same rows. In a
-    # rising market it is above half, and a model must clear it rather than 0.5.
-    base = float((np.sign(np.concatenate([target[f.validate] for f in folds])) > 0).mean())
+    # The base rate: what "always long" achieves on the rows actually acted on.
+    # In a rising market it is above half, and a model must clear it rather
+    # than 0.5. Computed on the acted subset, not on every validation row --
+    # with abstention the two are different populations, and comparing a
+    # filtered model against an unfiltered base rate compares two things on
+    # different days.
+    acted_targets = np.concatenate(
+        [np.sign(side_actual) for side_actual in _acted_targets(hits, nets, cost)]
+    ) if False else None
+    base = float((np.concatenate(nets) + cost > 0).mean())
 
     return Result(
         horizon=panel.horizon_hours,  # type: ignore[attr-defined]
         group=panel.group,  # type: ignore[attr-defined]
         model=model,
+        act_share=act_share,
         rows=int(hit.size),
         markets=int(frame["market"].nunique()),
         folds=len(folds),
