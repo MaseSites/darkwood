@@ -1,35 +1,39 @@
 """Does a learned filter find anything a shuffled one would not?
 
     python scripts/study_filter.py --symbols BTCUSDT
-    python scripts/study_filter.py --symbols BTCUSDT --permutations 50
+    python scripts/study_filter.py --symbols BTCUSDT --permutations 100
 
 Section 8 of the masterplan, measured the way section 11 insists on. Run
 `scripts/study_refused.py` first: this reads the signal ledger it fills.
 
-**The one number that matters.** Not whether the filter looks good -- it will.
-With 2,861 signals and a dozen features, a procedure that fits a model, picks a
-regularisation strength and then picks a threshold has three chances to find
-structure in noise, and section 11 is blunt about what many attempts do to a
-backtest. So the whole pipeline is run again with the training and validation
-targets **shuffled**, several times, and the real result is reported as its
-position in that distribution. A model trained on noise, selected on noise and
-applied to real data is exactly the right null: whatever apparent edge the
-*procedure* manufactures shows up there too.
+**The number that matters is not whether the filter looks good.** It will. With
+a few thousand signals and a dozen features, a procedure that fits a model,
+picks a regularisation strength and then picks a threshold has three chances to
+find structure in noise. So the whole pipeline runs again with the training and
+validation targets **shuffled**, and the real result is reported as its position
+in that distribution. A model trained on noise, selected on noise and applied to
+real outcomes is the right null: whatever apparent edge the *procedure*
+manufactures shows up there too.
 
-If the real test result sits inside the shuffled distribution, there is nothing
-here, and that is the finding. It is also the likeliest outcome and the reason
-this script exists before any filter is wired into the engine.
+**And the number that decides anything is the baseline.** The first run of this
+study reported "+0.1578 R against all signals, p = 0.01", which was true and
+badly misleading: "all signals" includes the roughly 80% the risk rules already
+refuse, and those are measurably bad at net -0.25 R. A filter that avoids them
+only rediscovers the rules. The comparison line is what the system actually
+takes over the same test windows, and it is printed in the middle.
 
-**What it predicts.** Net R, not whether the trade wins. Measured on
-05.10.2026: the signals the reward-to-risk rule refuses hit 58% of the time --
-far more than the 41% the system trades -- and still lose 0.13 R each. A
-classifier trained on "did it win" would put that population at the top. Hit
-rate is printed here only as a diagnostic.
+On BTC on 05.10.2026 the two answers came out opposite ways: zero of a hundred
+shuffled runs matched the filter, so it is learning something real -- and it
+still landed 0.069 R per trade *worse* than the rules it was meant to improve
+on, having found a population with a higher hit rate to get there.
 
-**Where the folds come from.** `learn/splits.py`, with purging and an embargo
-over the real label horizon, because a label covers an interval and a case
-settled inside the evaluation window carries that window in its answer. The
-threshold is chosen on the validation fold and the test fold is read once.
+**What it predicts.** Net R, not whether the trade wins. The signals the
+reward-to-risk rule refuses hit 58% of the time against the 41% the system
+trades, and still lose 0.13 R each. Hit rate is printed only as a diagnostic.
+
+The folds, the purging and the permutation machinery live in
+`traidingbrain.learn.evaluate`, where they are tested -- a p-value this
+load-bearing should not rest on untested code in a script.
 """
 
 from __future__ import annotations
@@ -37,6 +41,7 @@ from __future__ import annotations
 import argparse
 import sys
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,33 +55,15 @@ from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
 from traidingbrain.journal.signals import Action, SignalRecord, SignalStore
-from traidingbrain.learn.features import NAMES, matrix
+from traidingbrain.learn.evaluate import Outcome, evaluate, permutation_null, position
+from traidingbrain.learn.features import row
 from traidingbrain.learn.labels import Label, Minutes, label_signal
-from traidingbrain.learn.model import Ridge, mean_squared_error
-from traidingbrain.learn.splits import DAY_MS, Fold, walk_forward
+from traidingbrain.learn.splits import DAY_MS, walk_forward
 from traidingbrain.reporting.intervals import block_bootstrap
 
-#: Regularisation strengths tried on the validation fold.
-#:
-#: Wide and coarse. A fine grid is more chances to fit the validation fold, and
-#: the permutation null below would absorb that -- but it would also make the
-#: whole run slower for a choice the data cannot support anyway.
-ALPHAS: tuple[float, ...] = (0.1, 1.0, 10.0, 100.0, 1000.0)
-
-#: Fewest signals a threshold may keep, as a share of the validation fold.
-#:
-#: Without a floor the best validation mean is always the single best signal,
-#: and the chosen threshold would keep almost nothing in the test fold. A
-#: filter that trades twice a year is not the thing being looked for.
-MIN_KEPT_SHARE = 0.15
-
-#: Fewest cases a fold needs before it is worth fitting anything.
-#:
-#: A fold with thirty training cases and a dozen features produces a model that
-#: fits them exactly and predicts nothing, and its test fold would then enter
-#: the pooled result as noise with a confident threshold attached.
-MIN_TRAIN = 50
-MIN_VALIDATE = 20
+#: The horizon, the same one the labeller and the embargo use.
+HORIZON_HOURS = 48
+HOUR_MS = 3_600_000
 
 #: Fewest resolved cases in total before a walk-forward is attempted.
 MIN_CASES = 200
@@ -85,10 +72,6 @@ MIN_CASES = 200
 #: lying inside the null distribution.
 INSIDE = 0.05
 
-#: The horizon, the same one the labeller and the embargo use.
-HORIZON_HOURS = 48
-HOUR_MS = 3_600_000
-
 TRAIN_DAYS = 360.0
 VALIDATE_DAYS = 90.0
 TEST_DAYS = 90.0
@@ -96,7 +79,7 @@ TEST_DAYS = 90.0
 
 @dataclass(frozen=True)
 class Case:
-    """A labelled signal, with the two timestamps the splitter needs."""
+    """A labelled signal, shaped the way `learn.evaluate` reads it."""
 
     record: SignalRecord
     label: Label
@@ -109,6 +92,19 @@ class Case:
     def closed_ts(self) -> int:
         return self.label.closed_ts
 
+    @property
+    def target(self) -> float:
+        return self.label.net_r
+
+    @cached_property
+    def features(self) -> list[float]:
+        """Cached because the permutation runs read every case many times."""
+        return row(self.record)
+
+    @property
+    def taken(self) -> bool:
+        return self.record.action is Action.TAKEN
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -118,9 +114,9 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=30,
         help=(
-            "How many shuffled-label runs form the null. Thirty gives a "
-            "resolution of about three percent on the position, which is "
-            "enough to tell inside from outside."
+            "How many shuffled-label runs form the null. The smallest p it can "
+            "report is 1/(runs+1), so thirty bottoms out at 0.032 and a hundred "
+            "at 0.010 -- the resolution is a choice, not a result."
         ),
     )
     return parser.parse_args()
@@ -159,6 +155,7 @@ def load_cases(symbols: list[str], config: object) -> list[Case]:
         minutes = Minutes.of(frame)
         rates = funding_store.read(symbol)
         spec = SymbolSpec(symbol=symbol, **DEFAULT_SPEC)
+        before = len(cases)
         for record in records:
             label = label_signal(
                 side=record.side,
@@ -175,156 +172,64 @@ def load_cases(symbols: list[str], config: object) -> list[Case]:
             )
             if label.resolved:
                 cases.append(Case(record=record, label=label))
-        print(f"{symbol}: {len(records)} Signale, {len(cases)} aufgeloest", flush=True)
-    return sorted(cases, key=lambda c: c.opened_ts)
+        print(f"{symbol}: {len(records)} Signale, {len(cases) - before} aufgeloest", flush=True)
+    return sorted(cases, key=lambda case: case.opened_ts)
 
 
-def choose(
-    train: list[Case], validate: list[Case], target: np.ndarray, rng: np.random.Generator | None
-) -> tuple[Ridge, float] | None:
-    """Fit on training, then pick alpha and the threshold on validation.
-
-    `rng` shuffles the training and validation targets, which is what makes the
-    null. The test fold is never touched by it: the null is a model that learned
-    nothing, applied to real outcomes.
-    """
-    if len(train) < MIN_TRAIN or len(validate) < MIN_VALIDATE:
-        return None
-
-    y = target[: len(train)].copy()
-    y_validate = target[len(train) : len(train) + len(validate)].copy()
-    if rng is not None:
-        rng.shuffle(y)
-        rng.shuffle(y_validate)
-
-    x_train = matrix([case.record for case in train])
-    x_validate = matrix([case.record for case in validate])
-
-    best: tuple[float, Ridge, float] | None = None
-    floor = max(5, int(MIN_KEPT_SHARE * len(validate)))
-    for alpha in ALPHAS:
-        model = Ridge.fit(x_train, y, names=NAMES, alpha=alpha)
-        predicted = model.predict(x_validate)
-        # Every observed prediction is a candidate threshold. Keeping the ones
-        # at or above it, the score is the mean realised net R of what is kept --
-        # subject to keeping enough of them to be a strategy rather than an
-        # anecdote.
-        for threshold in np.unique(predicted):
-            kept = predicted >= threshold
-            if int(kept.sum()) < floor:
-                continue
-            score = float(y_validate[kept].mean())
-            if best is None or score > best[0]:
-                best = (score, model, float(threshold))
-    if best is None:
-        return None
-    return best[1], best[2]
-
-
-def run_once(
-    folds: tuple[Fold, ...], cases: list[Case], *, rng: np.random.Generator | None
-) -> tuple[list[float], list[float], list[float], float]:
-    """One pass over every fold.
-
-    Returns the filter's kept net R, the system's own taken net R, every net R,
-    and the prediction error -- all restricted to the test windows, because a
-    baseline measured over a different period is not a baseline.
-    """
-    kept_net: list[float] = []
-    taken_net: list[float] = []
-    all_net: list[float] = []
-    errors: list[float] = []
-
-    for fold in folds:
-        train, _purge = fold.training(cases)
-        validate = fold.within(cases, fold.validate)
-        test = fold.within(cases, fold.test)
-        if not test:
-            continue
-        ordered = [*train, *validate]  # type: ignore[list-item]
-        target = np.array([case.label.net_r for case in ordered], dtype="float64")
-        picked = choose(train, validate, target, rng)  # type: ignore[arg-type]
-        if picked is None:
-            continue
-        model, threshold = picked
-
-        x_test = matrix([case.record for case in test])
-        predicted = model.predict(x_test)
-        actual = np.array([case.label.net_r for case in test], dtype="float64")
-        errors.append(mean_squared_error(predicted, actual))
-        all_net.extend(actual.tolist())
-        kept_net.extend(actual[predicted >= threshold].tolist())
-        taken_net.extend(case.label.net_r for case in test if case.record.action is Action.TAKEN)
-
+def line(name: str, values: list[float]) -> str:
+    if not values:
+        return f"  {name:22s} keine"
+    hits = 100 * sum(1 for value in values if value > 0) / len(values)
+    interval = block_bootstrap(values)
+    bounds = interval.labelled() if interval is not None else "zu wenige"
     return (
-        kept_net,
-        taken_net,
-        all_net,
-        float(np.mean(errors)) if errors else float("nan"),
+        f"  {name:22s} n={len(values):5d}  netto {sum(values) / len(values):+.4f} R  "
+        f"Treffer {hits:3.0f}%  {bounds}"
     )
 
 
-def report(
-    kept: list[float],
-    taken: list[float],
-    everything: list[float],
-    *,
-    mse: float,
-    null: list[float],
-    runs: int,
-) -> None:
+def report(outcome: Outcome, null: list[float], runs: int) -> None:
     print("\n" + "=" * 78)
-    if not everything:
+    if not outcome.everything:
         print("Keine Testfaelle -- zu wenig Historie fuer die Fenster")
         return
 
-    def row(name: str, values: list[float]) -> str:
-        if not values:
-            return f"  {name:22s} keine"
-        hits = 100 * sum(1 for v in values if v > 0) / len(values)
-        interval = block_bootstrap(values)
-        bounds = interval.labelled() if interval is not None else "zu wenige"
-        return (
-            f"  {name:22s} n={len(values):5d}  netto {sum(values) / len(values):+.4f} R  "
-            f"Treffer {hits:3.0f}%  {bounds}"
-        )
-
     print("Nur Testfenster, jedes einmal gelesen, Schwelle auf der Validierung gewaehlt.\n")
-    print(row("alle Signale", everything))
-    print(row("vom System genommen", taken))
-    print(row("vom Filter behalten", kept))
+    print(line("alle Signale", outcome.everything))
+    print(line("vom System genommen", outcome.taken))
+    print(line("vom Filter behalten", outcome.kept))
 
-    if kept:
-        share = 100 * len(kept) / len(everything)
-        over_all = sum(kept) / len(kept) - sum(everything) / len(everything)
+    if outcome.kept:
+        share = 100 * len(outcome.kept) / len(outcome.everything)
+        over_all = outcome.mean(outcome.kept) - outcome.mean(outcome.everything)
         print(f"\n  behalten {share:.0f}% der Signale")
         print(f"  gegen alle Signale        {over_all:+.4f} R pro Trade")
-        if taken:
-            over_taken = sum(kept) / len(kept) - sum(taken) / len(taken)
-            print(f"  gegen die heutigen Regeln {over_taken:+.4f} R pro Trade", end="")
-            print("  <- die einzige Zeile, die zaehlt" if over_taken > 0 else "  <- schlechter")
-    print(f"  mittlerer quadratischer Fehler der Vorhersage {mse:.4f}")
+        if outcome.taken:
+            lift = outcome.lift_over_taken
+            verdict = "  <- die einzige Zeile, die zaehlt" if lift > 0 else "  <- schlechter"
+            print(f"  gegen die heutigen Regeln {lift:+.4f} R pro Trade{verdict}")
+    print(f"  mittlerer quadratischer Fehler der Vorhersage {outcome.error:.4f}")
 
     print(
-        "\n  'Alle Signale' enthaelt die 80%, die die Risikoregeln ohnehin ablehnen,\n"
-        "  und die sind messbar schlecht. Ein Filter, der sie vermeidet, entdeckt\n"
-        "  nur die Regeln neu. Die Vergleichslinie ist deshalb die mittlere Zeile."
+        "\n  'Alle Signale' enthaelt die rund 80%, die die Risikoregeln ohnehin\n"
+        "  ablehnen, und die sind messbar schlecht. Ein Filter, der sie vermeidet,\n"
+        "  entdeckt nur die Regeln neu. Die Vergleichslinie ist die mittlere Zeile."
     )
 
     print(f"\n--- und derselbe Ablauf mit gewuerfelten Labels, {runs} mal ---")
     if not null:
         print("  kein einziger Durchlauf lieferte Testfaelle")
         return
-    real = sum(kept) / len(kept) if kept else float("nan")
-    better = sum(1 for value in null if value >= real)
+    real = outcome.mean(outcome.kept)
+    better, p_value = position(real, null)
     print(
         f"  gewuerfelt: Mittel {np.mean(null):+.4f} R, "
         f"Bandbreite [{min(null):+.4f}, {max(null):+.4f}]"
     )
     print(f"  echt:       {real:+.4f} R")
-    p_value = (better + 1) / (len(null) + 1)
     print(
-        f"  {better} von {len(null)} Zufallslaeufen waren mindestens so gut  ->  p ~ {p_value:.3f}"
+        f"  {better} von {len(null)} Zufallslaeufen waren mindestens so gut"
+        f"  ->  p ~ {p_value:.3f}  (kleinstmoeglich {1 / (len(null) + 1):.3f})"
     )
     if better > INSIDE * len(null):
         print(
@@ -334,9 +239,10 @@ def report(
         )
     else:
         print(
-            "\n  Das echte Ergebnis liegt ausserhalb der Zufallsverteilung. Das ist\n"
-            "  ein Kandidat: als naechstes derselbe Filter als Backtest-Arm mit\n"
-            "  Belegung, gemessen wie die anderen sieben Hebel."
+            "\n  Das echte Ergebnis liegt ausserhalb der Zufallsverteilung, das\n"
+            "  Verfahren findet also Struktur. Ob die gefundene Struktur besser ist\n"
+            "  als die Regeln, die wir schon haben, sagt allein die mittlere Zeile\n"
+            "  oben. Das sind zwei verschiedene Fragen."
         )
 
 
@@ -368,22 +274,9 @@ def main() -> int:
         _train, purge = fold.training(cases)
         print(f"  {fold.describe()}\n  {purge.summary()}")
 
-    kept, taken, everything, mse = run_once(plan.folds, cases, rng=None)
-
-    null: list[float] = []
-    for i in range(args.permutations):
-        shuffled_kept, _t, _a, _m = run_once(plan.folds, cases, rng=np.random.default_rng(1000 + i))
-        if shuffled_kept:
-            null.append(sum(shuffled_kept) / len(shuffled_kept))
-
-    report(
-        kept,
-        taken,
-        everything,
-        mse=mse,
-        null=null,
-        runs=args.permutations,
-    )
+    outcome = evaluate(plan.folds, cases)
+    null = permutation_null(plan.folds, cases, runs=args.permutations)
+    report(outcome, null, args.permutations)
     return 0
 
 

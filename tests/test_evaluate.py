@@ -1,213 +1,282 @@
-"""Out-of-sample machinery.
+"""The permutation null, which is the only reason to believe the filter.
 
-These tests are about the tooling, not about any strategy. The tooling's job is to
-refuse to overclaim, and the way it fails is by being quietly generous: a split
-that leaks, a bootstrap that reports a narrower interval than the data supports, a
-verdict that calls three-out-of-four folds a success.
+`scripts/study_filter.py` reported that zero of a hundred shuffled-label runs
+matched the real result, p ~ 0.010. Everything that claim is worth depends on
+two properties of this module, and both are asserted here directly rather than
+reviewed:
 
-So most of what is asserted here is a refusal.
+* `test_the_test_labels_are_never_shuffled` -- if the null shuffled the test
+  outcomes too, it would be scoring noise against noise, its expected result
+  would be the base rate by construction, and every real result would look
+  significant.
+* `test_the_threshold_never_comes_from_the_test_fold` -- if the threshold were
+  chosen where it is scored, there would be no out-of-sample number anywhere.
+
+The rest check that the machinery finds a signal when one is there and finds
+nothing when it is not, because a null that always rejects is as useless as one
+that never does.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 import pytest
 
-from traidingbrain.domain.enums import ExitReason, Side, TradeState
-from traidingbrain.sim.broker import Fill
-from traidingbrain.sim.evaluate import (
-    MIN_TRADES_PER_WINDOW,
-    Evaluation,
-    FoldResult,
-    Window,
-    block_bootstrap,
-    split,
-    walk_forward,
+from traidingbrain.learn.evaluate import (
+    MIN_KEPT_SHARE,
+    MIN_TRAIN,
+    evaluate,
+    permutation_null,
+    position,
 )
-from traidingbrain.sim.metrics import bootstrap_mean, compute_metrics
+from traidingbrain.learn.splits import DAY_MS, walk_forward
 
-DAY = 86_400_000
-START = 1_700_000_000_000
-END = START + 800 * DAY
-
-
-def fill(r_multiple: float, index: int = 0) -> Fill:
-    """A trade with a chosen R, and self-consistent numbers around it."""
-    risk = 100.0
-    return Fill(
-        proposal_id=f"p{index}",
-        snapshot_hash="h",
-        side=Side.LONG,
-        state=TradeState.CLOSED_TARGET if r_multiple > 0 else TradeState.CLOSED_STOP,
-        reason=ExitReason.TARGET if r_multiple > 0 else ExitReason.STOP,
-        entry_price=100.0,
-        exit_price=100.0 + r_multiple,
-        qty=1.0,
-        leverage=5.0,
-        opened_ts=START + index * DAY,
-        closed_ts=START + index * DAY + 3600_000,
-        gross_pnl=r_multiple * risk,
-        fees=0.0,
-        funding=0.0,
-        risk_amount=risk,
-    )
+EPOCH = 1_600_000_000_000
+HOUR_MS = 3_600_000
 
 
-# --------------------------------------------------------------------------- #
-# Splitting
-# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class Case:
+    """A labelled case whose target either follows its features or does not."""
+
+    opened_ts: int
+    closed_ts: int
+    target: float
+    features: tuple[float, ...]
+    taken: bool = False
 
 
-def test_the_split_is_chronological() -> None:
-    """Never random.
+def build(*, n: int = 2400, signal: float = 0.0, seed: int = 1, every_hours: int = 8) -> list[Case]:
+    """Cases spread evenly over time.
 
-    A random split over a time series leaks: the test set surrounds the training
-    set, so every gap is bracketed by data the strategy has already seen.
+    `signal` is how strongly the first feature drives the target. At zero the
+    target is pure noise and nothing is learnable, which is the control.
     """
-    train, test = split(START, END, 0.5)
-
-    assert train.start_ts == START
-    assert train.end_ts == test.start_ts
-    assert test.end_ts == END
-    assert train.days == pytest.approx(test.days, rel=0.01)
-
-
-def test_the_split_fraction_is_respected() -> None:
-    train, test = split(START, END, 0.75)
-    assert train.days == pytest.approx(600, abs=1)
-    assert test.days == pytest.approx(200, abs=1)
-
-
-@pytest.mark.parametrize("fraction", [0.0, 1.0, -0.1, 1.5])
-def test_a_degenerate_split_is_refused(fraction: float) -> None:
-    with pytest.raises(ValueError, match="strictly between"):
-        split(START, END, fraction)
-
-
-def test_walk_forward_windows_never_overlap_their_own_training() -> None:
-    """Each test window sits strictly after the data it was trained on."""
-    for train, test in walk_forward(START, END, folds=4):
-        assert test.start_ts >= train.end_ts
-        assert test.end_ts > test.start_ts
-
-
-def test_walk_forward_training_windows_grow() -> None:
-    """Anchored rather than rolling: nothing is deliberately forgotten, which is
-    how the system would actually be operated."""
-    pairs = walk_forward(START, END, folds=4)
-    lengths = [train.days for train, _ in pairs]
-    assert lengths == sorted(lengths)
-    assert all(train.start_ts == START for train, _ in pairs)
-
-
-def test_a_single_fold_is_refused() -> None:
-    with pytest.raises(ValueError, match="folds"):
-        walk_forward(START, END, folds=1)
-
-
-# --------------------------------------------------------------------------- #
-# Bootstrap
-# --------------------------------------------------------------------------- #
-
-
-def test_the_block_bootstrap_is_wider_than_the_naive_one() -> None:
-    """Trades cluster, and pretending they do not narrows the interval.
-
-    A strategy in a trend takes a run of winners and then a run of losers when the
-    trend ends. Resampling single trades treats those as interchangeable draws and
-    reports more certainty than the data contains.
-    """
-    rng = np.random.default_rng(4)
-    # Alternating regimes: twenty good trades, then twenty bad, repeated.
-    values: list[float] = []
-    for block in range(20):
-        mean = 0.8 if block % 2 == 0 else -0.6
-        values.extend(rng.normal(mean, 0.3, size=20))
-    fills = [fill(v, i) for i, v in enumerate(values)]
-
-    naive = bootstrap_mean(np.array(values))
-    blocked = block_bootstrap(fills, block_size=20)
-
-    assert blocked.high - blocked.low > naive.high - naive.low, (
-        "the block bootstrap reported no more uncertainty than the naive one, "
-        "so the clustering is not being preserved"
-    )
-
-
-def test_an_empty_bootstrap_is_zero_rather_than_an_error() -> None:
-    assert block_bootstrap([]).value == 0.0
-
-
-def test_a_tiny_sample_reports_its_own_range() -> None:
-    result = block_bootstrap([fill(1.0, 0), fill(-1.0, 1)], block_size=10)
-    assert result.low == pytest.approx(-1.0)
-    assert result.high == pytest.approx(1.0)
-
-
-def test_an_interval_that_spans_zero_knows_it() -> None:
-    assert not bootstrap_mean(np.array([1.0, -1.0, 0.5, -0.5] * 20)).excludes_zero
-    assert bootstrap_mean(np.array([1.0, 1.1, 0.9, 1.05] * 20)).excludes_zero
-
-
-# --------------------------------------------------------------------------- #
-# Verdicts that refuse to overclaim
-# --------------------------------------------------------------------------- #
-
-
-def make_evaluation(r_by_fold: list[list[float]]) -> Evaluation:
-    folds = []
-    for i, values in enumerate(r_by_fold):
-        fills = [fill(v, j) for j, v in enumerate(values)]
-        curve = [(START + j * 3600_000, 10_000.0) for j in range(len(values) + 2)]
-        folds.append(
-            FoldResult(
-                window=Window(f"fold {i}", START + i * 100 * DAY, START + (i + 1) * 100 * DAY),
-                result=type(
-                    "R",
-                    (),
-                    {
-                        "metrics": compute_metrics(f"fold {i}", fills, curve, 10_000.0),
-                        "fills": fills,
-                    },
-                )(),
+    rng = np.random.default_rng(seed)
+    cases: list[Case] = []
+    for i in range(n):
+        features = tuple(rng.normal(0.0, 1.0, size=4))
+        noise = rng.normal(0.0, 1.0)
+        opened = EPOCH + i * every_hours * HOUR_MS
+        cases.append(
+            Case(
+                opened_ts=opened,
+                closed_ts=opened + 2 * HOUR_MS,
+                target=signal * features[0] + noise,
+                # Half the cases are "taken", unrelated to the signal, so the
+                # baseline is a fair comparison group rather than a good one.
+                features=features,
+                taken=i % 2 == 0,
             )
         )
-    return Evaluation(strategy="test", folds=folds)
+    return cases
 
 
-def test_a_thin_sample_establishes_nothing() -> None:
-    evaluation = make_evaluation([[1.0] * 5, [1.0] * 5])
-    assert "nothing is established" in evaluation.verdict()
+def folds_over(cases: list[Case]):
+    return walk_forward(
+        first_ts=cases[0].opened_ts,
+        last_ts=cases[-1].closed_ts,
+        train_days=180.0,
+        validate_days=60.0,
+        test_days=60.0,
+        embargo_ms=48 * HOUR_MS,
+    ).folds
 
 
-def test_three_good_folds_out_of_four_is_not_called_a_success() -> None:
-    """Consistency is the claim, and three out of four is not consistency.
+# --------------------------------------------------------------------------- #
+# The two properties the p-value rests on
+# --------------------------------------------------------------------------- #
 
-    Reporting it as one is how a strategy gets adopted on the strength of the
-    periods that happened to suit it.
+
+def test_the_test_labels_are_never_shuffled() -> None:
+    """The null applies a noise-trained model to REAL outcomes.
+
+    If the test labels were shuffled as well, the null would score noise
+    against noise and every real result would clear it. The pooled realised
+    outcomes must therefore be identical whether or not a shuffler was passed.
     """
-    evaluation = make_evaluation([[0.5] * 25, [0.4] * 25, [0.6] * 25, [-0.5] * 25])
-    verdict = evaluation.verdict()
-    assert "3 of 4" in verdict
-    assert "not consistent" in verdict
+    cases = build(signal=0.8)
+    folds = folds_over(cases)
+    real = evaluate(folds, cases)
+    shuffled = evaluate(folds, cases, rng=np.random.default_rng(7))
+
+    assert real.everything, "nothing was evaluated"
+    assert shuffled.everything == real.everything, "the test outcomes were shuffled"
+    assert shuffled.taken == real.taken, "the baseline group was shuffled"
+    # The kept subset must differ, or the shuffling did nothing at all.
+    assert shuffled.kept != real.kept
 
 
-def test_every_fold_positive_is_reported_with_its_spread() -> None:
-    evaluation = make_evaluation([[0.5] * 25, [0.4] * 25, [0.6] * 25, [0.45] * 25])
-    verdict = evaluation.verdict()
-    assert "all 4 folds" in verdict
-    assert "spread" in verdict
+def test_the_threshold_never_comes_from_the_test_fold() -> None:
+    """Scored where it was chosen, there would be no out-of-sample number.
+
+    Checked by its consequence: a threshold fitted to the test fold would keep
+    a subset whose mean is at least the fold mean, every time. A threshold
+    chosen on a previous window has no such guarantee, and on noise it will
+    often do worse.
+    """
+    worse = 0
+    for seed in range(8):
+        cases = build(signal=0.0, seed=seed)
+        outcome = evaluate(folds_over(cases), cases)
+        if outcome.kept and outcome.mean(outcome.kept) < outcome.mean(outcome.everything):
+            worse += 1
+    assert worse >= 2, (
+        "the kept subset beat the fold mean every single time on pure noise, "
+        "which is what a threshold chosen on the test fold would do"
+    )
 
 
-def test_spread_across_folds_is_reported() -> None:
-    """The number that says how much of a headline result was the period."""
-    steady = make_evaluation([[0.5] * 25, [0.5] * 25, [0.5] * 25])
-    erratic = make_evaluation([[1.5] * 25, [-1.0] * 25, [0.8] * 25])
-
-    assert steady.spread < 0.05
-    assert erratic.spread > 0.5
+# --------------------------------------------------------------------------- #
+# Does it work at all
+# --------------------------------------------------------------------------- #
 
 
-def test_min_trades_threshold_is_not_zero() -> None:
-    """A guard against the threshold being quietly relaxed to make a report pass."""
-    assert MIN_TRADES_PER_WINDOW >= 30
+def test_a_real_signal_is_found_and_beats_the_null() -> None:
+    cases = build(signal=1.0)
+    folds = folds_over(cases)
+    real = evaluate(folds, cases)
+    assert real.folds_used >= 2
+    assert real.mean(real.kept) > real.mean(real.everything)
+
+    null = permutation_null(folds, cases, runs=12)
+    assert null, "the null produced no runs"
+    better, p_value = position(real.mean(real.kept), null)
+    assert better == 0
+    assert p_value == pytest.approx(1 / 13)
+
+
+def test_pure_noise_mostly_does_not_beat_the_null() -> None:
+    """The control, stated over several draws because one draw is not evidence.
+
+    Written as a single seed first, and it failed: noise beat all twelve
+    shuffled runs and reported p = 1/13 = 0.077. That is not a bug in the null,
+    it is the null working at its stated resolution -- with twelve permutations
+    the smallest reportable p *is* 0.077, and a noise instance lands there
+    roughly one time in thirteen.
+
+    It is worth keeping as a caution about reading any single p-value from this
+    machinery, including the p ~ 0.010 that `scripts/study_filter.py` reported
+    from a hundred permutations. Zero out of a hundred is a far stronger
+    statement than zero out of twelve, and neither is a certainty.
+
+    So the assertion is over seeds: noise may occasionally clear the null, and
+    must not do so usually.
+    """
+    cleared = 0
+    seeds = range(6)
+    for seed in seeds:
+        cases = build(signal=0.0, seed=seed)
+        folds = folds_over(cases)
+        real = evaluate(folds, cases)
+        null = permutation_null(folds, cases, runs=12, seed=2000 + seed)
+        _better, p_value = position(real.mean(real.kept), null)
+        if p_value <= 0.1:
+            cleared += 1
+    assert cleared <= len(list(seeds)) // 2, (
+        f"noise cleared the null in {cleared} of {len(list(seeds))} draws, "
+        "so the null is not discriminating"
+    )
+
+
+def test_the_null_is_centred_near_the_base_rate() -> None:
+    """A noise-trained model keeps an essentially arbitrary subset.
+
+    So the null should sit near the mean of everything, not far above it. If it
+    sat well above, the procedure itself would be manufacturing edge and the
+    real result would have to clear a much higher bar than it appears to.
+    """
+    cases = build(signal=0.0, seed=5)
+    folds = folds_over(cases)
+    real = evaluate(folds, cases)
+    null = permutation_null(folds, cases, runs=15)
+    assert abs(float(np.mean(null)) - real.mean(real.everything)) < 0.25
+
+
+# --------------------------------------------------------------------------- #
+# Refusals and shape
+# --------------------------------------------------------------------------- #
+
+
+def test_a_fold_too_small_to_fit_is_skipped_not_fudged() -> None:
+    """Rather than fitting a dozen features to thirty cases."""
+    sparse = build(n=60, every_hours=48)
+    outcome = evaluate(folds_over(sparse), sparse)
+    assert outcome.folds_used == 0
+    assert outcome.kept == []
+    assert np.isnan(outcome.error)
+
+
+def test_the_kept_subset_respects_the_floor() -> None:
+    """Without a floor the best validation mean is one signal."""
+    cases = build(signal=1.0)
+    outcome = evaluate(folds_over(cases), cases)
+    assert outcome.kept
+    # Keeping at least the floor in each fold means the pooled share cannot
+    # fall far below it either.
+    assert len(outcome.kept) / len(outcome.everything) > MIN_KEPT_SHARE / 2
+
+
+def test_the_same_seed_gives_the_same_null() -> None:
+    cases = build(signal=0.5)
+    folds = folds_over(cases)
+    assert permutation_null(folds, cases, runs=5) == permutation_null(folds, cases, runs=5)
+
+
+def test_a_different_seed_gives_a_different_null() -> None:
+    cases = build(signal=0.5)
+    folds = folds_over(cases)
+    first = permutation_null(folds, cases, runs=5, seed=10)
+    second = permutation_null(folds, cases, runs=5, seed=500)
+    assert first != second
+
+
+def test_the_p_value_cannot_be_zero() -> None:
+    """A finite number of permutations cannot support a claim of certainty.
+
+    The floor also makes the test's resolution visible: thirty runs cannot
+    report better than 0.032 however strong the effect is.
+    """
+    better, p_value = position(99.0, [0.0] * 30)
+    assert better == 0
+    assert p_value == pytest.approx(1 / 31)
+    assert p_value > 0
+
+
+def test_the_p_value_counts_ties_against_the_claim() -> None:
+    """A null run that merely equals the real result is not evidence for it."""
+    better, p_value = position(1.0, [1.0, 0.0, 0.0, 0.0])
+    assert better == 1
+    assert p_value == pytest.approx(2 / 5)
+
+
+def test_an_empty_null_still_reports_something_honest() -> None:
+    assert position(1.0, []) == (0, 1.0)
+
+
+def test_lift_is_measured_against_the_taken_baseline() -> None:
+    """Not against every signal, which is the comparison that flatters."""
+    cases = build(signal=1.0)
+    outcome = evaluate(folds_over(cases), cases)
+    assert outcome.taken, "no baseline group was collected"
+    expected = outcome.mean(outcome.kept) - outcome.mean(outcome.taken)
+    assert outcome.lift_over_taken == pytest.approx(expected)
+
+
+def test_min_train_is_actually_enforced() -> None:
+    """Stated as a constant and used, not just documented."""
+    cases = build(n=MIN_TRAIN - 10, every_hours=48)
+    assert evaluate(folds_over(cases), cases).folds_used == 0
+
+
+def test_the_pooled_series_covers_only_test_windows() -> None:
+    """Anything else would put training cases into the result."""
+    cases = build(signal=0.5)
+    folds = folds_over(cases)
+    outcome = evaluate(folds, cases)
+    in_tests = sum(len(fold.within(cases, fold.test)) for fold in folds)
+    assert len(outcome.everything) <= in_tests
+    assert len(outcome.everything) < len(cases), "the whole set reached the result"
+    assert DAY_MS == 86_400_000

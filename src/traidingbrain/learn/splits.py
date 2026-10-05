@@ -120,7 +120,7 @@ class Fold:
     test: Window
     embargo_ms: int
 
-    def training(self, cases: Iterable[Case]) -> tuple[list[Case], Purge]:
+    def training[C: Case](self, cases: Iterable[C]) -> tuple[list[C], Purge]:
         """The training cases that may be used, and an account of the rest.
 
         A case has to have opened inside the training window and closed early
@@ -130,7 +130,7 @@ class Fold:
         just as surely, one step further back.
         """
         cutoff = self.validate.start_ts - self.embargo_ms
-        kept: list[Case] = []
+        kept: list[C] = []
         overlapped = 0
         embargoed = 0
         for case in cases:
@@ -144,7 +144,7 @@ class Fold:
                 kept.append(case)
         return kept, Purge(kept=len(kept), overlapped=overlapped, embargoed=embargoed)
 
-    def within(self, cases: Iterable[Case], window: Window) -> list[Case]:
+    def within[C: Case](self, cases: Iterable[C], window: Window) -> list[C]:
         """Cases decided inside a window, in time order.
 
         Evaluation windows are not purged. A case opened inside the test window
@@ -234,7 +234,7 @@ def walk_forward(
     return Plan(folds=tuple(folds), holdout=holdout)
 
 
-def pooled_test_cases(plan: Plan, cases: Sequence[Case]) -> list[Case]:
+def pooled_test_cases[C: Case](plan: Plan, cases: Sequence[C]) -> list[C]:
     """Every case scored in some fold's test window, each counted once.
 
     Pooling across folds is how a walk-forward produces one number, and it is
@@ -244,7 +244,7 @@ def pooled_test_cases(plan: Plan, cases: Sequence[Case]) -> list[Case]:
     the caller gets a count it can compare against the sum of the folds.
     """
     seen: set[tuple[int, int]] = set()
-    out: list[Case] = []
+    out: list[C] = []
     for fold in plan.folds:
         for case in fold.within(cases, fold.test):
             key = (case.opened_ts, case.closed_ts)
