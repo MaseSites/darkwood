@@ -1,0 +1,220 @@
+"""The ratchet: who the champion is, what has been tried, what it would take.
+
+    python scripts/ratchet.py                 # show the state
+    python scripts/ratchet.py --seed          # write today's history, once
+
+Severin asked how to trade so that it only gets better from here. No strategy
+can promise that; a process can. This is the process made visible: one frozen
+champion, every challenger ever tried including the failures, and a reserved
+window nobody may look at during exploration.
+
+**Why the failures are the valuable rows.** Eight hypotheses were measured on
+05.10.2026 and all eight failed. Had the best-looking of the eight been shipped,
+noise would have been shipped -- with eight attempts, the best of eight looks
+good by construction. A register that held only winners would report a selected
+sample as if it were the whole, which is worse than no register. So `--seed`
+writes all eight.
+
+**Why they are filed as TEST and not as HOLDOUT, which is the subtle part.**
+Those eight were measured on walk-forward test folds, read over and over as
+each new idea arrived. The reserved holdout has never been consulted -- every
+study in this project passed `holdout_days=0`. So the next holdout consultation
+really is the first, and it gets the full confidence budget.
+
+That is not a loophole, it is what a holdout is for: selecting a candidate on
+earlier data is free, because the holdout is untouched. What costs is reading
+the holdout itself, which is why `Register.consultations()` counts those and
+tightens the bar each time.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from traidingbrain.config.settings import load_config
+from traidingbrain.journal.version import run_signature
+from traidingbrain.learn.register import (
+    FAMILY_CONFIDENCE,
+    MIN_HOLDOUT_TRADES,
+    Register,
+    Result,
+    Stage,
+)
+
+#: What the system does today, measured over four markets and 3,300 taken
+#: signals on 05.10.2026 (`scripts/study_refused.py --symbols
+#: BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT`). This is the number to beat.
+CHAMPION = Result(
+    arm="heutige_konfiguration",
+    stage=Stage.TEST,
+    n=3300,
+    mean_r=-0.0340,
+    low=-0.080,
+    high=0.012,
+    note="4 Maerkte, 12.843 gelabelte Signale, Setups A/B/E/F/G, M15, Kostendeckel 0.15",
+)
+
+#: Every challenger measured on 05.10.2026, with the number actually obtained.
+#:
+#: Two are recorded in a foreign unit. The forward-score arms produced a rank
+#: correlation, not an expectancy, and `Register.judge` refuses to let a
+#: foreign unit crown anything -- but the attempt is real and has to be
+#: countable, because the count is what a later threshold is corrected for.
+TRIED: tuple[Result, ...] = (
+    Result(
+        arm="gebuehr_minus_10",
+        stage=Stage.TEST,
+        n=3300,
+        mean_r=-0.0291,
+        low=-0.075,
+        high=0.017,
+        note="BNB-Rabatt. Besser, aber die Null liegt bei 69% Rabatt.",
+    ),
+    Result(
+        arm="gebuehr_minus_25",
+        stage=Stage.TEST,
+        n=3300,
+        mean_r=-0.0217,
+        low=-0.067,
+        high=0.024,
+        note="VIP 1 + BNB. Reicht nicht; selbst bei Gebuehr null nur +0.0151 R.",
+    ),
+    Result(
+        arm="lernfilter",
+        stage=Stage.TEST,
+        n=433,
+        mean_r=-0.0605,
+        low=-0.230,
+        high=0.100,
+        note=(
+            "Findet echte Struktur (0 von 100 Zufallslaeufen, p ~ 0.010) und ist "
+            "0.0689 R schlechter als die bestehenden Regeln. Zwei verschiedene Fragen."
+        ),
+    ),
+    Result(
+        arm="zieldeckel_1_75R",
+        stage=Stage.TEST,
+        n=549,
+        mean_r=-0.0201,
+        low=-0.160,
+        high=0.120,
+        note="Trefferquote stieg 38.6% -> 41.9%, pro Trade schlechter. Hit rate taeuscht.",
+    ),
+    Result(
+        arm="chance_risiko_regel_lockern",
+        stage=Stage.TEST,
+        n=4745,
+        mean_r=-0.1334,
+        low=-0.047,
+        high=0.012,
+        note="Abgelehnte treffen 55% und verlieren 0.13 R. Die Regel hat recht.",
+    ),
+    Result(
+        arm="kostenregel_lockern",
+        stage=Stage.TEST,
+        n=4726,
+        mean_r=-0.2996,
+        low=-0.099,
+        high=-0.011,
+        note="Schlechteste Gruppe im Protokoll, Intervall ohne Null. Die Regel hat recht.",
+    ),
+    Result(
+        arm="mehr_plaetze",
+        stage=Stage.EXPLORE,
+        n=0,
+        mean_r=0.0,
+        low=0.0,
+        high=0.0,
+        unit="nicht messbar",
+        note=(
+            "max_open_positions ist toter Konfigurationstext; SimBroker hat einen Platz, "
+            "hart im Code. 1 von 24 belegt. Nicht als Arm messbar ohne Umbau."
+        ),
+    ),
+    Result(
+        arm="vorhersage_5h",
+        stage=Stage.TEST,
+        n=34400,
+        mean_r=0.0039,
+        low=0.0,
+        high=0.0,
+        unit="Rangkorrelation",
+        note="35 Merkmale, p 0.52-0.58. Bei null ist jede Bandbreite gleich gut.",
+    ),
+    Result(
+        arm="vorhersage_10h",
+        stage=Stage.TEST,
+        n=34395,
+        mean_r=0.0045,
+        low=0.0,
+        high=0.0,
+        unit="Rangkorrelation",
+        note="35 Merkmale, p 0.26-0.48. Das Modell waehlte schlechter als der Durchschnitt.",
+    ),
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--seed",
+        action="store_true",
+        help="Write the champion and today's nine attempts. Append-only, so safe to repeat.",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    config = load_config()
+    register = Register(config.engine.paths.data_dir / "experiments.sqlite")
+    signature = run_signature(config)
+    now_ms = int(datetime.now(tz=UTC).timestamp() * 1000)
+
+    if args.seed:
+        if register.champion() is None:
+            register.crown(CHAMPION, run_signature=signature, now_ms=now_ms, note=CHAMPION.note)
+            print(f"Champion gekroent: {CHAMPION.arm}")
+        for result in TRIED:
+            register.record(result, run_signature=signature, now_ms=now_ms)
+        print(f"{len(TRIED)} Versuche eingetragen (wiederholbar, es entstehen keine Duplikate).")
+
+    champion = register.champion()
+    print("\n" + "=" * 78)
+    print(champion.describe() if champion is not None else "Kein Champion. --seed zuerst.")
+    print(f"  {champion.note}" if champion is not None else "")
+
+    rows = register.all()
+    if rows:
+        print(f"\n{len(rows)} Versuche im Register, {register.attempts()} verschiedene Arme:")
+        print(f"  {'Arm':30s} {'Stufe':8s} {'n':>6s} {'Ergebnis':>10s}  Einheit")
+        for row in rows:
+            arm, stage, count, mean, unit = row[0], row[1], row[2], row[3], row[6]
+            print(f"  {arm:30s} {stage:8s} {int(count):>6d} {float(mean):>+10.4f}  {unit}")
+
+    consultations = register.consultations()
+    required = 1.0 - (1.0 - FAMILY_CONFIDENCE) / max(1, consultations + 1)
+    print(
+        f"\nPrueffenster: {consultations} Konsultationen bisher.\n"
+        f"Der naechste Arm braucht ein {100 * required:.2f}%-Intervall, das den Champion\n"
+        f"ausschliesst, und mindestens {MIN_HOLDOUT_TRADES} Trades darin."
+    )
+    print(
+        "\nDie neun Zeilen oben sind auf Testfenstern gemessen, die bei jeder neuen Idee\n"
+        "wieder gelesen wurden -- darum ist keine davon ein Urteil. Das zurueckbehaltene\n"
+        "Fenster hat noch nie jemand angesehen (jede Studie hat holdout_days=0 uebergeben),\n"
+        "also ist die naechste Konsultation wirklich die erste. Einen Kandidaten auf\n"
+        "frueheren Daten auszuwaehlen ist gratis; was kostet, ist das Prueffenster selbst\n"
+        "zu lesen, und genau das wird hier gezaehlt."
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
