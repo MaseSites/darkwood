@@ -70,12 +70,22 @@ class Barrier(StrEnum):
     TIME = "zeit"
     """The horizon ran out with the trade still open, so it is closed at market.
 
-    The broker has no time exit -- a position there runs to its stop or its
-    target and nothing else. This barrier is a labelling device, not a trading
-    rule, and it exists because section 8 requires a label to be *closed*: an
-    open case has no outcome and must not be trained on. How often it binds is
-    reported by `Tally`, because a horizon that binds frequently would mean the
-    labels describe a different system from the one that trades."""
+    This exists because section 8 requires a label to be *closed*: an open case
+    has no outcome and must not be trained on. How often it binds is reported
+    by `Tally`, because a horizon that binds frequently would mean the labels
+    describe a different system from the one that trades.
+
+    **That mismatch was real until 05.10.2026.** The broker had no time exit at
+    all, so a position ran to its stop or its target and nothing else, while
+    this barrier closed 2.9% of labelled cases on the clock -- every R multiple
+    from a labelled study quietly assumed an exit the simulator would not make.
+    `SimulationConfig.max_hold_hours` now gives the broker the same exit, with
+    the same ordering (stop and target win the minute the clock runs out) and
+    the same price (the open of that minute, taker fee, adverse slippage).
+
+    It is off by default, so the mismatch is still there for the champion and
+    will stay until a measured arm earns the change. That is deliberate: the
+    fix is a challenger, not a correction to slip in."""
 
     UNFILLED = "nicht_gefuellt"
     """The limit was never reached inside the entry window.

@@ -106,3 +106,30 @@ def test_the_spread_folds_blanks_into_unknown() -> None:
 
 def test_one_version_reads_as_one_version() -> None:
     assert spread(["abc123", "abc123"]) == ["abc123"]
+
+
+def test_a_shadow_run_gets_its_own_signature() -> None:
+    """Its population is strictly larger, so sharing a key would have been worse
+    than wrong.
+
+    The plain rows already in the ledger would have made `count()` non-zero,
+    the shadow run would have reported "Signale liegen vor" and skipped, and
+    the shadow population would have stayed empty while appearing collected --
+    exactly the failure `max_bars` caused once already.
+    """
+    config = load_config()
+
+    plain = run_signature(config)
+    shaded = run_signature(config, shadow=True)
+
+    assert shaded != plain
+    assert shaded.startswith(plain), "the plain key is no longer a prefix"
+    assert shaded.endswith("|shadow")
+
+
+def test_the_plain_signature_is_unchanged_by_the_new_option() -> None:
+    """12,843 collected rows are keyed by it."""
+    config = load_config()
+
+    assert run_signature(config, shadow=False) == run_signature(config)
+    assert run_signature(config, max_bars=400, shadow=True).endswith("|400bars|shadow")

@@ -626,3 +626,147 @@ def test_refresh_keeps_the_cursor_when_the_new_series_starts_earlier() -> None:
     fills = minutes(broker, [(110, 121, 109)], start=EPOCH + 3 * MINUTE)
     fill = next(f for f in fills if f is not None)
     assert fill.funding == pytest.approx(-0.01), "an older rate leaked in"
+
+
+# --------------------------------------------------------------------------- #
+# The time exit
+# --------------------------------------------------------------------------- #
+
+
+def test_without_a_limit_a_position_is_held_forever() -> None:
+    """The shipped behaviour, and why the occupancy shadow exists.
+
+    The broker holds exactly one position and had no time exit at all, so a
+    trade that neither stops nor targets keeps the only slot indefinitely.
+    Measured on the ledger, about two thirds of BTC's four years lies behind a
+    taken signal where the strategy is never even asked.
+    """
+    broker = SimBroker(free_spec(), config())
+    broker.submit(long_entry())
+    minutes(broker, [(100.0, 100.0, 100.0)])
+
+    # A full week of bars that touch neither barrier.
+    fills = minutes(
+        broker,
+        [(100.0, 101.0, 99.0)] * (7 * 24 * 60),
+        start=EPOCH + MINUTE,
+    )
+
+    assert not any(fills), "something closed the trade without being asked to"
+    assert not broker.is_flat
+
+
+def test_a_held_position_closes_once_the_clock_runs_out() -> None:
+    broker = SimBroker(free_spec(), config(max_hold_hours=5.0))
+    broker.submit(long_entry())
+    minutes(broker, [(100.0, 100.0, 100.0)])
+
+    fills = minutes(
+        broker,
+        [(100.0, 101.0, 99.0)] * (6 * 60),
+        start=EPOCH + MINUTE,
+    )
+
+    closed = [f for f in fills if f is not None]
+    assert len(closed) == 1
+    assert closed[0].reason is ExitReason.TIME
+    assert closed[0].state is TradeState.CLOSED_TIME
+    assert broker.is_flat
+
+
+def test_the_clock_is_measured_from_the_fill_not_from_the_order() -> None:
+    """A resting entry can wait for bars before it fills.
+
+    Counting from `created_ts` would cut a trade short by however long its
+    limit order sat unfilled, which has nothing to do with how long the trade
+    was held.
+    """
+    broker = SimBroker(free_spec(), config(max_hold_hours=3.0))
+    # The default entry expires after 100 minutes, which would retire the
+    # order before it ever fills and make this test about expiry instead.
+    broker.submit(long_entry(expires_ts=EPOCH + 1000 * MINUTE))
+
+    # Two hours of bars that never reach the limit, so nothing fills.
+    minutes(broker, [(105.0, 106.0, 101.0)] * 120)
+    assert broker.position is None, "the entry filled when it should not have"
+
+    # Now it fills, and the clock starts here.
+    minutes(broker, [(100.0, 100.0, 100.0)], start=EPOCH + 120 * MINUTE)
+    assert broker.position is not None
+    opened = broker.position.opened_ts
+
+    fills = minutes(broker, [(100.0, 101.0, 99.0)] * 181, start=EPOCH + 121 * MINUTE)
+    closed = [f for f in fills if f is not None]
+
+    assert len(closed) == 1
+    assert closed[0].reason is ExitReason.TIME
+    assert closed[0].closed_ts - opened >= 3 * 3_600_000
+    assert closed[0].opened_ts == opened, "the fill records a different open time"
+
+
+def test_the_stop_still_wins_the_minute_the_clock_runs_out() -> None:
+    """The ordering that is the whole correctness argument.
+
+    `learn/labels.py` resolves stop and target across the entire horizon first
+    and only falls through to its TIME barrier at the end. A time branch placed
+    above the stop would close trades that had already been stopped out, and
+    every R multiple ever computed from a label would disagree with the
+    simulator that produced it.
+    """
+    broker = SimBroker(free_spec(), config(max_hold_hours=1.0))
+    broker.submit(long_entry())
+    minutes(broker, [(100.0, 100.0, 100.0)])
+
+    # The minute the hour expires also trades through the stop at 90.
+    fills = minutes(broker, [(100.0, 101.0, 99.0)] * 59, start=EPOCH + MINUTE)
+    assert not any(fills)
+    [fill] = [f for f in minutes(broker, [(100.0, 100.5, 89.0)], start=EPOCH + 60 * MINUTE) if f]
+
+    assert fill.reason is ExitReason.STOP, "the time exit jumped the queue"
+    assert fill.state is TradeState.CLOSED_STOP
+
+
+def test_the_target_also_wins_that_minute() -> None:
+    broker = SimBroker(free_spec(), config(max_hold_hours=1.0))
+    broker.submit(long_entry())
+    minutes(broker, [(100.0, 100.0, 100.0)])
+
+    minutes(broker, [(100.0, 101.0, 99.0)] * 59, start=EPOCH + MINUTE)
+    [fill] = [f for f in minutes(broker, [(100.0, 121.0, 99.5)], start=EPOCH + 60 * MINUTE) if f]
+
+    assert fill.reason is ExitReason.TARGET
+
+
+def test_a_time_exit_pays_taker_like_every_exit_but_the_target() -> None:
+    """It is a market order at whatever is there, not a resting limit."""
+    spec = make_symbol_spec(taker_fee=0.001, maker_fee=0.0)
+    broker = SimBroker(spec, config(max_hold_hours=1.0))
+    broker.submit(long_entry(order_type=OrderType.LIMIT))
+    minutes(broker, [(100.0, 100.0, 100.0)])
+
+    fills = minutes(broker, [(100.0, 101.0, 99.0)] * 61, start=EPOCH + MINUTE)
+    [fill] = [f for f in fills if f is not None]
+
+    assert fill.reason is ExitReason.TIME
+    # Entry was a resting limit at zero maker fee; the whole fee is the exit.
+    assert fill.fees == pytest.approx(fill.exit_price * 1.0 * 0.001)
+
+
+def test_the_time_exit_prices_off_the_open_of_that_minute() -> None:
+    """There is no level to gap through, and `on_minute` is given no close.
+
+    So the open is the only price that exists -- and it is the price
+    `learn/labels.py` uses for its own time barrier, which is what keeps the
+    two agreeing.
+    """
+    broker = SimBroker(free_spec(), config(max_hold_hours=1.0, slippage_bps=0.0))
+    broker.submit(long_entry())
+    minutes(broker, [(100.0, 100.0, 100.0)])
+
+    fills = minutes(broker, [(100.0, 101.0, 99.0)] * 59, start=EPOCH + MINUTE)
+    assert not any(fills), "closed before the hour was up"
+    fills += minutes(broker, [(97.5, 103.0, 95.0)], start=EPOCH + 60 * MINUTE)
+    [fill] = [f for f in fills if f is not None]
+
+    assert fill.reason is ExitReason.TIME
+    assert fill.exit_price == pytest.approx(97.5), "priced off something other than the open"

@@ -88,6 +88,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-bars", type=int, help="Stop after N signal bars. A transport check, not a result."
     )
+    parser.add_argument(
+        "--shadow",
+        action="store_true",
+        help=(
+            "Also ask the strategy while the slot is busy and record the answer "
+            "as OCCUPIED without trading. Roughly triples the run; writes under "
+            "its own signature so it cannot collide with a plain collection."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -100,9 +109,10 @@ def collect(
     signals: SignalStore,
     *,
     max_bars: int | None,
+    shadow: bool = False,
 ) -> bool:
     """Walk one market and write every signal it produced. True if anything ran."""
-    sig = run_signature(config, max_bars=max_bars)
+    sig = run_signature(config, max_bars=max_bars, shadow=shadow)
     if signals.count(symbol=symbol, run_signature=sig):
         print(f"{symbol}: Signale liegen vor", flush=True)
         return True
@@ -125,6 +135,7 @@ def collect(
         history=None,
         signals=signals,
         run_signature=sig,
+        shadow=shadow,
     )
     result = engine.run(GuidePool.for_config(config), max_bars=max_bars)  # type: ignore[arg-type]
     print(
@@ -207,6 +218,58 @@ def report_provenance(records: Iterable[SignalRecord]) -> None:
     )
 
 
+def report_shadow(
+    pairs: list[tuple[SignalRecord, Label]], taken: list[tuple[SignalRecord, Label]]
+) -> None:
+    """The population the ledger never had, and the one comparison it settles.
+
+    These are signals that existed while the single slot was busy. Until the
+    shadow pass they produced no row at all -- the strategy was not even asked
+    -- so about two thirds of every market's history was unobserved, and no
+    bound in either direction could be read from the signals that remained.
+
+    The row that decides whether more concurrency is worth anything is
+    `haette genommen`: shadow signals the risk rules would have accepted.
+    Compared against what the system actually traded over the same period, it
+    says plainly whether a second slot would have bought better trades, worse
+    ones, or the same ones. A raw count of skipped signals cannot answer that,
+    because most of them are ones the rules already refuse -- and those rules
+    are measured and right.
+    """
+    shadow = [p for p in pairs if p[0].action is Action.OCCUPIED]
+    if not shadow:
+        return
+    would = [p for p in shadow if p[0].refused_by is None]
+    print("\n--- im Schatten: Signale, die nie um einen Platz konkurrieren durften ---")
+    print(line("im Schatten (alle)", shadow))
+    print(line("davon haette genommen", would))
+    for rule, group in sorted(_by_rule(shadow).items(), key=lambda kv: -len(kv[1])):
+        print(line(f"davon abgelehnt: {rule}", group))
+
+    if would and taken:
+        gap = _mean_net(would) - _mean_net(taken)
+        verdict = "besser" if gap > 0 else "schlechter"
+        print(
+            f"\n  Die verdeckten handelbaren Signale sind {abs(gap):.4f} R pro Trade "
+            f"{verdict}\n  als das, was das System tatsaechlich genommen hat. Das ist die Zahl, "
+            "die sagt,\n  ob ein zweiter Platz bessere Trades gekauft haette -- nicht ihre Anzahl."
+        )
+
+
+def _by_rule(
+    pairs: list[tuple[SignalRecord, Label]],
+) -> dict[str, list[tuple[SignalRecord, Label]]]:
+    groups: dict[str, list[tuple[SignalRecord, Label]]] = defaultdict(list)
+    for record, label in pairs:
+        if record.refused_by is not None:
+            groups[record.refused_by.value].append((record, label))
+    return groups
+
+
+def _mean_net(pairs: list[tuple[SignalRecord, Label]]) -> float:
+    return sum(label.net_r for _record, label in pairs) / len(pairs)
+
+
 def report(pairs: list[tuple[SignalRecord, Label]], tally: Tally) -> None:
     print("\n" + "=" * 78)
     if not pairs:
@@ -223,6 +286,7 @@ def report(pairs: list[tuple[SignalRecord, Label]], tally: Tally) -> None:
     refused = [p for p in pairs if p[0].action is Action.REFUSED]
     print(line("genommen", taken))
     print(line("abgelehnt (alle)", refused))
+    report_shadow(pairs, taken)
 
     print("\n--- je Regel, und das ist die eigentliche Frage ---")
     by_rule: dict[str, list[tuple[SignalRecord, Label]]] = defaultdict(list)
@@ -249,7 +313,7 @@ def main() -> int:
     store = ParquetStore(config.engine.paths.parquet_dir)
     signals = SignalStore(config.engine.paths.data_dir / "signals.sqlite")
     funding_store = FundingStore(config.engine.paths.funding_dir)
-    sig = run_signature(config, max_bars=args.max_bars)
+    sig = run_signature(config, max_bars=args.max_bars, shadow=args.shadow)
 
     symbols = (
         [s.strip().upper() for s in args.symbols.split(",")]
@@ -260,7 +324,9 @@ def main() -> int:
     pairs: list[tuple[SignalRecord, Label]] = []
     tally = Tally()
     for symbol in symbols:
-        if not collect(symbol, config, store, signals, max_bars=args.max_bars):
+        if not collect(
+            symbol, config, store, signals, max_bars=args.max_bars, shadow=args.shadow
+        ):
             continue
         records = signals.all(symbol=symbol, run_signature=sig)
         minutes = store.read(symbol, config.engine.timeframes.execution)

@@ -47,6 +47,11 @@ def round_to_step(value: float, step: float) -> float:
     return int(value / step) * step
 
 
+#: Milliseconds in an hour. `max_hold_hours` is the only setting here
+#: expressed in wall-clock time, because the broker knows no timeframe.
+HOUR_MS = 3_600_000
+
+
 def _touched(side: Side, high: float, low: float, level: float, *, adverse: bool) -> bool:
     """Did this minute reach a level, in the direction that matters?"""
     moving_down = (side is Side.LONG) == adverse
@@ -381,6 +386,24 @@ class SimBroker:
             price = self._gap_aware(open_, position.target, position.side, adverse=False)
             return self._close(position, price, ts, ExitReason.TARGET)
 
+        # Last, and the order is the whole correctness argument. Stop and target
+        # must win the minute the clock runs out, because that is what the
+        # labeller does: `learn/labels.py` resolves both barriers across the
+        # entire horizon first and only falls through to TIME at the end. A time
+        # branch above these two would close trades that had already hit their
+        # stop and quietly disagree with every label ever computed.
+        #
+        # Off unless configured, so the champion is untouched and this is a
+        # challenger arm rather than a change nobody measured.
+        hold = self.config.max_hold_hours
+        if hold is not None and ts - position.opened_ts >= hold * HOUR_MS:
+            # `_slipped`, not `_gap_aware`: there is no level to gap through.
+            # A time exit is a market order at whatever is there, and `on_minute`
+            # is given no close, so the open of this minute is the only price
+            # that exists -- which is also the price the labeller uses.
+            price = self._slipped(open_, position.side, adverse=True)
+            return self._close(position, price, ts, ExitReason.TIME)
+
         return None
 
     def _maybe_move_to_breakeven(self, high: float, low: float) -> None:
@@ -450,6 +473,7 @@ class SimBroker:
             ExitReason.LIQUIDATION: TradeState.CLOSED_LIQUIDATED,
             ExitReason.MANUAL: TradeState.CLOSED_MANUAL,
             ExitReason.INVALIDATION: TradeState.CLOSED_MANUAL,
+            ExitReason.TIME: TradeState.CLOSED_TIME,
         }[reason]
 
         if reason is ExitReason.LIQUIDATION:

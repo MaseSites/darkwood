@@ -199,6 +199,24 @@ class SimulationConfig(_Frozen):
     instead of inside it is a second answer to the same question, and the first
     attempt at this missed liquidations, gaps and V08's runner at once."""
 
+    max_hold_hours: float | None = Field(default=None, gt=0)
+    """Close a position that has been held this long, on that ground alone.
+
+    Off by default, and that default is the point: the broker has never had a
+    time exit, so turning it on is a challenger arm to be measured against the
+    champion, not a correction to slip in.
+
+    Two reasons it is worth measuring. First, `learn/labels.py` already applies
+    a time barrier and it binds in 2.9% of cases, so the label and the broker
+    disagree today -- every R multiple from a labelled study assumes an exit
+    the simulator will not make. Second, the broker holds exactly one position
+    and has no time exit at all, so a single trade can occupy the only slot for
+    days; measured on the ledger, about two thirds of BTC's four years lies
+    behind a taken signal where the strategy is never even asked.
+
+    In hours rather than bars, because `SimulationConfig` carries no timeframe
+    and converting inside the broker would mean guessing one."""
+
 
 class PathsConfig(_Frozen):
     data_dir: Path

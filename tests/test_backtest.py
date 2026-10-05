@@ -510,3 +510,78 @@ def test_a_rerun_of_the_same_period_does_not_double_the_ledger(
     first = once()
     assert first > 0
     assert once() == first, "the second run added rows"
+
+
+def test_the_shadow_pass_changes_nothing_that_trades(
+    tmp_path, config: AppConfig, frames: dict[Timeframe, pd.DataFrame], minutes: pd.DataFrame
+) -> None:
+    """The property that makes the shadow pass free to turn on.
+
+    It asks the strategy while the single slot is busy and records the answer.
+    If a single one of those answers reached the broker, every number the
+    project has measured would change and the comparison between arms would be
+    meaningless. So the trades, the equity curve and the metrics must be
+    identical with the pass on and off -- not close, identical.
+    """
+    def run(shadow: bool):
+        return load_engine(
+            "TESTUSDT",
+            frames,
+            minute_frame=minutes,
+            spec=make_symbol_spec(),
+            config=config,
+            funding=[],
+            signals=SignalStore(tmp_path / f"signals-{shadow}.sqlite"),
+            run_signature="test",
+            shadow=shadow,
+        ).run(StructureBaseline())
+
+    plain = run(shadow=False)
+    shadowed = run(shadow=True)
+
+    assert [f.exit_price for f in shadowed.fills] == [f.exit_price for f in plain.fills]
+    assert [f.reason for f in shadowed.fills] == [f.reason for f in plain.fills]
+    assert shadowed.equity_curve == plain.equity_curve
+    assert shadowed.intents == plain.intents
+    assert shadowed.intents_rejected_by_risk == plain.intents_rejected_by_risk
+    assert plain.shadow_signals == 0, "the pass ran when it was not asked for"
+
+
+def test_the_shadow_pass_records_what_the_slot_hid(
+    tmp_path, config: AppConfig, frames: dict[Timeframe, pd.DataFrame], minutes: pd.DataFrame
+) -> None:
+    """And splits it by whether the rules would have taken it anyway.
+
+    "There were N skipped signals" says nothing on its own: most may be ones
+    the risk rules already refuse, and those rules are measurably right to.
+    The row that matters is OCCUPIED with no rule attached -- a trade the
+    system would have taken had a slot been free.
+    """
+    store = SignalStore(tmp_path / "signals.sqlite")
+    result = load_engine(
+        "TESTUSDT",
+        frames,
+        minute_frame=minutes,
+        spec=make_symbol_spec(),
+        config=config,
+        funding=[],
+        signals=store,
+        run_signature="test",
+        shadow=True,
+    ).run(StructureBaseline())
+
+    occupied = store.all(action=Action.OCCUPIED)
+    assert len(occupied) == result.shadow_signals
+    assert result.shadow_signals > 0, "no bar was ever reached with the slot busy"
+
+    # The decomposition, and it has to agree with the counter.
+    would_trade = [signal for signal in occupied if signal.refused_by is None]
+    assert len(would_trade) == result.shadow_tradeable
+
+    # A shadow row is a plan, so it can be labelled against minute data later.
+    for signal in occupied:
+        assert signal.entry > 0 and signal.stop > 0 and signal.target > 0
+        assert signal.symbol == "TESTUSDT"
+
+    # And it is not counted as something the run did.
+    assert store.count(action=Action.TAKEN) + store.count(action=Action.REFUSED) == result.intents

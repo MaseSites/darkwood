@@ -199,6 +199,11 @@ class TradeState(StrEnum):
     CLOSED_STOP = "closed_stop"
     CLOSED_MANUAL = "closed_manual"
     CLOSED_LIQUIDATED = "closed_liquidated"
+    CLOSED_TIME = "closed_time"
+    """Held longer than allowed and closed on that ground alone.
+
+    Terminal without being asked: `is_terminal` is "not PENDING_ENTRY and not
+    OPEN", so a new closed state is terminal by construction."""
     EXPIRED_UNFILLED = "expired_unfilled"
 
     @property
@@ -218,6 +223,18 @@ class ExitReason(StrEnum):
     LIQUIDATION = "liquidation"
     MANUAL = "manual"
     INVALIDATION = "invalidation"
+    TIME = "time"
+    """Closed because it had been held long enough, nothing else.
+
+    The value is permanent once a row is written: `JournalEntry.from_json`
+    calls `ExitReason(...)` on the stored string and raises on anything it
+    does not know, so a later rename would make old journals unreadable.
+    English like its siblings -- `learn.labels.Barrier` uses German values
+    ("zeit") and the two enums are deliberately not the same thing: a
+    barrier is a labelling device, this is a trading rule.
+
+    Pays taker on the way out, like every exit except TARGET. A time exit
+    is a market order at whatever is there."""
 
 
 class Rule(StrEnum):

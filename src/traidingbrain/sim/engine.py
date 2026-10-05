@@ -100,6 +100,12 @@ class BacktestResult:
     snapshots_built: int = 0
     intents: int = 0
     intents_rejected_by_risk: int = 0
+    #: Signals that existed while the single slot was busy, recorded and
+    #: never traded. Zero unless the run asked for them.
+    shadow_signals: int = 0
+    #: Of those, the ones the risk rules would have accepted. This is the
+    #: population the ledger had no record of at all.
+    shadow_tradeable: int = 0
     first_ts: int = 0
     last_ts: int = 0
     #: Non-empty when the run covered less than it was asked to. A trim that only
@@ -113,6 +119,11 @@ class BacktestResult:
             f"  intents         {self.intents:,} "
             f"({self.intents_rejected_by_risk:,} refused by risk rules)"
         )
+        if self.shadow_signals:
+            head += (
+                f"\n  im Schatten     {self.shadow_signals:,} "
+                f"({self.shadow_tradeable:,} haette das System genommen)"
+            )
         if self.window_note:
             head += f"\n  WINDOW          {self.window_note}"
         return head + "\n" + format_metrics(self.metrics)
@@ -133,6 +144,7 @@ class BacktestEngine:
         history: HistoryEngine | None = None,
         signals: SignalStore | None = None,
         run_signature: str = "",
+        shadow: bool = False,
     ) -> None:
         self.symbol = symbol
         self.analysis = analysis
@@ -146,6 +158,12 @@ class BacktestEngine:
         # population.
         self.signals = signals
         self.run_signature = run_signature
+        # Ask the strategy even while the slot is busy, record the answer and
+        # never act on it. Off by default because it roughly triples the
+        # strategy calls -- about two thirds of hours lie behind an open
+        # trade -- and because every number a run already produced was
+        # produced without it.
+        self.shadow = shadow
         self._fills_seen = 0
         # Positioning and the calendar if they are on disk, nothing if not.
         # A period the venue does not cover is one fewer factor, not a failure.
@@ -195,6 +213,9 @@ class BacktestEngine:
         snapshots = 0
         intents = 0
         refused = 0
+        # A two-slot list rather than two locals, so the helper that fills
+        # it can stay a method instead of returning a tuple nobody reads.
+        shadow = [0, 0]
         self._fills_seen = 0
         reads_bars = wants_analysis(strategy)
 
@@ -208,6 +229,28 @@ class BacktestEngine:
             # would be most of the run spent on something never looked at.
             snapshot = None
             intent = None
+            # The shadow pass, and the reason it exists: while the slot is busy
+            # the strategy is never asked, so no row of any kind is written and
+            # `Action.OCCUPIED` had zero rows in the database. Measured on the
+            # ledger itself, about two thirds of BTC's four years lies behind a
+            # taken signal -- a missing population of the same order as the one
+            # every result so far rests on. No bound in either direction could
+            # be read from a sample that excludes it.
+            #
+            # Nothing here reaches the broker. `_record_shadow` assesses and
+            # writes a row and returns nothing, so the trades, the equity curve
+            # and every metric are identical with the pass on or off. That is
+            # asserted directly in tests/test_backtest.py rather than reviewed.
+            if self.shadow and not broker.is_flat:
+                self._record_shadow(
+                    strategy,
+                    index,
+                    reads_bars=reads_bars,
+                    equity=broker.equity,
+                    created_ts=int(signal_ts[index]) + signal_ms,
+                    expires_ts=int(signal_ts[index]) + signal_ms + expiry_ms,
+                    counts=shadow,
+                )
             if broker.is_flat and reads_bars:
                 snapshots += 1
                 intent = strategy.propose_at(self.analysis, index)  # type: ignore[union-attr]
@@ -270,6 +313,8 @@ class BacktestEngine:
             snapshots_built=snapshots,
             intents=intents,
             intents_rejected_by_risk=refused,
+            shadow_signals=shadow[0],
+            shadow_tradeable=shadow[1],
             first_ts=int(signal_ts[start]),
             last_ts=int(signal_ts[end]),
             window_note=clamp_note,
@@ -441,8 +486,95 @@ class BacktestEngine:
             self.signals.record([self._signal_row(intent, verdict, decided_ts=created_ts)])
         return verdict.entry
 
+    def _record_shadow(
+        self,
+        strategy: Strategy | AnalysisStrategy,
+        index: int,
+        *,
+        reads_bars: bool,
+        equity: float,
+        created_ts: int,
+        expires_ts: int,
+        counts: list[int],
+    ) -> None:
+        """A signal that existed while the slot was busy. Recorded, never traded.
+
+        The risk rules are still run on it, and the rule that would have
+        refused it is still stored, because the decomposition is the whole
+        point:
+
+        * OCCUPIED with no rule attached -- the system *would have taken* this
+          trade had a slot been free. This is the population nothing has ever
+          measured, and the one that decides whether more concurrency is worth
+          anything.
+        * OCCUPIED with a rule attached -- it would have been refused anyway,
+          so the busy slot cost nothing here.
+
+        Without that split, "there were N skipped signals" says nothing: most
+        of them may be ones the rules already reject, and the rules are
+        measurably right to.
+
+        `history.remember` is deliberately not called. A shadow signal never
+        became a trade, so it has no outcome to commit, and recording one would
+        put a trade that did not happen into the evidence.
+        """
+        intent = (
+            strategy.propose_at(self.analysis, index)  # type: ignore[union-attr]
+            if reads_bars
+            else self._shadow_via_snapshot(strategy, index)
+        )
+        if intent is None or not intent.is_coherent:
+            return
+        verdict = assess(
+            intent,
+            None,
+            symbol=self.symbol,
+            spec=self.spec,
+            config=self.config,
+            equity=equity,
+            created_ts=created_ts,
+            expires_ts=expires_ts,
+        )
+        counts[0] += 1
+        if verdict.accepted:
+            counts[1] += 1
+        if self.signals is not None:
+            self.signals.record(
+                [
+                    self._signal_row(
+                        intent,
+                        verdict,
+                        decided_ts=created_ts,
+                        action=Action.OCCUPIED,
+                    )
+                ]
+            )
+
+    def _shadow_via_snapshot(
+        self, strategy: Strategy | AnalysisStrategy, index: int
+    ) -> TradeIntent | None:
+        """The snapshot-reading path, without the history lookup.
+
+        History is skipped on purpose. `lookup` is the expensive half of a
+        build, and folding it in here would change nothing that can be acted
+        on while also making the shadow pass cost more than the real one. The
+        consequence is stated rather than hidden: a shadow intent is produced
+        from a snapshot whose `history` block is empty, so a strategy that
+        leans on history will propose differently in the shadow than it would
+        have in the open. For the rule-based pools in use that block is unread.
+        """
+        snapshot = self.builder.build(index)
+        if snapshot is None:
+            return None
+        return strategy.propose(snapshot)  # type: ignore[union-attr]
+
     def _signal_row(
-        self, intent: TradeIntent, verdict: Assessment, *, decided_ts: int
+        self,
+        intent: TradeIntent,
+        verdict: Assessment,
+        *,
+        decided_ts: int,
+        action: Action | None = None,
     ) -> SignalRecord:
         """One signal as the ledger stores it, taken or not.
 
@@ -457,7 +589,10 @@ class BacktestEngine:
             decided_ts=decided_ts,
             symbol=self.symbol,
             source=Source.REPLAY,
-            action=Action.TAKEN if verdict.accepted else Action.REFUSED,
+            # `action` overrides only for the shadow pass. `refused_by` keeps
+            # its meaning in both cases -- the rule that said no -- so an
+            # OCCUPIED row with it empty is one the rules would have accepted.
+            action=action or (Action.TAKEN if verdict.accepted else Action.REFUSED),
             refused_by=verdict.refused_by,
             detail=verdict.detail,
             setup_key=setup_label(intent),
@@ -498,6 +633,7 @@ def load_engine(
     history: HistoryEngine | None = None,
     signals: SignalStore | None = None,
     run_signature: str = "",
+    shadow: bool = False,
 ) -> BacktestEngine:
     return BacktestEngine(
         symbol,
@@ -509,4 +645,5 @@ def load_engine(
         history=history,
         signals=signals,
         run_signature=run_signature,
+        shadow=shadow,
     )

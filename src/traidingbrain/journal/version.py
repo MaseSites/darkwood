@@ -50,7 +50,7 @@ UNKNOWN = "unknown"
 _GIT_TIMEOUT_S = 5
 
 
-def run_signature(config: object, *, max_bars: int | None = None) -> str:
+def run_signature(config: object, *, max_bars: int | None = None, shadow: bool = False) -> str:
     """The configuration a run was made under, as one comparable string.
 
     Byte-identical to what the three scripts built by hand, deliberately: the
@@ -60,14 +60,25 @@ def run_signature(config: object, *, max_bars: int | None = None) -> str:
     `max_bars` belongs here because a truncated run is a different run. Leaving
     it out let a 400-bar transport check occupy the rows a full replay would
     have written.
+
+    `shadow` belongs here for the same reason and would have bitten harder. A
+    shadow run writes the OCCUPIED rows a plain run has no record of, so its
+    population is strictly larger. Sharing a key would have meant the plain
+    rows already present made `count()` non-zero, the shadow run reported
+    "Signale liegen vor" and skipped, and the shadow population would have
+    stayed empty while looking collected.
+
+    Both suffixes are appended only when set, so the plain signature stays
+    byte-identical to the one the ledger's 12,843 rows are already keyed by.
     """
     engine = config.engine  # type: ignore[attr-defined]
     risk = config.risk  # type: ignore[attr-defined]
     bars = f"|{max_bars}bars" if max_bars else ""
+    shade = "|shadow" if shadow else ""
     return (
         f"{engine.simulation.initial_equity}|{engine.setups.enabled}|"
         f"{risk.limits.max_cost_fraction_of_risk}|{engine.timeframes.signal.value}"
-        f"|{LEDGER_SCHEMA}{bars}"
+        f"|{LEDGER_SCHEMA}{bars}{shade}"
     )
 
 
