@@ -299,6 +299,15 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "24/72/168h, 2 Modelle, 3 Maerkte: keine Konfiguration schlaegt ihre Basisquote.",
     ),
     (
+        "On-Chain und Stablecoin-Liquiditaet",
+        "erledigt",
+        "Erste Achse ausserhalb der Boerse. Coin Metrics Community (9-11.8 J) plus "
+        "DefiLlama (8.8 J), inkl. Boersen-Zu-/Abfluessen -- die der Auftrag als "
+        "kostenlos unbestaetigt einstufte. P gegen P+O auf gemeinsamem Fenster, "
+        "16 statt 7 Merkmale: kein Vorsprung, und bei 72h/LightGBM ein Intervall "
+        "ohne Null in die FALSCHE Richtung (-3.66). Fluesse nur fuer BTC und ETH.",
+    ),
+    (
         "Laengere Horizonte (mit Derivaten)",
         "erledigt",
         "Herkunft nachgemessen (Bybit, exakt). P gegen P+D auf gemeinsamem Fenster: "
@@ -354,11 +363,18 @@ def report_space() -> None:
             "  in diesem Raum liegt -- in Preis, Volumen, Volatilitaet, Spanne,\n"
             "  Tageszeit, Orderfluss, Positionierung, Funding, Regime oder Horizont.\n"
             "  Diese Liste war der Auftrag, nicht die Welt.\n"
-            "\n  Was offen bleibt, steht ausserhalb der Karte: Makrodaten (FRED),\n"
-            "  Stablecoin-Liquiditaet (DefiLlama) und On-Chain-Aktivitaet -- Phase C\n"
-            "  des Forschungsauftrags, ausdruecklich erlaubt und noch nicht gebaut.\n"
-            "  Und das Vorwaerts-Protokoll, das einzige Beweismittel, das Replay\n"
-            "  nicht erzeugen kann."
+            "\n  Auch die erste Achse AUSSERHALB der Boerse ist inzwischen gemessen:\n"
+            "  Kettenaktivitaet, Boersen-Zu- und -Abfluesse, Stablecoin-Umlauf, 9 bis\n"
+            "  11.8 Jahre je Markt. Sie traegt nichts bei, und bei einem Horizont\n"
+            "  macht sie das Modell messbar schlechter.\n"
+            "\n  Was wirklich offen bleibt, sind drei Dinge und keines davon ist eine\n"
+            "  Strategie-Idee:\n"
+            "    1. FRED-Makrodaten. Brauchen einen kostenlosen API-Schluessel, der\n"
+            "       hier nicht vorliegt. Connector-Muster steht, Serien sind benannt.\n"
+            "    2. Boersenfluesse jenseits von BTC und ETH. Das Community-Angebot\n"
+            "       liefert sie fuer zwei Maerkte; mehr ist kostenpflichtig.\n"
+            "    3. Das Vorwaerts-Protokoll. Das einzige Beweismittel, das Replay\n"
+            "       nicht erzeugen kann, und es waechst nur mit der Zeit."
         )
     if gated:
         print(

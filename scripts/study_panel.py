@@ -54,6 +54,7 @@ from sklearn.preprocessing import StandardScaler
 
 from traidingbrain.config.settings import load_config
 from traidingbrain.data.derivatives import DerivativesStore
+from traidingbrain.data.external import ExternalStore
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.sentiment import SentimentStore
 from traidingbrain.data.store import ParquetStore
@@ -343,6 +344,7 @@ def readers() -> tuple[object, object]:
     config = load_config()
     candles = ParquetStore(config.engine.paths.parquet_dir)
     derivatives = DerivativesStore(config.engine.paths.data_dir / "derivatives")
+    external = ExternalStore(config.engine.paths.data_dir / "external")
     funding = FundingStore(config.engine.paths.funding_dir)
     sentiment = SentimentStore(config.engine.paths.data_dir / "sentiment.parquet")
 
@@ -350,22 +352,36 @@ def readers() -> tuple[object, object]:
         frame = candles.read(market, Timeframe.H1)
         return None if frame.empty else frame
 
+    def funding_frame(market: str) -> pd.DataFrame | None:
+        rates = funding.read(market)
+        if not rates:
+            return None
+        return pd.DataFrame({"ts": [r.ts for r in rates], "rate": [r.rate for r in rates]})
+
     def read_extra(market: str, source: str) -> pd.DataFrame | None:
+        # A dispatch table rather than a chain of returns: one source per
+        # entry, and adding one does not lengthen a function.
+        readers: dict[str, object] = {
+            "open_interest": lambda: derivatives.read(market, "open_interest"),
+            "account_ratio": lambda: derivatives.read(market, "account_ratio"),
+            "funding": lambda: funding_frame(market),
+            "sentiment": sentiment.read,
+            # Coin Metrics keys on the bare asset: BTCUSDT -> btc.
+            "onchain": lambda: external.read(
+                f"coinmetrics:{market.removesuffix('USDT').lower()}"
+            ),
+            # One global series, joined to every market -- which is what it
+            # is: total stablecoin circulation is not per asset.
+            "stablecoins": lambda: external.read("defillama:stablecoins"),
+        }
+        reader = readers.get(source)
+        if reader is None:
+            return None
         try:
-            if source in ("open_interest", "account_ratio"):
-                return derivatives.read(market, source)
-            if source == "funding":
-                rates = funding.read(market)
-                if not rates:
-                    return None
-                return pd.DataFrame(
-                    {"ts": [r.ts for r in rates], "rate": [r.rate for r in rates]}
-                )
-            if source == "sentiment":
-                return sentiment.read()
+            frame = reader()  # type: ignore[operator]
         except (OSError, ValueError, RuntimeError):
             return None
-        return None
+        return None if frame is None or frame.empty else frame
 
     return read_ohlcv, read_extra
 

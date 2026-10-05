@@ -96,6 +96,23 @@ SOURCES: dict[str, tuple[Provenance, int, str]] = {
         "nicht dokumentiert, daher ein Tag konservativ. Teilweise selbst "
         "preis- und volumenabhaengig -- kein reines Nicht-Preis-Merkmal.",
     ),
+    "onchain": (
+        Provenance.VERIFIED,
+        DAY_MS,
+        "Coin Metrics Community, eigener Abruf mit Pruefsumme und Roharchiv. "
+        "Taegliche Kettenaktivitaet und Boersen-Zu-/Abfluesse, 9-11.8 Jahre je "
+        "Markt. Verfuegbarkeit: ein voller Tag nach der Beobachtung -- die "
+        "`status-time` des Dienstes ist eine Revalidierungszeit und keine "
+        "Verfuegbarkeitszeit, was eine erste Fassung dieses Moduls falsch "
+        "machte. Lizenz CC BY-NC 4.0: Forschung ja, kommerziell nicht ungeprueft.",
+    ),
+    "stablecoins": (
+        Provenance.VERIFIED,
+        DAY_MS,
+        "DefiLlama, eigener Abruf. Stablecoin-Umlauf taeglich ab 2017-11-29. "
+        "Angebot und USD-Bewertung sind getrennte Felder und werden getrennt "
+        "gehalten; `totalUnreleased` wird verworfen, es meldet Billionen.",
+    ),
     "funding": (
         Provenance.MIXED,
         8 * HOUR_MS,
@@ -130,6 +147,9 @@ GROUPS: dict[str, tuple[str, ...]] = {
     "P+D": ("ohlcv", "open_interest", "account_ratio", "funding"),
     "P+D+M": ("ohlcv", "open_interest", "account_ratio", "funding", "macro"),
     "P+D+M+O": ("ohlcv", "open_interest", "account_ratio", "funding", "macro", "onchain"),
+    # The axis the exhausted map does not cover, isolated from the derivative
+    # sources so a difference cannot be attributed to the wrong one.
+    "P+O": ("ohlcv", "onchain", "stablecoins"),
 }
 
 #: Lookbacks in days for the price baseline, as the order names them.
@@ -419,24 +439,37 @@ def build_panel(
                 extra = read_extra(market, source)  # type: ignore[operator]
                 if extra is None or extra.empty:
                     continue
-                value = next((c for c in extra.columns if c != "ts"), None)
-                if value is None:
-                    continue
-                block = as_of(
-                    block,
-                    extra,
-                    column=value,
-                    name=f"%{source}",
-                    lag_ms=lag_ms,
-                    max_stale_ms=max_stale_ms,
-                )
-                # Change rather than level: an open interest of 100,000 means
-                # nothing across markets or across years, its weekly change
-                # does. Computed after the join so it uses only joined,
-                # lag-respecting values.
-                column = f"%{source}"
-                if column in block.columns:
-                    block[f"%{source}_chg7"] = block[column] / block[column].shift(7) - 1.0
+                # Every numeric column the source offers, not just the first.
+                # An on-chain fetch carries active addresses, transaction
+                # count, supply, market cap, issuance and both exchange flow
+                # directions, and taking one of them would discard the
+                # measurement this group exists for.
+                skip = {"ts", "available_ms", "validated_ms", "status", "sha256", "fetched_ms"}
+                values = [
+                    c
+                    for c in extra.columns
+                    if c not in skip and pd.api.types.is_numeric_dtype(extra[c])
+                ]
+                for value in values:
+                    name = f"%{source}_{value}"
+                    block = as_of(
+                        block,
+                        extra,
+                        column=value,
+                        name=name,
+                        lag_ms=lag_ms,
+                        max_stale_ms=max_stale_ms,
+                    )
+                    # Change rather than level: a supply of 19.5 million means
+                    # nothing across markets or across years, its weekly change
+                    # does. Computed after the join so it uses only joined,
+                    # lag-respecting values.
+                    if name in block.columns:
+                        block[f"{name}_chg7"] = block[name] / block[name].shift(7) - 1.0
+                        # And the level itself is dropped: it trends over a
+                        # decade, so a model fitted on early folds reads a
+                        # later level as an extreme it has never seen.
+                        block = block.drop(columns=[name])
 
         block["target"] = label(block, horizon_hours=horizon_hours)
         block["market"] = market
