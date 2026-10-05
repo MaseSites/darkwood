@@ -182,16 +182,25 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
     ),
     ("Volatilitaetsausbruch", "offen", "volatility_percentile existiert, war nie Ausloeser."),
     ("VWAP und Tageszeit", "offen", "VWAP liegt in formulas.py, in keinem Setup benutzt."),
-    ("Mean Reversion", "offen", "Ungeprueft; alle Setups sind Fortsetzungslogik."),
+    (
+        "Mean Reversion",
+        "erledigt",
+        "Brutto 0.17 bp auf M15 (700k Beobachtungen), reproduziert das Preprint. Maut 79x.",
+    ),
     ("Handelsspannen-Ausbruch", "offen", "Ungeprueft."),
     ("Momentum mit Volumen", "offen", "Als Familie ungeprueft."),
     ("Trendfolge mit Ruecksetzer", "offen", "Teilweise in den Setups, nie als Familie gemessen."),
     ("Regime-Umschaltung", "offen", "Regime wird berechnet, schaltet aber nie die Strategie."),
     ("Funding / Relative Value", "offen", "Daten liegen vor, nur als Kosten benutzt."),
     (
-        "Orderflow",
+        "Orderflow (Taker-Volumen)",
+        "erledigt",
+        "30 Zellen, keine positiv. Fortsetzung und Erschoepfung trennen sich nicht.",
+    ),
+    (
+        "Orderflow (Orderbuch-Tiefe)",
         "nicht testbar",
-        "Keine historischen Orderbuchdaten; heutige Snapshots genuegen nicht (§7).",
+        "Keine historischen Snapshots; heutige genuegen nicht. Taker-Volumen war das Erreichbare.",
     ),
 )
 
