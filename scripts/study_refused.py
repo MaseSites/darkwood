@@ -51,6 +51,7 @@ import argparse
 import sys
 import time
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,7 +64,7 @@ from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import DEFAULT_SPEC, FundingRate, SymbolSpec
 from traidingbrain.journal.signals import Action, SignalRecord, SignalStore
-from traidingbrain.journal.version import run_signature
+from traidingbrain.journal.version import run_signature, spread
 from traidingbrain.learn.labels import Label, Minutes, Tally, label_signal
 from traidingbrain.reporting.intervals import block_bootstrap
 from traidingbrain.sim.engine import BacktestEngine
@@ -187,6 +188,25 @@ def line(name: str, pairs: list[tuple[SignalRecord, Label]]) -> str:
     )
 
 
+def report_provenance(records: Iterable[SignalRecord]) -> None:
+    """Which code wrote the rows this result rests on.
+
+    Printed rather than enforced. More than one version is not automatically
+    wrong -- a refactor that cannot change a decision leaves the numbers
+    comparable -- but mixing two of them is never something to discover after
+    acting on the result, and the rows themselves look identical.
+    """
+    versions = spread(record.code_version for record in records)
+    if len(versions) == 1:
+        print(f"Geschrieben von Code {versions[0]}")
+        return
+    print(
+        f"ACHTUNG: diese Zeilen kommen aus {len(versions)} Code-Versionen "
+        f"({', '.join(versions)}).\nEin Vergleich ueber sie hinweg vergleicht "
+        "moeglicherweise zwei Systeme, nicht zwei Regeln."
+    )
+
+
 def report(pairs: list[tuple[SignalRecord, Label]], tally: Tally) -> None:
     print("\n" + "=" * 78)
     if not pairs:
@@ -194,6 +214,7 @@ def report(pairs: list[tuple[SignalRecord, Label]], tally: Tally) -> None:
         return
 
     print(tally.summary())
+    report_provenance(record for record, _label in pairs)
     print(
         "\nBrutto zuerst: sagt, ob der Einstieg etwas wert war. Netto sagt, ob er\n"
         "die Maut bezahlt haette. Das Intervall steht auf der Brutto-Zahl.\n"

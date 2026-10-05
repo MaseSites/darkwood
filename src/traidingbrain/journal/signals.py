@@ -56,6 +56,7 @@ from pathlib import Path
 
 from traidingbrain.domain.enums import Rule, Side
 from traidingbrain.journal.record import Source
+from traidingbrain.journal.version import code_version
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS signals (
@@ -79,11 +80,19 @@ CREATE TABLE IF NOT EXISTS signals (
     risk_amount      REAL    NOT NULL,
     qty              REAL    NOT NULL,
     leverage         REAL    NOT NULL,
+    code_version     TEXT    NOT NULL DEFAULT '',
     PRIMARY KEY (signal_id, run_signature)
 );
 CREATE INDEX IF NOT EXISTS signals_by_symbol ON signals (symbol, decided_ts);
 CREATE INDEX IF NOT EXISTS signals_by_action ON signals (action, refused_by);
 """
+
+#: Columns added to `signals` after databases existed in the wild.
+#:
+#: Every entry needs a DEFAULT. Without one, `ALTER TABLE ADD COLUMN` on a
+#: NOT NULL column is refused outright, and a writer still running the old
+#: code would break on its next insert.
+_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (("code_version", "TEXT NOT NULL DEFAULT ''"),)
 
 
 class Action(StrEnum):
@@ -138,6 +147,15 @@ class SignalRecord:
     risk_amount: float
     qty: float
     leverage: float
+
+    #: Which code wrote this row. Empty on rows written before the column
+    #: existed, which `version.spread()` reports as unknown rather than
+    #: folding in with a real commit.
+    #:
+    #: Not in `as_row()`: the store stamps it, so no call site can forget
+    #: to. A record is a description of a decision; which code computed it
+    #: is something only the moment of writing knows.
+    code_version: str = ""
 
     @property
     def stop_distance_pct(self) -> float:
@@ -194,13 +212,16 @@ class SignalRecord:
             risk_amount=float(row[17]),  # type: ignore[arg-type]
             qty=float(row[18]),  # type: ignore[arg-type]
             leverage=float(row[19]),  # type: ignore[arg-type]
+            # Always present: the only caller selects `_COLUMNS`, and the column
+            # is NOT NULL DEFAULT '' on migrated databases as well as new ones.
+            code_version=str(row[20]),
         )
 
 
 _COLUMNS = (
     "signal_id, run_signature, decided_ts, symbol, source, action, refused_by, detail, "
     "setup_key, setup_timeframe, signal_timeframe, side, entry, stop, target, reward_risk, "
-    "cost_fraction, risk_amount, qty, leverage"
+    "cost_fraction, risk_amount, qty, leverage, code_version"
 )
 
 
@@ -212,7 +233,23 @@ class SignalStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with closing(self._connect()) as conn:
             conn.executescript(_DDL)
+            self._add_missing_columns(conn)
             conn.commit()
+
+    @staticmethod
+    def _add_missing_columns(conn: sqlite3.Connection) -> None:
+        """SQLite has no `ADD COLUMN IF NOT EXISTS`, and the DDL above only
+        creates the table when it is absent -- so a column added to it never
+        reaches a database that already exists.
+
+        The column is appended with a default rather than backfilled. Rows
+        written before it existed were produced by code nobody recorded, and
+        `version.spread()` reports that as unknown instead of guessing a commit.
+        """
+        have = {row[1] for row in conn.execute("PRAGMA table_info(signals)")}
+        for column, kind in _ADDED_COLUMNS:
+            if column not in have:
+                conn.execute(f"ALTER TABLE signals ADD COLUMN {column} {kind}")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
@@ -230,10 +267,12 @@ class SignalStore:
         Returns how many rows were actually new, so a caller can tell a fresh
         run from a repeat instead of assuming.
         """
-        rows = [record.as_row() for record in records]
+        # Stamped here, not at the call site, so it cannot be forgotten by one.
+        stamp = code_version()
+        rows = [(*record.as_row(), stamp) for record in records]
         if not rows:
             return 0
-        placeholders = ", ".join(["?"] * 20)
+        placeholders = ", ".join(["?"] * len(rows[0]))
         with closing(self._connect()) as conn:
             before = conn.total_changes
             conn.executemany(

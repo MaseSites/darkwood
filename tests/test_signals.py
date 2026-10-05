@@ -14,6 +14,7 @@ Two properties carry its purpose and both are asserted directly:
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,7 @@ import pytest
 from traidingbrain.domain.enums import Rule, Side
 from traidingbrain.journal.record import Source
 from traidingbrain.journal.signals import Action, SignalRecord, SignalStore
+from traidingbrain.journal.version import code_version, spread
 
 EPOCH = 1_600_000_000_000
 QUARTER = 900_000
@@ -180,7 +182,13 @@ def test_every_field_survives_the_round_trip(store: SignalStore) -> None:
     original = record(source=Source.LIVE, side=Side.SHORT, action=Action.TAKEN, refused_by=None)
     store.record([original])
     [back] = store.all()
-    assert back == original
+
+    # The store adds one field the caller did not supply, on purpose: which code
+    # wrote the row is something only the moment of writing knows. Compared by
+    # substituting it rather than by excluding it from the comparison, so a
+    # regression in any other field still fails here.
+    assert back.code_version == code_version(), "the store did not stamp the row"
+    assert back == replace(original, code_version=back.code_version)
     assert back.source is Source.LIVE
     assert back.side is Side.SHORT
     assert back.action is Action.TAKEN
@@ -215,3 +223,62 @@ def test_the_schema_has_nowhere_to_put_an_account_movement(tmp_path: Path) -> No
     assert not (columns & forbidden), (
         f"an outcome leaked into the signal ledger: {columns & forbidden}"
     )
+
+
+def test_a_database_from_before_the_column_gains_it_without_losing_rows(
+    tmp_path: Path,
+) -> None:
+    """`CREATE TABLE IF NOT EXISTS` does nothing to a table that exists.
+
+    So a column added to the DDL never reaches a database already on disk, and
+    the next read fails on a column that is there in the code and absent in the
+    file. The one on disk here holds 7,338 collected signals that took hours to
+    produce, so the migration has to be additive rather than a rebuild.
+    """
+    path = tmp_path / "signals.sqlite"
+    with sqlite3.connect(path) as conn:
+        conn.executescript("""
+        CREATE TABLE signals (
+            signal_id TEXT NOT NULL, run_signature TEXT NOT NULL,
+            decided_ts INTEGER NOT NULL, symbol TEXT NOT NULL, source TEXT NOT NULL,
+            action TEXT NOT NULL, refused_by TEXT, detail TEXT NOT NULL,
+            setup_key TEXT NOT NULL, setup_timeframe TEXT NOT NULL,
+            signal_timeframe TEXT NOT NULL, side TEXT NOT NULL, entry REAL NOT NULL,
+            stop REAL NOT NULL, target REAL NOT NULL, reward_risk REAL NOT NULL,
+            cost_fraction REAL NOT NULL, risk_amount REAL NOT NULL, qty REAL NOT NULL,
+            leverage REAL NOT NULL, PRIMARY KEY (signal_id, run_signature)
+        );""")
+        conn.execute(
+            "INSERT INTO signals VALUES "
+            "('old', 'sig', 1, 'BTCUSDT', 'replay', 'genommen', NULL, 'd', 'k', 'H4',"
+            " 'M15', 'long', 100.0, 99.0, 103.0, 3.0, 0.1, 10.0, 1.0, 5.0)"
+        )
+
+    store = SignalStore(path)
+    [back] = store.all()
+
+    assert back.signal_id == "old", "the migration dropped the existing row"
+    # Not backfilled with today's commit, which would be a lie about a row
+    # written by code nobody recorded.
+    assert back.code_version == ""
+
+
+def test_a_result_set_can_be_checked_for_mixed_code_versions(tmp_path: Path) -> None:
+    """What section 13 needs the column for.
+
+    Champion-versus-challenger compares two versions of the code. Rows from two
+    of them look identical and their numbers average cleanly, so without this
+    the contamination is undetectable rather than merely unnoticed.
+    """
+    path = tmp_path / "signals.sqlite"
+    store = SignalStore(path)
+    store.record([record(signal_id="fresh")])
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "INSERT INTO signals SELECT 'stale', run_signature, decided_ts, symbol, source,"
+            " action, refused_by, detail, setup_key, setup_timeframe, signal_timeframe, side,"
+            " entry, stop, target, reward_risk, cost_fraction, risk_amount, qty, leverage,"
+            " 'deadbee' FROM signals"
+        )
+
+    assert spread(r.code_version for r in store.all()) == sorted({code_version(), "deadbee"})
