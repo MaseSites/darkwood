@@ -322,6 +322,17 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "Herkunft nachgemessen (Bybit, exakt). P gegen P+D auf gemeinsamem Fenster: "
         "Unterschied +-1.6 Punkte ohne Richtung, jedes Intervall mit Null.",
     ),
+    (
+        "Querschnitt (Markt gegen Markt)",
+        "erledigt",
+        "Die einzige Richtung, die der Auftrag nie benannt hat: alle 87 Arme davor "
+        "massen einen Markt gegen seine EIGENE Zukunft, mit 'immer long' als Basis "
+        "-- also den gemeinsamen Faktor gegen sich selbst. Long oberstes Drittel / "
+        "short unterstes, 12 Maerkte, 5 Jahre, 6 Zellen: eine ohne Null (mom_7/1T, "
+        "+0.1036% brutto, +0.0710% nach zwei Beinen Maut), und die faellt an der "
+        "Korrektur (99.17%) UND wiederholt sich nur zu 0.04x (+0.1897% -> +0.0071%). "
+        "Der gemeinsame Faktor war nicht das, was die Suche verdeckt hat.",
+    ),
 )
 
 
