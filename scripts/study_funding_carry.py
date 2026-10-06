@@ -85,6 +85,12 @@ BLOCK_DAYS = 7
 #: enough that a failure means something.
 REPLICATION_BAND = (0.5, 2.0)
 
+#: Holding lengths for the perfect-foresight ceiling, in days. Short enough
+#: that the toll bites, long enough that it amortises -- declared before the
+#: ceiling was computed, because an upper bound chosen after seeing the answers
+#: is not an upper bound.
+ORACLE_HOLD_DAYS = (3, 7, 14, 30)
+
 #: Days left to the goal date of 30.10.2026, used for the one piece of
 #: arithmetic that says what any of this is worth.
 DAYS_TO_GOAL = 24
@@ -166,6 +172,38 @@ class Market:
         return low <= self.ratio <= high
 
 
+def oracle_ceiling(rates: np.ndarray, *, setup_cost: float, hold_periods: int) -> float:
+    """What selective carry earns per year given PERFECT foresight of the rates.
+
+    The obvious next question after the table is whether picking the good
+    periods beats holding through all of them. Rather than build a timing rule
+    and measure it, this measures the ceiling that no timing rule can pass: the
+    best possible contiguous blocks, chosen knowing every future rate, each
+    paying one setup cost.
+
+    It is not a strategy and must never be read as one. It is the ceiling for
+    *selective* carry at that holding length: no rule that enters and exits in
+    blocks of this size can beat the rule that knows which blocks pay. It is
+    deliberately not a ceiling for carry in general -- simply holding
+    throughout is a different shape, pays the toll once, and is reported beside
+    it for exactly that reason.
+
+    Blocks are contiguous and of fixed length because the cost is per entry and
+    exit. A rule that hops in and out pays the toll every time it does, and on
+    these numbers that is the dominant term rather than a detail: it is why the
+    ceiling below can land *under* the strategy that never selects anything.
+    """
+    usable = rates.size - rates.size % hold_periods
+    if usable < hold_periods:
+        return 0.0
+    blocks = rates[:usable].reshape(-1, hold_periods).sum(axis=1) - setup_cost
+    # Perfect foresight takes a block only when it pays. Everything else sits
+    # in cash, which earns nothing here and costs nothing.
+    taken = blocks[blocks > 0.0].sum()
+    periods_per_year = PERIODS_PER_DAY * 365.25
+    return float(taken / usable * periods_per_year)
+
+
 def verdict(rows: list[Market], *, repeated: int, falling: int) -> None:
     """What the table means, with the goal arithmetic spelled out.
 
@@ -243,6 +281,55 @@ def verdict(rows: list[Market], *, repeated: int, falling: int) -> None:
     print("-" * 78)
 
 
+def report_selection(rows: list[Market], files: list[Path], *, setup_cost: float) -> None:
+    """Does choosing the good periods beat sitting through all of them?
+
+    Split out of `main` so the comparison it makes -- a ceiling against a
+    strategy, not a strategy against a strategy -- stays readable.
+    """
+    # The ceiling, on the half that is forward-looking, for a handful of
+    # holding lengths. Declared here rather than searched: the point is an
+    # upper bound, and an upper bound picked after seeing the answers is not
+    # one.
+    print("\nLohnt es, die guten Perioden auszuwaehlen? Obergrenze bei PERFEKTER")
+    print("Voraussicht, zweite Haelfte der Historie, gegen schlichtes Durchhalten\n")
+    print(f"  {'Markt':10s}" + "".join(f"{d:>9d} T" for d in ORACLE_HOLD_DAYS) + f"{'durch':>11s}")
+    best_oracle = 0.0
+    beaten = 0
+    for row, path in zip(rows, files, strict=True):
+        rates = read_funding(path)["rate"].to_numpy(dtype=float)
+        half = rates[len(rates) // 2 :]
+        through = row.late * PERIODS_PER_DAY * 365.25
+        line = f"  {row.name:10s}"
+        best_here = 0.0
+        for days in ORACLE_HOLD_DAYS:
+            ceiling = oracle_ceiling(
+                half, setup_cost=setup_cost, hold_periods=days * PERIODS_PER_DAY
+            )
+            best_here = max(best_here, ceiling)
+            line += f"{100 * ceiling:>+9.2f}%"
+        best_oracle = max(best_oracle, best_here)
+        beaten += best_here > through
+        print(line + f"{100 * through:>+10.2f}%")
+
+    on_capital = 0.5 * best_oracle
+    reach = GOAL_FROM * (1.0 + on_capital * DAYS_TO_GOAL / 365.25)
+    closes = 100 * (reach - GOAL_FROM) / (GOAL_TO - GOAL_FROM)
+    print(
+        f"\n  In {len(rows) - beaten} von {len(rows)} Maerkten schlaegt nicht einmal die\n"
+        f"  perfekte Auswahl das blosse Durchhalten. Der Grund ist die Maut: jede\n"
+        f"  Auswahl zahlt sie erneut, Durchhalten zahlt sie einmal. Auswaehlen ist\n"
+        f"  hier also kein ungenutzter Hebel, sondern ein teurerer Weg zum selben.\n"
+        f"\n  Beste Zelle ueberhaupt: {100 * best_oracle:+.2f}%/Jahr aufs Notional,\n"
+        f"  {100 * on_capital:+.2f}% aufs Kapital, ueber {DAYS_TO_GOAL} Tage "
+        f"{GOAL_FROM:,.0f} -> {reach:,.0f} CHF.\n"
+        f"  Mit KENNTNIS JEDER ZUKUENFTIGEN RATE gerechnet, und es schliesst\n"
+        f"  {closes:.1f}% der Luecke. Der Zweig ist damit entschieden, ohne dass je\n"
+        f"  ein Parameter angepasst werden muesste."
+    )
+
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--draws", type=int, default=DEFAULT_DRAWS)
@@ -317,6 +404,8 @@ def main() -> int:
             f"zweite {100 * row.late:+.4f}%  {row.ratio:>5.2f}x  "
             f"{'haelt' if row.repeats else 'FAELLT'}"
         )
+
+    report_selection(rows, files, setup_cost=setup_cost)
 
     verdict(rows, repeated=repeated, falling=falling)
     return 0

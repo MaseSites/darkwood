@@ -334,7 +334,10 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "kein Rauschen. Ehrlich fortgeschrieben: +4.2% aufs doppelt gebundene "
         "Kapital, also 12.000 -> 12.033 bis zum 30.10. Schliesst 1.1% der Luecke. "
         "Basisrisiko ungemessen (keine Spot-Reihe), Liquidation des Short-Beins "
-        "nicht modelliert.",
+        "nicht modelliert. Auswahl der guten Perioden hilft nicht: bei PERFEKTER "
+        "Voraussicht schlaegt sie in 7 von 12 Maerkten nicht einmal das blosse "
+        "Durchhalten, weil jede Auswahl die Maut erneut zahlt. Beste Zelle "
+        "ueberhaupt, mit Kenntnis jeder zukuenftigen Rate: 12.000 -> 12.027.",
     ),
     (
         "Querschnitt (Markt gegen Markt)",
