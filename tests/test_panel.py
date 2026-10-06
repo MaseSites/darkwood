@@ -253,10 +253,42 @@ def test_provenance_gate_lets_the_price_group_through() -> None:
     assert notes == ()
 
 
-def test_provenance_gate_reports_a_missing_connector_separately() -> None:
-    """macro and onchain are absent, which is not the same as unexplained."""
-    suspect, _ = check_provenance("P+D+M", allow_unverified=True)
-    assert any("kein Connector" in s for s in suspect)
+def test_every_shipped_group_has_a_connector_for_every_source() -> None:
+    """The state this project reached on 06.10.2026, frozen so it cannot slip back.
+
+    Until that day macro and onchain had no connector and the gate reported
+    them as absent -- a different failure from unexplained provenance, and the
+    reason the branch below exists at all. Both are connected now: FRED serves
+    all six named series over the graph CSV endpoint without a key, and Coin
+    Metrics Community plus DefiLlama cover the chain side. So no declared group
+    may name a source the register does not know, and a new feature group that
+    does is a mistake this test catches at declaration time rather than in a
+    study that silently measures fewer columns than it claims.
+    """
+    for group, sources in GROUPS.items():
+        missing = [s for s in sources if s not in SOURCES]
+        assert not missing, f"{group} nennt Quellen ohne Eintrag im Register: {missing}"
+
+
+def test_a_source_without_a_connector_is_reported_as_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Absence and unexplained provenance are different answers.
+
+    No shipped group triggers this any more (the test above freezes that), so
+    the branch is exercised through a group declared here. It still earns a
+    test: "no connector" tells the reader to go and build one, while "unknown
+    provenance" tells them to go and verify rows that already exist. Collapsing
+    the two sends the next person to the wrong place.
+    """
+    monkeypatch.setitem(GROUPS, "P+Z", (*GROUPS["P"], "zukunftsmusik"))
+
+    suspect, _ = check_provenance("P+Z", allow_unverified=True)
+    assert suspect == ("zukunftsmusik (kein Connector)",)
+
+    with pytest.raises(ValueError, match="ohne belegte Herkunft") as raised:
+        check_provenance("P+Z", allow_unverified=False)
+    assert "kein Connector" in str(raised.value)
 
 
 def test_unknown_group_is_refused() -> None:
