@@ -195,8 +195,12 @@ def test_a_bare_date_and_an_instant_both_become_milliseconds() -> None:
     with "Cannot convert tz-naive Timestamp". A bare date reads as midnight
     UTC, which is how every other daily stamp here is stored.
     """
-    assert _stamp("2026-10-02") == 1791072000000
-    assert _stamp("2026-10-02T00:00:00.000000000Z") == 1791072000000
+    # 1,790,899,200,000 is 2026-10-02 00:00 UTC. The literal is here rather
+    # than computed so a change in the conversion cannot move the target
+    # along with the result -- a test that recomputes what it checks proves
+    # nothing. Verified with pd.Timestamp(ms, unit="ms", tz="UTC").
+    assert _stamp("2026-10-02") == 1_790_899_200_000
+    assert _stamp("2026-10-02T00:00:00.000000000Z") == 1_790_899_200_000
     # And the two agree, which is the property that matters for a join.
     assert _stamp("2020-01-01") == _stamp("2020-01-01T00:00:00Z")
 
