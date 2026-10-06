@@ -1,0 +1,10 @@
+{
+    "$schema": "https://schema.freqtrade.io/schema.json",
+    "dry_run_wallet": 1000000,
+    "_comment_wallet": "Not a paper account -- a measuring instrument. The shipped config starts at 1,000 USDT with a 200 stake, and on 05.10.2026 the baseline strategy spent it: the run was configured for 19 months and stopped trading after 15 weeks at 201.93 USDT, because two slots of 200 can no longer be funded. Every per-trade statistic from that run is therefore measured on the stretch before ruin, not on the window that was asked for. A wallet this large cannot run out, so the trade count is decided by the signals alone and the entry statistics cover the whole period. The paper config is left exactly as the installation order specifies; this overlay is passed only by `python scripts/ft.py --measure`.",
+    "dry_run": true,
+    "api_server": {
+        "enabled": false,
+        "_comment": "A measurement run needs no control surface, and leaving the port free means it can run while the paper bot holds it."
+    }
+}

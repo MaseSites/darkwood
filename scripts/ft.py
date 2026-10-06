@@ -3,6 +3,7 @@
     python scripts/ft.py list-strategies
     python scripts/ft.py download-data --pairs BTC/USDT --timeframes 5m 1h --timerange 20250201-
     python scripts/ft.py backtesting --strategy BaselineTrend --timerange 20250601-20261001
+    python scripts/ft.py --measure backtesting --strategy BaselineTrend
     python scripts/ft.py --freqai backtesting --strategy FreqaiCostFiltered
 
 Freqtrade takes its configuration from however many `-c` files are passed and
@@ -42,6 +43,7 @@ BINARY_POSIX = FT_DIR / ".venv" / "bin" / "freqtrade"
 BASE = USER_DIR / "config.base.json"
 FREQAI = USER_DIR / "config.freqai.json"
 LOCAL = USER_DIR / "config.local.json"
+MEASURE = USER_DIR / "config.measure.json"
 
 
 def binary() -> Path:
@@ -63,14 +65,21 @@ def binary() -> Path:
     )
 
 
-def configs(*, freqai: bool) -> list[str]:
+def configs(*, freqai: bool, measure: bool = False) -> list[str]:
     """The `-c` chain, in merge order, with every file checked to exist.
 
     Checked rather than assumed: a missing secrets file is the failure this
     whole module exists to prevent, and discovering it here names the fix
     instead of surfacing a schema error about `minLength: 32`.
+
+    The measurement overlay goes **last** so it wins. Freqtrade merges in the
+    order the files are given, so an overlay placed anywhere else is silently
+    overridden by the base -- which looks exactly like the overlay not being
+    read at all, and would have left the run still going broke halfway.
     """
     chain = [BASE, FREQAI, LOCAL] if freqai else [BASE, LOCAL]
+    if measure:
+        chain = [*chain, MEASURE]
     missing = [p for p in chain if not p.exists()]
     if missing:
         names = ", ".join(p.name for p in missing)
@@ -99,6 +108,12 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
         help="Include the FreqAI overlay. Off by default, so a baseline run cannot pick it up.",
     )
     parser.add_argument(
+        "--measure",
+        action="store_true",
+        help="Wallet large enough that the account cannot run out. For measuring "
+        "entries over a whole window rather than up to the point of ruin.",
+    )
+    parser.add_argument(
         "--show",
         action="store_true",
         help="Print the command instead of running it.",
@@ -114,7 +129,13 @@ def main() -> int:
         print("Weitere Unterbefehle:")
         rest = ["--help"]
 
-    cmd = [str(binary()), *rest, *configs(freqai=args.freqai), "--userdir", str(USER_DIR)]
+    cmd = [
+        str(binary()),
+        *rest,
+        *configs(freqai=args.freqai, measure=args.measure),
+        "--userdir",
+        str(USER_DIR),
+    ]
 
     if args.show:
         print(" ".join(cmd))

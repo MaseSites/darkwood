@@ -87,6 +87,12 @@ HORIZON_BARS = (1, 5, 12, 48)
 #: carries the caveat rather than pretending otherwise.
 THIN_BLOCKS = 30
 
+#: How far short of the configured window's end the last trade may fall before
+#: the run counts as having stopped early. A week: a strategy can simply have
+#: no signal for a few days, and calling that "it stopped" would cry wolf on
+#: every quiet tail.
+EARLY_STOP_MS = 7 * 24 * 3600 * 1000
+
 WEEK_MS = 7 * 24 * 3600 * 1000
 
 
@@ -188,6 +194,7 @@ def entry_edge(
     edges: list[float] = []
     weeks: list[int] = []
     baselines: list[float] = []
+    off_grid = 0
     for pair in sorted({t["pair"] for t in trades}):
         stamps, opens = candles(pair)
         inside = np.flatnonzero((stamps >= window[0]) & (stamps <= window[1]))
@@ -203,16 +210,77 @@ def entry_edge(
         for trade in (t for t in trades if t["pair"] == pair):
             at = int(np.searchsorted(stamps, trade["open_timestamp"]))
             if at >= stamps.size or stamps[at] != trade["open_timestamp"]:
+                off_grid += 1
                 continue
             if at + bars >= opens.size:
                 continue
+            # The whole measurement rests on the entry landing on this bar's
+            # open, because that is the price the horizon is measured from.
+            # Checked against 15,624 trades on 06.10.2026 and exact for every
+            # one; asserted so that a Freqtrade version with different fill
+            # logic fails loudly instead of shifting every number by an
+            # invisible fraction of a bar.
+            if not np.isclose(trade["open_rate"], opens[at], rtol=1e-9):
+                raise SystemExit(
+                    f"{pair}: Einstieg zu {trade['open_rate']} liegt nicht auf der "
+                    f"Kerzeneroeffnung {opens[at]} bei {trade['open_date']}.\n"
+                    f"Dann misst dieses Skript einen Horizont ab einem Preis, den der "
+                    f"Trade nie bezahlt hat."
+                )
             edges.append((opens[at + bars] / opens[at] - 1.0) - base)
             baselines.append(base)
             weeks.append(int(trade["open_timestamp"] // WEEK_MS))
 
+    if off_grid:
+        # Not fatal, but it must never be invisible: trades dropped silently
+        # would quietly change which population the figure describes.
+        print(f"  (Hinweis: {off_grid} Einstiege lagen nicht auf dem Kerzenraster)")
     values = np.array(edges)
     low, high = block_bootstrap(values, np.array(weeks), draws=draws)
     return float(values.mean()), low, high, float(np.mean(baselines)), values.size
+
+
+def report_window(
+    summary: dict, trades: list[dict], *, span_days: float, blocks: int
+) -> None:
+    """What the run actually traded, and whether it reached the end of its window.
+
+    Derived rather than narrated. The first version of this block hard-coded
+    the sentence about the account running dry: true of the run it was written
+    against, false of the very next one. A report that asserts something untrue
+    about the run it is describing is the exact failure this whole script
+    exists to catch, so the three cases are decided from the data.
+    """
+    print("\nWas der Lauf wirklich gehandelt hat")
+    print(f"  angefordertes Fenster   {summary['backtest_start']}  bis  {summary['backtest_end']}")
+    print(f"  tatsaechlich gehandelt  {trades[0]['open_date']}  bis  {trades[-1]['close_date']}")
+    print(f"  Spanne                  {span_days:.0f} Tage ({blocks} Wochenbloecke)")
+    start, final = summary["starting_balance"], summary["final_balance"]
+    print(f"  Kontostand              {start:.0f} -> {final:.2f}")
+
+    stake = float(summary.get("stake_amount") or 0.0)
+    slots = int(summary.get("max_open_trades") or 1)
+    window_end = pd.Timestamp(summary["backtest_end"], tz="UTC").value // 1_000_000
+    idle_days = (window_end - trades[-1]["close_timestamp"]) / 86_400_000
+
+    if idle_days * 86_400_000 <= EARLY_STOP_MS:
+        print(
+            "  Der Lauf reicht bis ans Fensterende, und das Konto haelt durch: die\n"
+            "  Zahlen unten gelten fuer den ganzen angeforderten Zeitraum."
+        )
+    elif final < stake * slots:
+        print(
+            f"  Er endete nicht am Fensterende, sondern am Geld: mit {final:.0f} USDT\n"
+            f"  laesst sich bei {stake:.0f} Einsatz und {slots} Plaetzen kein voller Satz\n"
+            f"  mehr finanzieren. Der Rest des Fensters ist Stille, keine Messung --\n"
+            f"  jede Zahl unten gilt fuer die Strecke bis zum Ruin, nicht fuer das\n"
+            f"  Fenster, das angefordert war."
+        )
+    else:
+        print(
+            f"  Der letzte Trade liegt {idle_days:.0f} Tage vor dem Fensterende, und das\n"
+            f"  Konto war nicht leer. Es lag also an den Signalen, nicht am Geld."
+        )
 
 
 def verdict(cells: list[tuple[str, float, float, float]], *, toll_paid: float) -> None:
@@ -312,17 +380,11 @@ def main() -> int:
     print(f"Strategie: {strategy}   Trades: {len(trades)}")
     print("=" * 78)
 
-    print("\nWas der Lauf wirklich gehandelt hat")
-    print(f"  angefordertes Fenster   {summary['backtest_start']}  bis  {summary['backtest_end']}")
-    print(f"  tatsaechlich gehandelt  {trades[0]['open_date']}  bis  {trades[-1]['close_date']}")
-    span = (opened.max() - opened.min()) / 1000 / 86400
-    print(f"  Spanne                  {span:.0f} Tage ({blocks} Wochenbloecke)")
-    start, final = summary["starting_balance"], summary["final_balance"]
-    print(f"  Kontostand              {start:.0f} -> {final:.2f}")
-    print(
-        "  Er endete nicht am Fensterende, sondern am Geld: mit 202 USDT laesst sich\n"
-        "  bei 200 Einsatz kein zweiter Platz mehr fuellen. Nicht 19 Monate -- 15\n"
-        "  Wochen bis leer, und der Rest des Fensters ist Stille, keine Messung."
+    report_window(
+        summary,
+        trades,
+        span_days=(opened.max() - opened.min()) / 1000 / 86400,
+        blocks=blocks,
     )
 
     print("\nJe Trade, in Prozent des Einsatzes")
@@ -337,7 +399,6 @@ def main() -> int:
         f"  netto  (gebucht)        {100 * net.mean():+7.4f}%"
         f"  [{100 * n_low:+.4f}, {100 * n_high:+.4f}]"
     )
-
     correlation = float(np.corrcoef(duration, gross)[0, 1])
     print("\nWarum die naheliegende Vergleichsgroesse nicht geht")
     print(f"  Korrelation Haltedauer <-> Brutto   {correlation:+.3f}")
