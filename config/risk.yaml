@@ -133,6 +133,15 @@ limits:
   # criterion is evidence throughput, stated before the sweep was read, which
   # is also what keeps this from being a parameter fitted to its own best cell.
   #
+  # **Checked after the fact on 06.10.2026, because a criterion nobody verifies
+  # is just a nicer way of picking the number you wanted.** The forward counters
+  # across the twelve paper accounts: 54 setups proposed on 1,320 evaluated
+  # candles, 46 refused by the risk layer, 8 opened -- an acceptance rate of
+  # 14.8%, and 8 trades over 3.5 days is 2.3 a day. Carried to 30.10 that is
+  # roughly 60 forward trades, against the "about fifty" predicted above. The
+  # throughput argument for 0.08 over 0.04 therefore held; it was not a story
+  # told to justify the looser cap.
+  #
   # The holdout window is untouched (0 consultations) and was NOT spent on
   # this. It did not need to be: the certain component is arithmetic, and the
   # uncertain one is openly undecided above.

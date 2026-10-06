@@ -88,6 +88,22 @@ class Tally:
     """Cycles that threw. A loop failing every pass reads on the screen exactly
     like a quiet market, so the sentence below has to be able to say it."""
 
+    last_failure: str = ""
+    """What the most recent failing cycle said.
+
+    The running process keeps a list and prints it at shutdown, which covers
+    the case where somebody is watching. It does not cover the common one: a
+    trader killed and restarted carries the *count* forward in this table and
+    leaves the reason behind in a process that no longer exists. On 06.10.2026
+    all twelve accounts showed exactly one failure each and there was no way
+    left to ask what it was -- a counter whose explanation is unreachable is
+    the thing `_failed`'s own docstring argues against."""
+
+    last_failure_ts: int = 0
+    """When that cycle failed, in epoch ms. Twelve accounts failing once is a
+    single bad minute shared by all of them; twelve accounts failing at twelve
+    different times is twelve problems. Only the timestamp separates the two."""
+
     @property
     def mostly_failing(self) -> bool:
         """Is this a broken loop rather than a flaky exchange response?
@@ -298,8 +314,17 @@ def _load_tally(raw: str | None) -> Tally:
     if not raw:
         return Tally()
     data: dict[str, Any] = json.loads(raw)
-    fields = set(Tally().__dict__)
-    return Tally(**{k: int(v) for k, v in data.items() if k in fields})
+    # Coerce per field rather than calling int() on everything: the tally
+    # carries a failure message now, and a blanket int() would raise on the
+    # first account that has one -- which is to say, on the first account that
+    # has something worth reading.
+    defaults = Tally().__dict__
+    restored = {
+        key: (str(value) if isinstance(defaults[key], str) else int(value))
+        for key, value in data.items()
+        if key in defaults
+    }
+    return Tally(**restored)
 
 
 def _dump_reason(reason: TradeReason | None) -> str | None:

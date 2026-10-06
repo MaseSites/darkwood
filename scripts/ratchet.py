@@ -323,6 +323,20 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "Unterschied +-1.6 Punkte ohne Richtung, jedes Intervall mit Null.",
     ),
     (
+        "Funding-Carry (ohne Richtung)",
+        "erledigt",
+        "Nicht 'Funding als Merkmal fuer die Richtung' (das ist die Zeile darueber "
+        "und ist tot), sondern Funding EINSAMMELN: Perp short gegen Spot long, "
+        "Preis herausgehedgt, keine Vorhersage noetig. 12 Maerkte, 3.8-6.7 Jahre: "
+        "11 von 12 mit Intervall ueber Null, +5.5% bis +14.8% p.a. aufs Notional. "
+        "Aber 12 VON 12 zahlen in der zweiten Haelfte weniger, zwei inzwischen "
+        "negativ -- eine einheitliche Richtung ueber zwoelf Maerkte ist ein Trend, "
+        "kein Rauschen. Ehrlich fortgeschrieben: +4.2% aufs doppelt gebundene "
+        "Kapital, also 12.000 -> 12.033 bis zum 30.10. Schliesst 1.1% der Luecke. "
+        "Basisrisiko ungemessen (keine Spot-Reihe), Liquidation des Short-Beins "
+        "nicht modelliert.",
+    ),
+    (
         "Querschnitt (Markt gegen Markt)",
         "erledigt",
         "Die einzige Richtung, die der Auftrag nie benannt hat: alle 87 Arme davor "

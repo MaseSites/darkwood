@@ -40,7 +40,7 @@ from traidingbrain.domain.market import Bar, FundingRate, SymbolSpec
 from traidingbrain.journal.record import Source
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.live.paper import PaperTrader
-from traidingbrain.live.paperstate import PaperStateStore, Tally
+from traidingbrain.live.paperstate import PaperState, PaperStateStore, Tally
 from traidingbrain.sim.plan import TradeIntent
 
 SYMBOL = "BTCUSDT"
@@ -876,6 +876,49 @@ def test_a_failed_decision_does_not_discard_settled_minutes(
     assert saved.last_minute_ts > 0, "the settled minutes were thrown away with the decision"
     assert saved.tally.failures >= 1
     assert any("Entscheiden" in error for error in trader.stats.errors)
+
+    # The count survives a restart and the in-process list does not, so the
+    # reason has to travel with the count or the number becomes unreadable.
+    # That is not hypothetical: on 06.10.2026 all twelve accounts showed
+    # exactly one failure each, from a process that had already been killed,
+    # and there was no way left to ask what it had been.
+    assert "Entscheiden" in saved.tally.last_failure
+    assert saved.tally.last_failure_ts >= start
+
+
+def test_a_stored_failure_message_survives_being_read_back(tmp_path: Path) -> None:
+    """A string in the tally must not break the loader that reads it.
+
+    Every counter in `Tally` used to be an integer and `_load_tally` coerced
+    the whole payload with `int()`. Adding the first text field turns that into
+    a crash on exactly the accounts that have something to report -- the ones
+    that failed. This is the test for that edge, and it writes through the
+    store rather than calling the loader, so it also covers the dump side.
+    """
+    store = PaperStateStore(tmp_path / "paper.sqlite")
+    state = PaperState(
+        symbol="BTCUSDT",
+        equity=1000.0,
+        tally=Tally(cycles=9, failures=2, last_failure="Entscheiden: boom", last_failure_ts=17),
+    )
+    store.save(state)
+
+    restored = store.load("BTCUSDT")
+    assert restored is not None
+    assert restored.tally == state.tally
+    assert restored.tally.last_failure == "Entscheiden: boom"
+
+    # And a row written before this field existed still opens, because an
+    # account with an open position must not be lost to a schema change.
+    with sqlite3.connect(tmp_path / "paper.sqlite") as connection:
+        connection.execute(
+            "UPDATE accounts SET tally = ? WHERE symbol = ?",
+            ('{"cycles": 9, "failures": 2}', "BTCUSDT"),
+        )
+    old = store.load("BTCUSDT")
+    assert old is not None
+    assert old.tally.failures == 2
+    assert old.tally.last_failure == ""
 
 
 def test_settling_every_market_comes_before_deciding_for_any(

@@ -392,6 +392,13 @@ class PaperTrader:
         it can give.
         """
         self.stats.tally.failures += 1
+        # Persisted as well as listed. The list dies with the process, and a
+        # trader that is killed and restarted keeps the count while losing the
+        # reason -- which is how twelve accounts came to show one unexplainable
+        # failure each. The clock is the injected one, so a replay stamps these
+        # with simulated time like everything else.
+        self.stats.tally.last_failure = message[:500]
+        self.stats.tally.last_failure_ts = self.clock.now_ms()
         self.stats.errors.append(message)
 
     def _settle(self, minutes: pd.DataFrame) -> list[JournalEntry]:

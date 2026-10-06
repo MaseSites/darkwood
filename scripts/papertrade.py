@@ -301,8 +301,16 @@ def show_status(traders: list[PaperTrader]) -> int:
 
     print("Papertrading-Konten\n")
     for trader in traders:
+        tally = trader.state.tally
         print(f"  {trader.status()}")
         print(f"      letzte Minute verbucht: {clock_text(trader.state.last_minute_ts)} UTC")
+        # The count alone cannot be acted on, and it is the part that survives a
+        # restart. Printing the stored reason next to it is what makes "one
+        # failure per account" answerable instead of merely alarming.
+        if tally.failures:
+            when = clock_text(tally.last_failure_ts) if tally.last_failure_ts else "unbekannt"
+            reason = tally.last_failure or "kein Text gespeichert (vor dieser Version)"
+            print(f"      ! {tally.failures} gescheiterte Zyklen, zuletzt {when} UTC: {reason}")
 
     print(f"\nVorwärts-Trades im Journal: {len(live)}")
     if live:
