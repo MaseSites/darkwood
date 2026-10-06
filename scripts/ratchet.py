@@ -353,6 +353,91 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
 )
 
 
+def decide(rows: list[tuple], *, consultations: int) -> None:
+    """The three-way verdict the research order asks for, read off the register.
+
+    "Belastbarer Kandidat, noch unklar, oder kein belegter Vorteil." It is
+    computed here rather than asserted, so it cannot drift away from what was
+    actually measured.
+
+    **Two rows of the table must not be compared, and it is easy to miss.**
+    Every row stores `champion_mean_r`, and for every row that number is the
+    champion's **R**. Rows measured in rank correlation or in hit-rate edge
+    carry it too, so a query like `low > champion_mean_r` across the whole
+    table reports 37 "winners" -- correlation intervals clearing an R figure
+    because the two happen to be on comparable-looking scales. I wrote exactly
+    that query while adding this function and believed it for about a minute.
+
+    `Register.judge` is not fooled: its first check is `unit != "R"`. This
+    function applies the same rule, and says so out loud, because the trap sits
+    in plain sight in the table above and the next reader deserves the warning
+    rather than the lesson.
+    """
+    # arm, stage, n, mean_r, low, high, unit, champion_mean_r, ...
+    comparable = [r for r in rows if r[6] == "R"]
+    holdout = [r for r in comparable if r[1] == "holdout"]
+    tested = [r for r in comparable if r[1] == "test"]
+
+    def excludes_champion(row: tuple) -> bool:
+        low, high, base = float(row[4]), float(row[5]), float(row[7])
+        # A zero-width interval is not a narrow one, it is a missing one: some
+        # arms were recorded before an interval was computed for them, and
+        # [0.0000, 0.0000] would otherwise sail past every comparison below
+        # while carrying no evidence at all.
+        return low < high and low > base
+
+    no_interval = [r for r in comparable if float(r[4]) >= float(r[5])]
+    winners = [r for r in holdout if excludes_champion(r)]
+    candidates = [r for r in tested if excludes_champion(r)]
+
+    print("\n" + "=" * 78)
+    print("Die Entscheidung, die der Forschungsauftrag verlangt")
+    print("=" * 78)
+    print(
+        f"\n  {len(rows)} Zeilen im Register, davon {len(comparable)} in R gemessen und damit\n"
+        f"  ueberhaupt mit dem Champion vergleichbar: {len(tested)} aus Testfenstern,\n"
+        f"  {len(holdout)} aus dem Prueffenster. Nur das Prueffenster kann ein Urteil tragen."
+    )
+    if no_interval:
+        names = ", ".join(sorted({r[0] for r in no_interval}))
+        print(
+            f"\n  Ohne Intervall aufgenommen ({len(no_interval)} Zeilen): {names}.\n"
+            f"  Null Breite ist kein enges Intervall, sondern gar keins -- diese Zeilen\n"
+            f"  zaehlen unten nirgends mit."
+        )
+
+    if winners:
+        print(f"\n  BELASTBARER KANDIDAT: {', '.join(sorted({r[0] for r in winners}))}")
+    elif holdout:
+        print("\n  NOCH UNKLAR: Prueffenster-Ergebnisse liegen vor, aber keines schliesst")
+        print("  den Champion aus.")
+    else:
+        print("\n  KEIN BELEGTER VORTEIL.")
+        print(
+            f"\n  Kein Arm ist je im Prueffenster gemessen worden "
+            f"({consultations} Konsultationen)."
+        )
+        if candidates:
+            names = ", ".join(sorted({r[0] for r in candidates}))
+            print(
+                f"\n  Auf Testfenstern gibt es {len(set(r[0] for r in candidates))} Arm mit einem "
+                f"Intervall ueber dem\n  Champion: {names}. Das ist ein Kandidat und kein Urteil "
+                f"-- die Testfenster\n  sind ueber jeden je versuchten Arm gelesen worden, und "
+                f"genau so sahen alle\n  acht verworfenen Hypothesen zuerst aus."
+            )
+        else:
+            print(
+                "\n  Auch auf den Testfenstern hat kein Arm ein Intervall, das den Champion\n"
+                "  ausschliesst."
+            )
+        print(
+            "\n  Das Prueffenster ist unangetastet, und das ist eine Entscheidung, keine\n"
+            "  Luecke: es aufzubrauchen, ohne einen Kandidaten zu haben, der die\n"
+            "  Konsultation wert ist, haette die einzige Munition verschossen, die noch\n"
+            "  da ist."
+        )
+
+
 def report_space() -> None:
     """What is left to look at, and how many decisive tests that is.
 
@@ -482,6 +567,7 @@ def main() -> int:
         "Prueffenster selbst zu lesen, und genau das wird hier gezaehlt."
     )
     report_space()
+    decide(rows, consultations=consultations)
     return 0
 
 
