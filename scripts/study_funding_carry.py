@@ -85,6 +85,17 @@ BLOCK_DAYS = 7
 #: enough that a failure means something.
 REPLICATION_BAND = (0.5, 2.0)
 
+#: Above this share of settlements at exactly zero, the series is reported as
+#: broken rather than measured. `scripts/coverage.py` raised it first: BNBUSDT
+#: is 49.6% exact zeros spread across its whole history, and no exchange
+#: settles exactly nothing in half of all intervals. LINKUSDT (4.7%) and
+#: LTCUSDT (4.2%) have the same defect confined to the first months of 2020,
+#: which is why the threshold sits between the two cases -- an early-history
+#: artefact is survivable, a systematic one is not. Without this check BNBUSDT
+#: reads as "a market where funding pays nothing", which is a conclusion drawn
+#: from a hole in the data.
+MAX_ZERO_SHARE = 0.10
+
 #: Holding lengths for the perfect-foresight ceiling, in days. Short enough
 #: that the toll bites, long enough that it amortises -- declared before the
 #: ceiling was computed, because an upper bound chosen after seeing the answers
@@ -356,11 +367,22 @@ def main() -> int:
     )
 
     rows: list[Market] = []
+    kept: list[Path] = []
+    broken: list[tuple[str, float]] = []
     for path in files:
         frame = read_funding(path)
         rates = frame["rate"].to_numpy(dtype=float)
         stamps = frame["ts"].to_numpy(dtype=np.int64)
         years = (stamps[-1] - stamps[0]) / (365.25 * DAY_MS)
+
+        # Refuse the series before measuring it. A market whose rate is exactly
+        # zero in half of all settlements has a hole, not a flat funding
+        # market, and averaging across the hole produces a number that looks
+        # like a finding.
+        zero_share = float((rates == 0.0).mean())
+        if zero_share > MAX_ZERO_SHARE:
+            broken.append((path.stem, zero_share))
+            continue
         low, high = block_bootstrap(rates, stamps, draws=args.draws)
         mean = float(rates.mean())
         share = float((rates > 0).mean())
@@ -387,6 +409,7 @@ def main() -> int:
                 at_default=float(np.isclose(rates, DEFAULT_RATE).mean()),
             )
         )
+        kept.append(path)
         print(
             f"  {path.stem:10s} {len(rates):>9,d} {years:>6.1f} {100 * mean:>+8.4f}%  "
             f"[{100 * low:+.4f}, {100 * high:+.4f}] {100 * share:>7.1f}% "
@@ -405,7 +428,17 @@ def main() -> int:
             f"{'haelt' if row.repeats else 'FAELLT'}"
         )
 
-    report_selection(rows, files, setup_cost=setup_cost)
+    if broken:
+        print("\nAusgeschlossen, bevor gemessen wurde")
+        for name, zero_share in broken:
+            print(
+                f"  {name:10s} {100 * zero_share:.1f}% der Abrechnungen exakt null. Keine "
+                f"Boerse\n             rechnet so oft genau nichts ab -- das ist ein Loch "
+                f"in den Daten,\n             kein Markt ohne Funding. "
+                f"`scripts/coverage.py` meldet es seit jeher."
+            )
+
+    report_selection(rows, kept, setup_cost=setup_cost)
 
     verdict(rows, repeated=repeated, falling=falling)
     return 0
