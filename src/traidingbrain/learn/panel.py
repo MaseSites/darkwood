@@ -96,6 +96,17 @@ SOURCES: dict[str, tuple[Provenance, int, str]] = {
         "nicht dokumentiert, daher ein Tag konservativ. Teilweise selbst "
         "preis- und volumenabhaengig -- kein reines Nicht-Preis-Merkmal.",
     ),
+    "macro": (
+        Provenance.VERIFIED,
+        DAY_MS,
+        "FRED, eigener Abruf ueber den oeffentlichen CSV-Weg -- ohne Schluessel, "
+        "was der Forschungsauftrag anders annahm. Sechs Serien: Dollarindex, "
+        "2- und 10-Jahres-Rendite, Nasdaq, S&P 500, VIX. WERKTAGSREIHEN, "
+        "waehrend Krypto 24/7 laeuft -- eine Samstagsentscheidung hat Freitags "
+        "letzten Wert, was der As-of-Join mit Altersgrenze erledigt. Der CSV-Weg "
+        "liefert die AKTUELLE Fassung; fuenf der sechs sind Marktbeobachtungen "
+        "und werden nicht revidiert, DTWEXBGS ist berechnet und koennte es sein.",
+    ),
     "onchain": (
         Provenance.VERIFIED,
         DAY_MS,
@@ -147,9 +158,11 @@ GROUPS: dict[str, tuple[str, ...]] = {
     "P+D": ("ohlcv", "open_interest", "account_ratio", "funding"),
     "P+D+M": ("ohlcv", "open_interest", "account_ratio", "funding", "macro"),
     "P+D+M+O": ("ohlcv", "open_interest", "account_ratio", "funding", "macro", "onchain"),
-    # The axis the exhausted map does not cover, isolated from the derivative
-    # sources so a difference cannot be attributed to the wrong one.
+    # The axes the exhausted map does not cover, each isolated from the others
+    # so a difference cannot be attributed to the wrong one.
     "P+O": ("ohlcv", "onchain", "stablecoins"),
+    "P+M": ("ohlcv", "macro"),
+    "P+M+O": ("ohlcv", "macro", "onchain", "stablecoins"),
 }
 
 #: Lookbacks in days for the price baseline, as the order names them.

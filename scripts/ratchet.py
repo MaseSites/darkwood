@@ -299,6 +299,15 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "24/72/168h, 2 Modelle, 3 Maerkte: keine Konfiguration schlaegt ihre Basisquote.",
     ),
     (
+        "Makro (FRED)",
+        "erledigt",
+        "Sechs Serien ohne Schluessel ueber den CSV-Weg, 10-65 Jahre. P gegen P+M "
+        "auf gemeinsamem Fenster: auf ALLEN drei Horizonten schlechter als Preis "
+        "allein (+1.87 -> +1.21, -0.03 -> -0.44, -0.75 -> -1.02). Durchgehende "
+        "Richtung ist die Signatur von Rauschen. P+M+O mit 22 Merkmalen ebenso: "
+        "-1.61 bis +0.91, jedes Intervall mit Null.",
+    ),
+    (
         "On-Chain und Stablecoin-Liquiditaet",
         "erledigt",
         "Erste Achse ausserhalb der Boerse. Coin Metrics Community (9-11.8 J) plus "

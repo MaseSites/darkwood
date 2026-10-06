@@ -18,14 +18,17 @@ import pandas as pd
 import pytest
 
 from traidingbrain.data.external import (
+    BUSINESS_DAY_SHARE,
     COMMUNITY_METRICS,
     FALLBACK_LAG_MS,
+    FRED_SERIES,
     PAYWALLED,
     ExternalStore,
     ExternalUnavailableError,
     Fetched,
     _stamp,
     coinmetrics,
+    fred,
     stablecoins,
 )
 
@@ -182,3 +185,79 @@ def test_live_services_still_answer() -> None:
     chain = coinmetrics("btc", since="2024-01-01")
     assert "FlowInExUSD" in chain.frame.columns
     assert (chain.frame["available_ms"] > chain.frame["ts"]).all()
+
+
+def test_a_bare_date_and_an_instant_both_become_milliseconds() -> None:
+    """The bug that made all six FRED series fail at once.
+
+    Coin Metrics sends an instant with a "Z" and FRED sends a bare date. One
+    is tz-aware and the other is not, and `tz_convert` raises on the naive one
+    with "Cannot convert tz-naive Timestamp". A bare date reads as midnight
+    UTC, which is how every other daily stamp here is stored.
+    """
+    assert _stamp("2026-10-02") == 1791072000000
+    assert _stamp("2026-10-02T00:00:00.000000000Z") == 1791072000000
+    # And the two agree, which is the property that matters for a join.
+    assert _stamp("2020-01-01") == _stamp("2020-01-01T00:00:00Z")
+
+
+def test_only_the_declared_fred_series_are_fetchable() -> None:
+    """Six, named in the research order. A seventh is a typo, not a request."""
+    assert set(FRED_SERIES) == {
+        "DTWEXBGS",
+        "DGS2",
+        "DGS10",
+        "NASDAQCOM",
+        "SP500",
+        "VIXCLS",
+    }
+    with pytest.raises(ExternalUnavailableError, match="nicht angemeldet"):
+        fred("GDP")
+    with pytest.raises(ExternalUnavailableError, match="nicht angemeldet"):
+        fred("dgs10")  # case matters; the endpoint is case-sensitive
+
+
+def test_every_fred_series_says_whether_it_is_revisable() -> None:
+    """Five are market observations; one is computed.
+
+    The CSV endpoint serves the current vintage, so the distinction decides
+    how much point-in-time trust each series earns. DTWEXBGS is the one that
+    can be restated, and the note has to say so.
+    """
+    assert "revidierbar" in FRED_SERIES["DTWEXBGS"]
+    for market_series in ("DGS2", "DGS10", "NASDAQCOM", "SP500", "VIXCLS"):
+        assert "Marktbeobachtung" in FRED_SERIES[market_series]
+
+
+def test_a_weekday_series_is_not_reported_as_gappy(tmp_path) -> None:
+    """71.4% of a daily grid is 5/7, which is a complete business-day series.
+
+    All six FRED series land there exactly. Reporting it as "71.4% complete"
+    reads as a quarter of the data missing, which is how intact data gets
+    mistaken for a defect.
+    """
+    store = ExternalStore(tmp_path)
+    # Ten weeks of weekdays only.
+    stamps = []
+    day = pd.Timestamp("2026-01-05", tz="UTC")  # a Monday
+    for week in range(10):
+        for weekday in range(5):
+            moment = day + pd.Timedelta(days=week * 7 + weekday)
+            stamps.append(int(moment.value // 1_000_000))
+    store.write(
+        Fetched(
+            frame=pd.DataFrame(
+                {"ts": stamps, "available_ms": [s + DAY_MS for s in stamps], "v": 1.0}
+            ),
+            source="fred:test",
+            url="https://example.invalid",
+            sha256="d" * 64,
+            fetched_ms=1,
+        ),
+        keep_raw=False,
+    )
+    report = store.coverage("fred:test")
+    assert "Werktagsreihe" in report
+    assert "71.4%" not in report
+    assert abs(BUSINESS_DAY_SHARE - 5 / 7) < 1e-9
+

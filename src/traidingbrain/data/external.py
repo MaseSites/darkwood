@@ -94,6 +94,13 @@ PAYWALLED: frozenset[str] = frozenset(
 FALLBACK_LAG_MS = 86_400_000
 
 DAY_MS = 86_400_000
+
+#: Five of seven days. A weekday series against a daily grid scores this,
+#: and all six FRED series land on it exactly -- so it marks a complete
+#: business-day series rather than a quarter of the data missing.
+BUSINESS_DAY_SHARE = 5.0 / 7.0
+BUSINESS_DAY_SLACK = 0.03
+
 REQUEST_TIMEOUT = 40.0
 PAGE_SIZE = 10_000
 MAX_RETRIES = 4
@@ -160,7 +167,13 @@ def _stamp(text: str) -> int:
     multiply loses sub-millisecond precision on stamps this large and these
     values are compared for ordering.
     """
-    return int(pd.Timestamp(text).tz_convert("UTC").value // 1_000_000)
+    moment = pd.Timestamp(text)
+    # Coin Metrics sends an instant with a "Z"; FRED sends a bare date. One is
+    # tz-aware and the other is not, and `tz_convert` raises on the naive one.
+    # A bare date is read as midnight UTC, which is how every other daily stamp
+    # in this project is stored.
+    moment = moment.tz_localize("UTC") if moment.tz is None else moment.tz_convert("UTC")
+    return int(moment.value // 1_000_000)
 
 
 def coinmetrics(
@@ -272,6 +285,100 @@ def stablecoins() -> Fetched:
     )
 
 
+#: FRED's public CSV download. No key, which is the discovery that closed the
+#: last gap in the research order's source list.
+#:
+#: The order says FRED "braucht einen kostenlosen API-Key" and names
+#: `realtime_start` / vintage queries for reconstructing historical
+#: information states. That is true of `api.stlouisfed.org`. The graph CSV
+#: endpoint is a separate, documented public download and answers without one
+#: -- checked for all six named series, DGS10 back to 1962.
+FRED_CSV = "https://fred.stlouisfed.org/graph/fredgraph.csv?id="
+
+#: The series the research order names, with what each is.
+#:
+#: Five of the six are market observations and are not revised: a Treasury
+#: yield, an index close, a volatility close. `DTWEXBGS` is a computed index
+#: and can be restated, so it is the one whose point-in-time status is weakest.
+FRED_SERIES: dict[str, str] = {
+    "DTWEXBGS": "Breiter handelsgewichteter Dollarindex. Berechnet, also revidierbar.",
+    "DGS2": "US-Staatsanleihe 2 Jahre, Rendite. Marktbeobachtung.",
+    "DGS10": "US-Staatsanleihe 10 Jahre, Rendite. Marktbeobachtung.",
+    "NASDAQCOM": "Nasdaq Composite, Schluss. Marktbeobachtung.",
+    "SP500": "S&P 500, Schluss. Marktbeobachtung.",
+    "VIXCLS": "VIX, Schluss. Marktbeobachtung.",
+}
+
+
+def fred(series: str) -> Fetched:
+    """One FRED series as daily observations, with its availability time.
+
+    **Three things about these series that a naive join gets wrong**, and the
+    research order names all three:
+
+    *They are business-day series and crypto is not.* A Saturday decision has
+    Friday's last value and nothing newer. That is handled by the backward
+    as-of join with a staleness bound in `learn/panel.py`, not here -- but it
+    is why this returns observations rather than a dense daily index.
+
+    *A close is known after the close.* `available_ms` is one day after the
+    observation date, which is conservative: a 16:00 New York close is knowable
+    the same evening. Late makes a feature weaker, early makes it wrong.
+
+    *The CSV serves the CURRENT vintage.* Treasury yields and index closes are
+    not revised, so for five of the six this is the value that was published.
+    `DTWEXBGS` is computed and can be restated, and this endpoint cannot say
+    what it read at the time -- that needs the keyed API's vintage queries. The
+    gap is real and small, and it is recorded rather than closed.
+
+    Missing observations arrive as "." in FRED's CSV -- a holiday, not a zero.
+    They become NaN, because a zero would assert the dollar index was nothing.
+    """
+    if series not in FRED_SERIES:
+        raise ExternalUnavailableError(
+            f"Serie '{series}' ist nicht angemeldet. Erlaubt: {', '.join(sorted(FRED_SERIES))}"
+        )
+
+    url = f"{FRED_CSV}{series}"
+    blob = _get(url)
+    text = blob.decode("utf-8", errors="replace")
+    lines = text.splitlines()
+    if len(lines) < 2:  # noqa: PLR2004 -- a header and at least one row
+        raise ExternalUnavailableError(f"FRED lieferte keine Beobachtungen fuer {series}.")
+
+    header = [part.strip() for part in lines[0].split(",")]
+    if len(header) < 2 or series not in header[1]:  # noqa: PLR2004
+        raise ExternalUnavailableError(
+            f"Unerwarteter Kopf fuer {series}: {lines[0]!r} -- Schema geaendert?"
+        )
+
+    records: list[dict[str, object]] = []
+    for line in lines[1:]:
+        parts = line.split(",")
+        if len(parts) < 2:  # noqa: PLR2004
+            continue
+        stamp = _stamp(parts[0].strip())
+        raw = parts[1].strip()
+        records.append(
+            {
+                "ts": stamp,
+                "available_ms": stamp + FALLBACK_LAG_MS,
+                # "." is FRED for "no observation" -- a market holiday. NaN,
+                # never zero: a zero asserts the yield was nothing.
+                series: float(raw) if raw not in (".", "") else float("nan"),
+            }
+        )
+
+    frame = pd.DataFrame(records).sort_values("ts").reset_index(drop=True)
+    return Fetched(
+        frame=frame,
+        source=f"fred:{series.lower()}",
+        url=url,
+        sha256=hashlib.sha256(blob).hexdigest(),
+        fetched_ms=int(time.time() * 1000),
+    )
+
+
 class ExternalStore:
     """Parquet per source, with the raw response kept beside it.
 
@@ -336,9 +443,19 @@ class ExternalStore:
             else 0
         )
         flash = int((frame.get("status", pd.Series(dtype=str)) == "flash").sum())
+        share = len(frame) / expected
+        # A weekday series is not a gappy daily one, and against a daily grid
+        # it scores 5/7 = 71.4% -- which reads as a quarter of the data
+        # missing. All six FRED series land there exactly, so the shape is
+        # worth naming rather than leaving to be misread as a defect.
+        kind = (
+            "Werktagsreihe, vollstaendig"
+            if abs(share - BUSINESS_DAY_SHARE) < BUSINESS_DAY_SLACK
+            else f"{100 * share:.1f}% eines Tagesrasters"
+        )
         return (
             f"{source}: {len(frame):,} Zeilen, {first:%Y-%m-%d} bis {last:%Y-%m-%d} "
-            f"({span / 365.25:.1f} J), {100 * len(frame) / expected:.1f}% vollstaendig, "
+            f"({span / 365.25:.1f} J), {kind}, "
             f"Verfuegbarkeit +{lag_hours:.1f}h, {flash} vorlaeufig, "
             f"{revalidated} mit Revalidierungszeit"
         )

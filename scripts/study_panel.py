@@ -352,6 +352,29 @@ def readers() -> tuple[object, object]:
         frame = candles.read(market, Timeframe.H1)
         return None if frame.empty else frame
 
+    def macro_frame(store: ExternalStore) -> pd.DataFrame | None:
+        """The six FRED series as one frame, outer-joined on the date.
+
+        Outer rather than inner: the series end on different days (a market
+        holiday closes one and not another), and an inner join would discard
+        every date where any one of them is missing -- which over sixty years
+        is most of them.
+        """
+        frames = []
+        for series in ("dtwexbgs", "dgs2", "dgs10", "nasdaqcom", "sp500", "vixcls"):
+            part = store.read(f"fred:{series}")
+            if part.empty:
+                continue
+            keep = [c for c in part.columns if c in ("ts", series.upper())]
+            frames.append(part[keep].rename(columns={series.upper(): series}))
+        if not frames:
+            return None
+        merged = frames[0]
+        for part in frames[1:]:
+            merged = merged.merge(part, on="ts", how="outer")
+        merged["available_ms"] = merged["ts"] + DAY_MS
+        return merged.sort_values("ts").reset_index(drop=True)
+
     def funding_frame(market: str) -> pd.DataFrame | None:
         rates = funding.read(market)
         if not rates:
@@ -373,6 +396,9 @@ def readers() -> tuple[object, object]:
             # One global series, joined to every market -- which is what it
             # is: total stablecoin circulation is not per asset.
             "stablecoins": lambda: external.read("defillama:stablecoins"),
+            # One frame from six series, joined on the observation date. Global
+            # like the stablecoin series -- the dollar index is not per market.
+            "macro": lambda: macro_frame(external),
         }
         reader = readers.get(source)
         if reader is None:
