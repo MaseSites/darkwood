@@ -1,7 +1,7 @@
 {
     "freqai": {
         "enabled": true,
-        "identifier": "lgbm-1h-horizon",
+        "identifier": "lgbm-h12-split0",
         "train_period_days": 120,
         "backtest_period_days": 7,
         "live_retrain_hours": 12,
@@ -47,6 +47,7 @@
             "reg_lambda": 1.0,
             "verbosity": -1
         },
-        "_comment_data_split": "test_size steht auf 0, und das ist eine Messentscheidung. Mit test_size > 0 ruft make_train_test_datasets sklearn.train_test_split mit shuffle=False auf: chronologisch geordnet, aber OHNE Abstand. Das letzte Trainingslabel reicht label_period_candles Kerzen in die Validierung hinein, und genau diese Menge geht in LightGBMRegressor.fit als eval_set. Gemessen am 07.10.2026 mit scripts/ft_label_boundary.py an der installierten Version 2026.9. Bei 0 wird eval_set zu None und die Teilung entfaellt; die Auswahl gehoert dann in den aeusseren, zeitlich korrekten Walk-forward. Die andere Grenze, Training gegen Vorhersage, war nie betroffen -- dort schuetzt der Shift sich selbst, weil ueberhaengende Labels NaN sind und filter_features sie verwirft."
+        "_comment_data_split": "test_size steht auf 0, und das ist eine Messentscheidung. Mit test_size > 0 ruft make_train_test_datasets sklearn.train_test_split mit shuffle=False auf: chronologisch geordnet, aber OHNE Abstand. Das letzte Trainingslabel reicht label_period_candles Kerzen in die Validierung hinein, und genau diese Menge geht in LightGBMRegressor.fit als eval_set. Gemessen am 07.10.2026 mit scripts/ft_label_boundary.py an der installierten Version 2026.9. Bei 0 wird eval_set zu None und die Teilung entfaellt; die Auswahl gehoert dann in den aeusseren, zeitlich korrekten Walk-forward. Die andere Grenze, Training gegen Vorhersage, war nie betroffen -- dort schuetzt der Shift sich selbst, weil ueberhaengende Labels NaN sind und filter_features sie verwirft.",
+        "_comment_identifier": "Der identifier ist FreqAIs Cache-Schluessel, und er enthaelt die Konfiguration NICHT. Am 07.10.2026 brach ein 90-Minuten-Lauf bei 75 von 83 Folds ab, weil er auf Modelle eines frueheren Laufs traf, die unter anderen Einstellungen trainiert worden waren -- gemeldet als 'different features furnished by current strategy'. Vorher hatte er diese Modelle stillschweigend WIEDERVERWENDET. Dasselbe Problem hat dieses Projekt fuer seine eigenen Laeufe mit journal/version.py::run_signature geloest: was einen Lauf verschieden macht, gehoert in den Schluessel. Also traegt der identifier jetzt den Label-Horizont (h12) und die interne Teilung (split0). Wer eines davon aendert, aendert ihn mit."
     }
 }
