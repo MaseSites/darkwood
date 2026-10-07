@@ -112,3 +112,58 @@ Mit einem Ergebnis, nicht mit Aktivität. Wenn die Aufnahme zeigt, dass
 sich das Signal nicht überträgt, ist das das Ergebnis dieser zwölf
 Stunden — und es ist mehr wert als ein weiterer Kandidat, der am zweiten
 Tor fällt.
+
+---
+
+## Fortschritt, gegen diesen Plan gelesen (Stand 18:10 UTC, ~1h gearbeitet)
+
+| # | Punkt | Stand |
+|---|---|---|
+| 1 | Tape-Aufnahme | **läuft**, 25 MB, 13 Lücken auf ~425 Abfragen (~3 %) |
+| 2 | Vorwärts-Evidenz schützen | **erledigt** — die 58 Fehlschläge waren historisch (zwei Händler, doppelte Anfragerate), und der Zähler verschwieg es |
+| 3 | E3 Ausgänge | **erledigt, negativ** — und die bestehende Politik erstmals *verteidigt* |
+| 4 | E7 freie Arme | **umdisponiert** zu `audit/E7_BUDGETVORSCHLAG.md`, Begründung dort |
+| 5 | E4 Machbarkeit | **übererfüllt** — nicht geprüft, sondern gebaut; E4 ist entsperrt |
+| 6 | Aufnahme messen | **Maschinerie fertig und validiert**, wartet auf Daten |
+
+### Was ich gegen den Plan anders gemacht habe, und warum
+
+**Punkt 4 habe ich nicht gerechnet.** Der Plan sagte, die freien Arme E7.1–E7.3
+kosten nichts und legen die Latte fest. Beim Nachsehen stellte sich heraus:
+der Signalpfad konsultiert FakeBrain überhaupt nicht — die gespeicherte
+Bewertung kommt von `rate(score_at(...))`. E7 bräuchte also einen neuen
+Harness über Snapshots, für ein nach drei vorhandenen Messungen
+vorhersehbares Null-Ergebnis, während eine zeitkritische Aufnahme läuft.
+
+Das war die schlechtere Verwendung der Stunde. Stattdessen steht jetzt die
+**Latte und ihr Preisschild** da, und das ist die Zahl, die der Nutzer
+braucht: ein bezahlter Arm kostet 49 bis 2 672 USD, also **5 % bis 267 % des
+gesamten Kontos** für eine Messung.
+
+Das ist eine Abwägung, keine Erledigung, und E7 bleibt im Register
+registriert.
+
+**Punkt 5 ist über den Plan hinausgegangen.** Geplant war zu *prüfen*, ob ein
+Point-in-Time-Universum beschaffbar ist. Es war beschaffbar, also habe ich es
+gebaut — 31 echte Perp-Delistings von 906, alle mit letztem Archivtag. Eine
+geprüfte Machbarkeit, die man danach noch bauen muss, ist eine halbe Antwort.
+
+### Fünf eigene Fehler in dieser Stunde
+
+Vier davon hatten dieselbe Form: **die Kennzahl beschrieb den Apparat, nicht
+die Welt.** 97 % Trade-Verlust (globale `trade_id`), 24-von-24 volle Seiten
+(die API gibt, was man anfragt), 8,1 % Survivorship (46 abgelaufene
+Quartalsfutures mitgezählt), 99,5 % Lücken (die Dateien enthalten nur das
+Neue). Faktoren: unendlich, konstant, 2,4×, 33×.
+
+Der fünfte war anderer Art und der teuerste: der Collector starb nach genau
+zehn Minuten an einem umbenannten Feld im Fortschrittsvermerk. Drei
+Rauchtests grün, Linter grün, tot an der ersten Zeile, die keiner davon
+erreicht hat. **Ein Codepfad, dessen Auslöser länger ist als der Test, ist
+ungetestet.**
+
+### Was bis ~04:00 UTC bleibt
+
+Warten auf die Aufnahme, und dann Punkt 6 mit echten Daten. Zehn Stunden
+Tape statt 32 Minuten ist der Unterschied zwischen „die Maschinerie
+funktioniert" und „so verhält sich diese Venue".
