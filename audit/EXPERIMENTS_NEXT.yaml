@@ -421,7 +421,41 @@ experiments:
   - id: E6
     title: "Carry und Basis als getrennter, kleinerer Ertragsarm"
     priority: 2
-    status: teilweise_blockiert
+    status: erledigt_negativ
+    result:
+      stand: 2026-10-07
+      bericht: audit/CARRY_NACH_KOSTEN.md
+      skripte: ["scripts/backfill_spot.py", "scripts/study_basis.py"]
+      defekt_behoben: >-
+        "Keine Spot-Reihe auf der Platte" ist aufgehoben: acht Maerkte mit
+        Binance-Funding, je 33013 Stundenkerzen ab 2023-01-01. Spot, Perp
+        und Funding von EINER Boerse, was E6.1 verlangt.
+      basisrisiko: >-
+        GEPRUEFT UND WIDERLEGT als Haupthindernis. Die Basisbewegung ueber 30
+        Tage liegt bei +-0.002% -- sie kehrt zurueck, weil Perp und Spot
+        konvergieren. Das Hindernis ist die MAUT: 0.280% je Runde gegen 0.2
+        bis 0.5% Funding in 30 Tagen.
+      tor_1_intervall: >-
+        BESTANDEN bei 180 Tagen: +1.5554% je Fenster mit [+0.2405, +3.0046]
+        auf dem korrigierten Niveau (46 Vergleiche). Das erste Mal im
+        Projekt, dass etwas nach voller Kostenrechnung dieses Tor passiert.
+      tor_2_replikation: >-
+        DURCHGEFALLEN, mit Vorzeichenwechsel. Frueher +2.9374%, spaeter
+        -0.1120%, Verhaeltnis -0.04x gegen das Band 0.5-2.0. Der ganze
+        positive Befund stammt aus der frueheren Haelfte -- der Anschluss an
+        das bekannte Schrumpfen des Fundings in 11 von 12 Maerkten.
+      was_heute_bleibt: >-
+        Ab 2024-11-18 bei keiner Haltedauer positiv. Bei 30 Tagen
+        ZUVERLAESSIG NEGATIV: -0.2006% mit [-0.3323, -0.0762], Null
+        ausgeschlossen auf der falschen Seite.
+      liquidation: >-
+        Selbst bei Hebel 1 wird das Short-Bein in bis zu 4.2% der
+        30-Tage-Fenster liquidiert; bei 5x in ueber einem Drittel. Hebel ist
+        hier kein Weg zu besserer Kapitaleffizienz.
+      urteil: >-
+        KEIN KANDIDAT. Der Carry war ein Ertrag und ist seit etwa November
+        2024 keiner mehr. Auch die optimistische Lesart waeren 190 CHF im
+        Jahr auf 12000 -- etwa 12 CHF in 23 Tagen gegen 2953 gebrauchte.
     rationale: >-
       Carry ist die einzige im Projekt gemessene Einnahme ohne Vorhersage. Sie
       schliesst selbst bei perfekter Voraussicht etwa 1% der alten Ziellueecke.

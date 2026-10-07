@@ -30,9 +30,24 @@ from typing import Any
 
 import ccxt
 
-#: Venues this has been checked against. Adding one means filling in a Venue
-#: below and running the conformance test, not editing a string here.
+#: Venues this has been checked against **and that may be traded on**.
+#: `config/settings.yaml` must name one of these; `tests/test_config.py`
+#: enforces it. Adding one means filling in a Venue below and running the
+#: conformance test, not editing a string here.
 SUPPORTED = ("bybit", "binance")
+
+#: Venues that may be READ and must never be configured for trading.
+#:
+#: The distinction is deliberate and is a safety boundary, not bookkeeping.
+#: `binance_spot` exists so the basis of E6.1 can be measured; it is not a
+#: place this system places orders. Keeping it out of `SUPPORTED` means a
+#: `settings.yaml` naming it is refused at load, before anything connects --
+#: which is the point at which a mistake is still cheap.
+#:
+#: If a data-only venue should ever become tradable, that is a decision with
+#: its own review (account rights, order protection, the held confirmation),
+#: and moving a string between these two tuples is not that review.
+DATA_ONLY = ("binance_spot",)
 
 
 class UnsupportedVenueError(ValueError):
@@ -67,14 +82,16 @@ class Venue:
     def symbol(self, symbol: str) -> str:
         """`BTCUSDT` in this venue's unified spelling.
 
-        Rejects anything that is not a USDT-quoted perpetual here rather than at
-        the venue, where the error is a generic parameter complaint that says
-        nothing about which symbol caused it.
+        Rejects anything that is not USDT-quoted here rather than at the venue,
+        where the error is a generic parameter complaint that says nothing
+        about which symbol caused it.
         """
         if "/" in symbol:
             return symbol
         if not symbol.endswith("USDT"):
-            raise ValueError(f"only USDT-quoted perpetuals are supported, got {symbol!r}")
+            raise ValueError(
+                f"only USDT-quoted markets are supported on {self.name}, got {symbol!r}"
+            )
         return f"{symbol[: -len('USDT')]}/USDT{self.symbol_suffix}"
 
     def build(
@@ -130,6 +147,38 @@ VENUES: dict[str, Venue] = {
         # ccxt refuses set_sandbox_mode on Binance futures now; demo trading is
         # the supported replacement and routes to demo-dapi.binance.com.
         practice_mode="enable_demo_trading",
+    ),
+    # SPOT, and it exists for one reason: the basis.
+    #
+    # E6.1 is "spot long against perp short, SAME VENUE". Its registered
+    # blocker was "keine Spot-Reihe auf der Platte, also Basisrisiko
+    # ungemessen" -- and the basis is the whole risk of that trade. Funding
+    # is collected on the perp leg; what can go wrong is the two legs
+    # drifting apart. Measuring that needs both series from one exchange on
+    # one clock, which is exactly what a cross-venue substitute cannot give.
+    #
+    # Eight of the twelve markets carry BINANCE funding (ADA, ATOM, AVAX,
+    # BNB, DOGE, DOT, LINK, LTC; the other four are Bybit), and the perp
+    # candles are Binance throughout. So for those eight, and only those,
+    # spot + perp + funding are one venue and E6.1 is answerable.
+    #
+    # `ccxt.binance` is the spot client; `binanceusdm` above is the futures
+    # one. They are separate clients on purpose -- the comment above warns
+    # that setting defaultType on the futures client can route spot calls
+    # into it, and this entry is the other half of that separation.
+    #
+    # **This is a research data source.** It holds no credentials and the
+    # executor does not read it: `execution/` resolves its venue from
+    # `config/settings.yaml`, which selects a perpetual venue, and reaching
+    # the exchange at all still requires the server-issued confirmation
+    # token. Adding a readable venue does not add a path to an order.
+    "binance_spot": Venue(
+        name="binance_spot",
+        ccxt_id="binance",
+        market_options={"defaultType": "spot"},
+        symbol_suffix="",
+        reports_key_rights=False,
+        practice_mode="set_sandbox_mode",
     ),
 }
 

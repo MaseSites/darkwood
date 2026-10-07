@@ -13,10 +13,17 @@ in the file reaches the client that gets built.
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
-from traidingbrain.config.settings import load_config
+from traidingbrain.config.settings import ExchangeConfig, load_config
 from traidingbrain.data.exchange import MarketData
-from traidingbrain.data.venue import SUPPORTED, UnsupportedVenueError, venue
+from traidingbrain.data.venue import (
+    DATA_ONLY,
+    SUPPORTED,
+    VENUES,
+    UnsupportedVenueError,
+    venue,
+)
 
 
 def test_the_configured_name_decides_which_client_is_built() -> None:
@@ -36,6 +43,41 @@ def test_the_shipped_configuration_names_a_venue_that_exists() -> None:
 def test_an_unknown_venue_is_refused_with_the_list() -> None:
     with pytest.raises(UnsupportedVenueError, match="supported"):
         venue("kraken")
+
+
+def test_every_known_venue_is_either_tradable_or_data_only() -> None:
+    """The partition is a safety boundary, so it is checked rather than assumed.
+
+    `binance_spot` was added to measure the basis of E6.1 and must not become
+    a place orders go. It is readable and deliberately absent from
+    `SUPPORTED`, which is what `settings.yaml` is validated against. Without
+    this test that absence looks like an oversight, and the obvious "fix" is
+    to add it -- which would quietly turn a data source into a venue.
+    """
+    assert set(VENUES) == set(SUPPORTED) | set(DATA_ONLY)
+    assert not set(SUPPORTED) & set(DATA_ONLY), "a venue cannot be both"
+
+
+@pytest.mark.parametrize("name", DATA_ONLY)
+def test_a_data_only_venue_cannot_be_the_configured_exchange(name: str) -> None:
+    """Refused at load, before anything connects.
+
+    `EngineConfig` validates `exchange.name` against `SUPPORTED`. That is the
+    cheap moment to catch it -- the expensive one is a client that builds
+    fine, answers public calls fine, and fails on the first call that touches
+    an account.
+    """
+    raw = load_config().engine.exchange.model_dump() | {"name": name}
+    with pytest.raises(ValidationError):
+        ExchangeConfig.model_validate(raw)
+
+
+@pytest.mark.parametrize("name", DATA_ONLY)
+def test_a_data_only_venue_is_still_readable(name: str) -> None:
+    """It has a job; refusing it everywhere would defeat the purpose."""
+    found = venue(name)
+    assert found.ccxt_id
+    assert found.symbol("BNBUSDT") == "BNB/USDT"
 
 
 # --------------------------------------------------------------------------- #

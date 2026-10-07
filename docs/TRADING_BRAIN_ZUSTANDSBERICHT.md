@@ -1265,7 +1265,19 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
     Zahl, die nicht sein konnte: ein „Markout", der auf nichts bedingte und darum nur den
     Marktlauf wiederholte, und ein „belegter Fill" 394 bp vom Mid — ein Ask 4 % über dem
     Markt, der in 17 Sekunden nicht gehandelt wird.
-13. **[FAKT]** Und der unbequeme Teil bleibt unverkleinert: **nichts davon ist ein Vorteil.**
+13. **[GEMESSEN 07.10.2026]** **Der Funding-Carry ist kein Ertrag mehr** — und das war der
+    letzte Posten in diesem Projekt mit positivem Vorzeichen
+    (`audit/CARRY_NACH_KOSTEN.md`). Die blockierende Lücke ist geschlossen: acht Märkte mit
+    Binance-Spot, -Perp und -Funding, je 33 013 Stundenkerzen. **Die Basis war nicht das
+    Problem** — sie bewegt sich über 30 Tage um ±0,002 % und kehrt zurück, die Hypothese ist
+    geprüft und widerlegt. **Die Maut war es:** 0,280 % je Runde gegen 0,2–0,5 % Funding in
+    30 Tagen. Bei 180 Tagen Haltedauer passierte der Carry als erstes im Projekt das
+    korrigierte Intervall (+1,5554 % [+0,2405; +3,0046]) — und fiel am **zweiten** Tor:
+    Replikation früher +2,9374 % gegen später −0,1120 %, Verhältnis **−0,04×**, Vorzeichen
+    gekippt. Ab 18.11.2024 bei keiner Haltedauer positiv, bei 30 Tagen zuverlässig negativ.
+    Das ist der Fall, der belegt, warum **zwei** Tore nötig sind: eines allein hätte hier
+    einen Kandidaten gemeldet.
+14. **[FAKT]** Und der unbequeme Teil bleibt unverkleinert: **nichts davon ist ein Vorteil.**
     Zwei Begründungen, mit denen ich Untersuchungen vorzeitig geschlossen hatte, sind
     gefallen — das macht vier Fragen wieder offen und beantwortet keine. Die Charge hat
     gemessen, repariert und zwei eigene Fehler kassiert. Einen Kandidaten hat sie nicht
