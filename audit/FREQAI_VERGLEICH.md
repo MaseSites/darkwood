@@ -126,13 +126,28 @@ OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 \
 **Status: läuft.** Dasselbe Fenster, dasselbe Kapital, derselbe Einsatz,
 dieselbe Gebühr — nur die Entscheidung kommt aus dem Modell.
 
-Fortschritt zum Stand dieses Berichts: **46 von 83 Folds** auf dem ersten von
-drei Märkten, rund 58 Sekunden je Fold (davon ~9 s LightGBM, der Rest
-Merkmalsaufbau). Erwartete Gesamtdauer rund vier Stunden.
+Gemessener Takt: **~63 s je Fold** (davon ~9 s LightGBM, der Rest
+Merkmalsaufbau), 83 Folds je Markt, drei Märkte — **249 Folds, rund
+4 Stunden**. Beim Schreiben dieses Berichts: Fold **76 von 83** auf Markt 1
+von 3.
 
-Dass er läuft, ist selbst ein Ergebnis: Defekt 1.3 war genau hier, und 46 Folds
-ohne Cache-Kollision belegen, dass der Schlüssel jetzt trägt. Der vorige Lauf
-war an dieser Stelle schon durch 74 Folds mit fremden Modellen gelaufen.
+**Dass er an dieser Stelle noch läuft, ist selbst das Ergebnis zu Defekt 1.3.**
+Der vorige Lauf starb bei **75 von 83** an der Cache-Kollision. Dieser ist
+daran vorbei, mit **null** Vorkommen von `different features furnished by
+current strategy`, `Could not load` oder einer Ausnahme im ganzen Protokoll.
+Der Schlüssel trägt.
+
+### Wenn der Lauf landet
+
+Die Zahlen gehören in die Tabelle in Abschnitt 2 daneben, und zwar diese:
+Trades, absolut, Gesamt-%, Expectancy je Trade, Profit-Faktor, Tage
+gewonnen/neutral/verloren, p-Wert. Dieselben Zeilen, damit nichts durch
+Auswahl der Kennzahl besser aussieht.
+
+Fällt der Lauf doch noch, ist die Stelle im Protokoll
+(`$TMPDIR/freqai2.log`) die Antwort und nicht ein neuer Versuch mit anderen
+Einstellungen — ein geänderter Parameter nach einem Abbruch ist ein neuer
+Lauf und braucht einen neuen `identifier`, sonst beginnt Defekt 1.3 von vorn.
 
 ### Wie der Vergleich zu lesen sein wird
 
