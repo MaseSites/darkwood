@@ -1,0 +1,500 @@
+# Vorab-Registrierung der ersten Forschungscharge E0-E6
+#
+# Angelegt am 07.10.2026, Commit 9af96c7, VOR dem Lesen eines Ergebnisses.
+# Grundlage: TRADING_BRAIN_CLAUDE_RECHERCHE_UND_UMBAUPROMPT.md, Abschnitt 8.
+#
+# Zweck dieser Datei: Arme, Merkmale, Fenster, Kennzahlen und die GESAMTZAHL der
+# Vergleiche festschreiben, bevor Zahlen bekannt sind. Ohne das ist jede
+# Mehrfachkorrektur eine Erzaehlung -- man korrigiert auf die Zellen, die man
+# am Ende zeigen moechte, nicht auf die, die man angesehen hat.
+#
+# Diese Datei ist append-only in folgendem Sinn: ein Arm darf nach dem ersten
+# gelesenen Ergebnis NICHT entfernt, umbenannt oder in seiner Kennzahl geaendert
+# werden. Ein neuer Arm wird hinzugefuegt und erhoeht `total_comparisons`.
+# Jede Aenderung nach dem ersten Lesen traegt Datum und Grund.
+
+meta:
+  created: 2026-10-07
+  commit: 9af96c7
+  goal:
+    statement: "1'000 CHF -> 20'000 CHF in sechs Monaten, ohne Einzahlungen"
+    window_start: 2026-10-07
+    window_end: 2027-04-07
+    days: 182
+    status: "zu pruefende Hypothese, kein nachgewiesenes Ergebnis"
+    note: >-
+      Forschungstage zaehlen mit. Der Zeitraum beginnt am Tag dieser
+      Registrierung und wird nicht rueckdatiert.
+
+  # Was bereits gemessen ist und NICHT erneut als neue Idee laufen darf.
+  prior_search:
+    register_attempts: 124
+    distinct_arms: 87
+    families_closed: 16
+    families_untestable: 1
+    champion_mean_r: -0.0340
+    holdout_consultations: 0
+    note: >-
+      Der Champion ist negativ. "Schlaegt den Champion" ist deshalb KEINE
+      Abnahmebedingung -- jeder Arm braucht zusaetzlich absolute Profitabilitaet
+      nach Kosten. Ein verlierender Benchmark macht einen kleineren Verlust
+      nicht zum Gewinn.
+
+  # Die Zahl, auf die korrigiert wird. Summe der `comparisons` aller Arme unten
+  # plus die bereits gelesenen Zellen der Vorgaenger-Suche, soweit dieselbe
+  # Frage betroffen ist.
+  total_comparisons: 46
+  correction: >-
+    Bonferroni auf 46 Vergleiche, also Schwelle 0.05/46 = 0.00109 und ein
+    99.891%-Intervall. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
+    angemeldete Sensitivitaet erlaubt, nicht als Ersatz. Sie werden zusaetzlich
+    berichtet, nicht anstelle.
+
+  windows:
+    # Zeitlich geschachtelt, nie zufaellig geteilt. Alle Maerkte eines
+    # Zeitpunkts gehoeren auf dieselbe Seite jeder Grenze.
+    train: "Anfang der Historie bis 2025-09-30"
+    develop: "2025-10-01 bis 2026-03-31 -- darf exploriert werden"
+    confirm: "2026-04-01 bis 2026-10-06 -- einmal je eingefrorenem Kandidaten"
+    holdout: "unberuehrt, 0 Konsultationen, nur fuer eingefrorene Kandidaten"
+    forward: "ab 2026-10-07, waechst mit der Zeit, kann nicht wiederholt werden"
+    purge_embargo: >-
+      Purging um den vollen Label-Horizont plus ein Tag Embargo, auf
+      Zeitstempeln geschnitten und nicht auf Zeilen.
+
+  resampling:
+    primary: "Wochenbloecke, alle Maerkte gemeinsam gezogen"
+    sensitivities:
+      - "stationaerer Bootstrap mit datenbasierter Blocklaenge"
+      - "circular Bootstrap"
+    note: >-
+      Bei weniger als 30 Bloecken wird kein Intervall als belastbar berichtet.
+      Stattdessen: Effekt als unsicher kennzeichnen, minimal nachweisbaren
+      Effekt und Teststaerke zeigen, zusaetzliche unabhaengige Zeit sammeln.
+
+  effective_sample:
+    required_reporting:
+      - raw_trades
+      - calendar_days
+      - week_blocks
+      - label_overlap_candles
+      - markets
+      - design_effect_vs_iid
+    note: >-
+      Zwoelf korrelierte Maerkte erzeugen nicht zwoelfmal so viele unabhaengige
+      Entscheidungen. Eine ESS-Zahl ist kennzahlabhaengig und wird je Kennzahl
+      ausgewiesen, nicht einmal global behauptet.
+
+  hard_limits:
+    - "Echte Orders brauchen die 1,2-Sekunden-Bestaetigung. Keine Ausnahme."
+    - "Keine echten Orders oder Wallet-Transaktionen durch LLM oder MCP."
+    - "testnet=False und allow_live=True bleiben unabhaengig. Dieser Auftrag aktiviert keines."
+    - "Handelskeys ohne Auszahlungsrecht. Ohne technischen Nachweis bleibt eine Venue Datenquelle."
+    - "absolute_max_risk_pct = 0.030 bleibt. Hoeheres nur als getrenntes Stressszenario."
+    - "Berechtigung und Identitaet fuer Live-Handel sind UNGEKLAERT, bis der Kontoinhaber verifiziert ist."
+    - "Secrets ausserhalb Repository und Vault. Tests nie gegen Produktionsdatenbank."
+
+# ---------------------------------------------------------------------------
+
+experiments:
+
+  - id: E0
+    title: "Ausfuehrungskosten und Signaluebertragung"
+    priority: 1
+    status: registriert
+    rationale: >-
+      Die Aussage "keine Gebuehrensenkung kann das Vorzeichen drehen" war eine
+      Verallgemeinerung von einer Venue auf alle. An den Primaerquellen geprueft
+      (07.10.2026): Lighter Standard 0%/0%, Lighter Premium 0.0040%/0.0280%,
+      Extended 0.000%/0.025%. Lighter Premium maker/maker mit 0.0080% liegt
+      unter der Obergrenze des gemessenen Einstiegsvorsprungs (0.0106%).
+      Damit verschiebt sich die Frage von der Gebuehr auf Spread, Latenz und
+      adverse Selektion -- drei Groessen, die dieses Projekt nie gemessen hat.
+    hypothesis: >-
+      Der gemessene 5-Minuten-Vorsprung ueberlebt eine realistische Ausfuehrung
+      auf einer Null-Gebuehren-Venue, nachdem Spread, Nicht-Fills, Latenz und
+      adverse Selektion abgezogen sind.
+    arms:
+      - id: E0.1
+        name: "Bestehende Venue, Taker/Taker"
+        role: Kontrolle
+      - id: E0.2
+        name: "Bestehende Venue, Maker-Eintritt / Taker-Stop"
+      - id: E0.3
+        name: "Neue Venue A, Maker/Maker soweit gefuellt"
+      - id: E0.4
+        name: "Neue Venue A, Taker/Taker"
+    comparisons: 4
+    data_required:
+      - "Quotes, Trades, Funding, Instrumentparameter je Venue, mit lokaler Empfangszeit"
+      - "Keine synthetische Uebernahme von Fills einer anderen Venue"
+    measurements:
+      - "implementation_shortfall = simulierter Fill relativ zum Entscheidungspreis"
+      - "all_in_pnl = PnL auf Fill-Preisen minus Gebuehren plus signed Funding"
+      - "Nicht-Fills, Teil-Fills, verfallene Signale, Cancel-Verzoegerung"
+      - "tatsaechlich verfuegbare Orderbuchgroesse am Fill"
+      - "Markouts nach 1s, 5s, 30s, 5min als Diagnose fuer adverse Selektion"
+    primary_metric: "erwarteter Netto-PnL pro SIGNAL und pro Zeiteinheit"
+    pitfalls_declared:
+      - "Spread nicht doppelt abziehen, wenn bid/ask-Fills ihn schon enthalten"
+      - "Markouts sind Diagnose, keine zusaetzliche PnL-Gebuehr"
+      - "Maker-Status ist eine Fill-Eigenschaft, kein Wunsch des Strategen"
+      - "0 ms dokumentierte Zusatzverzoegerung ist keine netzwerkfreie Ausfuehrung"
+    acceptance: >-
+      Positiver, auf 46 Vergleiche korrigierter Nettoeffekt im
+      Entwicklungsfenster UND absolute Profitabilitaet. Eine Wirkung, die nur
+      aus dem Gebuehrenrabatt stammt, zaehlt nicht als Signalvorteil. Neue
+      Venue-Historie darf kurz sein; ein langes Binance-Fenster verlaengert sie
+      nicht.
+    blocks: ["E5"]
+
+  - id: E1
+    title: "Meta-Labeling bestehender Signale"
+    priority: 1
+    status: registriert
+    rationale: >-
+      Der Satz "eine Auswahl im negativen Pool kann nichts beitragen" ist am
+      07.10.2026 an den eigenen Daten widerlegt (audit/RECHERCHE_KORREKTUREN.md
+      3.1): Pool -0.0906 R, Teilmenge rating_band=eindeutig +0.0311 R auf 588
+      Trades, und das Merkmal steht vor dem Trade fest. Das Intervall umspannt
+      die Null, gegen einen Zufallsfilter gleicher Selektivitaet liegt es knapp
+      darueber. Also ein Kandidat, kein Ergebnis.
+    hypothesis: >-
+      Merkmale, die zum Entscheidungszeitpunkt bekannt sind, trennen auf NEUEN
+      Daten eine Teilmenge mit positivem Netto-R aus dem gueltigen Pool.
+    population: >-
+      Alle ex ante gueltigen Kandidaten, genommene UND abgelehnte. Abgelehnte
+      werden hypothetisch gelabelt und bleiben Counterfactuals -- sie zaehlen
+      nicht als echte Fills. Sicherheitsablehnungen (Liquidationsverletzung)
+      werden NICHT ueberstimmt.
+    arms:
+      - id: E1.1
+        name: "Ungefilterter gueltiger Pool"
+        role: Basis
+      - id: E1.2
+        name: "Vorhandener FakeBrain-/Kostenfilter"
+        role: Basis
+      - id: E1.3
+        name: "Zufallsfilter gleicher ex-ante-Selektivitaet"
+        role: Kontrolle
+      - id: E1.4
+        name: "Regularisierte logistische Regression"
+      - id: E1.5
+        name: "Flaches LightGBM, Komplexitaet vorab fixiert"
+        fixed_params:
+          num_leaves: 15
+          max_depth: 4
+          min_child_samples: 60
+          n_estimators: 200
+          learning_rate: 0.05
+          reg_lambda: 2.0
+    comparisons: 10
+    features_allowed:
+      - setup_key
+      - setup_timeframe
+      - rating_band
+      - regime
+      - side
+      - "ATR-relative Struktur zum Entscheidungszeitpunkt"
+      - "geschaetzte Kosten und Spread"
+      - "Tageszeit und Wochentag"
+      - "Signalalter in Kerzen"
+      - "BTC-Exposure des Portfolios"
+      - "Funding / OI / Flow, nur wo Herkunft geklaert ist"
+    features_forbidden:
+      - "tatsaechliche Haltezeit"
+      - "max_favourable_r / max_adverse_r"
+      - "exit_reason"
+      - "realisiertes R oder irgendein Nachher-Label als Eingabe"
+    targets:
+      - "Wahrscheinlichkeit eines positiven NETTO-Trades im festgelegten Exit-Schema"
+      - "erwartetes Netto-R"
+      - "Verlustquantil (5%)"
+    decision_rule: >-
+      E[R_net | x] > 0 inklusive Unsicherheit. Trefferquote ist allein kein
+      oekonomisches Kriterium. Zusaetzlich E[ln(1+f*R_net) | x], sofern die
+      Verteilung das stuetzt.
+    calibration: >-
+      Nur auf einem zeitlich NACHGELAGERTEN, purged Calibration-Fenster.
+      Sigmoid zuerst; Isotonic nur bei ausreichender Belegung, weil es bei
+      duenner Datenlage ueberfittet. Brier-Score, Log-Loss und
+      Reliability-Diagramm mit Gruppenbelegung.
+    threshold: >-
+      Im inneren Entwicklungsfenster gewaehlt und dann EINGEFROREN. Weitere
+      Schwellen sind angemeldete Sensitivitaeten und zaehlen in `comparisons`.
+    acceptance: >-
+      (a) absoluter Netto-Vorteil positiv, (b) Mehrwert gegenueber E1.3 bei
+      gleicher Selektivitaet, (c) ausreichende Wochenblock-Evidenz, (d) Effekt
+      haelt im Bestaetigungsfenster. Zusaetzlich ein vollstaendiger kausaler
+      Portfolio-Replay: ein ausgelassener Trade veraendert spaetere freie
+      Slots, was eine reine Signalstudie nicht sieht.
+    on_success: "erster Kandidat fuer einen neuen Paper-Champion"
+
+  - id: E2
+    title: "Oekonomische Vorhersage mit Handels-/Haltezone"
+    priority: 1
+    status: registriert
+    rationale: >-
+      Der vorhandene Filter "Kosten relativ zum Stoprisiko" ist etwas anderes
+      als "erwarteter Gewinn rechtfertigt einen Positionswechsel". Eine
+      bestehende Position zu HALTEN kostet keinen Round-trip.
+    hypothesis: >-
+      Eine kostenbewusste Long/Flat/Hold-Entscheidung mit Hysterese schlaegt die
+      naive Vorzeichenentscheidung desselben Forecasts, netto.
+    scope:
+      timeframe: H1
+      markets: [BTCUSDT, ETHUSDT]
+      features: "bestehende kompakte Featureliste, unveraendert"
+    arms:
+      - id: E2.1
+        name: "Lineare Regression, naive Vorzeichenentscheidung"
+        role: Basis
+      - id: E2.2
+        name: "Lineare Regression, kostenbewusste Zone mit Hysterese"
+      - id: E2.3
+        name: "XGBoost, naive Vorzeichenentscheidung"
+        role: Basis
+      - id: E2.4
+        name: "XGBoost, kostenbewusste Zone mit Hysterese"
+      - id: E2.5
+        name: "Passives risikovergleichbares Exposure"
+        role: Kontrolle
+    comparisons: 8
+    hysteresis:
+      primary_threshold: "1.5 x geschaetzte zusaetzliche Kosten des Wechsels"
+      sensitivities: [1.0, 2.0, 3.0]
+      note: "Die Hauptschwelle ist hier festgelegt; die drei anderen zaehlen mit."
+    pitfalls_declared:
+      - "Nur ZUSAETZLICHE Kosten einer Positionsaenderung ansetzen, nicht jede Kerze einen Round-trip"
+      - "Lange und kurze Exposures haben verschiedene Funding-Pfade"
+      - "Optimiert wird auf Nettoleistung im inneren Fenster, nicht auf Test-Accuracy oder Test-Sharpe"
+    acceptance: >-
+      Vorteil gegen denselben ungefilterten Forecast UND absolute
+      Nettoleistung, zusaetzlich getrennte Beurteilung gegen E2.5.
+    reference: "Q18 liefert den Replikationsansatz, keinen Beweis."
+
+  - id: E3
+    title: "Ausgaenge als kausale Handelspolitik"
+    priority: 2
+    status: registriert
+    depends_on: [E0]
+    rationale: >-
+      Am 07.10.2026 gemessen (scripts/study_stop_path.py): ein Stop 1.5x so weit
+      haette 70.1% der heute ausgestoppten Trades nicht beendet, 94.2% waren
+      vorher im Plus. Die Annahme "gleicher Pfad" ist fuer die Mehrheit der
+      Trades falsch, also ist eine Exit-Studie zulaessig.
+    hypothesis: >-
+      Eine andere Exit-Politik auf denselben Entries verbessert Netto-R und
+      Log-Wachstum, nicht nur das mittlere R.
+    fixed: "Entry-Set bleibt unveraendert. Nur der Ausgang variiert."
+    arms:
+      - id: E3.1
+        name: "Bisheriger Stop und TP"
+        role: Basis
+      - id: E3.2
+        name: "Bisheriger Stop mit festem Zeitausstieg (24h)"
+      - id: E3.3
+        name: "ATR-Trailing-Exit, Parameter vorab festgelegt (2.0 ATR)"
+    comparisons: 3
+    forbidden: "Keine nachtraegliche Auswahl der besten Exit-Zeit je Trade."
+    intrabar: >-
+      Bei Stop und TP in derselben Kerze: feinere Daten verwenden. Wo nicht
+      verfuegbar, konservative UND optimistische Grenze getrennt berichten,
+      nie ein Mittelwert daraus.
+    metrics:
+      - net_r
+      - log_growth
+      - tail_loss_cvar
+      - holding_time
+      - capital_tied
+      - funding_paid
+      - chf_pnl_per_time
+    pitfalls_declared:
+      - >-
+        Hoeheres mittleres R durch winzige Stops verdeckt groessere Notionals
+        und schwerere Fill-Probleme. Darum CHF-PnL pro Zeiteinheit daneben.
+    acceptance: >-
+      Gepaarter Mehrwert auf denselben Entries, danach vollstaendige
+      Portfolio-Simulation. Ein Skalierungsargument ist kein Ersatz fuer eine
+      geaenderte Exit-Politik.
+
+  - id: E4
+    title: "Marktbereinigte Relative-Value-Entscheidung"
+    priority: 2
+    status: registriert
+    depends_on: ["Punkt-in-Zeit-Universum"]
+    rationale: >-
+      Die frueheren Arme mom_7/mom_30/vol_30 sind gemessen und nicht belegt
+      (mom_7/1T faellt an Korrektur und wiederholt sich zu 0.04x). Sie werden
+      NICHT wiederbelebt. Diese beiden Arme sind klar andere Groessen.
+    arms:
+      - id: E4.1
+        name: "Residual-Momentum nach kausal geschaetztem BTC/ETH-Faktor"
+      - id: E4.2
+        name: "Spread-Reversion ausgewaehlter liquider Paare"
+      - id: E4.3
+        name: "Gleichgewichtetes Halten desselben Universums"
+        role: Kontrolle
+    comparisons: 6
+    requirements:
+      - "Zeitpunktbezogenes Universum mit Mindestlistingalter und Liquiditaetsregeln, im Trainingsfenster festgelegt"
+      - "Hedge-Ratio NUR aus Vergangenheit, mit Stabilitaets-/Break-Test"
+      - "No-Trade-Zone nach Kosten"
+      - "Shortbarkeit, Delistings, beide Beine, Funding, nicht gleichzeitige Fills"
+      - "Umschlagkontrolle, weil jede Umschichtung die Maut erneut zahlt"
+    pitfalls_declared:
+      - "'Dollar-neutral' ist nicht automatisch Beta-neutral"
+      - "Survivorship-Richtung ist bei Long/Short NICHT ohne Pruefung festgelegt"
+      - "Universum nur erweitern, wenn Mindestorders mit 1'000 CHF passen"
+    acceptance: >-
+      Netto positiver Spread-/Portfolioertrag nach Faktorpruefung, und das
+      Ergebnis haengt nicht an nachtraeglich aufgenommenen Gewinner-Coins.
+    status_note: "nicht testbar, solange das Punkt-in-Zeit-Universum fehlt"
+
+  - id: E5
+    title: "Orderflow auf einem tatsaechlich handelbaren Horizont"
+    priority: 3
+    status: blockiert
+    depends_on: [E0, "L2-Collector mit lueckenloser Aufnahme"]
+    rationale: >-
+      Die Familie "Orderbuch-Tiefe" steht im Register als nicht testbar, weil
+      keine historischen Snapshots existieren. Ein stuendlicher Snapshot
+      begruendet keine Maker-Fill-Annahme zwischen den Snapshots.
+    arms:
+      - id: E5.1
+        name: "Taker-Flow allein, lineares Modell"
+      - id: E5.2
+        name: "Taker-Flow plus L2-Imbalance/Microprice/Spread, lineares Modell"
+    comparisons: 4
+    horizon: "vorab auf Minutenebene festgelegt, nicht nach Ergebnis gewaehlt"
+    latency_budget_must_include:
+      - data_latency
+      - model_latency
+      - "menschliche Bestaetigung, mindestens 1.2 s"
+      - order_and_venue_delay
+    acceptance: >-
+      Nettoeffekt ueber den GESAMTEN Entscheidungs-/Fill-Pfad. Ein Vorteil, der
+      vor der menschlichen Bestaetigung verschwindet, ist fuer den aktuellen
+      Workflow nicht nutzbar und wird so benannt.
+    pitfalls_declared:
+      - "Testnet-Fills kalibrieren keine Mainnet-Liquiditaet"
+      - "Replay modelliert keinen eigenen Marktimpact"
+      - "Market Making mit laufendem Quote-Refresh bleibt unter manuellen Orderregeln Forschung"
+
+  - id: E6
+    title: "Carry und Basis als getrennter, kleinerer Ertragsarm"
+    priority: 2
+    status: teilweise_blockiert
+    rationale: >-
+      Carry ist die einzige im Projekt gemessene Einnahme ohne Vorhersage. Sie
+      schliesst selbst bei perfekter Voraussicht etwa 1% der alten Ziellueecke.
+      Ihr Beitrag zu 20x ist unbelegt und vermutlich klein. Die DATENREPARATUR
+      ist trotzdem hohe Prioritaet, weil dieselben Reihen in andere Arme gehen.
+    known_defects:
+      - >-
+        Das Funding-Verzeichnis mischt zwei Boersen: 4 Maerkte Bybit, 8 Binance,
+        am 07.10.2026 an identischen Zeitstempeln gemessen. panel.py fuehrt
+        `funding (gemischte Boerse)`; die alte Studie hat check_provenance nie
+        aufgerufen.
+      - >-
+        BNBUSDTs 49.6% exakte Nullen sind ECHT (73/73 auch bei Binance null,
+        observed_zero). Der Ausschluss am 06.10. war ein Fehler.
+      - "Keine Spot-Reihe auf der Platte, also Basisrisiko ungemessen."
+    arms:
+      - id: E6.1
+        name: "Spot-long / Perp-short, SAME VENUE, synchrone Quotes"
+        formula: "q*(Spot_exit-Spot_entry) + q*(Perp_entry-Perp_exit) + Funding - Fees - Financing"
+      - id: E6.2
+        name: "Cross-Venue-Funding-Differenz, Long-Perp A gegen Short-Perp B"
+      - id: E6.3
+        name: "Durchhalten ohne Auswahl"
+        role: Basis
+    comparisons: 5
+    requirements:
+      - "Contract-Multiplier, Preiswaehrungen und TATSAECHLICH gebundenes Kapital"
+      - "Margin-Puffer gehoert in den Nenner der Kapitalrendite"
+      - "Lokale Margin je Venue; Verrechnung ueber zwei Venues NICHT annehmen"
+      - "Prognostizierte und realisierte Funding-Rate getrennt speichern"
+    stress_required:
+      - "starker Kursanstieg"
+      - "negative Funding-Phase"
+      - "Ausfall eines Beins"
+      - "Liquidation des Short-Beins, waehrend der Gewinn im Spot-Bein liegt"
+    acceptance: >-
+      Nettoertrag auf das GESAMTE reservierte Kapital. Nicht als Motor fuer 20x
+      ausgeben, wenn die Rendite um Groessenordnungen darunter liegt.
+
+  - id: E7
+    title: "LLM-Urteil als Shadow-Studie"
+    priority: 3
+    status: registriert
+    note: >-
+      Vom Auftrag in Abschnitt 9 verlangt, hier als eigener Arm gefuehrt, damit
+      er in `total_comparisons` zaehlt. Darf parallel laufen und muss nicht
+      warten, bis der Signalpool positiv ist -- E1 bleibt der guenstigere erste
+      Selektionsmassstab.
+    fixed: "Entry, Stop und TP bleiben identisch. Beurteilt wird nur Annahme/Ablehnung."
+    arms:
+      - id: E7.1
+        name: "Kein Urteil"
+        role: Basis
+      - id: E7.2
+        name: "FakeBrain, arithmetisch"
+        role: Basis
+      - id: E7.3
+        name: "Kalibriertes kleines ML-Modell aus E1"
+      - id: E7.4
+        name: "Echtes Claude-Urteil, Prompt/Schema/Modell eingefroren"
+    comparisons: 6
+    store_before_outcome:
+      - factor_scores
+      - raw_confidence
+      - decision
+      - prompt_hash
+      - schema_hash
+      - returned_model_id
+      - api_cost
+      - latency
+    primary_metric: "Netto-R je ex-ante-Kandidat, auf identischer Kandidatenmenge"
+    acceptance: >-
+      Das Urteil muss (a) E7.2 (FakeBrain, arithmetisch und kostenlos) auf
+      derselben Kandidatenmenge schlagen -- nicht den ungefilterten Pool, denn
+      FakeBrain ist der guenstigere Massstab -- und (b) absolut netto positiv
+      sein. Replay und Forward-Shadow werden getrennt bewertet und nie
+      gemittelt. Kosten und Latenz der API zaehlen in die Nettorechnung, weil
+      sie bei 1'000 CHF Kapital materiell sind. Schlaegt E7.4 nur den
+      ungefilterten Pool und nicht FakeBrain, ist das Ergebnis "das Urteil
+      traegt nichts, was Arithmetik nicht auch traegt" -- und wird so berichtet.
+    pitfalls_declared:
+      - "Eine gewichtete Faktorsumme ist keine kalibrierte Gewinnwahrscheinlichkeit"
+      - "Modell-IDs ueber die offizielle Models-API pruefen, nicht aus dem Namensschema ableiten"
+      - "Der Cache reproduziert gespeicherte Antworten, garantiert keine identische neue"
+      - "Replay und Forward-Shadow strikt getrennt"
+      - "Keine autonome Prompt-Anpassung in einem Bestaetigungsfenster; neuer Prompt = neuer Arm"
+      - >-
+        Datums- und Symbolentfernung senkt die historische Wiedererkennung,
+        beweist aber nicht deren Unmoeglichkeit. News mit historischem Datum
+        bevorzugt vorwaerts testen.
+
+# ---------------------------------------------------------------------------
+
+# Was ein Ergebnis NICHT zu einem Kandidaten macht, hier festgehalten, damit es
+# nicht nachtraeglich verhandelbar ist.
+rejection_rules:
+  - "Ein 95%-Intervall ohne Null bei 46 angesehenen Vergleichen ist kein Ergebnis."
+  - "Besser als der Champion (-0.0340 R) ist nicht profitabel."
+  - "Eine Wiederholung ausserhalb des Bandes 0.5-2.0x faellt. Das Band wird nach Kenntnis eines Kandidatenergebnisses NICHT geaendert."
+  - "Ein Arm, dessen Merkmale das Ergebnis kennen, ist ungueltig und wird nicht nachgebessert, sondern verworfen."
+  - "Ein nach Betrachtung angepasstes Modell macht denselben Holdout nicht wieder unberuehrt."
+  - "Ein Ergebnis auf Daten unbekannter oder gemischter Herkunft ist keine Messung."
+
+# Reihenfolge der Ausfuehrung, aus Abschnitt 14 des Auftrags.
+order:
+  phase_a: ["Reproduktions-Audit", "FreqAI-Boundary", "Heap-Repro", "history.Case", "Datenmanifest"]
+  phase_b: ["E0", "E1", "E2"]
+  phase_c: ["E3", "E6", "E4", "E5", "E7"]
+  phase_d: ["Risiko- und Zielbericht", "audit/TARGET_20X_REPORT.md"]
+
+# Jede Aenderung nach dem ersten gelesenen Ergebnis kommt hierhin, mit Datum
+# und Grund. Leer zu sein ist der gute Zustand.
+amendments: []

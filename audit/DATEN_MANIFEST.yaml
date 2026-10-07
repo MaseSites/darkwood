@@ -1,0 +1,337 @@
+# Quellen- und Datenmanifest
+#
+# Angelegt am 07.10.2026. Verlangt von TRADING_BRAIN_CLAUDE_RECHERCHE_UND_
+# UMBAUPROMPT.md, Lieferung 2: "Venue, Zugriff, Retention, Rechte, Zeitsemantik,
+# Coverage und Kosten".
+#
+# Kennzeichnung je Eintrag:
+#   verified_here  -- in diesem Projekt an der Quelle nachgemessen, mit Datum
+#                     und Skript. Das ist die einzige Stufe, auf der eine Zahl
+#                     ein Modell trainieren darf.
+#   documented     -- aus der Primaerdokumentation der Quelle gelesen, nicht
+#                     nachgemessen.
+#   assumed        -- Annahme dieses Projekts. Steht hier, damit sie nicht als
+#                     Tatsache weiterwandert.
+#   unknown        -- offen. Keine Zahl darauf stuetzen.
+#
+# Die Regel, die alles hier traegt: `available_at <= decision_time`. Eine
+# pauschale Quellenverzoegerung ersetzt keine Revisionshistorie.
+
+meta:
+  created: 2026-10-07
+  commit: 9af96c7
+  licence_rule: >-
+    Oeffentlich herunterladbar ist nicht gleich uneingeschraenkt
+    weiterverteilbar. Bei unklarer Lizenz werden Daten nicht veroeffentlicht
+    und nicht in den Wissens-Vault kopiert. Dieses Manifest haelt fuer jede
+    Quelle fest, was dazu bekannt ist -- und wo nichts bekannt ist, steht
+    `unknown` und nicht eine Vermutung.
+
+# ---------------------------------------------------------------------------
+# Das Datenmodell, das jede neue Quelle fuellen muss. Aus Abschnitt 6 des
+# Auftrags uebernommen und hier verbindlich.
+
+minimal_schema:
+  identity: [venue, product, symbol, contract_multiplier, quote_currency]
+  time:
+    - event_time_utc        # wann es am Markt passierte
+    - received_at_utc       # wann wir es lokal empfangen haben
+    - published_at_utc      # wann die Quelle es veroeffentlicht hat
+    - available_at_utc      # ab wann eine Entscheidung es kennen DURFTE
+  provenance: [source_version, revision_id, provenance, data_quality_flags]
+  book: [bid, ask, bid_size, ask_size, trade_price, trade_size, aggressor_side]
+  funding:
+    - funding_rate_announced   # prognostiziert, vor der Abrechnung bekannt
+    - funding_rate_realized    # abgerechnet
+    - funding_settlement_time
+  derivatives: [oi_value, oi_unit, interval_start, interval_end]
+  note: >-
+    `funding_rate_announced` und `funding_rate_realized` sind GETRENNT zu
+    speichern. Die historische abgerechnete Rate ist vor ihrer Abrechnung nicht
+    bekannt; sie als Merkmal zum Entscheidungszeitpunkt zu verwenden ist ein
+    Leck. Heute speichert dieses Projekt nur eine Spalte `rate` -- offen.
+
+# ---------------------------------------------------------------------------
+
+sources:
+
+  - name: ohlcv
+    status: in_use
+    venue: assumed
+    venue_status: unknown
+    coverage: "12 Maerkte, W1/D1/H4/H1/M15/M1; D1 gemeinsam ab 2021-10-15, teils ab 2020-01"
+    rows: "521 Parquet-Dateien, 867 MB gesamter Datenbestand"
+    time_semantics:
+      event_time: "Kerzen-Eroeffnungszeit, ms seit Epoche, UTC"
+      available_at: "Eroeffnungszeit + ein Intervall (die Kerze muss geschlossen sein)"
+    gaps: "siehe scripts/coverage.py, je Markt und Zeitrahmen gezaehlt"
+    rights: unknown
+    cost: 0
+    defects:
+      - >-
+        Die VENUE jeder Datei ist nicht nachgemessen. Nach dem Befund bei
+        `funding` (unten) ist das keine Formalie: dasselbe Verzeichnis kann
+        gemischt sein. Offen.
+      - >-
+        35 kontaminierte Zeilen am Ende der BTC-Dateien wurden am 05.10.2026
+        gefunden (0.08%, 1.67x-Sprung, sechs Dezimalstellen statt vier) und
+        nach data/quarantine/ verschoben.
+    next_step: "Dieselbe Zeitstempel-Stichprobenpruefung wie bei funding, je Markt."
+
+  - name: funding
+    status: in_use_mit_bekanntem_defekt
+    venue: GEMISCHT
+    venue_status: verified_here
+    verified:
+      date: 2026-10-07
+      script: scripts/verify_funding_provenance.py
+      method: >-
+        Jede Datei gegen BEIDE Venue-APIs an identischen Zeitstempeln
+        verglichen. Antworten liegen unter
+        data/quarantine/funding_provenance/, damit das Urteil nicht von einer
+        spaeteren API-Antwort abhaengt.
+      result:
+        Bybit: [BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT]      # 96-97% identisch
+        Binance: [ADAUSDT, ATOMUSDT, AVAXUSDT, BNBUSDT, DOGEUSDT, DOTUSDT, LINKUSDT, LTCUSDT]  # 100.0%
+    coverage: "12 Maerkte, 8h-Raster, 0 Luecken; Bybit ab 2023-01-01, Binance ab 2020-01"
+    time_semantics:
+      event_time: "Abrechnungszeitpunkt"
+      available_at: "Abrechnungszeitpunkt. Die REALISIERTE Rate ist vorher nicht bekannt."
+    rights: documented
+    cost: 0
+    api_endpoints:
+      Binance: "https://fapi.binance.com/fapi/v1/fundingRate (limit 200)"
+      Bybit: "https://api.bybit.com/v5/market/funding/history (category=linear, limit 200)"
+    retention: "Beide APIs liefern nur ein kurzes juengstes Fenster. Vollhistorie nur aus Archiven."
+    defects:
+      - >-
+        ZWEI BOERSEN IN EINEM VERZEICHNIS. Verschiedene Funding-Formeln und
+        Deckel; ein Mittelwert ueber beide ist keine Groesse.
+        learn/panel.py::SOURCES fuehrt es seit je als
+        'funding (gemischte Boerse)'; die Carry-Studie hat check_provenance
+        nie aufgerufen.
+      - >-
+        Nur eine Spalte `rate`. Prognostizierte und realisierte Rate sind nicht
+        getrennt. Offen.
+    resolved:
+      - >-
+        BNBUSDTs 49.6% exakte Nullen sind ECHT: an 200 identischen Zeitstempeln
+        sind 73 von 73 auch bei Binance null -> observed_zero. Der Ausschluss
+        am 06.10.2026 war ein Fehler und ist zurueckgenommen.
+    next_step: "Je Venue getrennt neu backfillen, oder Arme auf eine Venue beschraenken."
+
+  - name: open_interest
+    status: in_use
+    venue: Bybit
+    venue_status: verified_here
+    verified:
+      date: 2026-10-05
+      script: scripts/verify_provenance.py
+      note: >-
+        Re-fetch ergab 16419.749 fuer BTCUSDT am 2021-10-01 00:00 und genau das
+        ist gespeichert; Binance nennt 47921.245. Ein falscher Docstring hatte
+        diese Achse einen Tag blockiert.
+    coverage: "4 von 12 Maerkten (BTC, ETH, SOL, XRP), 5.0 Jahre, 60min, 0 Luecken"
+    time_semantics:
+      event_time: "Intervallende"
+      available_at: "Momentaufnahme, zum Zeitpunkt bekannt (+0h)"
+    rights: unknown
+    cost: 0
+    gap: "8 von 12 Maerkten fehlen"
+    note: >-
+      Ein OI-Feld einer anderen Venue ist ein Cross-Venue-Merkmal und wird nicht
+      durch Umbenennen zur Positionierung der Ausfuehrungsboerse.
+
+  - name: account_ratio
+    status: in_use
+    venue: Bybit
+    venue_status: verified_here
+    coverage: "4 von 12 Maerkten, 5.0 Jahre, 60min"
+    defects: ["5 Luecken (9 fehlende Punkte)", "3 exakte Nullen in buy_ratio"]
+    rights: unknown
+    cost: 0
+    gap: "8 von 12 Maerkten fehlen"
+
+  - name: taker_flow
+    status: in_use
+    venue: assumed
+    venue_status: unknown
+    coverage: "2 von 12 Maerkten (BTC 7.1 J, ETH 6.9 J), 60min, 0 Luecken"
+    time_semantics:
+      available_at: "Taker-Split einer GESCHLOSSENEN Kerze, also ein Intervall spaeter"
+    rights: unknown
+    cost: 0
+    gap: "10 von 12 Maerkten fehlen"
+    planned_source: "Oeffentliches Futures-Archiv (Klines + aggTrades)"
+    note: >-
+      Aggressor-Volumen, NICHT eine Anzahl aller Kaeufer oder Verkaeufer.
+
+  - name: coinmetrics_community
+    status: in_use
+    venue: "Coin Metrics Community"
+    venue_status: documented
+    coverage: "9 Maerkte, 13 Spalten, bis 11.8 Jahre; Boersen-Zu-/Abfluesse nur BTC und ETH"
+    time_semantics:
+      available_at: "konservative Konstante je Quelle (ein Tag), NICHT status-time"
+    rights: documented
+    cost: 0
+    resolved:
+      - >-
+        `status-time` ist eine REVALIDIERUNGSZEIT, keine Verfuegbarkeit. Alle
+        Werte liegen in den letzten sechs Monaten, auch fuer 2015er Zeilen.
+        Als available_at verwendet haette es jedes Vor-2026-Merkmal als
+        unverfuegbar markiert und still jedes Modell geleert. Ersetzt durch
+        die Konstante; validated_ms bleibt getrennt gespeichert.
+
+  - name: defillama_stablecoins
+    status: in_use
+    venue: DefiLlama
+    venue_status: documented
+    coverage: "1 Serie, 6 Spalten, 8.8 Jahre"
+    rights: unknown
+    cost: 0
+
+  - name: fred_macro
+    status: in_use_mit_bekanntem_defekt
+    venue: "FRED (St. Louis Fed)"
+    venue_status: verified_here
+    verified:
+      date: 2026-10-06
+      note: "Alle sechs benannten Serien ueber den Graph-CSV-Endpunkt OHNE API-Schluessel."
+    coverage: "6 Serien, 10-65 Jahre"
+    time_semantics:
+      available_at: "Veroeffentlichungsdatum plus deklarierte Verzoegerung"
+      business_days: "BUSINESS_DAY_SHARE = 5/7; eine vollstaendige Werktagsreihe ist nicht 71.4% unvollstaendig"
+    rights: documented
+    cost: 0
+    defects:
+      - >-
+        KEINE VINTAGE-HISTORIE. Die abgerufenen Werte sind die HEUTE revidierten,
+        nicht die damals bekannten. Alle bisherigen Makro-Versuche sind damit
+        als EINGESCHRAENKT INTERPRETIERBAR zu markieren -- die Familie "Makro
+        (FRED)" im Register traegt diesen Vorbehalt ab sofort.
+    next_step: "ALFRED-Vintages anbinden; bis dahin keine neue Makro-Aussage."
+
+  - name: sentiment
+    status: leer
+    coverage: "0 von 12 Maerkten"
+    rights: unknown
+    cost: unknown
+    next_step: >-
+      Eigener Collector, der Veroeffentlichungs- UND Empfangszeitpunkt
+      speichert. Keine belastbare Quelle ausgewaehlt. Ohne beide Zeitstempel
+      ist Neuheit nicht von Rueckschau zu trennen.
+
+# ---------------------------------------------------------------------------
+# Angefordert, noch nicht vorhanden. Mit dem, was sie tatsaechlich ermoeglichen
+# wuerden -- und mit dem, was sie NICHT ermoeglichen.
+
+wanted:
+
+  - name: spot_series_same_venue
+    priority: 1
+    enables: >-
+      Basisrisiko des Carry-Trades messbar machen. Heute ist auf der Platte nur
+      der Perp, also ist JEDE Carry-Zahl eine Obergrenze und keine Schaetzung.
+    does_not_enable: "Eine externe Durchschnittszahl ersetzt die Same-Venue-Reihe nicht."
+    source: "Oeffentliches Spot-Archiv derselben Venue"
+    cost: 0
+    time_trap: >-
+      Das Spot-Archiv weist ab 01.01.2025 MIKROSEKUNDEN-Zeitstempel aus. Der
+      Wechsel ist explizit zu pruefen -- eine zweite Zeitfalle neben dem
+      bekannten pandas-Problem (`.dt.as_unit("ms")` ist Pflicht).
+
+  - name: l2_orderbook
+    priority: 1
+    enables: "Queue-, Spread- und Flow-Studien (E5). Schaltet die einzige 'nicht testbar'-Familie frei."
+    does_not_enable: >-
+      Ein STUENDLICHER Snapshot reicht nicht fuer realistische Maker-Fills
+      ZWISCHEN den Snapshots. Dafuer braucht es initiales Buch plus
+      lueckenlose Updates und Trades. `bookDepth`-Aggregate sind nicht
+      automatisch rekonstruierbare vollstaendige L2-Events.
+    source: "Eigener WebSocket-Collector mit Reconnect- und Luecken-Pruefung"
+    cost: 0
+    note: "Monats-Samples eines Anbieters reichen fuer Diagnose, nicht fuer kontinuierlichen PnL."
+
+  - name: point_in_time_universe
+    priority: 1
+    enables: "E4. Behebt Survivorship in jeder marktuebergreifenden Zahl."
+    blocks: [E4]
+    source: "Archivsymbole und historische Instrumentlisten"
+    cost: 0
+    note: >-
+      Die Richtung des Survivorship-Bias ist fuer einen Long-Arm klar
+      (zu optimistisch). Fuer Long/Short, Shortbarkeit und
+      Delisting-Abrechnung ist sie NICHT ohne Pruefung festgelegt.
+
+  - name: alfred_vintages
+    priority: 2
+    enables: "Damals bekannte Makro-Werte statt heute revidierter Historie."
+    source: "ALFRED, oeffentliche Downloads"
+    cost: 0
+
+  - name: multi_venue_funding
+    priority: 2
+    enables: "Carry-Spreads (E6.2) statt Vorhersage einer einzelnen Rate."
+    note: "Teilweise schon da, aber unbeabsichtigt und gemischt -- siehe funding oben."
+
+  - name: oi_ratio_remaining_markets
+    priority: 3
+    enables: "Derivate-Familie auf 12 statt 4 Maerkten."
+    retention_warning: "API-Rueckblick ist begrenzt. Vollhistorie nur aus Archiven oder kostenpflichtig."
+
+# ---------------------------------------------------------------------------
+
+venues_fee_reference:
+  # Am 07.10.2026 aus der Primaerdokumentation der Venues gelesen, nicht aus
+  # einem Sekundaerbericht uebernommen. Je Order, auf das Notional, ohne VIP,
+  # ohne Staking, ohne Referral.
+  status: documented
+  retrieved: 2026-10-07
+  entries:
+    - venue: "Bybit (Projektannahme)"
+      maker: 0.000200
+      taker: 0.000550
+      maker_maker: 0.000400
+    - venue: "Lighter Standard"
+      maker: 0.0
+      taker: 0.0
+      maker_maker: 0.0
+      latency: {taker_ms: 300, cancel_modify_ms: 300, maker_ms: 0}
+      twap_fee_bps: 1
+    - venue: "Lighter Plus"
+      combined: 0.000050
+      latency: {taker_ms: 300, cancel_modify_ms: 300, maker_ms: 0}
+    - venue: "Lighter Premium, 0 LIT gestakt"
+      maker: 0.000040
+      taker: 0.000280
+      maker_maker: 0.000080
+    - venue: "Lighter Premium, 500'000 LIT gestakt"
+      maker: 0.000028
+      taker: 0.000196
+      latency: {taker_ms: 140, maker_ms: 0}
+    - venue: "Extended, Orderbuchmaerkte"
+      maker: 0.0
+      taker: 0.000250
+      maker_maker: 0.0
+    - venue: "Extended, RWA-Maerkte"
+      maker: 0.0
+      taker: 0.000100
+  caveats:
+    - >-
+      0 ms dokumentierte ZUSATZverzoegerung bedeutet keine netzwerkfreie
+      Ausfuehrung.
+    - >-
+      Extendeds Maker-Rebates verlangen >=0.5% Marktanteil ueber 30 Tage und
+      mindestens 10 USD Anfall in 24h. Mit 1'000 CHF unerreichbar. Die 0.000%
+      Maker gelten aber ohne Bedingung.
+    - >-
+      Gebuehr ist nicht Kosten. Spread, adverse Selektion, Nicht-Fills, Funding
+      und Transferkosten bleiben.
+    - >-
+      Ein auf einer Venue gemessenes Signal wird nicht dadurch zu einem auf
+      einer anderen belegten, dass man eine Gebuehrenzahl austauscht.
+    - >-
+      Diese Tabelle ist eine Forschungsbasis. Sie ist KEIN Nachweis einer
+      individuellen Handelsberechtigung, und Berechtigung sowie Identitaet des
+      Kontoinhabers sind in diesem Projekt ungeklaert.

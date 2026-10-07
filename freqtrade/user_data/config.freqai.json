@@ -34,7 +34,7 @@
             "noise_standard_deviation": 0.02
         },
         "data_split_parameters": {
-            "test_size": 0.2,
+            "test_size": 0,
             "shuffle": false
         },
         "model_training_parameters": {
@@ -46,6 +46,7 @@
             "colsample_bytree": 0.8,
             "reg_lambda": 1.0,
             "verbosity": -1
-        }
+        },
+        "_comment_data_split": "test_size steht auf 0, und das ist eine Messentscheidung. Mit test_size > 0 ruft make_train_test_datasets sklearn.train_test_split mit shuffle=False auf: chronologisch geordnet, aber OHNE Abstand. Das letzte Trainingslabel reicht label_period_candles Kerzen in die Validierung hinein, und genau diese Menge geht in LightGBMRegressor.fit als eval_set. Gemessen am 07.10.2026 mit scripts/ft_label_boundary.py an der installierten Version 2026.9. Bei 0 wird eval_set zu None und die Teilung entfaellt; die Auswahl gehoert dann in den aeusseren, zeitlich korrekten Walk-forward. Die andere Grenze, Training gegen Vorhersage, war nie betroffen -- dort schuetzt der Shift sich selbst, weil ueberhaengende Labels NaN sind und filter_features sie verwirft."
     }
 }
