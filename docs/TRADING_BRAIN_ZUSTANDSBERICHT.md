@@ -7,6 +7,45 @@ erst Fragen stellen zu müssen.
 
 ---
 
+---
+
+## 0a. Was sich am 07.10.2026 geändert hat — bitte zuerst lesen
+
+Eine externe Recherche (`TRADING_BRAIN_CLAUDE_RECHERCHE_UND_UMBAUPROMPT.md`) hat acht
+Aussagen dieses Berichts bestritten. **Jede wurde mit Code oder Handrechnung geprüft, und
+vier davon trafen zu.** Der volle Nachweis steht in `audit/RECHERCHE_KORREKTUREN.md`; hier
+die Kurzfassung, weil die betroffenen Abschnitte unten sonst in die Irre führen.
+
+| Was hier stand | Was gilt | Abschnitt |
+|---|---|---|
+| „Eine Auswahl unter Einträgen ohne Vorteil kann nichts beitragen" | **Falsch.** Kategoriefehler. Pool −0,0906 R, Teilmenge `rating_band=eindeutig` **+0,0311 R**, beides ex ante bekannt. Und das Projekt hatte drei Tage vorher Setup C auf genau dieser Grundlage abgeschaltet. | 6.4 |
+| „Stop, Positionsgrösse und Hebel kürzen sich heraus" | Grösse und Hebel ja, **der Stop nicht.** Er verschiebt den Ausstieg: ein 1,5× weiterer Stop hätte **70,1 %** der ausgestoppten Trades nicht beendet. | 3.1 |
+| „Keine Gebührensenkung kann das Vorzeichen drehen" | **Nur für diese Börsenfamilie.** An Primärquellen und an den Marktdaten der Venue selbst geprüft: 0 % Maker **und** 0 % Taker existieren. Gemessener Taker/Taker-Round-Trip auf BTC bei 1 000 USD: **0,0005 %** — 22× unter der Obergrenze des gemessenen Vorsprungs. | 4.2, 11.1 |
+| „BNBUSDT-Funding ist kaputt (49,6 % Nullen)" | **Die Nullen sind echt** (73/73 auch bei der Venue, `observed_zero`). Der Ausschluss war ein Fehler. Der wirkliche Defekt ist grösser: **das Funding-Verzeichnis mischt zwei Börsen** — 4 Bybit, 8 Binance. | 8.1, 9.1 |
+| „FreqAI hat kein Purging und kein Embargo" | **Zu grob.** Training → Vorhersage ist sauber (der Shift schützt sich selbst). Training → **interne Validierung** leckt, und das ist die Grenze, an der Early Stopping hängt. `test_size` steht jetzt auf 0. | 9.3 I9 |
+
+**Neu gemessen, und es ist das erste Mal positiv:** Die offene Frage zum Kostendeckel ist
+beantwortet. Über 12 Märkte und 43 727 Signale haben billige Trades **besseres Brutto**
+(+0,0561 R, Intervall **[+0,017; +0,097]**, Null ausgeschlossen), nicht nur weniger Maut. Es
+ist trotzdem **kein Vorteil**: R je Trade liegt bei +0,0107 mit [−0,041; +0,061].
+
+**Zwei weitere Scheinfunde gefangen, der zweite der grösste bisher:** ein `max_adverse_r`
+von bis zu 147,88 R, das Kursbewegung **nach dem Ausstieg** mitzählte (25,3 % der
+ausgestoppten Trades betroffen), und ein Ridge-Modell, das **+1018 %** meldete, weil seine
+Merkmale die Kerze kannten, die sie handeln (Korrelation zum Ziel **+0,9999**; um eine Kerze
+verschoben: −0,0059).
+
+**Neue Lieferungen:** `audit/RECHERCHE_KORREKTUREN.md` · `audit/EXPERIMENTS_NEXT.yaml`
+(E0–E7 vorab registriert, 46 Vergleiche) · `audit/DATEN_MANIFEST.yaml` ·
+`audit/TARGET_20X_REPORT.md` · `audit/VENUE_KOSTEN_REPORT.md`
+
+**Neues Ziel:** 1 000 CHF → 20 000 CHF bis 07.04.2027. Bei 413 Trades und 3 % Risiko
+verlangt das **+0,243 R je Trade**, also eine Trefferquote von 44,3 % gegen gemessene
+32,5 %. Anders als beim alten Ziel ist das **nicht** mehr als das physikalisch Mögliche —
+es ist unbelegt, nicht unmöglich. Zielchance auf der gemessenen Verteilung: **0,00 %**.
+
+---
+
 ## 0. Wie diese Datei zu lesen ist
 
 Jede Aussage trägt eine Kennzeichnung:
@@ -115,10 +154,25 @@ Verbesserungsideen:
 net_r = (eingefangene Bewegung − Gebühr) / Stop-Abstand
 ```
 
-Stop, Positionsgrösse und Hebel **kürzen sich heraus**. Nur eine niedrigere Gebühr oder mehr
-eingefangene Bewegung kann das Vorzeichen ändern. Jeder Vorschlag der Form „engere Stops",
-„mehr Hebel", „grössere Positionen" ist damit arithmetisch erledigt — er verändert die Zahl
-nicht, nur ihre Streuung.
+**Positionsgrösse und Hebel kürzen sich heraus.** Jeder Vorschlag der Form „mehr Hebel" oder
+„grössere Positionen" ist damit arithmetisch erledigt — er verändert die Zahl nicht, nur ihre
+Streuung.
+
+> **Korrektur vom 07.10.2026.** Hier stand, der **Stop** kürze sich ebenso heraus. Er tut es
+> nicht. Er steht im Nenner **und verschiebt den Ausstieg**, also den ganzen Pfad. Gemessen
+> über die 1 858 ausgestoppten Replay-Trades (`python scripts/study_stop_path.py`): ein Stop
+> 1,5× so weit hätte **70,1 %** von ihnen nicht beendet, 94,2 % waren vorher im Plus, 52,8 %
+> davon um mehr als +0,5 R. Die Annahme „gleicher Pfad" ist für die Mehrheit der Trades
+> falsch.
+>
+> Die korrekte Fassung: bei **festem Pfad** ändert ein anderer Stop nur den Nenner und nicht
+> das Vorzeichen des Zählers. Sobald der Stop den Ausstieg verschiebt, ist der Pfad nicht mehr
+> fest. „Engerer Stop, gleiche Bewegung angenommen" bleibt widerlegt; „anderer Stop, Pfad neu
+> simuliert" ist eine zulässige Studie und heisst **E3**.
+
+Was das Vorzeichen ändern kann, bleibt zweierlei: mehr eingefangene Bewegung, oder eine
+niedrigere Gebühr. **Und der zweite Weg war zu eng gefasst** — siehe 4.2 und 11.1: die
+0,0400 % sind der Boden *dieser* Börsenfamilie, nicht des Marktes.
 
 ```
 nötige Trefferquote  p = (1 + Maut/Bewegung) / 2
@@ -205,9 +259,36 @@ Es fehlt der Faktor 3.8
 Und zwar **nach drei Zugeständnissen**: günstigste Zelle gewählt, keine Mehrfachkorrektur
 angewandt, oberer Rand des Intervalls genommen. Alle drei zusammen reichen nicht.
 
-**Daraus folgt [FAKT]:** Eine Gebührensenkung kann nur einholen, was an Vorsprung da ist. Es
-ist weniger Vorsprung da als die billigste denkbare Gebühr. **Jeder Vorschlag, der nur die
-Kosten senkt, kann das Vorzeichen nicht drehen.**
+**Daraus folgt [FAKT], und zwar für diese Börsenfamilie:** Eine Gebührensenkung *innerhalb*
+dieser Struktur kann nur einholen, was an Vorsprung da ist, und es ist weniger Vorsprung da
+als ihre billigste Gebühr.
+
+> **Korrektur vom 07.10.2026.** Hier stand der Satz ohne Einschränkung: *„Jeder Vorschlag,
+> der nur die Kosten senkt, kann das Vorzeichen nicht drehen."* Das ist eine Aussage über
+> **alle** Börsen, gezogen aus einer Messung auf **einer**.
+>
+> An den Primärquellen abgerufen und zusätzlich **an den Marktdaten der Venue selbst**
+> nachgemessen: 0 % Maker und 0 % Taker existieren. Und was eine Ausführung dort wirklich
+> kostet, gemessen als Walk durchs Buch für eine echte Ordergrösse
+> (`python scripts/study_venue_cost.py`), Median aus fünf Stichproben, Taker rein und raus
+> bei 1 000 USD:
+>
+> | Markt | Runde | gegen den Vorsprung (0,0106 %) |
+> |---|---:|---|
+> | **BTC** | **0,0005 %** | **22× darunter** |
+> | ETH | 0,0054 % | 0,51× darunter |
+> | SOL | 0,0059 % | 0,56× darunter |
+> | XRP | 0,0146 % | 1,38× darüber |
+> | LINK / DOGE | 0,0339 / 0,0379 % | 3,2× / 3,6× darüber |
+>
+> Auf der bisherigen Börse lag der **Boden** 3,8× *über* dem Vorsprung. Das ist die erste
+> Messung in diesem Projekt, in der die Gesamtkosten einer Venue darunter liegen.
+>
+> **Was daraus nicht folgt: dass es geht.** Der Vorsprung wurde auf 5-Minuten-Kerzen einer
+> anderen Börse gemessen. Ein dort gemessenes Signal wird nicht dadurch zu einem hier
+> belegten, dass die Ausführung billiger ist. Gezeigt ist: die Maut ist nicht mehr der Grund,
+> warum es nicht gehen kann. Offen ist: ob es geht. Das ist **E0**, erste Priorität, und
+> `audit/VENUE_KOSTEN_REPORT.md` listet die sechs Schritte, die noch fehlen.
 
 ### 4.3 Zwei Methodenfallen, die auf dem Weg dorthin lagen
 
@@ -374,10 +455,30 @@ Stand der Datei `data/study_brain_judge.json`: BTCUSDT, Arm „ohne Urteil" 3 Tr
 Urteil" **0 Trades bei 30 Vetos**. **Zu wenig für eine Aussage.** [OFFEN]
 
 **[FAKT] Warum die LLM-Schicht im Register kaum vorkommt:** Die Reihenfolge des Projekts ist
-Daten → Herkunft → Basisrate → Modell. Solange die regelbasierte Auswahl keinen Vorteil hat
-(Brutto-Erwartung der genommenen Einträge ist **−0,0102 R [−0,070, +0,051]**, also nicht von
-null zu trennen), kann eine Auswahl *unter* diesen Einträgen nichts beitragen — man kann aus
-nichts keine bessere Teilmenge ziehen.
+Daten → Herkunft → Basisrate → Modell. Die Brutto-Erwartung der genommenen Einträge ist
+**−0,0102 R [−0,070, +0,051]**, also nicht von null zu trennen, und solange das so ist, ist
+der günstigere Massstab für ein Urteil der arithmetische `FakeBrain` und nicht der
+ungefilterte Pool.
+
+> **Korrektur vom 07.10.2026.** Hier stand: *„kann eine Auswahl unter diesen Einträgen
+> nichts beitragen — man kann aus nichts keine bessere Teilmenge ziehen."* Das ist ein
+> **Kategoriefehler**. „Der Mittelwert des Pools ist nicht von null zu trennen" und „keine
+> Teilmenge hat einen positiven Mittelwert" sind verschiedene Aussagen, und die zweite folgt
+> nicht aus der ersten.
+>
+> An den eigenen Daten widerlegt (`python scripts/study_subset.py`): Pool **−0,0906 R**,
+> Teilmenge `rating_band=eindeutig` **+0,0311 R** auf 588 Trades, Markt BTCUSDT **+0,0266 R**
+> — beide Merkmale stehen vor dem Trade fest. Besonders unangenehm: das Projekt hatte drei
+> Tage vorher **Setup C abgeschaltet**, weil seine Teilmenge schlechter war als der Rest. Der
+> Satz widersprach einer Entscheidung, die auf genau dieser Grundlage getroffen wurde.
+>
+> Was weiterhin gilt: die Teilmenge ist **kein Fund**. Ihr Intervall umspannt die Null
+> ([−0,093; +0,160]), und gegen einen Zufallsfilter gleicher Selektivität liegt sie nur knapp
+> über dessen 97,5-%-Punkt. Daraus wurde **E1**, vorab registriert — und E1 ist gelaufen:
+> über 42 849 Kandidaten aus 11 Märkten schlagen beide Modelle den Zufallsfilter und bleiben
+> **absolut negativ** (logistisch −0,1052 R, LightGBM −0,0908 R). Eine Auswahl kann also
+> besser als Zufall sein und trotzdem Geld verlieren. Siehe `audit/RECHERCHE_KORREKTUREN.md`
+> §3.1.
 
 ### 6.5 Die Setups
 
@@ -506,7 +607,27 @@ vorher geschrieben hatte:
 ### 8.1 Funding-Carry — die einzige belegte Einnahme, und sie schrumpft
 
 **[GEMESSEN]** `python scripts/study_funding_carry.py`. Perp short gegen Spot long, Preis
-herausgehedgt, **keine Vorhersage nötig**. 11 Märkte (BNBUSDT vorher ausgeschlossen,
+herausgehedgt, **keine Vorhersage nötig**.
+
+> **Zwei Korrekturen vom 07.10.2026.** Erstens: BNBUSDT war hier mit der Begründung
+> ausgeschlossen, 49,6 % exakte Nullen seien ein Datenloch. **Die Nullen sind echt** — an
+> 200 identischen Zeitstempeln sind 73 von 73 auch bei der Venue null, und die Datei gibt
+> die Börse zu 100,0 % wieder. Es war eine Plausibilitätsannahme, keine Messung.
+>
+> Zweitens, und schwerer: **das Funding-Verzeichnis mischt zwei Börsen.** An identischen
+> Zeitstempeln gemessen (`python scripts/verify_funding_provenance.py`) sind vier Märkte
+> Bybit (96–97 % identisch) und acht Binance (100,0 %). `learn/panel.py::SOURCES` führt
+> `funding` seit je als „gemischte Börse" und `check_provenance` meldet es — **die
+> Carry-Studie hat es nur nie abgefragt.** Eine Schutzvorrichtung, die existiert und nicht
+> benutzt wird, ist keine.
+>
+> Folge für die Trendaussage unten: die Bybit-Reihen beginnen 2023, die Binance-Reihen 2020,
+> also verglich „erste gegen zweite Hälfte" je Markt **verschiedene Kalenderfenster**. Auf
+> dem gemeinsamen Fenster neu gerechnet fallen **11 von 12** (Bybit 4/4, Binance 7/8) — der
+> Rückgang überlebt. Aber zwölf stark korrelierte Märkte sind **eine** gut belegte
+> Beobachtung eines gemeinsamen Trends, nicht zwölf unabhängige.
+
+11 Märkte (BNBUSDT vorher ausgeschlossen,
 s. 9.1), 3,8–6,7 Jahre.
 
 | Markt | je 8 h | 95 %-Intervall | positiv | p. a. aufs Notional | Amortisation |
@@ -717,7 +838,7 @@ ihrer Verlustfenster. **Die echte Trefferquote ist niedriger als die gezeigte, n
 | I6 | **Freqtrade-Konfigurationskette:** Das Weglassen *einer* `-c`-Datei lässt das Schema einen leeren `jwt_secret_key` ablehnen und bricht ab, **bevor** eine einzige Kerze geladen wird. | gelöst: `scripts/ft.py` erzwingt die Kette |
 | I7 | **Eine Überlagerung, die nicht zuletzt in der Kette steht, wird still von der Basis überschrieben** — und das sieht genauso aus, als würde sie gar nicht gelesen. | gelöst und dokumentiert |
 | I8 | **Der Backtest endete am Geld, nicht am Fenster.** 1 000 → 201,93 USDT nach 15 Wochen; die restlichen 16 Monate waren Stille. Mein eigener Bericht sagte „2 425 Trades über 19 Monate". | gelöst: `config.measure.json` + aus den Daten abgeleiteter Berichtstext |
-| I9 | **FreqAI hat kein Purging und kein Embargo.** Das einzige `purge` im Quelltext löscht Modelldateien. Labels nutzen `shift(-label_period_candles)`, also überlappt jede Foldgrenze um so viele Kerzen — **aus der Konfiguration nicht abschaltbar**. | dokumentiert; FreqAI-Ergebnisse sind entsprechend zu entwerten [OFFEN] |
+| I9 | **Zu grob formuliert, am 07.10.2026 an der installierten Version geprüft** (`freqtrade/.venv/Scripts/python scripts/ft_label_boundary.py`). Es sind **zwei** Grenzen: Training → Vorhersage ist **sauber**, weil ein überhängendes Label NaN ist und `filter_features` es verwirft — der Shift schützt sich selbst. Training → **interne Validierung** leckt: `make_train_test_datasets` ruft `sklearn.train_test_split` mit `shuffle=False`, also chronologisch geordnet und **ohne Abstand**, und genau diese Menge geht als `eval_set` an LightGBM. `buffer_train_data_candles` behebt das nicht und soll es nicht: es schneidet den Rand des Trainings-**Zeitfensters**. | **behoben:** `test_size` steht auf 0, damit `eval_set` entfällt und die Auswahl in den äusseren Walk-forward gehört. Alte Läufe mit `test_size > 0` bleiben als eingeschränkt markiert — ein Parameter von heute gibt keinen Lauf von gestern frei. |
 
 ### 9.4 Offene Punkte im System selbst
 
@@ -1059,21 +1180,34 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
 
 ---
 
-## 17. Zusammenfassung in sieben Sätzen
+## 17. Zusammenfassung, Stand 07.10.2026
 
-1. **[GEMESSEN]** 17 Familien (16 erledigt, 1 nicht testbar), 124 Versuche, 87 Arme:
-   **kein belegter Vorteil in der Richtungsvorhersage.**
-2. **[GEMESSEN]** Der Grund ist arithmetisch: Der grösste belegte Einstiegsvorsprung ist
-   **3,8× kleiner als die billigste denkbare Maut.**
-3. **[GEMESSEN]** Die einzige Einnahme ohne Vorhersage — Funding-Carry — ist real, schrumpft
-   aber in **11 von 11 Märkten** und schliesst selbst bei perfekter Voraussicht **0,9 % der
-   Ziellücke.**
-4. **[GEMESSEN]** Die eine sichere Verbesserung ist der Kostendeckel: er bringt einen Trade
-   konservativ von **−0,054 R auf −0,015 R** — weniger Verlust, kein Gewinn.
-5. **[GEMESSEN]** Was bleibt, ist eine Richtungswette mit einer Basisrate von **13,9 %** pro
-   24-Tage-Fenster, gegen **8,0 %** für den gleich grossen Verlust.
-6. **[FAKT]** Die eigentliche Leistung des Projekts ist der Apparat, der acht Scheinfunde
-   gefangen hat, bevor sie geglaubt wurden — vier davon in Code, der Minuten alt war.
-7. **[FAKT]** Das Ziel **12 000 → 15 000 CHF bis 30.10.2026 ist nach allem Gemessenen nicht
-   erreichbar**, und das steht hier unverkleinert, weil ein beschönigter Befund dieses
-   Projekt wertloser machen würde als ein negativer.
+1. **[GEMESSEN]** 19 Familien (18 erledigt, 1 nicht testbar), über 124 Versuche:
+   **kein belegter Vorteil in der Richtungsvorhersage.** Neu dazu und beide negativ:
+   Meta-Labeling (E1) und die Haltezone (E2).
+2. **[GEMESSEN]** Auf der gemessenen Börse ist der grösste belegte Einstiegsvorsprung
+   **3,8× kleiner als deren billigste Maut.** **Aber auf einer anderen Venue ist die ganze
+   Taker/Taker-Runde auf BTC 22× *kleiner* als dieser Vorsprung** (0,0005 % gegen 0,0106 %).
+   Die Maut ist damit nicht mehr der Grund, warum es nicht gehen kann — ob es geht, ist
+   offen und heisst E0.
+3. **[GEMESSEN]** Der Kostendeckel ist jetzt vollständig belegt, nicht nur arithmetisch:
+   über 12 Märkte und 43 727 Signale haben billige Trades **besseres Brutto**
+   (+0,0561 R, **[+0,017; +0,097]**, Null ausgeschlossen). Ein billiger Trade läuft bei
+   **−0,0097 R**. **Trotzdem kein Vorteil:** R je Trade bei Deckel 0,08 ist +0,0107 mit
+   [−0,041; +0,061].
+4. **[GEMESSEN]** Funding-Carry ist real und schrumpft — auf gemeinsamem Kalenderfenster in
+   **11 von 12** Märkten und in beiden Venue-Gruppen. Das sind wegen der Korrelation **eine**
+   Beobachtung, nicht zwölf. Selbst bei perfekter Voraussicht schliesst sie ~1 % der Lücke.
+5. **[GEMESSEN]** Das neue Ziel verlangt bei 3 % Risiko und 413 Trades **+0,243 R je Trade**,
+   also 44,3 % Trefferquote gegen gemessene 32,5 %. Anders als das alte Ziel ist das
+   **nicht** mehr als das physikalisch Mögliche — es ist unbelegt, nicht unmöglich.
+   Zielchance auf der gemessenen Verteilung über 20 000 Pfade: **0,00 %**, bei jedem Risiko.
+6. **[GEMESSEN]** Hebel ist kein Weg dorthin. 1× und 3× ändern nichts, ab 5× liquidieren
+   37 % der Pfade, bei 10× 98 %, bei 15× alle — und die Zielchance bleibt durchweg 0,00 %.
+7. **[FAKT]** Die eigentliche Leistung des Projekts ist der Apparat, der inzwischen **zehn**
+   Scheinfunde gefangen hat, bevor sie geglaubt wurden. Die zwei neuesten sind die grössten:
+   ein `max_adverse_r` von 147,88 R, das Bewegung nach dem Ausstieg mitzählte, und ein
+   Modell, das **+1018 %** meldete, weil seine Merkmale die Kerze kannten, die sie handeln.
+8. **[FAKT]** Und der unbequeme Teil bleibt unverkleinert: nichts davon ist ein Vorteil.
+   Zwei Begründungen, mit denen ich Untersuchungen vorzeitig geschlossen hatte, sind
+   gefallen — das macht vier Fragen wieder offen und beantwortet keine.
