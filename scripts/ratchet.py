@@ -345,6 +345,22 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "ueberhaupt, mit Kenntnis jeder zukuenftigen Rate: 12.000 -> 12.027.",
     ),
     (
+        "Meta-Labeling (Auswahl unter den Signalen)",
+        "erledigt",
+        "E1, vorab registriert in audit/EXPERIMENTS_NEXT.yaml. Die Begruendung, mit "
+        "der die Frage vorher geschlossen war, traegt nicht: ein Pool ohne Vorteil "
+        "schliesst keine positive Teilmenge aus (study_subset.py: Pool -0.0906 R, "
+        "rating_band=eindeutig +0.0311 R, beides ex ante bekannt). "
+        "Gemessen auf 42.849 gelabelten Kandidaten aus 11 Maerkten, genommene UND "
+        "abgelehnte, drei Zeitfenster mit 72h Purge, Schwelle im Entwicklungsfenster "
+        "eingefroren: Pool -0.1485 R, Zufallsfilter gleicher Selektivitaet -0.1626 R, "
+        "logistische Regression -0.1052 R, flaches LightGBM -0.0908 R. "
+        "BEIDE Modelle schlagen den Zufallsfilter -- es gibt also Auswahlsignal -- "
+        "und bleiben absolut NEGATIV. Abnahme (a) verfehlt. "
+        "Lehrstueck dazu: auf nur zwei Maerkten las dieselbe Rechnung +0.0160 R und "
+        "sah wie ein Kandidat aus. Elf Maerkte drehen das Vorzeichen.",
+    ),
+    (
         "Querschnitt (Markt gegen Markt)",
         "erledigt",
         "Die einzige Richtung, die der Auftrag nie benannt hat: alle 87 Arme davor "
