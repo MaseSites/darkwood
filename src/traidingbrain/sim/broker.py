@@ -82,6 +82,28 @@ class PendingEntry:
     #: because removing a setup frees its slots for the others.
     setup: str = ""
 
+    @property
+    def planned_notional(self) -> float:
+        """Positionsgroesse, wenn diese Order zum Limit fuellt.
+
+        `planned_`, und das Praefix ist nicht Hoeflichkeit: eine Order fuellt
+        nicht zwingend zum Limit, und sie fuellt vielleicht nie. Was
+        tatsaechlich im Trade steckt, steht erst in `OpenPosition.notional`,
+        gerechnet auf dem echten Fill-Preis. Die beiden gleich zu benennen
+        waere die Einladung, die Absicht als Tatsache zu berichten.
+        """
+        return self.qty * self.limit_price
+
+    @property
+    def planned_margin(self) -> float:
+        """Gebundenes Kapital, wenn diese Order zum Limit fuellt.
+
+        Dieselbe Rechnung, die `fill()` macht: Notional durch Hebel. Hier
+        als property statt als Kopie, damit Anzeige und Konto nicht
+        auseinanderdriften koennen.
+        """
+        return self.planned_notional / self.leverage if self.leverage else 0.0
+
 
 @dataclass
 class OpenPosition:

@@ -51,7 +51,7 @@ from traidingbrain.journal.postmortem import examine
 from traidingbrain.journal.record import JournalEntry, Source, TradeReason
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.live.paperstate import PaperState, PaperStateStore, Tally
-from traidingbrain.sim.broker import Fill, SimBroker
+from traidingbrain.sim.broker import Fill, OpenPosition, SimBroker
 from traidingbrain.sim.engine import AnalysisStrategy
 from traidingbrain.sim.plan import plan_entry
 from traidingbrain.strategies.guide import GuidePool
@@ -65,6 +65,25 @@ from traidingbrain.strategies.guide import GuidePool
 #: ago has to be found when the process comes back.
 REFRESH_BARS = 24
 REFRESH_MINUTES = 240
+
+#: Die Waehrung, in der Notional, Margin und Risiko wirklich anfallen.
+#:
+#: Und hier liegt ein Defekt, der hingeschrieben gehoert statt mitgeschleppt
+#: zu werden: `status()` weiter unten meldet den Kontostand in **CHF**, und
+#: `config/risk.yaml` rechnet in CHF. Die Preise sind aber durchgaengig
+#: USDT-Quotes -- `data/venue.py` laesst ueberhaupt nur USDT-quotierte
+#: Maerkte zu -- und eine Umrechnung existiert nirgends im Code. Geprueft am
+#: 07.10.2026: kein FX-Kurs, kein Konversionsschritt, nichts.
+#:
+#: Das System setzt also stillschweigend 1 USDT = 1 CHF. Bei einem Kurs um
+#: 0,8 sind "12'000 CHF" real etwa 9'600 CHF. Fuer eine ZIELQUOTE (1,25x)
+#: aendert das nichts, weil sich der Faktor herauskuerzt. Fuer jeden
+#: absoluten Betrag aendert es ein Fuenftel.
+#:
+#: Die Betraege hier tragen darum das Zeichen, das nachweisbar stimmt. Das
+#: Konto umzubenennen ist eine Entscheidung des Nutzers und nicht die eines
+#: Anzeige-Patches.
+QUOTE = "USDT"
 
 #: Most bars per context frame the analysis is built over.
 #:
@@ -445,6 +464,11 @@ class PaperTrader:
                     # The entry just filled. Noted so a restart knows the order
                     # became a position rather than still resting.
                     self.state.opened_ts = self.broker.position.opened_ts
+                    # Und genau hier ist die Antwort auf "mit wie viel Geld bin
+                    # ich in den Trade gegangen": der tatsaechliche Fill. Die
+                    # `margin` kommt aus dem Broker, nicht nachgerechnet -- sie
+                    # ist der Betrag, der wirklich blockiert wurde.
+                    self._announce_fill(self.broker.position)
             self.state.last_minute_ts = ts
             self.state.last_price = float(closes[i])
         return out
@@ -543,6 +567,24 @@ class PaperTrader:
         self._reason = reason
         self.state.opened_ts = 0
         self.stats.tally.opened += 1
+        # Was eingereicht wurde, in Geld. GEPLANT, nicht gefuellt: eine Order
+        # fuellt nicht zwingend zum Limit und vielleicht nie. Der Fill meldet
+        # sich unten mit den echten Zahlen, und die beiden Zeilen sind
+        # absichtlich verschieden beschriftet.
+        # `flush=True`, und das ist kein Detail: Python puffert stdout, sobald
+        # es in eine Datei oder Pipe geht, und der Haendler laeuft als
+        # Dauerprozess mit umgeleiteter Ausgabe. Ohne flush landet jede Zeile
+        # im Puffer und erscheint erst, wenn der Prozess endet -- also genau
+        # dann nicht, wenn man sie braucht. Dasselbe galt fuer die schon
+        # vorhandene Abschlussmeldung, die darum nie zu sehen war.
+        print(
+            f"  [{self.symbol}] Order eingereicht: {entry.side.value} "
+            f"{entry.qty:g} @ {entry.limit_price:,.4f} = "
+            f"{entry.planned_notional:,.2f} {QUOTE} geplant  |  "
+            f"Hebel {entry.leverage:g}x  |  Margin {entry.planned_margin:,.2f} {QUOTE}  |  "
+            f"Risiko {entry.risk_amount:,.2f} {QUOTE} bei Stop {entry.stop:,.4f}",
+            flush=True,
+        )
         # Persisted immediately rather than at the end of the cycle. The gap
         # between placing the order and saving its reason is the window in
         # which a crash would produce an unexplained trade, and it costs one
@@ -606,6 +648,34 @@ class PaperTrader:
         self.journal.record([entry])
         return entry
 
+    def _announce_fill(self, position: OpenPosition) -> None:
+        """Was wirklich in den Trade gegangen ist, zum echten Fill-Preis.
+
+        Drei Betraege, und sie sind drei verschiedene Dinge:
+
+        * **Notional** -- die Positionsgroesse. Das Geld, das im Trade steckt.
+        * **Margin** -- was davon auf dem Konto blockiert ist. Kommt aus
+          `position.margin`, also aus dem Broker selbst, nicht hier
+          nachgerechnet.
+        * **Risiko** -- was verloren geht, wenn der Stop greift.
+
+        Die ersten ersten Zeilen von `config/risk.yaml` erklaeren, warum diese
+        Trennung Geld wert ist: eine 5'000er Position mit 3% Stop riskiert
+        150, nicht 5'000. Wer die drei in einer Zahl zusammenfasst, hat
+        entweder das Risiko aufgeblasen oder die Groesse verkleinert.
+        """
+        print(
+            f"  [{self.symbol}] GEFUELLT: {position.side.value} {position.qty:g} @ "
+            f"{position.entry_price:,.4f}  ->  {position.notional:,.2f} {QUOTE} im Trade  |  "
+            f"Hebel {position.leverage:g}x  |  Margin {position.margin:,.2f} {QUOTE} gebunden  |  "
+            f"Risiko {position.risk_amount:,.2f} {QUOTE}"
+        )
+        print(
+            f"      Stop {position.stop:,.4f}  Ziel {position.target:,.4f}  "
+            f"Liquidation {position.liq_price:,.4f}",
+            flush=True,
+        )
+
     def _persist(self) -> None:
         self.state.capture_from(self.broker, reason=self._reason)
         self.state.tally = self.stats.tally
@@ -617,16 +687,25 @@ class PaperTrader:
         position = self.broker.position
         if position is not None:
             move = position.unrealised(self.state.last_price)
+            # Geld und Hebel gehoeren auch hier hin, nicht nur in die
+            # Fill-Meldung: eine offene Position ist der Zustand, den man
+            # ansieht, wenn man wissen will, was gerade im Feuer steht. Die
+            # Fill-Meldung ist schon durchgescrollt.
             return (
                 f"{self.symbol}: {position.side.value} {position.qty:g} @ "
-                f"{position.entry_price:,.2f}, Stop {position.stop:,.2f}, "
-                f"Ziel {position.target:,.2f}, offen {move:+,.2f} CHF"
+                f"{position.entry_price:,.2f} = {position.notional:,.2f} {QUOTE}, "
+                f"Hebel {position.leverage:g}x, Margin {position.margin:,.2f} {QUOTE}, "
+                f"Risiko {position.risk_amount:,.2f} {QUOTE}, "
+                f"Stop {position.stop:,.2f}, Ziel {position.target:,.2f}, "
+                f"offen {move:+,.2f} {QUOTE}"
             )
         if self.broker.pending is not None:
             pending = self.broker.pending
             return (
                 f"{self.symbol}: Order liegt bei {pending.limit_price:,.2f} "
-                f"({pending.side.value}), verfällt {pending.expires_ts}"
+                f"({pending.side.value}) = {pending.planned_notional:,.2f} {QUOTE} geplant, "
+                f"Hebel {pending.leverage:g}x, Margin {pending.planned_margin:,.2f} {QUOTE}, "
+                f"Risiko {pending.risk_amount:,.2f} {QUOTE}, verfällt {pending.expires_ts}"
             )
         return (
             f"{self.symbol}: flach, Kontostand {self.broker.equity:,.2f} CHF"

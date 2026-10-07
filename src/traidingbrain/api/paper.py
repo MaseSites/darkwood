@@ -49,6 +49,16 @@ class PaperPosition(BaseModel):
     unrealised: float
     risk_amount: float
     stop_moved: bool
+    #: Positionsgroesse in der Quote-Waehrung: qty * entry.
+    #:
+    #: Mitgeliefert statt dem Konsumenten zum Nachrechnen ueberlassen. Wer
+    #: es selbst rechnet, rechnet irgendwann mit `exit` oder mit dem
+    #: aktuellen Preis -- und beantwortet damit eine andere Frage als "mit
+    #: wie viel Geld wurde dieser Trade eroeffnet".
+    notional: float
+    #: Davon tatsaechlich gebundenes Kapital: notional / leverage.
+    #: Nicht dasselbe wie `risk_amount`, siehe config/risk.yaml.
+    margin: float
 
 
 class PaperAccount(BaseModel):
@@ -122,6 +132,8 @@ def _position_view(state: object, last_price: float) -> PaperPosition | None:
         unrealised=round(position.unrealised(last_price), 4) if last_price else 0.0,
         risk_amount=position.risk_amount,
         stop_moved=position.stop_moved,
+        notional=position.notional,
+        margin=position.margin,
     )
 
 

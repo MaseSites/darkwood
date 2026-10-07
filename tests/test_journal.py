@@ -22,7 +22,7 @@ import pandas as pd
 import pytest
 
 from traidingbrain.data.grid import timeframe_ms
-from traidingbrain.domain.enums import ExitReason, Side, Timeframe
+from traidingbrain.domain.enums import ExitReason, OrderType, Side, Timeframe
 from traidingbrain.journal.build import decision_index
 from traidingbrain.journal.postmortem import examine
 from traidingbrain.journal.record import (
@@ -33,6 +33,7 @@ from traidingbrain.journal.record import (
     TradeReason,
 )
 from traidingbrain.journal.store import JournalStore
+from traidingbrain.sim.broker import OpenPosition, PendingEntry
 
 H1_MS = timeframe_ms(Timeframe.H1)
 
@@ -444,3 +445,128 @@ def test_a_row_written_before_the_cadence_was_recorded_still_opens() -> None:
 
     assert restored.reason.signal_timeframe == ""
     assert restored.reason.setup_key == built.reason.setup_key
+
+
+# --------------------------------------------------------------------------- #
+# Wie viel Geld ging in den Trade, und mit welchem Hebel
+#
+# Der Nutzer verlangt das bei jedem Papertrade protokolliert. Die Zahlen lagen
+# immer im Journal und waren nirgends zu sehen; diese Tests halten die
+# Arithmetik fest, damit die Anzeige nicht vom Konto abdriftet. Jeder Wert
+# unten ist von Hand gerechnet, nicht aus der Implementierung abgelesen.
+# --------------------------------------------------------------------------- #
+
+
+def test_the_notional_is_quantity_times_the_entry_price() -> None:
+    """2,5 Einheiten zu 400 sind 1000. Nachgerechnet, nicht nachgeschlagen."""
+    assert entry(qty=2.5, entry_price=400.0).notional == pytest.approx(1000.0)
+
+
+def test_the_notional_uses_the_entry_price_and_not_the_exit() -> None:
+    """Die Frage ist, womit man REIN ging.
+
+    Mit dem Ausstiegspreis gerechnet waere es die Groesse, mit der man
+    herauskam -- bei einem Gewinner eine groessere Zahl und eine andere
+    Frage. Hier verdoppelt sich der Preis, und das Notional darf sich nicht
+    bewegen.
+    """
+    opened_at_100 = entry(qty=3.0, entry_price=100.0, exit_price=200.0)
+    assert opened_at_100.notional == pytest.approx(300.0)
+
+
+def test_the_margin_is_the_notional_divided_by_the_leverage() -> None:
+    """1000 Notional bei 10x sind 100 gebunden; bei 1x die ganzen 1000."""
+    assert entry(qty=10.0, entry_price=100.0, leverage=10.0).margin == pytest.approx(100.0)
+    assert entry(qty=10.0, entry_price=100.0, leverage=1.0).margin == pytest.approx(1000.0)
+
+
+def test_margin_times_leverage_returns_the_notional() -> None:
+    """Die Identitaet, die beide Zahlen aneinander bindet."""
+    for leverage in (1.0, 2.0, 5.0, 10.0, 25.0):
+        trade = entry(qty=7.0, entry_price=13.5, leverage=leverage)
+        assert trade.margin * leverage == pytest.approx(trade.notional)
+
+
+def test_the_margin_matches_what_the_broker_actually_reserves() -> None:
+    """Dieselbe Rechnung wie `sim/broker.py::fill`, nicht eine zweite.
+
+    Dort steht `notional = qty * price` und `margin = notional / leverage`.
+    Drifteten die beiden auseinander, wuerde die Anzeige einen Betrag
+    behaupten, den das Konto nie gebunden hat -- und das waere genau die
+    Art Zahl, die man glaubt.
+    """
+    position = OpenPosition(
+        side=Side.LONG,
+        entry_price=13.923,
+        qty=50.95,
+        leverage=10.0,
+        stop=13.72,
+        target=14.4,
+        liq_price=12.6,
+        opened_ts=0,
+        margin=50.95 * 13.923 / 10.0,
+        risk_amount=10.09,
+    )
+    journalled = entry(qty=50.95, entry_price=13.923, leverage=10.0)
+    assert journalled.notional == pytest.approx(position.notional)
+    assert journalled.margin == pytest.approx(position.margin)
+
+
+def test_a_missing_leverage_does_not_divide_by_zero() -> None:
+    """Null Hebel ist kein gueltiger Trade, aber ein Absturz in der Anzeige
+    waere die schlechtere Antwort als eine Null."""
+    assert entry(qty=1.0, entry_price=100.0, leverage=0.0).margin == 0.0
+
+
+def test_the_margin_is_not_the_risk() -> None:
+    """Die Verwechslung, die `config/risk.yaml` in seinen ersten Zeilen warnt.
+
+    Eine Position von 1000 mit einem Stop 3% entfernt riskiert 30, nicht
+    1000 -- und bindet bei 10x Hebel 100. Drei Zahlen, die alle
+    verschieden sind, und keine davon darf fuer eine andere stehen.
+    """
+    trade = entry(qty=10.0, entry_price=100.0, leverage=10.0, risk_amount=30.0)
+    assert trade.notional == pytest.approx(1000.0)
+    assert trade.margin == pytest.approx(100.0)
+    assert trade.risk_amount == pytest.approx(30.0)
+    assert trade.margin != trade.risk_amount
+
+
+def test_the_computed_amounts_stay_out_of_the_stored_record() -> None:
+    """Sonst waeren 2'744 gespeicherte Zeilen nicht mehr lesbar.
+
+    `notional` und `margin` sind properties und keine dataclass-Felder, also
+    nimmt `asdict()` sie nicht mit. Waeren sie Felder, bekaeme `from_json()`
+    unerwartete Argumente und jede vorhandene Zeile wuerde beim Laden
+    scheitern. Das ist kein theoretisches Risiko -- es ist der Grund fuer
+    die Wahl.
+    """
+    stored = json.loads(entry().to_json())
+    assert "notional" not in stored
+    assert "margin" not in stored
+    # Und der Beweis, dass es trotzdem zurueckkommt:
+    assert JournalEntry.from_json(entry().to_json()).notional == pytest.approx(100.0)
+
+
+def test_the_planned_amounts_of_an_unfilled_order_are_named_apart() -> None:
+    """Eine Order fuellt nicht zwingend zum Limit, und vielleicht nie.
+
+    Darum `planned_notional` statt `notional`: wer die Absicht als Tatsache
+    berichtet, hat beim ersten abweichenden Fill eine falsche Zahl
+    aufgeschrieben.
+    """
+    pending = PendingEntry(
+        side=Side.LONG,
+        order_type=OrderType.LIMIT,
+        limit_price=50.0,
+        stop=49.0,
+        target=52.0,
+        qty=4.0,
+        leverage=4.0,
+        created_ts=0,
+        expires_ts=H1_MS,
+        risk_amount=4.0,
+    )
+    assert pending.planned_notional == pytest.approx(200.0)
+    assert pending.planned_margin == pytest.approx(50.0)
+    assert not hasattr(pending, "notional"), "die Absicht darf nicht wie ein Fill heissen"

@@ -43,7 +43,7 @@ from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
 from traidingbrain.journal.record import JournalEntry, Source
 from traidingbrain.journal.store import JournalStore
-from traidingbrain.live.paper import POLL_SECONDS, PaperTrader, state_path
+from traidingbrain.live.paper import POLL_SECONDS, QUOTE, PaperTrader, state_path
 from traidingbrain.live.paperstate import PaperStateStore
 
 JOURNAL_NAME = "journal.sqlite"
@@ -226,7 +226,19 @@ def announce(entry: JournalEntry) -> None:
         f"{entry.reason.side}: {entry.r_multiple:+.2f} R "
         f"({entry.exit_reason.value}, {entry.post_mortem.bars_held} Kerzen)"
     )
-    print(f"      {verdict}")
+    # Womit der Trade eingegangen wurde, zum EINSTIEGSPREIS. Beim
+    # Ausstiegspreis gerechnet waere es die Groesse, mit der er verlassen
+    # wurde -- bei einem Gewinner eine groessere Zahl und eine andere Frage.
+    print(
+        f"      eingesetzt {entry.notional:,.2f} {QUOTE} @ {entry.entry_price:,.4f}  |  "
+        f"Hebel {entry.leverage:g}x  |  Margin {entry.margin:,.2f} {QUOTE}  |  "
+        f"Risiko {entry.risk_amount:,.2f} {QUOTE}  ->  "
+        f"netto {entry.net_pnl:+,.2f} {QUOTE}"
+    )
+    # flush, weil der Haendler als Dauerprozess mit umgeleiteter Ausgabe
+    # laeuft. Diese Meldung existierte vorher schon und war aus genau diesem
+    # Grund nie zu sehen.
+    print(f"      {verdict}", flush=True)
 
 
 def tend_open_positions(traders: list[PaperTrader]) -> None:
@@ -320,13 +332,30 @@ def show_status(traders: list[PaperTrader]) -> int:
             f"  Mittel {sum(rs) / len(rs):+.3f} R, Treffer {100 * wins / len(live):.0f}%, "
             f"von {clock_text(live[0].opened_ts)} bis {clock_text(live[-1].closed_ts)}"
         )
-        print("\n  Die letzten fünf:")
+        print(f"\n  Die letzten fünf — Einsatz, Hebel und Ergebnis je Trade ({QUOTE}):")
+        print(
+            f"    {'wann':12s} {'Markt':9s} {'Setup':6s} {'Einsatz':>10s} {'Hebel':>6s} "
+            f"{'Margin':>9s} {'Risiko':>8s} {'netto':>9s} {'R':>7s}  Grund"
+        )
         for entry in live[-5:]:
             print(
-                f"    {clock_text(entry.closed_ts)}  {entry.symbol:8s} "
+                f"    {clock_text(entry.closed_ts):12s} {entry.symbol:9s} "
                 f"{entry.reason.setup_key} {entry.reason.setup_timeframe:3s} "
-                f"{entry.r_multiple:+.2f} R  {entry.exit_reason.value}"
+                f"{entry.notional:>10,.2f} {entry.leverage:>5g}x "
+                f"{entry.margin:>9,.2f} {entry.risk_amount:>8,.2f} "
+                f"{entry.net_pnl:>+9,.2f} {entry.r_multiple:>+7.2f}  "
+                f"{entry.exit_reason.value}"
             )
+        # Die Summe daneben, weil fuenf Einzelbetraege nicht sagen, wie viel
+        # Kapital das System insgesamt bewegt hat.
+        total_notional = sum(e.notional for e in live)
+        total_risk = sum(e.risk_amount for e in live)
+        print(
+            f"\n    Über alle {len(live)} Vorwärts-Trades: {total_notional:,.2f} {QUOTE} "
+            f"Notional bewegt, {total_risk:,.2f} {QUOTE} insgesamt riskiert, "
+            f"Hebel {min(e.leverage for e in live):g}x bis "
+            f"{max(e.leverage for e in live):g}x"
+        )
     else:
         print("  noch keiner. Die ersten brauchen Stunden bis Tage -- das ist die Idee.")
     return 0

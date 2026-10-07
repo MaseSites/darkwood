@@ -177,6 +177,37 @@ class JournalEntry:
     def won(self) -> bool:
         return self.net_pnl > 0
 
+    @property
+    def notional(self) -> float:
+        """Wie viel Geld in diesem Trade steckte, zum EINSTIEGSPREIS.
+
+        `entry_price`, nicht `exit_price`, und das ist der ganze Punkt: die
+        Frage ist, mit wie viel Geld man in den Trade gegangen ist. Mit dem
+        Ausstiegspreis gerechnet waere es die Groesse, mit der man
+        herauskam -- eine andere Zahl, und bei einem Gewinner eine
+        groessere.
+
+        Dieselbe Rechnung wie `sim/broker.py::fill` und
+        `OpenPosition.notional`. Als property statt als gespeichertes Feld,
+        damit das Journal-Schema unberuehrt bleibt: `asdict()` nimmt nur
+        dataclass-Felder, also schreibt `to_json()` hier nichts dazu und
+        `from_json()` bekommt kein unerwartetes Argument. Die 2'744
+        gespeicherten Zeilen bleiben lesbar.
+        """
+        return self.qty * self.entry_price
+
+    @property
+    def margin(self) -> float:
+        """Das tatsaechlich gebundene Kapital: Notional durch Hebel.
+
+        Nicht zu verwechseln mit `risk_amount`. Die Margin ist, was auf dem
+        Konto blockiert war; das Risiko ist, was beim Stop verloren geht.
+        Bei 10x Hebel und 1% Risiko liegen zwischen den beiden Zahlen
+        ungefaehr sieben Mal -- und `config/risk.yaml` erklaert in seinen
+        ersten Zeilen, dass genau diese Verwechslung Geld kostet.
+        """
+        return self.notional / self.leverage if self.leverage else 0.0
+
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False, sort_keys=True)
 
