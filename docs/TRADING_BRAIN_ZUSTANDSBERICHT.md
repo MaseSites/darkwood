@@ -873,8 +873,10 @@ ihrer Verlustfenster. **Die echte Trefferquote ist niedriger als die gezeigte, n
 |---|---|---|
 | S1 | **`calibration_proven: false`** — die Confidence-Stufen über 1 % Risiko sind gesperrt. Bis 05.10.2026 war das kein Beschluss, sondern ein Rechenunfall: Der Deckel verglich die Nachbarn **einer** Kerze (höchstens 120) mit einer Schwelle von 200, konnte also nie aufgehen. Richtig gedeckelt, falscher Grund. | **beantwortet 07.10.2026** (`scripts/study_calibration.py`). Die Frage brauchte `history.Case` gar nicht: das Journal speichert die Bewertung im `reason`-Block, also **vor** dem Ergebnis. Ergebnis in zwei Teilen. **Erstens**, die rohe Zahl `rating/100` ist keine Wahrscheinlichkeit, sondern stark überzuversichtlich — im Band 0,90–1,00 sagt sie 0,946 und beobachtet 0,373, auf 166 Fällen (Brier roh 0,3789). **Zweitens**, nach einer nur auf dem früheren Fenster angepassten Sigmoide ist sie von der Basisquote **nicht zu trennen**: gepaart −0,00005 mit [−0,00011, +0,00001], Null enthalten (Brier kalibriert 0,2246 gegen Basisquote 0,2247). `calibration_proven` bleibt `false` — aber nicht mehr aus Datenmangel, sondern weil in der Zahl, die den Schalter öffnen würde, **nichts steckt**. Das ist die härtere Aussage: mehr Fälle ändern sie nicht. |
 | S2 | **Prüffenster: 0 Konsultationen.** Nicht eine Lücke, sondern eine Entscheidung — es ohne würdigen Kandidaten aufzubrauchen, verschiesst die einzige Munition. | bewusst |
-| S3 | **Vorwärts-Evidenz wächst mit 2,27 Trades/Tag.** 100 Vorwärts-Trades brauchen ~44 Tage. Die Frist ist in 24 Tagen. | strukturell [OFFEN] |
-| S4 | **Der FreqAI-Arm lief nur 45 Tage / 28 Trades** (Absturz). Ein gültiger Vergleich über dasselbe Fenster wie die Basislinie fehlt. | [OFFEN], als nächstes nach der laufenden Sammlung |
+| S3 | **Vorwärts-Evidenz: 10 Trades im Journal**, 02.10. bis 07.10., Mittel +0,333 R bei 50 % Treffern. Die Zahl steht hier nur, weil sie sonst jemand anders findet und für ein Ergebnis hält: **n = 10 ist kein Ergebnis**, und ein positives Mittel auf zehn Fällen ist genau die Form, in der dieses Projekt zehn Scheinfunde angefangen hat. Die Zuflussrate ist das eigentliche Problem — bei ~1,9/Tag brauchen 100 Vorwärts-Trades rund 52 Tage. | strukturell [OFFEN] |
+| S4 | **Der FreqAI-Vergleich: Basislinie steht, Modellarm läuft** (`audit/FREQAI_VERGLEICH.md`). Der alte Vergleich verglich nichts — drei getrennte Defekte, alle behoben. Der Basislauf endete am **Geld**, nicht am Fenster: 1 000 USDT, nach 15 Wochen bei 201,93, danach 16 Monate ohne einen Trade, gemeldet als 2 425 Trades über 19 Monate. Mit Kapital, das nie bindet, macht dieselbe Strategie **15 624 Trades** — das Sechsfache. Der FreqAI-Arm lief 45 Tage gegen 579. Und `identifier` ist ein Cache-Schlüssel ohne die Konfiguration darin: der Lauf brach bei 75/83 ab und hatte vorher **74 Folds lang fremde Modelle stillschweigend wiederverwendet**. | Basislinie **erledigt**: −0,58 %, 526 Verlusttage von 579, Profit-Faktor 0,35, p-Wert 0. Modellarm [LÄUFT] |
+| S6 | **Eine Revision war nicht zu bemerken.** Der Zukunfts-Mutationstest deckt Preise ab, die *nach* der Entscheidung liegen. Er kann nicht decken, was diese Dienste wirklich tun: Geschichte **neu schreiben**. Coin Metrics revidiert `flash`-Zeilen, FREDs DTWEXBGS ist berechnet, und `ExternalStore.write` legt die revidierte Zeile über ihre Vorgängerin. Gleicher Code, gleiche Konfiguration, gleicher Zeitraum, zwei Monate auseinander — zwei verschiedene Panels, und nichts sah falsch aus. `Panel` trug die **Art** der Quelle, nie ihren **Inhalt**. | **behoben 07.10.2026**: `Panel.vintages` und `vintage_id`, je Quelle ein Fingerabdruck. Was `run_signature` für die Konfiguration ist, ist das für die Daten. `tests/test_vintage.py` trennt die drei Fälle mit drei verschiedenen Antworten — die Revision *vor* dem Schnitt ändert das Merkmal und ist **nicht** wegzusichern; zusicherbar ist nur, dass die zwei Läufe nie verwechselt werden. |
+| S7 | **Dieses Orderbuch kann keinen Fill belegen.** Gefunden beim Messen der Nicht-Fills (`scripts/study_venue_fills.py`): eine schrumpfende `remaining_base_amount` kann eine Teilausführung sein **oder** eine Teil-Storno. Von 41 Verkleinerungen lagen **33 an Preisen, die der Markt im Fenster nie erreicht hat** — eine davon 394 bp vom Mid. | [OFFEN] bis zum Trade-Tape. Das ist jetzt der benannte Grund, warum die parallele Aufnahme **Trades** führen muss und nicht nur Quotes. |
 | S5 | **Sammlung abgeschlossen: 12 von 12 Märkten, 43 727 Signale.** Die offene empirische Frage ist beantwortet: die Brutto-Differenz zwischen billigen und teuren Trades ist **echt** — +0,0561 R mit [+0,017, +0,097], Null ausgeschlossen. Auf vier Märkten hatte sie noch [−0,033, +0,195] gespannt. Billige Trades **fangen mehr Bewegung**, sie zahlen nicht nur weniger Zoll. | **erledigt**; und weiterhin kein Edge: R pro Trade +0,0107 mit [−0,041, +0,061] spannt über Null |
 
 ---
@@ -1235,6 +1237,70 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
    Scheinfunde gefangen hat, bevor sie geglaubt wurden. Die zwei neuesten sind die grössten:
    ein `max_adverse_r` von 147,88 R, das Bewegung nach dem Ausstieg mitzählte, und ein
    Modell, das **+1018 %** meldete, weil seine Merkmale die Kerze kannten, die sie handeln.
-8. **[FAKT]** Und der unbequeme Teil bleibt unverkleinert: nichts davon ist ein Vorteil.
-   Zwei Begründungen, mit denen ich Untersuchungen vorzeitig geschlossen hatte, sind
-   gefallen — das macht vier Fragen wieder offen und beantwortet keine.
+8. **[GEMESSEN]** Die Bewertung, die das System heute als Zuversicht behandelt, ist keine.
+   Roh ist `rating/100` stark überzuversichtlich — im Band 0,90–1,00 sagt sie 0,946 und
+   beobachtet **0,373**. Kalibriert ist sie von der Basisquote **nicht zu trennen**
+   (gepaart −0,00005 mit [−0,00011; +0,00001]). `calibration_proven` bleibt zu, aber der
+   Grund hat gewechselt: nicht Datenmangel, sondern **in der Zahl steckt nichts**. Mehr
+   Fälle ändern das nicht.
+9. **[GEMESSEN]** Alle **drei** Ablehnungsregeln sind über 12 Märkte und 41 382 Signale
+   bestätigt — jede abgelehnte Population ist **brutto** negativ mit einem Intervall ohne
+   Null. Die Regeln lehnen Trades ab, die Geld verlieren, *bevor* eine Gebühr anfällt.
+   Unbequem dabei: der Brutto-Vorteil der **genommenen** Population spannt jetzt selbst
+   über die Null (+0,0080 mit [−0,022; +0,039]). Jede Erweiterung der Stichprobe hat ihn
+   Richtung Null bewegt.
+10. **[GEMESSEN]** Die Maker-Annahme ist teurer als die Maker-Gebühr. Je ~17 s verschwinden
+    **9,5 % (LINK) bis 49,2 % (ETH)** der ruhenden Orders, ohne dass der Preis sie erreicht
+    hat. Und 1 000 USD sind **200 % von XRPs** Antrittsvolumen — dort kann ein Auftrag
+    dieser Grösse gar nicht als Maker am besten Preis liegen. Die 0 % Maker-Gebühr ist real;
+    die Maker-*Ausführung* ist es nicht.
+11. **[GEMESSEN]** Die FreqAI-Basislinie ist repariert und verliert zuverlässig: 15 624
+    Trades, **−0,58 %**, Profit-Faktor 0,35, **526 Verlusttage von 579**, p-Wert des
+    mittleren Gewinns 0. Der alte „Vergleich" verglich nichts — der Basislauf endete am
+    *Geld* statt am Fenster, und `identifier` hatte 74 Folds lang fremde Modelle
+    stillschweigend wiederverwendet.
+12. **[FAKT]** Die eigentliche Leistung des Projekts ist der Apparat, der inzwischen
+    **zwölf** Scheinfunde gefangen hat, bevor sie geglaubt wurden. Die beiden neuesten
+    stammen aus *dieser* Charge und wurden nicht von einem Test gefangen, sondern von einer
+    Zahl, die nicht sein konnte: ein „Markout", der auf nichts bedingte und darum nur den
+    Marktlauf wiederholte, und ein „belegter Fill" 394 bp vom Mid — ein Ask 4 % über dem
+    Markt, der in 17 Sekunden nicht gehandelt wird.
+13. **[FAKT]** Und der unbequeme Teil bleibt unverkleinert: **nichts davon ist ein Vorteil.**
+    Zwei Begründungen, mit denen ich Untersuchungen vorzeitig geschlossen hatte, sind
+    gefallen — das macht vier Fragen wieder offen und beantwortet keine. Die Charge hat
+    gemessen, repariert und zwei eigene Fehler kassiert. Einen Kandidaten hat sie nicht
+    hervorgebracht, und das ist das Ergebnis, nicht sein Ausbleiben.
+
+---
+
+## 18. Der eine nächste Schritt
+
+Der Auftrag verlangt genau einen. Er ist:
+
+> **Die parallele, zeitgestempelte Aufnahme von Quotes _und Trades_ auf BTC und ETH über
+> beide Venues starten — und zwar mit dem Trade-Tape, nicht nur dem Buch.**
+
+**Warum dieser und kein anderer.** Drei offene Punkte hängen an derselben Aufnahme, und
+keiner von ihnen kommt ohne sie weiter:
+
+* **E0 Punkt 3** — ob ein Signal, das auf der alten Börse entsteht, auf der neuen
+  überhaupt noch ausführbar ist. Ohne das ist die gemessene Kostensenkung (22× unter dem
+  Vorsprung auf BTC) interessant und nicht entscheidend.
+* **S7** — ohne Trade-Tape lässt sich in diesem Buch eine Teilausführung nicht von einer
+  Teil-Storno trennen. 33 von 41 „Fills" lagen an nie erreichten Preisen. Damit gibt es
+  keinen Markout, und ohne Markout keine Aussage über adverse Selektion.
+* **E5** — der Orderflow-Arm wartet ohnehin auf genau diesen Collector.
+
+**Was er ausdrücklich nicht ist.** Keine Order, kein Kapital, kein Schlüssel mit
+Handelsrecht. Die Venue bleibt Daten- und Shadow-Quelle, bis Kontoberechtigung,
+Orderschutz und tatsächliche Handelsrechte einen eigenen Review bestanden haben — und der
+wird nicht dadurch vorbereitet, dass Schutzregeln still ausgeschaltet werden.
+
+**Und was gleichzeitig weiterläuft, ohne diesen Schritt zu blockieren:** der FreqAI-Arm
+(S4) rechnet zu Ende, und der Papierhändler sammelt die einzige Vorwärts-Evidenz, die es
+gibt — bei ~1,9 Trades/Tag.
+
+**Kein positiver Kandidat ist ebenfalls ein abgeschlossenes Ergebnis dieser Charge.**
+Diese Charge hat keinen. E1 nicht belegt, E2 nicht belegt, die Kalibrierung ohne Inhalt,
+die Basislinie zuverlässig negativ. Das ist der Stand, und er wird hier nicht
+freundlicher formuliert, als er ist.
