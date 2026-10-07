@@ -146,6 +146,117 @@ Funding, Transferkosten und Protokollrisiko bleiben. Null Gebühr heisst null
 Gebühr, nicht null Kosten — die Tabelle oben misst genau diesen Unterschied,
 und auf LINK und DOGE ist er grösser als die ganze Maut der alten Börse.
 
+## 6b. E0, zweiter Schritt: Nicht-Fills, Stornos und die Warteschlange
+
+Reproduktion: `./.venv/Scripts/python.exe scripts/study_venue_fills.py`
+
+Abschnitt 6 nennt Nicht-Fills unter den Dingen, die eine Null-Gebühr nicht
+abschafft. Sie sind jetzt gemessen — **ohne eine einzige Order**, weil das
+Buch dieser Venue nicht aggregiert ist: jede Zeile ist eine *einzelne* Order
+mit `order_id`, `order_index`, `initial_base_amount` und
+`remaining_base_amount`. Dieselbe Order lässt sich über mehrere Aufnahmen
+verfolgen, und damit wird beobachtbar, wofür man sonst selbst handeln müsste.
+
+Datengrundlage: dieselben fünf Aufnahmen je Markt wie in Abschnitt 3, im
+Abstand von **17,3 s**, Gesamtspanne rund 69 Sekunden. Uhr ist die **lokale
+Empfangszeit** der Datei — die Antworten tragen `transaction_time: 0`, und der
+Forschungsauftrag verlangt ohnehin lokale Empfangszeiten.
+
+### Die Zahl, auf die es ankommt
+
+| Markt | nachverfolgt | unverändert | **storniert** | weg, Preis durch | verkleinert |
+|---|---|---|---|---|---|
+| BTC | 1 600 | 49,81 % | **42,44 %** | 7,06 % | 0,69 % |
+| ETH | 1 600 | 39,44 % | **49,19 %** | 10,88 % | 0,50 % |
+| SOL | 1 600 | 73,25 % | **22,56 %** | 3,62 % | 0,56 % |
+| XRP | 1 207 | 77,63 % | **17,73 %** | 3,65 % | 0,99 % |
+| LINK | 948 | 87,97 % | **9,49 %** | 2,43 % | 0,11 % |
+| DOGE | 815 | 77,79 % | **18,16 %** | 4,05 % | 0,00 % |
+
+„Storniert" heisst: die Order ist verschwunden, **und der Preis hat sie nie
+erreicht**. Bei ETH ist nach 17 Sekunden fast die Hälfte der ruhenden Orders
+weg, ohne gehandelt worden zu sein.
+
+**Was das für einen Backtest bedeutet.** Ein Simulator, der eine Maker-Order am
+Antrittspreis als gefüllt verbucht, nimmt an, dass das Buch dort stehen bleibt.
+Es bleibt nicht. Das ist kein Argument gegen die Venue — es ist ein Argument
+gegen die Maker-Annahme, auf jeder Venue, und es ist hier zum ersten Mal in
+diesem Projekt mit Zahlen hinterlegt.
+
+### Die Warteschlange am Antritt
+
+Bezogen auf **1 000 USD**, die Grösse, mit der dieses Projekt handeln würde:
+
+| Markt | Volumen am Antritt (ask) | 1 000 USD davon | (bid) | davon |
+|---|---|---|---|---|
+| ETH | 16 996 $ | 5,9 % | 7 708 $ | 13,0 % |
+| LINK | 4 610 $ | 21,7 % | 4 551 $ | 22,0 % |
+| BTC | 3 036 $ | 32,9 % | **17 $** | **5 969 %** |
+| SOL | 2 419 $ | 41,3 % | 8 559 $ | 11,7 % |
+| **DOGE** | **1 000 $** | **100,0 %** | 1 296 $ | 77,2 % |
+| **XRP** | **499 $** | **200,3 %** | 650 $ | **153,8 %** |
+
+Über 100 % heisst: der Auftrag ist **grösser als das ganze Antrittsniveau** und
+kann dort gar nicht vollständig als Maker liegen. Auf XRP ist er doppelt so
+gross wie alles, was am besten Preis steht. Unter 100 % passt er hin, steht
+aber hinter dem Volumen, das schon da liegt — `order_index` ordnet die
+Schlange, und gefüllt wird von vorn.
+
+Und die Bid-Spalte sagt etwas, das die Tiefenzahlen aus Abschnitt 3 nicht
+zeigen: **BTCs bester Bid trug in dieser Aufnahme 17 USD.** Die 12,7 Mio. USD
+Buchtiefe und 17 USD am besten Preis sind beide wahr. Ein Kauflimit am Antritt
+hätte dort alles vor sich gehabt, was in der nächsten Sekunde dazukommt — der
+Unterschied zwischen *Tiefe* und *Tiefe dort, wo man handeln will*.
+
+**Das bestätigt die Entscheidung aus Abschnitt 3**, Taker/Taker zu rechnen,
+statt sie zu untergraben. Die 0 % Maker-Gebühr ist real; die Maker-*Ausführung*
+ist es bei dieser Grösse auf den dünnen Märkten nicht, und auf allen Märkten
+macht der Storno-Anteil sie unsicher.
+
+### Was dieses Buch nicht hergibt — und zwei korrigierte Behauptungen
+
+Beide Fehler stammen aus der ersten Fassung dieses Skripts und stehen hier,
+weil sie beide plausibel aussahen.
+
+**„Markout" war das falsche Wort.** Ein Markout misst, wie sich der Preis
+bewegt, *nachdem man gefüllt wurde* — er bedingt auf den Fill, und genau daraus
+entsteht die Aussage über adverse Selektion. Berechnet war die *unbedingte*
+Mid-Bewegung: sie sagt, wie weit der Markt gelaufen ist, und sonst nichts. Sie
+läuft hier zwischen **−0,605 bp (SOL) und +1,940 bp (LINK)** je 17 s. Ein
+Maker-Markout in dieser Grössenordnung wäre derselbe Marktlauf noch einmal.
+
+**Eine schrumpfende `remaining_base_amount` ist kein Beleg für eine
+Ausführung.** Sie war als „harter Beleg" bezeichnet. Ein einziger Fall hat das
+widerlegt: auf LINK schrumpfte eine Order **394 bp vom Mid entfernt**. Ein Ask
+4 % über dem Markt wird in 17 Sekunden nicht gehandelt — der Eigentümer hat die
+Grösse reduziert.
+
+Über alle Märkte: **von 41 Verkleinerungen liegen 33 an Preisen, die der Markt
+im Fenster nie erreicht hat.** Die können keine Ausführung gewesen sein. Die
+verbleibenden 8 sind *Kandidaten* — die Erreichbarkeitsprüfung („der beste Ask
+muss im Fenster mindestens bis zu diesem Preis gestiegen sein") ist eine
+**notwendige** Bedingung aus den Daten, keine erfundene Schwelle, und notwendig
+ist nicht hinreichend.
+
+**Daraus folgt für das Datenmanifest:** *ohne Trade-Tape kann dieses Buch keinen
+Fill belegen.* Ein Markout auf 8 Kandidaten gegen eine unbedingte Drift
+derselben Grössenordnung ist keine Aussage über adverse Selektion, und es wird
+hier keine getroffen.
+
+### Grenzen dieses Laufs, ohne Beschönigung
+
+Fünf Aufnahmen je Markt, ein Vormittag, 69 Sekunden Gesamtspanne, kein Stress,
+keine Tageszeiten, kein Trade-Tape. **Belegt ist die Messung** — dass
+Storno-Anteil, Warteschlange und Teil-Verkleinerungen aus diesem Orderbuch ohne
+eigene Order ablesbar sind. Die Zahlen sind eine erste Lesung und keine
+Charakterisierung dieser Venue.
+
+Die Horizonte, die der Auftrag nennt, sind damit teilweise offen: **1 s und 5 s**
+brauchen einen Streaming-Collector, **5 min** eine längere Aufnahme. Die
+Cancel-*Verzögerung* (dokumentiert: 300 ms) ist nicht gemessen, sondern nur der
+Cancel-*Anteil*. Und die **drei fehlenden Märkte** (ATOM, AVAX, DOT) sind auch
+hier nicht geprüft.
+
 ---
 
 ## 7. Entscheidung
@@ -161,6 +272,19 @@ tatsächlichen Handelsrechten — und der ist hier nicht vorbereitet, indem
 Schutzregeln still ausgeschaltet werden.
 
 **Der nächste konkrete Schritt** ist die kontinuierliche, zeitgestempelte
-Aufnahme von Quotes und Trades auf BTC und ETH über beide Venues parallel.
+Aufnahme von Quotes **und Trades** auf BTC und ETH über beide Venues parallel.
 Ohne sie ist Punkt 3 oben nicht beantwortbar, und ohne Punkt 3 ist die
 Kostenmessung oben interessant und nicht entscheidend.
+
+Abschnitt 6b hat diesen Schritt enger gefasst als er vorher war. Das **Trade**-
+Tape ist nicht optional: ohne es lässt sich in diesem Buch eine Teilausführung
+nicht von einer Teil-Storno trennen, und damit gibt es keinen Markout. Die
+Aufnahme muss also beides führen, nicht nur Quotes — was der Auftrag in E0
+Punkt 1 ohnehin verlangt und was hier jetzt mit einem Grund hinterlegt ist
+statt nur mit einer Forderung.
+
+Was 6b **schon beantwortet** hat und nicht mehr auf die Sammlung wartet:
+Nicht-Fills (als Storno-Anteil), die tatsächlich verfügbare Orderbuchgrösse und
+die Warteschlange am Antritt. Offen bleiben aus Auftragspunkt 6: die
+Cancel-**Verzögerung** (dokumentiert 300 ms, nicht gemessen), verfallene
+Signale, und Teil-Fills als belegte Ereignisse.
