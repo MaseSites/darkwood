@@ -14,8 +14,23 @@ dist/
 # directory named `data` at any depth -- including src/traidingbrain/data/, which
 # is the exchange client, the store, the backfill and the validator. Those were
 # silently untracked for the whole project, and nothing about a commit said so.
-/data/
+# `/data/*` statt `/data/`, und das ist kein Schoenheitsfehler: git steigt in
+# ein ausgeschlossenes VERZEICHNIS nicht hinab, also kann keine spaetere
+# Ausnahme etwas darin wieder hereinholen. Nur wenn der Ausschluss den
+# Inhalt trifft, greift die Kette darunter.
+/data/*
 !/data/.gitkeep
+
+# Die Manifeste eingefrorener Predictions sind nicht Daten, sondern die
+# Behauptung ueber die Daten: Signatur, Datenstand, Zeilenzahl, Horizont,
+# Pruefsumme. Die Parquet-Datei bleibt draussen -- sie ist gross und
+# jederzeit neu zu rechnen -- der Nachweis kommt mit, sonst ist ein
+# Ergebnis spaeter nicht mehr zuzuordnen.
+!/data/frozen/
+/data/frozen/*
+!/data/frozen/*/
+/data/frozen/*/*
+!/data/frozen/*/*.json
 
 .pytest_cache/
 .mypy_cache/

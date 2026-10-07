@@ -54,12 +54,14 @@ das Ergebnis immer noch negativ ist. Verlangt sind:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 try:
     import lightgbm as lgb
@@ -75,6 +77,7 @@ from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
 from traidingbrain.journal.signals import SignalRecord, SignalStore
 from traidingbrain.journal.version import run_signature
+from traidingbrain.learn.frozen import freeze
 from traidingbrain.learn.labels import Label, Minutes, label_signal
 from traidingbrain.reporting.intervals import block_bootstrap
 
@@ -135,6 +138,11 @@ class Case:
     features: dict[str, float]
     net_r: float
     refused_by: str | None
+    #: Wann das Label dieses Falls tatsaechlich endete, nicht der pauschale
+    #: Horizont. Die Barriere loest variabel auf, und die Purge-Pruefung
+    #: braucht das echte Ende -- `HORIZON_HOURS` ist die Obergrenze, nicht
+    #: die Dauer.
+    closed_ts: int = 0
 
 
 def ex_ante_features(record: SignalRecord) -> dict[str, float]:
@@ -206,6 +214,7 @@ def build_cases(symbols: list[str], *, signature: str) -> list[Case]:
                     features=ex_ante_features(record),
                     net_r=label.net_r,
                     refused_by=record.refused_by,
+                    closed_ts=label.closed_ts,
                 )
             )
             kept += 1
@@ -298,6 +307,81 @@ def evaluate(name: str, chosen: list[Case], *, of: int, level: float) -> ArmResu
     return ArmResult(name, len(values), float(np.mean(values)), low, high, len(values) / of)
 
 
+def case_vintage(cases: list[Case]) -> str:
+    """Ein Fingerabdruck der Faelle, aus denen ein Arm gerechnet wurde.
+
+    Das Pendant zu `Panel.vintage_id`, nur dass die Quelle hier das Ledger
+    ist und nicht ein Panel. Die Labels loesen aus Minutendaten auf, also
+    aendert ein nachgeladener oder korrigierter Minutenbalken das Ergebnis
+    -- und genau das muss dem Dateinamen anzusehen sein.
+    """
+    rows = pd.DataFrame(
+        {
+            "decided_ts": [c.decided_ts for c in cases],
+            "symbol": [c.symbol for c in cases],
+            "net_r": [c.net_r for c in cases],
+            "closed_ts": [c.closed_ts for c in cases],
+        }
+    ).sort_values(["decided_ts", "symbol"])
+    digest = pd.util.hash_pandas_object(rows, index=False)
+    return hashlib.sha256(digest.to_numpy().tobytes()).hexdigest()
+
+
+def freeze_arm(
+    name: str,
+    confirm: list[Case],
+    keep: list[bool],
+    *,
+    scores: np.ndarray | None,
+    signature: str,
+    vintage: str,
+) -> None:
+    """Das Bestaetigungsfenster eines Arms als unveraenderliche Datei.
+
+    Eine Zeile je Entscheidung, auch die abgelehnten -- der Auftrag verlangt
+    Netto-PnL **pro Signal**, und eine Datei nur der genommenen Trades kann
+    nicht sagen, was ein Arm beim Ablehnen verpasst hat.
+    """
+    if not any(keep):
+        print(f"    {name}: nichts genommen, nichts eingefroren")
+        return
+    frame = pd.DataFrame(
+        {
+            "decision_ms": [c.decided_ts for c in confirm],
+            "market": [c.symbol for c in confirm],
+            "score": (
+                np.asarray(scores, dtype=float)
+                if scores is not None
+                else np.full(len(confirm), np.nan)
+            ),
+            "selected": keep,
+            "net_r": [c.net_r for c in confirm],
+            "label_end_ms": [c.closed_ts for c in confirm],
+            "refused_by": [c.refused_by or "" for c in confirm],
+        }
+    )
+    written = freeze(
+        frame,
+        root=ROOT / "data" / "frozen",
+        experiment="E1",
+        arm=name,
+        signature=signature,
+        vintage=vintage,
+        horizon_note=(
+            f"Barriere, Obergrenze {HORIZON_HOURS}h. label_end_ms je Zeile ist "
+            f"die tatsaechliche Aufloesung, nicht der pauschale Horizont."
+        ),
+        unit="net_r_per_signal",
+        extra={
+            "window": "confirm",
+            "threshold_chosen_on": "develop",
+            "purge_hours": PURGE_MS // HOUR_MS,
+            "total_comparisons": TOTAL_COMPARISONS,
+        },
+    )
+    print(f"    {written.describe()}")
+
+
 def judge(results: list[ArmResult]) -> None:
     """Die drei vorab festgelegten Bedingungen, je Modellarm.
 
@@ -345,6 +429,122 @@ def judge(results: list[ArmResult]) -> None:
     return 0
 
 
+def run_arms(
+    cases: list[Case],
+    train: list[Case],
+    develop: list[Case],
+    confirm: list[Case],
+    names: list[str],
+    *,
+    signature: str,
+    corrected: float,
+) -> list[ArmResult]:
+    """Die fuenf vorab angemeldeten Arme, jeder mit eingefrorenen
+    Out-of-Sample-Predictions.
+
+    Die Reihenfolge ist die der Registrierung und nicht verhandelbar:
+    zwei Basislinien, eine Zufallskontrolle, dann die beiden Modelle.
+    """
+    rng = np.random.default_rng(SEED)
+    results: list[ArmResult] = []
+    vintage = case_vintage(cases)
+    print(f"Datenstand der Faelle: {vintage[:16]}\n")
+    print("  Eingefrorene Out-of-Sample-Predictions:")
+
+    # E1.1 und E1.2: die beiden Basislinien, ohne Modell.
+    results.append(evaluate("E1.1 ungefilterter Pool", confirm, of=len(confirm), level=corrected))
+    freeze_arm(
+        "E1.1 ungefilterter Pool",
+        confirm,
+        [True] * len(confirm),
+        scores=None,
+        signature=signature,
+        vintage=vintage,
+    )
+
+    taken = [c for c in confirm if c.refused_by is None]
+    results.append(evaluate("E1.2 heutiger Risikofilter", taken, of=len(confirm), level=corrected))
+    freeze_arm(
+        "E1.2 heutiger Risikofilter",
+        confirm,
+        [c.refused_by is None for c in confirm],
+        scores=None,
+        signature=signature,
+        vintage=vintage,
+    )
+
+    # E1.3: Zufallsfilter gleicher Selektivitaet wie die Modellarme.
+    mask = rng.random(len(confirm)) < KEEP_SHARE
+    results.append(
+        evaluate(
+            "E1.3 Zufallsfilter (Kontrolle)",
+            [c for c, keep in zip(confirm, mask, strict=True) if keep],
+            of=len(confirm),
+            level=corrected,
+        )
+    )
+    freeze_arm(
+        "E1.3 Zufallsfilter (Kontrolle)",
+        confirm,
+        [bool(k) for k in mask],
+        scores=None,
+        signature=signature,
+        vintage=vintage,
+    )
+
+    # E1.4: logistische Regression. Schwelle im ENTWICKLUNGSfenster gewaehlt
+    # und eingefroren, nie im Bestaetigungsfenster.
+    packed = fit_logistic(train, names)
+    threshold = float(np.quantile(score_logistic(develop, names, packed), 1.0 - KEEP_SHARE))
+    scores = score_logistic(confirm, names, packed)
+    results.append(
+        evaluate(
+            "E1.4 logistische Regression",
+            [c for c, s in zip(confirm, scores, strict=True) if s >= threshold],
+            of=len(confirm),
+            level=corrected,
+        )
+    )
+    freeze_arm(
+        "E1.4 logistische Regression",
+        confirm,
+        [bool(s >= threshold) for s in scores],
+        scores=scores,
+        signature=signature,
+        vintage=vintage,
+    )
+
+    # E1.5: flaches LightGBM, Komplexitaet in EXPERIMENTS_NEXT.yaml vorab
+    # fixiert. Schwelle wieder aus dem Entwicklungsfenster, nie aus dem
+    # Bestaetigungsfenster.
+    if lgb is None:
+        print("  (LightGBM nicht verfuegbar -- E1.5 als nicht testbar registriert)")
+    else:
+        model = lgb.LGBMRegressor(**LGBM_FIXED)
+        model.fit(matrix(train, names), [c.net_r for c in train])
+        dev_scores = model.predict(matrix(develop, names))
+        gate = float(np.quantile(dev_scores, 1.0 - KEEP_SHARE))
+        tree_scores = model.predict(matrix(confirm, names))
+        results.append(
+            evaluate(
+                "E1.5 flaches LightGBM",
+                [c for c, s in zip(confirm, tree_scores, strict=True) if s >= gate],
+                of=len(confirm),
+                level=corrected,
+            )
+        )
+        freeze_arm(
+            "E1.5 flaches LightGBM",
+            confirm,
+            [bool(s >= gate) for s in tree_scores],
+            scores=tree_scores,
+            signature=signature,
+            vintage=vintage,
+        )
+
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--symbols", default="")
@@ -386,58 +586,9 @@ def main() -> int:
     if not confirm:
         raise SystemExit("Leeres Bestaetigungsfenster -- mehr Zeit oder mehr Maerkte noetig.")
 
-    rng = np.random.default_rng(SEED)
-    results: list[ArmResult] = []
-
-    # E1.1 und E1.2: die beiden Basislinien, ohne Modell.
-    results.append(evaluate("E1.1 ungefilterter Pool", confirm, of=len(confirm), level=corrected))
-    taken = [c for c in confirm if c.refused_by is None]
-    results.append(evaluate("E1.2 heutiger Risikofilter", taken, of=len(confirm), level=corrected))
-
-    # E1.3: Zufallsfilter gleicher Selektivitaet wie die Modellarme.
-    mask = rng.random(len(confirm)) < KEEP_SHARE
-    results.append(
-        evaluate(
-            "E1.3 Zufallsfilter (Kontrolle)",
-            [c for c, keep in zip(confirm, mask, strict=True) if keep],
-            of=len(confirm),
-            level=corrected,
-        )
+    results = run_arms(
+        cases, train, develop, confirm, names, signature=signature, corrected=corrected
     )
-
-    # E1.4: logistische Regression. Schwelle im ENTWICKLUNGSfenster gewaehlt
-    # und eingefroren, nie im Bestaetigungsfenster.
-    packed = fit_logistic(train, names)
-    threshold = float(np.quantile(score_logistic(develop, names, packed), 1.0 - KEEP_SHARE))
-    scores = score_logistic(confirm, names, packed)
-    results.append(
-        evaluate(
-            "E1.4 logistische Regression",
-            [c for c, s in zip(confirm, scores, strict=True) if s >= threshold],
-            of=len(confirm),
-            level=corrected,
-        )
-    )
-
-    # E1.5: flaches LightGBM, Komplexitaet in EXPERIMENTS_NEXT.yaml vorab
-    # fixiert. Schwelle wieder aus dem Entwicklungsfenster, nie aus dem
-    # Bestaetigungsfenster.
-    if lgb is None:
-        print("  (LightGBM nicht verfuegbar -- E1.5 als nicht testbar registriert)")
-    else:
-        model = lgb.LGBMRegressor(**LGBM_FIXED)
-        model.fit(matrix(train, names), [c.net_r for c in train])
-        dev_scores = model.predict(matrix(develop, names))
-        gate = float(np.quantile(dev_scores, 1.0 - KEEP_SHARE))
-        tree_scores = model.predict(matrix(confirm, names))
-        results.append(
-            evaluate(
-                "E1.5 flaches LightGBM",
-                [c for c, s in zip(confirm, tree_scores, strict=True) if s >= gate],
-                of=len(confirm),
-                level=corrected,
-            )
-        )
 
     print(f"  {'Arm':30s} {'n':>6s} {'Anteil':>7s} {'Netto-R':>9s}  korrigiertes Intervall")
     print("  " + "-" * 88)

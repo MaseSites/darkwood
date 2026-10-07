@@ -1,0 +1,23 @@
+{
+  "arm": "BTCUSDT XGBoost, naiv",
+  "data_vintage": "6d7abcae06d4391797b7fbda3ca63035e7f8a0f1832a8dd8b14520713c2ea262",
+  "decision_ms_first": 1759748400000,
+  "decision_ms_last": 1791360000000,
+  "experiment": "E2",
+  "exposure": 0.5476082004555809,
+  "horizon": "1 Kerzen voraus, feste Laenge. label_end_ms ist decision_ms + 1 x 3600000ms.",
+  "label_end_ms_last": 1791363600000,
+  "markets": [
+    "BTCUSDT"
+  ],
+  "one_way_cost": 0.00075,
+  "per_row_meaning": "Eine Zeile je ENTSCHEIDUNG, nicht je ausgefuehrtem Trade. selected=False heisst: der Arm hat dieses Signal gesehen und abgelehnt. net_r ist das Ergebnis, das er bekommen haette.",
+  "rows": 8780,
+  "run_signature": "holdzone-h1-cost0.000750",
+  "selected": 4808,
+  "sha256": "22df936aa14f2e27944a0d217231fb9e89a53aed4955f970eb54fc89d04a8683",
+  "switches": 2666,
+  "unit": "net_return_per_bar",
+  "unit_meaning": "Netto-Rendite je Kerze in Preisanteilen, NICHT R. Keine Division durch ein Risiko, also mit R-Vielfachen nicht vergleichbar und nicht poolbar. Eine Zeile ist eine Kerze.",
+  "window": "confirm"
+}

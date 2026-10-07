@@ -1,0 +1,23 @@
+{
+  "arm": "ETHUSDT Ridge, Haltezone 1.5x",
+  "data_vintage": "18a589cb32a896493776c88c1388d2467ed1bf61900f0ca6272b555ec53aa27a",
+  "decision_ms_first": 1759748400000,
+  "decision_ms_last": 1791360000000,
+  "experiment": "E2",
+  "exposure": 0.0,
+  "horizon": "1 Kerzen voraus, feste Laenge. label_end_ms ist decision_ms + 1 x 3600000ms.",
+  "label_end_ms_last": 1791363600000,
+  "markets": [
+    "ETHUSDT"
+  ],
+  "one_way_cost": 0.00075,
+  "per_row_meaning": "Eine Zeile je ENTSCHEIDUNG, nicht je ausgefuehrtem Trade. selected=False heisst: der Arm hat dieses Signal gesehen und abgelehnt. net_r ist das Ergebnis, das er bekommen haette.",
+  "rows": 8780,
+  "run_signature": "holdzone-h1-cost0.000750",
+  "selected": 0,
+  "sha256": "20b47a34abf7d5b104543c445ac097a796430176177c5e70b57946c848292b90",
+  "switches": 0,
+  "unit": "net_return_per_bar",
+  "unit_meaning": "Netto-Rendite je Kerze in Preisanteilen, NICHT R. Keine Division durch ein Risiko, also mit R-Vielfachen nicht vergleichbar und nicht poolbar. Eine Zeile ist eine Kerze.",
+  "window": "confirm"
+}

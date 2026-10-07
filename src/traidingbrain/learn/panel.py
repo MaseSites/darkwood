@@ -32,7 +32,8 @@ quietly omit it. A comment would have been forgotten by the next run.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 import numpy as np
@@ -177,6 +178,38 @@ VOL_DAYS = 28
 WARMUP_DAYS = max(RETURN_DAYS) + VOL_DAYS
 
 
+def source_fingerprint(frame: pd.DataFrame) -> str:
+    """One hash standing for the exact rows a source supplied.
+
+    This exists because of a gap the vintage check found. These services
+    restate history -- Coin Metrics marks recent rows `flash` and revises
+    them, FRED's `DTWEXBGS` is computed and can be restated -- and
+    `ExternalStore.write` merges a restated row *over* its predecessor,
+    newest write winning. So the same code, the same configuration and the
+    same date range can produce two different panels, and nothing in the
+    `Panel` said which one you were holding. `unverified` and `notes`
+    describe the *kind* of source, never the content.
+
+    Prefer the per-row `sha256` the store writes: that is the fetch the row
+    actually came from, which is provenance rather than a restatement of the
+    bytes. Fall back to hashing the content for sources that carry no
+    checksum -- candles, and any fixture.
+
+    The fallback uses pandas' own row hashing, which is not promised stable
+    across pandas major versions. A pandas upgrade can therefore make every
+    fingerprint look new. That is a false alarm, not a false pass, and the
+    false alarm is the safe direction for this field.
+    """
+    if "sha256" in frame.columns:
+        stamps = sorted({str(v) for v in frame["sha256"].dropna().unique()})
+        if stamps:
+            return hashlib.sha256("|".join(stamps).encode()).hexdigest()
+
+    ordered = frame.sort_index(axis=1)
+    rows = pd.util.hash_pandas_object(ordered, index=False)
+    return hashlib.sha256(rows.to_numpy().tobytes()).hexdigest()
+
+
 @dataclass(frozen=True, slots=True)
 class Panel:
     """Feature rows, labels and the provenance of what built them."""
@@ -187,10 +220,25 @@ class Panel:
     group: str
     unverified: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
+    #: One `(source, fingerprint)` pair per source that actually contributed
+    #: rows, sorted by source. Two panels built from different vintages of
+    #: the same source differ here, which is the only place they differ.
+    vintages: tuple[tuple[str, str], ...] = field(default_factory=tuple)
 
     @property
     def trustworthy(self) -> bool:
         return not self.unverified
+
+    @property
+    def vintage_id(self) -> str:
+        """The whole input state as one comparable string.
+
+        What `run_signature` is for the configuration, this is for the data.
+        A result recorded without it cannot be reproduced, because the files
+        it was computed from may since have been restated.
+        """
+        joined = "|".join(f"{source}={digest}" for source, digest in self.vintages)
+        return hashlib.sha256(joined.encode()).hexdigest()
 
     def describe(self) -> str:
         markets = self.frame["market"].nunique() if "market" in self.frame else 0
@@ -200,9 +248,11 @@ class Panel:
             if self.unverified
             else "Herkunft aller Quellen belegt"
         )
+        vintage = f"Datenstand {self.vintage_id[:12]}" if self.vintages else "Datenstand UNBEKANNT"
         return (
             f"{self.group}, {self.horizon_hours}h: {len(self.frame):,} Zeilen, "
-            f"{markets} Maerkte, {days} Tage, {len(self.features)} Merkmale. {stamp}"
+            f"{markets} Maerkte, {days} Tage, {len(self.features)} Merkmale. "
+            f"{stamp}. {vintage}"
         )
 
 
@@ -432,10 +482,15 @@ def build_panel(
     max_stale_ms = max_stale_days * DAY_MS
 
     blocks: list[pd.DataFrame] = []
+    # Collected per source across markets, then folded into one fingerprint
+    # each. Per market would give twelve markets times six sources entries;
+    # per source still changes when any one market's data is restated.
+    seen: dict[str, list[str]] = {}
     for market in markets:
         candles = read_ohlcv(market)  # type: ignore[operator]
         if candles is None or candles.empty:
             continue
+        seen.setdefault("ohlcv", []).append(source_fingerprint(candles))
         daily = daily_prices(candles)
         if len(daily) < WARMUP_DAYS + 2:
             continue
@@ -452,6 +507,7 @@ def build_panel(
                 extra = read_extra(market, source)  # type: ignore[operator]
                 if extra is None or extra.empty:
                     continue
+                seen.setdefault(source, []).append(source_fingerprint(extra))
                 # Every numeric column the source offers, not just the first.
                 # An on-chain fetch carries active addresses, transaction
                 # count, supply, market cap, issuance and both exchange flow
@@ -501,6 +557,11 @@ def build_panel(
     frame = frame.dropna(subset=[*features, "target"]).reset_index(drop=True)
     frame = frame.sort_values(["ts", "market"]).reset_index(drop=True)
 
+    vintages = tuple(
+        (source, hashlib.sha256("|".join(sorted(digests)).encode()).hexdigest())
+        for source, digests in sorted(seen.items())
+    )
+
     return Panel(
         frame=frame,
         features=features,
@@ -508,6 +569,7 @@ def build_panel(
         group=group,
         unverified=unverified,
         notes=notes,
+        vintages=vintages,
     )
 
 
@@ -546,6 +608,10 @@ def common_window(panels: list[Panel]) -> list[Panel]:
                     *panel.notes,
                     f"auf gemeinsames Fenster beschnitten: {len(trimmed):,} Zeilen",
                 ),
+                # Trimming rows does not change which files were read, and
+                # dropping this would make a trimmed panel look like one
+                # built from unknown data.
+                vintages=panel.vintages,
             )
         )
     return out

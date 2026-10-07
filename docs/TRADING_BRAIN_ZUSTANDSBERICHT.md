@@ -576,6 +576,33 @@ vorher geschrieben hatte:
   `execution/` teilen sich einen Zustandsautomaten.
 - **[FAKT]** `study_refused.py` speichert **abgelehnte** Signale mitsamt der Regel, die sie
   abgelehnt hat — so lässt sich fragen, ob eine Regel Geld kostet.
+- **[GEMESSEN 07.10.2026]** Und die Frage ist jetzt beantwortet, über **zwölf Märkte und
+  41 382 gelabelte Signale**. Alle drei Ablehnungsregeln sind bestätigt, jede auf ihrem
+  eigenen Intervall:
+
+  | Gruppe | n | brutto | netto | Treffer | Brutto-Intervall |
+  |---|---|---|---|---|---|
+  | genommen | 6 683 | +0,0080 | −0,0210 | 38 % | [−0,022, +0,039] — **spannt über Null** |
+  | abgelehnt, alle | 34 699 | **−0,0309** | −0,1568 | 44 % | **[−0,045, −0,016]** |
+  | abgelehnt, Kostenregel | 19 427 | −0,0379 | −0,1936 | 37 % | [−0,060, −0,017] |
+  | abgelehnt, Chance:Risiko | 15 252 | −0,0219 | −0,1099 | **54 %** | [−0,038, −0,006] |
+  | abgelehnt, Liquidation | 20 | −0,1614 | −0,1674 | 35 % | [−0,309, −0,032] |
+
+  Drei von drei: jede abgelehnte Population ist **brutto** schlechter als nichts, und jedes
+  Intervall schliesst die Null aus. Die Regeln lehnen nicht bloss teure Trades ab, sondern
+  Trades, die Geld verlieren, **bevor** eine Gebühr anfällt. Keine dieser Regeln ist ein Hebel.
+
+  Zwei Dinge dazu, die unangenehmer sind als die Bestätigung selbst. **Erstens** ist der
+  Brutto-Vorteil der genommenen Population verschwunden: bei vier Märkten las er +0,0136, bei
+  zwölf steht er bei +0,0080 mit einem Intervall, das über die Null spannt. Jede Erweiterung
+  der Stichprobe hat ihn Richtung Null bewegt. **Zweitens** liegt die Trefferquote der
+  abgelehnten Signale mit 44 % **über** der genommenen von 38 %, bei Chance:Risiko sogar bei
+  54 % — und alle sind brutto negativ. Das ist die dritte unabhängige Messung derselben
+  Sache: eine Population mit höherer Trefferquote verdient weniger.
+
+  Und was es nicht ist: diese Signale haben nie um einen Platz konkurriert. Ein positiver
+  Befund verdiente einen Backtest-Arm mit gelockerter Regel — niemals die Erlaubnis, eine
+  Regel abzuschalten.
 
 ---
 

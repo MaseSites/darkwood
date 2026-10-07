@@ -1,0 +1,23 @@
+{
+  "arm": "ETHUSDT passiv long",
+  "data_vintage": "18a589cb32a896493776c88c1388d2467ed1bf61900f0ca6272b555ec53aa27a",
+  "decision_ms_first": 1759748400000,
+  "decision_ms_last": 1791360000000,
+  "experiment": "E2",
+  "exposure": 1.0,
+  "horizon": "1 Kerzen voraus, feste Laenge. label_end_ms ist decision_ms + 1 x 3600000ms.",
+  "label_end_ms_last": 1791363600000,
+  "markets": [
+    "ETHUSDT"
+  ],
+  "one_way_cost": 0.00075,
+  "per_row_meaning": "Eine Zeile je ENTSCHEIDUNG, nicht je ausgefuehrtem Trade. selected=False heisst: der Arm hat dieses Signal gesehen und abgelehnt. net_r ist das Ergebnis, das er bekommen haette.",
+  "rows": 8780,
+  "run_signature": "holdzone-h1-cost0.000750",
+  "selected": 8780,
+  "sha256": "1372a6509d81600bcf92127a0efde2848724bde7dba5f4434e9378f7438c4efc",
+  "switches": 2,
+  "unit": "net_return_per_bar",
+  "unit_meaning": "Netto-Rendite je Kerze in Preisanteilen, NICHT R. Keine Division durch ein Risiko, also mit R-Vielfachen nicht vergleichbar und nicht poolbar. Eine Zeile ist eine Kerze.",
+  "window": "confirm"
+}

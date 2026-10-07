@@ -51,6 +51,7 @@ zählen in die 46 Vergleiche und werden nicht als "die beste" berichtet.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -67,6 +68,7 @@ except ImportError:  # pragma: no cover
     xgb = None
 
 from traidingbrain.domain.market import DEFAULT_SPEC
+from traidingbrain.learn.frozen import freeze
 from traidingbrain.reporting.intervals import block_bootstrap
 
 OHLCV = ROOT / "data" / "ohlcv"
@@ -194,6 +196,10 @@ class Arm:
     exposure: float
     #: Netto-Rendite je Kerze, als Folge -- die Grundlage des Intervalls.
     per_bar: np.ndarray = field(default_factory=lambda: np.array([]))
+    #: Die gehaltene Position je Kerze, 0 oder 1. Ohne sie ist aus einer
+    #: eingefrorenen Datei nicht zu lesen, WANN der Arm im Markt war --
+    #: nur, was dabei herauskam.
+    positions: np.ndarray = field(default_factory=lambda: np.array([]))
     low: float = float("nan")
     high: float = float("nan")
 
@@ -246,16 +252,20 @@ def named(label: str, arm: Arm) -> Arm:
     laeuft ueber viele davon.
     """
     interval = block_bootstrap(arm.per_bar.tolist(), level=CORRECTED)
+    # Benannt, nicht nach Position. Ein neues Feld vor `low` schob hier sonst
+    # die Grenzen des Intervalls in den Positionspfad -- derselbe Fehler, den
+    # `study_meta_label.py` schon einmal mit `results[3]` hatte.
     return Arm(
-        label,
-        arm.net,
-        arm.gross,
-        arm.switches,
-        arm.cost,
-        arm.exposure,
-        arm.per_bar,
-        interval.low * arm.per_bar.size if interval is not None else float("nan"),
-        interval.high * arm.per_bar.size if interval is not None else float("nan"),
+        name=label,
+        net=arm.net,
+        gross=arm.gross,
+        switches=arm.switches,
+        cost=arm.cost,
+        exposure=arm.exposure,
+        per_bar=arm.per_bar,
+        positions=arm.positions,
+        low=interval.low * arm.per_bar.size if interval is not None else float("nan"),
+        high=interval.high * arm.per_bar.size if interval is not None else float("nan"),
     )
 
 
@@ -277,6 +287,7 @@ def walk(forecast: np.ndarray, realised: np.ndarray, *, threshold: float | None)
     held = 0
     # Je Kerze, damit ein Blockbootstrap daraus ein Intervall machen kann.
     per_bar = np.zeros(forecast.size)
+    held_path = np.zeros(forecast.size)
     for step in range(forecast.size):
         wanted = 1.0 if forecast[step] > 0.0 else 0.0
         if threshold is not None and wanted != position:
@@ -293,11 +304,88 @@ def walk(forecast: np.ndarray, realised: np.ndarray, *, threshold: float | None)
         step_cost = ONE_WAY if switched else 0.0
         step_gross = position * realised[step]
         per_bar[step] = step_gross - step_cost
+        held_path[step] = position
         gross += step_gross
         held += int(position > 0.0)
     return Arm(
-        "", gross - cost, gross, switches, cost, held / max(1, forecast.size), per_bar
+        name="",
+        net=gross - cost,
+        gross=gross,
+        switches=switches,
+        cost=cost,
+        exposure=held / max(1, forecast.size),
+        per_bar=per_bar,
+        positions=held_path,
     )
+
+
+def freeze_arms(
+    arms: list[Arm],
+    confirm: pd.DataFrame,
+    models: list[tuple[str, np.ndarray]],
+    *,
+    symbol: str,
+    horizon: int,
+) -> None:
+    """Jeden Arm des Bestaetigungsfensters als unveraenderliche Datei.
+
+    Eine Zeile je **Kerze**, nicht je Wechsel: eine Datei nur der Wechsel
+    kann nicht sagen, was das Halten dazwischen eingebracht hat, und genau
+    das ist bei E2 der ganze Unterschied zwischen den Armen.
+
+    Die Einheit ist `net_return_per_bar` und ausdruecklich nicht R. E1
+    schreibt R-Vielfache je Signal; die beiden Mengen sehen in der Spalte
+    gleich aus und sind es nicht.
+    """
+    stamps = confirm["ts"].to_numpy(dtype="int64")
+    vintage = hashlib.sha256(
+        pd.util.hash_pandas_object(
+            confirm.loc[:, ["ts", "target", "entry"]], index=False
+        ).to_numpy().tobytes()
+    ).hexdigest()
+    # Aus den Daten, nicht aus einer Konstante: der Abstand ist das, was im
+    # Bestaetigungsfenster wirklich steht. Bei einer einzigen Kerze gibt es
+    # keinen Abstand, und dann ist auch kein Horizont zu berechnen.
+    assert stamps.size > 1, "Bestaetigungsfenster mit einer Kerze hat keinen Rasterabstand"
+    bar_ms = int(np.median(np.diff(stamps)))
+    scores = dict(models)
+
+    print(f"  Eingefrorene Out-of-Sample-Predictions (Datenstand {vintage[:12]}):")
+    for arm in arms:
+        if arm.positions.size != stamps.size:
+            print(f"    {arm.name}: kein Positionspfad, nichts eingefroren")
+            continue
+        model = next((label for label in scores if arm.name.startswith(label)), None)
+        frame = pd.DataFrame(
+            {
+                "decision_ms": stamps,
+                "market": symbol,
+                "score": scores[model] if model else np.full(stamps.size, np.nan),
+                "selected": arm.positions > 0.0,
+                "net_r": arm.per_bar,
+                "label_end_ms": stamps + horizon * bar_ms,
+            }
+        )
+        written = freeze(
+            frame,
+            root=ROOT / "data" / "frozen",
+            experiment="E2",
+            arm=f"{symbol} {arm.name}",
+            signature=f"holdzone-h{horizon}-cost{ONE_WAY:.6f}",
+            vintage=vintage,
+            horizon_note=(
+                f"{horizon} Kerzen voraus, feste Laenge. label_end_ms ist "
+                f"decision_ms + {horizon} x {bar_ms}ms."
+            ),
+            unit="net_return_per_bar",
+            extra={
+                "window": "confirm",
+                "one_way_cost": ONE_WAY,
+                "switches": arm.switches,
+                "exposure": arm.exposure,
+            },
+        )
+        print(f"    {written.describe()}")
 
 
 def one_market(symbol: str, *, horizon: int) -> None:
@@ -359,10 +447,20 @@ def one_market(symbol: str, *, horizon: int) -> None:
     arms.append(
         named(
             "passiv long",
-            Arm("", float(passive_bars.sum()), float(y_confirm.sum()), 2,
-                2 * ONE_WAY, 1.0, passive_bars),
+            Arm(
+                name="",
+                net=float(passive_bars.sum()),
+                gross=float(y_confirm.sum()),
+                switches=2,
+                cost=2 * ONE_WAY,
+                exposure=1.0,
+                per_bar=passive_bars,
+                positions=np.ones(y_confirm.size),
+            ),
         )
     )
+
+    freeze_arms(arms, confirm, models, symbol=symbol, horizon=horizon)
 
     print(
         f"  {'Arm':30s} {'netto':>9s} {'brutto':>9s} {'Wechsel':>8s} "
@@ -386,6 +484,15 @@ def one_market(symbol: str, *, horizon: int) -> None:
         print(f"    {label:10s} " + "  ".join(cells))
 
     print("\n  " + "-" * 80)
+    judge_market(arms)
+
+
+def judge_market(arms: list[Arm]) -> None:
+    """Die drei vorab festgelegten Bedingungen, auf einem Markt.
+
+    Aus `one_market` ausgelagert, damit die Abnahme an einer Stelle steht
+    und nicht zwischen Aufbau, Leckpruefung und Ausgabe verschwindet.
+    """
     best_zone = max((a for a in arms if "Haltezone" in a.name), key=lambda a: a.net)
     best_naive = max((a for a in arms if "naiv" in a.name), key=lambda a: a.net)
     passive = arms[-1]
@@ -402,6 +509,19 @@ def one_market(symbol: str, *, horizon: int) -> None:
         f"{'JA' if best_zone.net > passive.net else 'NEIN'} "
         f"({100 * best_zone.net:+.2f}% gegen {100 * passive.net:+.2f}%)"
     )
+    # Wenn der nach Netto beste Zonenarm nie eingestiegen ist, vergleichen
+    # (b) und (c) gegen nichts: 0% ist besser als jeder Verlust, ohne dass
+    # eine einzige Entscheidung getroffen wurde. Die Bedingungen bleiben wie
+    # angemeldet -- sie nach dem Ergebnis zu aendern waere genau der Griff,
+    # den der Auftrag verbietet -- aber ein Leser muss das sehen.
+    if best_zone.switches == 0:
+        print(
+            "\n    Zur Einordnung von (b) und (c): dieser Zonenarm ist NIE\n"
+            "    eingestiegen. Er verdient exakt null, und null schlaegt jeden\n"
+            "    Verlust. Das ist kein Vorteil der Zone, sondern die Aussage,\n"
+            "    dass der Forecast die Wechselkosten nie ueberschritten hat."
+        )
+
     # (a) verlangt das Intervall, nicht den Punktwert. Eine erste Fassung
     # dieses Skripts verlangte nur `net > 0` und meldete damit +0.12% ueber
     # ein Jahr auf 27 Wechseln als Kandidaten.
