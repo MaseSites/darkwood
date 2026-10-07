@@ -44,6 +44,9 @@ from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
 from traidingbrain.journal.record import JournalEntry, Source
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.live.paper import POLL_SECONDS, QUOTE, PaperTrader, state_path
+
+#: Damit das Alter eines Fehlschlags in Stunden statt in 300 Minuten steht.
+MINUTES_PER_HOUR = 60.0
 from traidingbrain.live.paperstate import PaperStateStore
 
 JOURNAL_NAME = "journal.sqlite"
@@ -322,7 +325,26 @@ def show_status(traders: list[PaperTrader]) -> int:
         if tally.failures:
             when = clock_text(tally.last_failure_ts) if tally.last_failure_ts else "unbekannt"
             reason = tally.last_failure or "kein Text gespeichert (vor dieser Version)"
-            print(f"      ! {tally.failures} gescheiterte Zyklen, zuletzt {when} UTC: {reason}")
+            # Das ALTER daneben, nicht nur der Zeitstempel. Der Zaehler ist
+            # kumulativ und ueberlebt jeden Neustart, also sieht ein
+            # historisches Problem fuer immer wie ein laufendes aus. Am
+            # 07.10.2026 standen hier 58 Fehlschlaege, und erst der Vergleich
+            # des Zeitstempels mit der Uhr zeigte, dass der letzte 68 Minuten
+            # alt war -- die Ursache (zwei gleichzeitig laufende Haendler,
+            # also doppelte Anfragerate) war bereits behoben. Eine Zahl, fuer
+            # deren Deutung man rechnen muss, wird falsch gedeutet.
+            age = ""
+            if tally.last_failure_ts:
+                minutes = (int(time.time() * 1000) - tally.last_failure_ts) / 60_000
+                age = (
+                    f", vor {minutes / MINUTES_PER_HOUR:.1f}h"
+                    if minutes >= MINUTES_PER_HOUR
+                    else f", vor {minutes:.0f} min"
+                )
+            print(
+                f"      ! {tally.failures} gescheiterte Zyklen insgesamt, "
+                f"zuletzt {when} UTC{age}: {reason}"
+            )
 
     print(f"\nVorwärts-Trades im Journal: {len(live)}")
     if live:
