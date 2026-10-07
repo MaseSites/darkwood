@@ -283,6 +283,55 @@ def report_window(
         )
 
 
+#: Fees read from the venues' own documentation on 07.10.2026, as fractions.
+#: Kept here so the scope note below cannot drift from what was verified.
+OTHER_VENUES: tuple[tuple[str, float, float], ...] = (
+    ("Lighter Standard", 0.0, 0.0),
+    ("Lighter Premium, 0 LIT", 0.000040, 0.000280),
+    ("Extended, Orderbuch", 0.0, 0.000250),
+)
+
+
+def scope_note(proven_high: float) -> None:
+    """Where the floor above applies, and where it does not.
+
+    Until 07.10.2026 this script concluded "no fee reduction can ever help",
+    which is a claim about every venue made from a measurement on one. The
+    numbers below were read from the venues' own documentation, and the
+    cheapest maker/maker among them sits *below* the upper bound of the one
+    cell here that is evidence. The conclusion is therefore scoped, not
+    withdrawn -- and what it turns into is E0.
+    """
+    print("")
+    print("  Auf DIESER Boersenfamilie ist 'lohnt es, die Maut zu jagen?' damit")
+    print("  beantwortet: nein. Eine Gebuehrensenkung INNERHALB dieser Struktur kann")
+    print("  nur einholen, was an Vorsprung da ist.")
+    print("")
+    print("  Was daraus NICHT folgt: dass keine Gebuehrensenkung je helfen koenne.")
+    print("  Am 07.10.2026 an den Primaerquellen der Venues abgerufen:")
+    print("")
+    cheapest, cheapest_name = float("inf"), ""
+    for name, maker, taker in OTHER_VENUES:
+        both_maker = 2 * maker
+        if both_maker < cheapest:
+            cheapest, cheapest_name = both_maker, name
+        print(
+            f"    {name:24s} maker {100 * maker:.4f}%  taker {100 * taker:.4f}%"
+            f"  maker/maker {100 * both_maker:.4f}%"
+        )
+    print("")
+    if cheapest < proven_high:
+        print(f"  {cheapest_name} liegt mit {100 * cheapest:.4f}% maker/maker UNTER der")
+        print(f"  Obergrenze der belegten Zelle ({100 * proven_high:.4f}%). Der Boden oben")
+        print("  ist der Boden DIESER Venue, nicht des Marktes.")
+    print("")
+    print("  Das macht die Frage nicht zu einer Gebuehrenfrage, sondern verschiebt sie:")
+    print("  bei 0% Gebuehr entscheiden Spread, Latenz und adverse Selektion ueber das")
+    print("  Vorzeichen -- drei Groessen, die dieses Projekt nie gemessen hat. Und ein")
+    print("  auf Binance gemessenes Signal wird nicht dadurch zu einem auf Lighter")
+    print("  belegten, dass man eine Gebuehrenzahl austauscht. Das ist E0.")
+
+
 def verdict(cells: list[tuple[str, float, float, float]], *, toll_paid: float) -> None:
     """Does any horizon that is actually evidence pay the cheapest possible toll?
 
@@ -342,9 +391,7 @@ def verdict(cells: list[tuple[str, float, float, float]], *, toll_paid: float) -
         print(f"  Es fehlt der Faktor {short:.1f}, und zwar nach drei Zugestaendnissen:")
         print("  guenstigste belegte Zelle, keine Mehrfachkorrektur, oberer Rand ihres")
         print("  Intervalls. Alle drei zusammen reichen nicht.")
-        print("")
-        print("  Damit ist 'lohnt es, die Maut zu jagen?' hier beantwortet: nein.")
-        print("  Eine Gebuehrensenkung kann nur einholen, was an Vorsprung da ist.")
+        scope_note(high)
     else:
         need = 0.05 / len(cells)
         print(f"  Eine belegte Zelle ({label}) deckt oben die Maut von {100 * floor:.4f}%.")

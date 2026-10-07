@@ -65,7 +65,25 @@ Nicht +1,371 R. Gemessen über die 3.300 gelabelten Signale des Champions:
 
 Der Verlierer ist **nicht** glatt −1 R: ein Stop wird mit Slippage gefüllt und
 kann durchschlagen. Mit `Payout(win=1.5612, loss=1.0384)` verlangt 20× bei 3 %
-Risiko und 312 Trades **61,8 %** — nicht 56,6 % und nicht 66,75 %.
+Risiko und 312 Trades **53,28 %** — nicht 56,6 % und nicht 66,75 %.
+
+> **Korrektur vom 07.10.2026.** Hier stand **61,8 %**, und diese Zahl ist falsch.
+> `learn/target.py::required_hit_rate` liefert mit genau der oben genannten
+> Auszahlung **53,28 %**, und `git log --follow` zeigt, dass die Funktion seit
+> dem Commit, der dieses Dokument einführte (`ef30e93`), unverändert ist — die
+> 61,8 % wurden also nie von diesem Code erzeugt, sondern von Hand geschrieben.
+>
+> Das ist derselbe Fehler, den dieses Dokument bei der 56,6 % aufgedeckt hat,
+> hier im selben Dokument wiederholt: eine zitierte Zahl, die in einem Satz
+> steht statt in einem Skript. `scripts/study_hitrate_table.py` rechnet die
+> Tabelle jetzt zweimal — über die Projektfunktion und über eine unabhängig
+> hingeschriebene Formel — und bricht ab, wenn die beiden abweichen.
+>
+> Die zweite im Projekt gemessene Auszahlung, `Payout(win=1.816, loss=1.008)`
+> über die 2 734 Replay-Trades des Journals, verlangt unter denselben
+> Bedingungen **48,13 %**. Beide sind Messungen, auf verschiedenen
+> Grundgesamtheiten — wer eine Quote nennt, muss sagen, welche.
+> Siehe `audit/RECHERCHE_KORREKTUREN.md`, Abschnitt 3.5.
 
 ### Drei Mängel, die das Modell behält
 
@@ -87,7 +105,7 @@ Der Bericht trug 69,9 %, 51,2 % und 56,6 % ohne zu sagen, welche welche ist:
 |---|---|---|
 | 69,83 % (1 h), 51,19 % (1 Woche) | **Kostendeckung** — zahlt die Maut | `breakeven_hit_rate` |
 | 82,64 % (1 h, Binance Spot) | dieselbe Frage, teurere Börse | `breakeven_hit_rate` |
-| 66,75 % / 61,8 % / 56,6 % | **Renditeziel** — erreicht 20× | `required_hit_rate` |
+| 66,75 % / 53,28 % / 48,13 % | **Renditeziel** — erreicht 20× | `required_hit_rate` |
 
 Das sind zwei verschiedene Anforderungen, und die höhere bindet.
 
@@ -272,7 +290,7 @@ ich nicht geschrieben habe.
 
 | Grösse | Bericht 05.10. | geprüft |
 |---|---|---|
-| Nötige Treffsicherheit für 20× | 56,6 % | **61,8 %** (gemessene Auszahlung), 66,75 % (symmetrisch) |
+| Nötige Treffsicherheit für 20× | 56,6 % | **53,28 %** (Champion-Auszahlung), **48,13 %** (Journal-Auszahlung), 66,75 % (symmetrisch) |
 | Gemessene Richtungstreffsicherheit | „50,0 %" | **nicht gemessen**; Basisquote 50,8 % |
 | Erwartung des Systems | −0,0340 R | **−0,0615 R** mit realistischem Einstieg, **−0,0918 R** im Broker-Journal |
 | Maut 1 h | 0,1215 % | **0,1231 %** |

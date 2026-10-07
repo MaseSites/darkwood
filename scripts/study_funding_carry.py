@@ -85,16 +85,29 @@ BLOCK_DAYS = 7
 #: enough that a failure means something.
 REPLICATION_BAND = (0.5, 2.0)
 
-#: Above this share of settlements at exactly zero, the series is reported as
-#: broken rather than measured. `scripts/coverage.py` raised it first: BNBUSDT
-#: is 49.6% exact zeros spread across its whole history, and no exchange
-#: settles exactly nothing in half of all intervals. LINKUSDT (4.7%) and
-#: LTCUSDT (4.2%) have the same defect confined to the first months of 2020,
-#: which is why the threshold sits between the two cases -- an early-history
-#: artefact is survivable, a systematic one is not. Without this check BNBUSDT
-#: reads as "a market where funding pays nothing", which is a conclusion drawn
-#: from a hole in the data.
-MAX_ZERO_SHARE = 0.10
+#: The venue each market's funding actually comes from, measured against both
+#: APIs at identical timestamps by `scripts/verify_funding_provenance.py`.
+#:
+#: This directory mixes two exchanges: four markets are Bybit, eight are
+#: Binance. `learn/panel.py::SOURCES` has carried `funding (gemischte Boerse)`
+#: all along and `check_provenance("P+D")` reports it -- this study simply
+#: never asked. A mean across two venues with different funding formulas and
+#: different caps is not a quantity, so the table below is reported per venue
+#: and the pooled headline is gone.
+VENUE_OF: dict[str, str] = {
+    "BTCUSDT": "Bybit",
+    "ETHUSDT": "Bybit",
+    "SOLUSDT": "Bybit",
+    "XRPUSDT": "Bybit",
+    "ADAUSDT": "Binance",
+    "ATOMUSDT": "Binance",
+    "AVAXUSDT": "Binance",
+    "BNBUSDT": "Binance",
+    "DOGEUSDT": "Binance",
+    "DOTUSDT": "Binance",
+    "LINKUSDT": "Binance",
+    "LTCUSDT": "Binance",
+}
 
 #: Holding lengths for the perfect-foresight ceiling, in days. Short enough
 #: that the toll bites, long enough that it amortises -- declared before the
@@ -228,11 +241,17 @@ def verdict(rows: list[Market], *, repeated: int, falling: int) -> None:
     print(f"  aber nur {repeated} von {len(rows)} wiederholen sich in der zweiten Haelfte --")
     print(f"  und {falling} von {len(rows)} zahlen dort WENIGER als in der ersten.")
     print(
-        "\n  Eine einheitliche Richtung ueber zwoelf Maerkte ist kein Rauschen.\n"
-        "  Rauschen streut; das hier faellt ueberall. Der Basis-Trade ist bekannt\n"
-        "  und wird von Leuten mit besseren Gebuehren gefahren, und genau so sieht\n"
-        "  es aus, wenn eine Einnahmequelle voll wird. Die ehrliche Vorausschau ist\n"
-        "  deshalb die ZWEITE Haelfte, nicht der Durchschnitt ueber beide."
+        "\n  WICHTIG zur Lesart dieser Spalte: die Haelften sind hier je Datei\n"
+        "  geteilt, und die Dateien beginnen verschieden -- Bybit 2023, Binance 2020.\n"
+        "  Dieser Split vergleicht also je Markt verschiedene Kalenderzeiten.\n"
+        "  `scripts/verify_funding_provenance.py` rechnet es auf dem gemeinsamen\n"
+        "  Fenster nach; dort fallen 11 von 12, in beiden Venue-Gruppen getrennt.\n"
+        "\n  Und was die Beobachtung NICHT traegt: die Maerkte sind stark korreliert.\n"
+        "  Elf gleichgerichtete Beobachtungen eines gemeinsamen Faktors sind naeher\n"
+        "  an EINER Beobachtung als an elf. Es ist eine gut belegte Beobachtung eines\n"
+        "  gemeinsamen Trends -- die Ursache (Crowding, Zinsumfeld, Regeländerungen,\n"
+        "  Regimewechsel) bleibt offen. Die Vorausschau nimmt trotzdem die zweite\n"
+        "  Haelfte, weil sie die juengere ist, nicht weil der Trend bewiesen waere."
     )
     if positive:
         best = max(positive, key=lambda r: r.per_year)
@@ -362,8 +381,8 @@ def main() -> int:
     print(f"\nKosten, Hedge auf und wieder zu (zwei Beine): {100 * setup_cost:.4f}%")
     print(f"Funding faellt {PERIODS_PER_DAY}x taeglich an.\n")
     print(
-        f"  {'Markt':10s} {'Perioden':>9s} {'Jahre':>6s} {'je 8h':>9s}  "
-        f"{'95%-Intervall':>20s} {'positiv':>8s} {'pro Jahr':>9s} {'Amortisation':>13s}"
+        f"  {'Markt':10s} {'Venue':8s} {'Perioden':>9s} {'Jahre':>6s} {'je 8h':>9s}  "
+        f"{'95%-Intervall':>20s} {'positiv':>8s} {'pro Jahr':>9s} {'Amort.':>9s}"
     )
 
     rows: list[Market] = []
@@ -375,13 +394,15 @@ def main() -> int:
         stamps = frame["ts"].to_numpy(dtype=np.int64)
         years = (stamps[-1] - stamps[0]) / (365.25 * DAY_MS)
 
-        # Refuse the series before measuring it. A market whose rate is exactly
-        # zero in half of all settlements has a hole, not a flat funding
-        # market, and averaging across the hole produces a number that looks
-        # like a finding.
-        zero_share = float((rates == 0.0).mean())
-        if zero_share > MAX_ZERO_SHARE:
-            broken.append((path.stem, zero_share))
+        # An earlier version refused any series with more than 10% exact zeros,
+        # which excluded BNBUSDT as broken. That was wrong: checked against
+        # Binance's own history at 200 identical timestamps, 73 of 73 zeros are
+        # also zero at the venue. They are `observed_zero`, and the file
+        # reproduces the exchange exactly. Plausibility is not a measurement,
+        # and the check that replaces it compares against the venue instead:
+        # `scripts/verify_funding_provenance.py`.
+        if path.stem not in VENUE_OF:
+            broken.append((path.stem, 0.0))
             continue
         low, high = block_bootstrap(rates, stamps, draws=args.draws)
         mean = float(rates.mean())
@@ -411,9 +432,9 @@ def main() -> int:
         )
         kept.append(path)
         print(
-            f"  {path.stem:10s} {len(rates):>9,d} {years:>6.1f} {100 * mean:>+8.4f}%  "
-            f"[{100 * low:+.4f}, {100 * high:+.4f}] {100 * share:>7.1f}% "
-            f"{100 * per_year:>+8.2f}% {payback:>10.1f} T"
+            f"  {path.stem:10s} {VENUE_OF[path.stem]:8s} {len(rates):>9,d} {years:>6.1f} "
+            f"{100 * mean:>+8.4f}%  [{100 * low:+.4f}, {100 * high:+.4f}] "
+            f"{100 * share:>7.1f}% {100 * per_year:>+8.2f}% {payback:>7.1f} T"
         )
 
     print("\nWiederholung: erste gegen zweite Haelfte der Historie, je 8h")
@@ -429,13 +450,12 @@ def main() -> int:
         )
 
     if broken:
-        print("\nAusgeschlossen, bevor gemessen wurde")
-        for name, zero_share in broken:
+        print("\nAusgeschlossen, weil die Herkunft nicht nachgemessen ist")
+        for name, _ in broken:
             print(
-                f"  {name:10s} {100 * zero_share:.1f}% der Abrechnungen exakt null. Keine "
-                f"Boerse\n             rechnet so oft genau nichts ab -- das ist ein Loch "
-                f"in den Daten,\n             kein Markt ohne Funding. "
-                f"`scripts/coverage.py` meldet es seit jeher."
+                f"  {name:10s} steht nicht in VENUE_OF. Erst "
+                f"`python scripts/verify_funding_provenance.py`\n"
+                f"             laufen lassen, dann die Zuordnung eintragen."
             )
 
     report_selection(rows, kept, setup_cost=setup_cost)
