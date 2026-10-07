@@ -403,7 +403,23 @@ experiments:
   - id: E4
     title: "Marktbereinigte Relative-Value-Entscheidung"
     priority: 2
-    status: registriert
+    status: registriert_entsperrt
+    unblocked:
+      stand: 2026-10-07
+      was: >-
+        Der benannte Blocker (Point-in-time-Universum und
+        Delisting-Abrechnung) ist aufgehoben. scripts/build_universe.py
+        baut die Tabelle aus zwei oeffentlichen, rein lesenden Quellen:
+        onboardDate aus exchangeInfo fuer das Listing, und das Archiv
+        data.binance.vision fuer die Symbole, die exchangeInfo nicht
+        mehr kennt. Liegt als data/universe/binance_um_perps.json.
+      survivorship: >-
+        31 echte Perp-Delistings von 906 USDT-Perps = 3.4%, alle 31 mit
+        letztem Archivtag belegt. Die erste Rechnung las 8.1%, weil 52
+        datierte Lieferfutures mitgezaehlt waren -- die sind abgelaufen,
+        nicht delistet. Faktor 2.4.
+      noch_nicht_gerechnet: >-
+        E4 SELBST ist damit nicht gerechnet. Entsperrt heisst entsperrt.
     depends_on: ["Punkt-in-Zeit-Universum"]
     rationale: >-
       Die frueheren Arme mom_7/mom_30/vol_30 sind gemessen und nicht belegt

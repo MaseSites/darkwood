@@ -26,6 +26,14 @@ dist/
 # Pruefsumme. Die Parquet-Datei bleibt draussen -- sie ist gross und
 # jederzeit neu zu rechnen -- der Nachweis kommt mit, sonst ist ein
 # Ergebnis spaeter nicht mehr zuzuordnen.
+# Das Point-in-Time-Universum ist aus demselben Grund drin wie die
+# Manifeste unten: es ist keine Datenmenge, sondern eine Behauptung ueber
+# Daten -- welche Symbole wann handelbar waren, und welche 31 von 906
+# verschwunden sind. 200 KB, und ohne sie ist jede marktuebergreifende
+# Zahl spaeter nicht mehr nachpruefbar.
+!/data/universe/
+!/data/universe/*.json
+
 !/data/frozen/
 /data/frozen/*
 !/data/frozen/*/

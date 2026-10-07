@@ -286,8 +286,31 @@ wanted:
 
   - name: point_in_time_universe
     priority: 1
+    status: GEBAUT_2026-10-07
+    built: data/universe/binance_um_perps.json
+    skript: scripts/build_universe.py
     enables: "E4. Behebt Survivorship in jeder marktuebergreifenden Zahl."
-    blocks: [E4]
+    measured_here: >-
+      Zwei oeffentliche, rein lesende Quellen reichen. fapi/v1/exchangeInfo
+      liefert je Symbol ein onboardDate (Listing). Das oeffentliche Archiv
+      data.binance.vision listet Verzeichnisse fuer Symbole, die
+      exchangeInfo NICHT mehr kennt (Delisting): 1'061 im Archiv gegen 924
+      live. Ergebnis: 31 echte Perp-Delistings von 906 USDT-Perps, also
+      3.4% Survivorship -- und alle 31 mit letztem Archivtag belegt.
+    korrektur: >-
+      Die erste Rechnung meldete 8.1%. Darin waren 52 datierte
+      Lieferfutures (BTCUSDT_210326 und so weiter) als "delistet"
+      mitgezaehlt -- die sind nicht delistet, sie sind ABGELAUFEN, das ist
+      ihre Konstruktion. Gefangen daran, dass der Name im Bericht auffiel.
+      Faktor 2.4. Eine Zahl, die aus einer Namensliste kommt, muss die
+      Namen ansehen.
+    bleibt_offen:
+      - "last_data ist der letzte Tag MIT DATEN, also eine UNTERGRENZE fuer das Delisting, kein Delisting-Datum."
+      - "onboard_ms fehlt fuer delistete Symbole -- exchangeInfo kennt sie nicht mehr, ihr Listing-Datum ist aus dieser Quelle verloren. Der erste Archivtag waere der Ersatz."
+      - "quote ist fuer delistete Symbole aus dem NAMEN erschlossen, eine Heuristik."
+      - "17 SETTLED-Eintraege sind Abwicklungsstaende desselben Instruments, keine eigenen Maerkte."
+      - "70 BUSD-Symbole sind eine andere Quote-Waehrung und gehoeren nicht in ein USDT-Universum."
+    blocks: []
     source: "Archivsymbole und historische Instrumentlisten"
     cost: 0
     note: >-
