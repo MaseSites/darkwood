@@ -876,7 +876,8 @@ ihrer Verlustfenster. **Die echte Trefferquote ist niedriger als die gezeigte, n
 | S3 | **Vorwärts-Evidenz: 10 Trades im Journal**, 02.10. bis 07.10., Mittel +0,333 R bei 50 % Treffern. Die Zahl steht hier nur, weil sie sonst jemand anders findet und für ein Ergebnis hält: **n = 10 ist kein Ergebnis**, und ein positives Mittel auf zehn Fällen ist genau die Form, in der dieses Projekt zehn Scheinfunde angefangen hat. Die Zuflussrate ist das eigentliche Problem — bei ~1,9/Tag brauchen 100 Vorwärts-Trades rund 52 Tage. | strukturell [OFFEN] |
 | S4 | **Der FreqAI-Vergleich: Basislinie steht, Modellarm läuft** (`audit/FREQAI_VERGLEICH.md`). Der alte Vergleich verglich nichts — drei getrennte Defekte, alle behoben. Der Basislauf endete am **Geld**, nicht am Fenster: 1 000 USDT, nach 15 Wochen bei 201,93, danach 16 Monate ohne einen Trade, gemeldet als 2 425 Trades über 19 Monate. Mit Kapital, das nie bindet, macht dieselbe Strategie **15 624 Trades** — das Sechsfache. Der FreqAI-Arm lief 45 Tage gegen 579. Und `identifier` ist ein Cache-Schlüssel ohne die Konfiguration darin: der Lauf brach bei 75/83 ab und hatte vorher **74 Folds lang fremde Modelle stillschweigend wiederverwendet**. | Basislinie **erledigt**: −0,58 %, 526 Verlusttage von 579, Profit-Faktor 0,35, p-Wert 0. Modellarm **erledigt**: 921 Trades, −0,04 %, p-Wert 4,1e−06. **NICHT BELEGT** — und je Trade **25,8 % schlechter** als die Basislinie (−0,4659 gegen −0,3703 USDT). Der Filter senkt den Gesamtverlust um 92,6 %, indem er 94,1 % weniger handelt; er erzeugt keinen Vorteil, er hört auf, für dessen Abwesenheit zu zahlen. Trefferquote 54,7 % bei zuverlässigem Verlust. |
 | S6 | **Eine Revision war nicht zu bemerken.** Der Zukunfts-Mutationstest deckt Preise ab, die *nach* der Entscheidung liegen. Er kann nicht decken, was diese Dienste wirklich tun: Geschichte **neu schreiben**. Coin Metrics revidiert `flash`-Zeilen, FREDs DTWEXBGS ist berechnet, und `ExternalStore.write` legt die revidierte Zeile über ihre Vorgängerin. Gleicher Code, gleiche Konfiguration, gleicher Zeitraum, zwei Monate auseinander — zwei verschiedene Panels, und nichts sah falsch aus. `Panel` trug die **Art** der Quelle, nie ihren **Inhalt**. | **behoben 07.10.2026**: `Panel.vintages` und `vintage_id`, je Quelle ein Fingerabdruck. Was `run_signature` für die Konfiguration ist, ist das für die Daten. `tests/test_vintage.py` trennt die drei Fälle mit drei verschiedenen Antworten — die Revision *vor* dem Schnitt ändert das Merkmal und ist **nicht** wegzusichern; zusicherbar ist nur, dass die zwei Läufe nie verwechselt werden. |
-| S7 | **Dieses Orderbuch kann keinen Fill belegen.** Gefunden beim Messen der Nicht-Fills (`scripts/study_venue_fills.py`): eine schrumpfende `remaining_base_amount` kann eine Teilausführung sein **oder** eine Teil-Storno. Von 41 Verkleinerungen lagen **33 an Preisen, die der Markt im Fenster nie erreicht hat** — eine davon 394 bp vom Mid. | [OFFEN] bis zum Trade-Tape. Das ist jetzt der benannte Grund, warum die parallele Aufnahme **Trades** führen muss und nicht nur Quotes. |
+| S7 | **Dieses Orderbuch kann keinen Fill belegen** — so stand es hier, und es war richtig, solange nur das Buch da war. `study_venue_fills.py` musste 33 von 41 Verkleinerungen verwerfen (Preise, die der Markt nie erreicht hat) und die restlichen 8 als Kandidaten führen. | **aufgehoben 07.10.2026.** `recentTrades` trägt `ask_id` und `bid_id`, die Kennungen **beider** Seiten. Eine im Buch beobachtete Order, die in einem Trade auftaucht, **ist gehandelt worden** — das ist kein Indiz, das ist die Kennung. Gemessen auf BTC über 32 Minuten (`scripts/study_tape_fills.py`): von 11 023 beobachteten Orders **8,1 % belegt gefüllt, 90,2 % belegt storniert** (weg und in keinem Trade), 1,7 % liegen noch. Dazu die ersten echten Markouts — bedingt auf den Fill, Vorzeichen aus `is_maker_ask`, gegen ein aus dem Tape geschätztes Mid: −0,167 bp bei 1 s bis −1,057 bp bei 5 min, alle vier Intervalle ohne Null. **Negativ heisst zugunsten des Makers**, also das Gegenteil adverser Selektion — und 32 Minuten eines Marktes sind keine Lesung. Die 11-Stunden-Aufnahme läuft. Die 90,2 % sind eine Obergrenze: eine Lücke im Tape macht aus einem Fill eine scheinbare Storno, gemessen 13 Lücken auf ~425 Abfragen (~3 %). |
+| S8 | **E4s Survivorship-Blocker ist aufgehoben.** Das Datenmanifest führte `point_in_time_universe` als Priorität 1 und E4 als blockiert. Zwei öffentliche, rein lesende Quellen genügen: `onboardDate` aus `exchangeInfo` für das Listing, und das Archiv `data.binance.vision`, das Verzeichnisse für Symbole listet, die `exchangeInfo` **nicht mehr kennt** — 1 061 gegen 924. | **gebaut** (`scripts/build_universe.py`, `data/universe/binance_um_perps.json`, in git). **31 echte Perp-Delistings von 906 USDT-Perps = 3,4 %**, alle 31 mit letztem Archivtag. Die erste Rechnung las 8,1 % — darin waren 52 datierte Lieferfutures (`BTCUSDT_210326`) mitgezählt, die nicht delistet, sondern **abgelaufen** sind. Faktor 2,4. Offen bleibt: `last_data` ist der letzte Tag *mit Daten*, also eine Untergrenze und kein Delisting-Datum; und `onboardDate` ist für jedes delistete Symbol verloren. **E4 selbst ist nicht gerechnet.** |
 | S5 | **Sammlung abgeschlossen: 12 von 12 Märkten, 43 727 Signale.** Die offene empirische Frage ist beantwortet: die Brutto-Differenz zwischen billigen und teuren Trades ist **echt** — +0,0561 R mit [+0,017, +0,097], Null ausgeschlossen. Auf vier Märkten hatte sie noch [−0,033, +0,195] gespannt. Billige Trades **fangen mehr Bewegung**, sie zahlen nicht nur weniger Zoll. | **erledigt**; und weiterhin kein Edge: R pro Trade +0,0107 mit [−0,041, +0,061] spannt über Null |
 
 ---
@@ -1280,7 +1281,21 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
     gekippt. Ab 18.11.2024 bei keiner Haltedauer positiv, bei 30 Tagen zuverlässig negativ.
     Das ist der Fall, der belegt, warum **zwei** Tore nötig sind: eines allein hätte hier
     einen Kandidaten gemeldet.
-14. **[FAKT]** Und der unbequeme Teil bleibt unverkleinert: **nichts davon ist ein Vorteil.**
+14. **[GEMESSEN 07.10.2026]** **Zwei Blocker sind gefallen, und beide waren echt.** S7
+    (dieses Orderbuch kann keinen Fill belegen) ist aufgehoben: `recentTrades` trägt die
+    Order-Kennungen beider Seiten, also ist ein Fill belegbar statt folgerbar — 8,1 % belegt
+    gefüllt, 90,2 % belegt storniert auf BTC. Und E4s Survivorship-Blocker ist nicht nur
+    geprüft, sondern **gebaut**: 31 echte Perp-Delistings von 906, aus zwei öffentlichen
+    Quellen. Das macht nichts profitabel — es nimmt zwei Gründe weg, aus denen eine Frage
+    unbeantwortbar war.
+15. **[GEMESSEN 07.10.2026]** **Die bestehende Ausstiegspolitik ist die beste der drei**
+    (E3, `audit/E3_AUSGAENGE.md`). 7 255 Fälle, gepaart auf denselben Einstiegen: Stop+Ziel
+    −0,0205 R, Stop+24h-Uhr −0,0824 R, Stop+2,0-ATR-Trail −0,0762 R mit einer gepaarten
+    Differenz von **−0,0557 [−0,1123; −0,0060]** — zuverlässig *schlechter*. Das Ziel
+    arbeitet: 31,1 % der Trades verlassen darüber, und beide Alternativen nehmen diese Tür
+    weg. **Erstmals in diesem Projekt ist etwas, das das System schon tut, gegen eine
+    benannte Alternative verteidigt** statt nur nicht widerlegt.
+16. **[FAKT]** Und der unbequeme Teil bleibt unverkleinert: **nichts davon ist ein Vorteil.**
     Zwei Begründungen, mit denen ich Untersuchungen vorzeitig geschlossen hatte, sind
     gefallen — das macht vier Fragen wieder offen und beantwortet keine. Die Charge hat
     gemessen, repariert und zwei eigene Fehler kassiert. Einen Kandidaten hat sie nicht
@@ -1288,9 +1303,19 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
 
 ---
 
-## 18. Der eine nächste Schritt
+## 18. Der eine nächste Schritt — LÄUFT seit 07.10.2026, 17:39 UTC
 
-Der Auftrag verlangt genau einen. Er ist:
+**Er ist nicht mehr nur benannt, er läuft.** `scripts/collect_venue_tape.py`
+nimmt seit 17:39 UTC Quotes **und Trades** auf sechs Märkten auf, mit lokaler
+Empfangszeit, adaptivem Takt und mitgezählten Lücken. Und er hat seinen Zweck
+schon zur Hälfte erfüllt, bevor die erste Stunde um war: **S7 ist aufgehoben**
+(siehe oben), weil `recentTrades` die Order-Kennungen beider Seiten trägt.
+
+Was damit noch offen ist: E0 Punkt 3 — überträgt sich ein Signal, das auf der
+alten Börse entsteht, auf die neue? Das braucht die vollen elf Stunden und
+mehr als einen Markt.
+
+Der Schritt, wie er hier stand:
 
 > **Die parallele, zeitgestempelte Aufnahme von Quotes _und Trades_ auf BTC und ETH über
 > beide Venues starten — und zwar mit dem Trade-Tape, nicht nur dem Buch.**
