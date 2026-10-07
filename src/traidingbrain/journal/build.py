@@ -194,6 +194,7 @@ def entries_from(
                     stop=reason.stop,
                     opened_ts=fill.opened_ts,
                     closed_ts=fill.closed_ts,
+                    exit_price=fill.exit_price,
                     exit_reason=fill.reason,
                     r_multiple=fill.r_multiple,
                 ),

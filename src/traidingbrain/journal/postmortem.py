@@ -25,8 +25,26 @@ FLAT_R = 0.05
 
 
 def _window(frame: pd.DataFrame, opened_ts: int, closed_ts: int) -> pd.DataFrame:
-    bars: pd.DataFrame = frame.loc[(frame["ts"] >= opened_ts) & (frame["ts"] <= closed_ts)]
-    return bars
+    """Only the bars that lie entirely inside the trade's life.
+
+    Both edge bars are contaminated and the fix has to drop both. The opening
+    bar contains movement from before the entry; the closing bar contains
+    movement from after the exit. Including them reads the market's opinion
+    about a position that did not exist yet, or no longer existed.
+
+    How badly: measured on 07.10.2026 over the stored journal, `max_adverse_r`
+    reached **147.88** on a trade that was stopped out at -0.036 R after
+    `bars_held = 1`. That is the whole closing bar's low. 25.3% of stopped
+    trades carried an adverse excursion above 1.6 R, which a trade closed at
+    about -1 R cannot have had while it was open.
+
+    A one-bar trade therefore has no interior bar at all, and that is the
+    honest answer rather than a defect: at signal-timeframe resolution its
+    excursion is **unobservable**. `examine` then bounds it by the entry and
+    exit prices, which is what the data supports.
+    """
+    inside: pd.DataFrame = frame.loc[(frame["ts"] > opened_ts) & (frame["ts"] < closed_ts)]
+    return inside
 
 
 def examine(
@@ -37,6 +55,7 @@ def examine(
     stop: float,
     opened_ts: int,
     closed_ts: int,
+    exit_price: float,
     exit_reason: ExitReason,
     r_multiple: float,
 ) -> PostMortem:
@@ -48,8 +67,24 @@ def examine(
     `stopped_by_wick` is for.
     """
     risk = abs(entry - stop)
-    bars = _window(frame, opened_ts, closed_ts)
-    if bars.empty or risk <= 0:
+    if risk <= 0:
+        return PostMortem(
+            bars_held=0,
+            max_favourable_r=0.0,
+            max_adverse_r=0.0,
+            closest_to_target_r=0.0,
+            stopped_by_wick=False,
+            never_in_profit=True,
+            verdict="kein Risikoabstand zwischen Einstieg und Stop",
+        )
+
+    # Zwei verschiedene leere Faelle, und sie bedeuten Verschiedenes.
+    # Gar keine Kerze im Zeitraum heisst: keine Kursdaten. Keine INNERE Kerze
+    # heisst: der Trade war kuerzer als eine Kerze, und seine Bewegung ist auf
+    # dieser Zeitebene schlicht nicht beobachtbar -- was die Einstiegs- und
+    # Ausstiegspreise unten ehrlich abbilden.
+    spanned = int(((frame["ts"] >= opened_ts) & (frame["ts"] <= closed_ts)).sum())
+    if spanned == 0:
         return PostMortem(
             bars_held=0,
             max_favourable_r=0.0,
@@ -60,10 +95,20 @@ def examine(
             verdict="keine Kursdaten zwischen Ein- und Ausstieg",
         )
 
-    highs = bars["high"].to_numpy(dtype="float64")
-    lows = bars["low"].to_numpy(dtype="float64")
-    closes = bars["close"].to_numpy(dtype="float64")
+    bars = _window(frame, opened_ts, closed_ts)
     long = side is Side.LONG
+
+    # Entry and exit are observations too, and for a trade without an interior
+    # bar they are the only ones. Folding them in means the excursion is always
+    # bounded by something the position really saw, never by a bar it only
+    # overlapped.
+    highs = np.append(bars["high"].to_numpy(dtype="float64"), [entry, exit_price])
+    lows = np.append(bars["low"].to_numpy(dtype="float64"), [entry, exit_price])
+    closes = (
+        bars["close"].to_numpy(dtype="float64")
+        if not bars.empty
+        else np.array([exit_price], dtype="float64")
+    )
 
     # Favourable and adverse are the same two extremes read from opposite ends,
     # which is why the sign flips rather than the arithmetic.
@@ -82,7 +127,10 @@ def examine(
         wick = bool(touched.any() and closed_right)
 
     return PostMortem(
-        bars_held=len(bars),
+        # Die Spanne, nicht die Zahl der benutzten Beobachtungen. `bars` enthaelt
+        # nur die vollstaendig inneren Kerzen; gelebt hat der Trade auch in den
+        # beiden Randkerzen, und `bars_held` ist eine Dauer.
+        bars_held=spanned,
         max_favourable_r=round(favourable, 3),
         max_adverse_r=round(adverse, 3),
         closest_to_target_r=round(max(favourable, 0.0), 3),

@@ -192,6 +192,7 @@ def test_a_stop_taken_by_a_wick_is_recognised() -> None:
         stop=98.0,
         opened_ts=0,
         closed_ts=H1_MS * 4,
+        exit_price=98.0,
         exit_reason=ExitReason.STOP,
         r_multiple=-1.0,
     )
@@ -210,6 +211,7 @@ def test_a_stop_the_price_closed_through_is_not_a_wick() -> None:
         stop=98.0,
         opened_ts=0,
         closed_ts=H1_MS * 4,
+        exit_price=98.0,
         exit_reason=ExitReason.STOP,
         r_multiple=-1.0,
     )
@@ -230,6 +232,7 @@ def test_a_trade_that_was_never_in_profit_says_so() -> None:
         stop=98.0,
         opened_ts=0,
         closed_ts=H1_MS * 3,
+        exit_price=98.0,
         exit_reason=ExitReason.STOP,
         r_multiple=-1.0,
     )
@@ -250,6 +253,7 @@ def test_how_far_it_ran_each_way_is_measured_in_risk() -> None:
         stop=98.0,
         opened_ts=0,
         closed_ts=H1_MS * 3,
+        exit_price=104.0,
         exit_reason=ExitReason.TARGET,
         r_multiple=2.0,
     )
@@ -270,6 +274,7 @@ def test_a_short_reads_its_extremes_the_other_way_round() -> None:
         stop=102.0,
         opened_ts=0,
         closed_ts=H1_MS * 3,
+        exit_price=96.0,
         exit_reason=ExitReason.TARGET,
         r_multiple=2.0,
     )
@@ -286,12 +291,90 @@ def test_no_bars_between_entry_and_exit_is_said_rather_than_guessed() -> None:
         stop=98.0,
         opened_ts=H1_MS * 50,
         closed_ts=H1_MS * 60,
+        exit_price=98.0,
         exit_reason=ExitReason.STOP,
         r_multiple=-1.0,
     )
 
     assert post.bars_held == 0
     assert "keine Kursdaten" in post.verdict
+
+
+def test_the_closing_bar_cannot_report_movement_after_the_exit() -> None:
+    """Der Defekt, der 25,3 % der ausgestoppten Trades betraf.
+
+    Am 07.10.2026 im gespeicherten Journal gefunden: `max_adverse_r` erreichte
+    **147,88** auf einem Trade, der nach `bars_held = 1` bei -0,036 R
+    ausgestoppt wurde. Ein bei etwa -1 R geschlossener Trade kann das nicht
+    erlebt haben -- es war das Tief der ganzen Abschlusskerze, also Bewegung
+    *nach* dem Ausstieg.
+
+    Hier nachgebaut: zwei Kerzen, die zweite stürzt auf 50 ab, der Trade wird
+    aber bei 98 ausgestoppt. Die alte Fassung hätte
+    (100 - 50) / 2 = **25 R** gemeldet.
+    """
+    frame = pd.DataFrame(
+        {
+            "ts": np.array([0, H1_MS], dtype="int64"),
+            "open": [100.0, 99.0],
+            "high": [101.0, 99.0],
+            "low": [99.0, 50.0],  # der Absturz liegt NACH dem Ausstieg
+            "close": [100.0, 50.0],
+            "volume": [1.0, 1.0],
+        }
+    )
+
+    post = examine(
+        frame,
+        side=Side.LONG,
+        entry=100.0,
+        stop=98.0,
+        opened_ts=0,
+        closed_ts=H1_MS,
+        exit_price=98.0,
+        exit_reason=ExitReason.STOP,
+        r_multiple=-1.0,
+    )
+
+    assert post.max_adverse_r == pytest.approx(1.0), (
+        "Der Trade endete am Stop, also ist 1 R das Aeusserste, was er gesehen hat"
+    )
+    assert post.bars_held == 2, "Die Dauer bleibt die Spanne, auch ohne innere Kerze"
+
+
+def test_the_opening_bar_cannot_report_movement_before_the_entry() -> None:
+    """Dieselbe Verunreinigung am anderen Rand, und sie fällt seltener auf.
+
+    Die Eröffnungskerze enthält alles, was vor dem Einstieg passierte. Ein
+    Hoch, das eine Stunde vor dem Einstieg lag, ist kein Gewinn, den der Trade
+    im Plus war.
+    """
+    frame = pd.DataFrame(
+        {
+            "ts": np.array([0, H1_MS, 2 * H1_MS], dtype="int64"),
+            "open": [100.0, 100.0, 100.0],
+            "high": [140.0, 101.0, 101.0],  # der Spike liegt VOR dem Einstieg
+            "low": [99.0, 99.0, 99.0],
+            "close": [100.0, 100.0, 100.0],
+            "volume": [1.0, 1.0, 1.0],
+        }
+    )
+
+    post = examine(
+        frame,
+        side=Side.LONG,
+        entry=100.0,
+        stop=98.0,
+        opened_ts=0,
+        closed_ts=2 * H1_MS,
+        exit_price=100.5,
+        exit_reason=ExitReason.TARGET,
+        r_multiple=0.25,
+    )
+
+    assert post.max_favourable_r == pytest.approx(0.5), (
+        "Das Hoch von 140 lag vor dem Einstieg; der Trade sah 100.5"
+    )
 
 
 def test_a_stop_at_the_entry_price_cannot_be_divided_by() -> None:
@@ -304,6 +387,7 @@ def test_a_stop_at_the_entry_price_cannot_be_divided_by() -> None:
         stop=100.0,
         opened_ts=0,
         closed_ts=H1_MS * 2,
+        exit_price=100.0,
         exit_reason=ExitReason.STOP,
         r_multiple=0.0,
     )

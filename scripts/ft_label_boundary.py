@@ -226,7 +226,10 @@ def main() -> int:
     print("=" * 78)
     print(f"FreqAI-Label-Grenzen, installierte Version, Horizont {args.horizon} Kerzen")
     print("=" * 78)
-    print(f"\nSpielzeug: {ROWS} Kerzen {TIMEFRAME}, Preis +1 je Kerze, Label = shift(-{args.horizon})")
+    print(
+        f"\nSpielzeug: {ROWS} Kerzen {TIMEFRAME}, Preis +1 je Kerze, "
+        f"Label = shift(-{args.horizon})"
+    )
 
     clean_predict = report_training_boundary(frame, horizon=args.horizon, buffer=0)
     clean_internal = report_internal_split(frame, horizon=args.horizon, buffer=0)
