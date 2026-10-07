@@ -253,6 +253,37 @@ wanted:
     cost: 0
     note: "Monats-Samples eines Anbieters reichen fuer Diagnose, nicht fuer kontinuierlichen PnL."
 
+  - name: trade_tape_new_venue
+    priority: 1
+    enables: >-
+      Den EINZIGEN Weg, in diesem Buch eine Teilausfuehrung von einer
+      Teil-Storno zu trennen -- und damit jeden Markout und jede Aussage
+      ueber adverse Selektion.
+    blocks: ["E0 Punkt 3", "E0 Punkt 7 (Teil-Fills)", E5]
+    source: "Derselbe Collector wie l2_orderbook, Trades zusaetzlich zu Quotes"
+    cost: 0
+    measured_here: >-
+      Gemessen 07.10.2026 mit scripts/study_venue_fills.py auf fuenf
+      Buch-Aufnahmen je Markt im Abstand von 17.3s. Das Buch ist
+      ORDER-AUFGELOEST (order_id, order_index, remaining_base_amount),
+      also laesst sich dieselbe Order verfolgen. Daraus sind ohne eigene
+      Order ablesbar: Storno-Anteil (9.49% LINK bis 49.19% ETH je ~17s,
+      verschwunden OHNE dass der Preis die Order erreicht hat),
+      verfuegbare Antrittsgroesse und die Warteschlange.
+    does_not_enable: >-
+      EINEN BELEGTEN FILL. Eine schrumpfende remaining_base_amount kann
+      eine Teilausfuehrung sein ODER eine Teil-Storno. Belegt durch den
+      Lauf selbst: von 41 Verkleinerungen lagen 33 an Preisen, die der
+      Markt im Fenster nie erreicht hat -- eine davon 394 bp vom Mid, und
+      ein Ask 4% ueber dem Markt wird in 17 Sekunden nicht gehandelt.
+      Die Erreichbarkeitspruefung ist eine NOTWENDIGE Bedingung aus den
+      Daten, keine erfundene Schwelle, und notwendig ist nicht hinreichend.
+    note: >-
+      Damit ist die parallele Aufnahme nicht mehr nur gefordert, sondern
+      begruendet: ohne Trades gibt es keinen Markout, egal wie lange das
+      Buch aufgenommen wird. Offen bleiben ausserdem die Cancel-VERZOEGERUNG
+      (dokumentiert 300ms, nicht gemessen) und die Horizonte 1s/5s/5min.
+
   - name: point_in_time_universe
     priority: 1
     enables: "E4. Behebt Survivorship in jeder marktuebergreifenden Zahl."

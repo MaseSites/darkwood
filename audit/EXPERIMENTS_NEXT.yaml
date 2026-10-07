@@ -135,6 +135,43 @@ experiments:
       - "tatsaechlich verfuegbare Orderbuchgroesse am Fill"
       - "Markouts nach 1s, 5s, 30s, 5min als Diagnose fuer adverse Selektion"
     primary_metric: "erwarteter Netto-PnL pro SIGNAL und pro Zeiteinheit"
+    progress:
+      stand: 2026-10-07
+      schritt_1_kosten:
+        status: gemessen
+        bericht: "audit/VENUE_KOSTEN_REPORT.md Abschnitt 2-4"
+        skript: "scripts/study_venue_cost.py"
+        ergebnis: >-
+          Gebuehren aus den Instrumentdaten der Boerse selbst (0%/0% auf sechs
+          Maerkten) und buchgelaufene effektive Kosten. Taker/Taker-Runde ueber
+          1000 USD auf BTC: 0.0005%, also 22x UNTER der Obergrenze des
+          gemessenen Einstiegsvorsprungs (0.0106%). Auf XRP, LINK und DOGE
+          liegt sie darueber.
+      schritt_2_nichtfills:
+        status: "teilweise gemessen"
+        bericht: "audit/VENUE_KOSTEN_REPORT.md Abschnitt 6b"
+        skript: "scripts/study_venue_fills.py"
+        gemessen:
+          - "Storno-Anteil je ~17s: 9.49% (LINK) bis 49.19% (ETH) -- verschwunden OHNE dass der Preis die Order erreicht hat"
+          - "tatsaechlich verfuegbare Antrittsgroesse, beide Seiten"
+          - "Warteschlange am Antritt fuer 1000 USD: 5.9% (ETH) bis 200.3% (XRP)"
+        nicht_gemessen:
+          - "Teil-Fills als BELEGTE Ereignisse. Dieses Buch kann ohne Trade-Tape keinen Fill belegen: 33 von 41 Verkleinerungen lagen an nie erreichten Preisen."
+          - "Markouts. Ohne belegte Fills gibt es nichts, worauf bedingt werden koennte. Die unbedingte Mid-Bewegung ist KEIN Markout und wird nicht als einer berichtet."
+          - "Cancel-VERZOEGERUNG (dokumentiert 300ms, nicht gemessen)"
+          - "verfallene Signale"
+          - "Horizonte 1s, 5s und 5min -- brauchen Streaming bzw. eine laengere Aufnahme"
+        grenze_der_aufnahme: >-
+          Fuenf Buch-Aufnahmen je Markt, 17.3s Abstand, ~69s Gesamtspanne, ein
+          Vormittag, kein Stress, kein Trade-Tape. Belegt ist die MESSUNG, nicht
+          eine Charakterisierung dieser Venue.
+      schritte_3_bis_7:
+        status: offen
+        blockiert_durch: trade_tape_new_venue
+        hinweis: >-
+          Die Freigabebedingung dieses Experiments ist weder erfuellt noch
+          verfehlt -- sie ist nicht geprueft. Kein Arm (E0.1 bis E0.4) wurde
+          bisher gerechnet; Schritt 1 und 2 messen die Vorbedingungen.
     pitfalls_declared:
       - "Spread nicht doppelt abziehen, wenn bid/ask-Fills ihn schon enthalten"
       - "Markouts sind Diagnose, keine zusaetzliche PnL-Gebuehr"
