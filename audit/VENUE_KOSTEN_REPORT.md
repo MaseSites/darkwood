@@ -1,7 +1,12 @@
 # E0, erster Schritt: die Maut ist nicht mehr der bindende Grund
 
 **Stand:** 07.10.2026 · **Reproduktion:** `python scripts/study_venue_cost.py --samples 5 --pause 15`
-**Rohdaten:** `data/quarantine/venue_cost/` (gecachte API-Antworten, damit das Urteil nachprüfbar bleibt)
+**Rohdaten:** `data/quarantine/venue_cost/` — die gecachten API-Antworten, damit ein
+erneuter Lauf auf *dieser* Maschine dieselben Zahlen ergibt (`--offline`).
+`/data/` ist gitignoriert, also liegt der Cache **nicht** im Repository: wer das
+Projekt klont, kann die Zahlen unten nur neu abrufen, nicht nachrechnen. Und
+ein neuer Abruf trifft ein anderes Buch. Das ist die Grenze dieser Messung,
+nicht ihre Reproduktion.
 
 Dies ist der **erste Schritt** von E0, nicht E0. Was hier gemessen ist: was eine
 Ausführung auf einer Null-Gebühren-Venue kostet. Was hier **nicht** gemessen

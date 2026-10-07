@@ -345,6 +345,26 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "ueberhaupt, mit Kenntnis jeder zukuenftigen Rate: 12.000 -> 12.027.",
     ),
     (
+        "Haltezone (Wechsel statt Signal bepreisen)",
+        "erledigt",
+        "E2, vorab registriert. Der vorhandene Kostenfilter fragt 'ist die runde "
+        "Fahrt klein gegen das Risiko'; das ist etwas anderes als 'rechtfertigt der "
+        "erwartete Gewinn einen WECHSEL'. Eine bestehende Position zu halten kostet "
+        "keine runde Fahrt. BTC und ETH auf H1, 8.780 Kerzen Bestaetigungsfenster, "
+        "Ridge und XGBoost, Hauptschwelle 1.5x vorab festgelegt: die Haltezone "
+        "handelt fast nicht, weil der Forecast nie genug verspricht (Ridge: 0 "
+        "Wechsel; XGBoost: 27 bzw. 49). Ihr Ergebnis ist von null nicht zu trennen "
+        "(+0.12% [-93.4, +87.9] auf BTC). Die NAIVEN Arme dagegen haben Intervalle, "
+        "die die Null negativ ausschliessen: -124% bis -176%, davon 94 bis 171 "
+        "Punkte reine Maut. Churning ist belegt schaedlich; die Zone ist belegt "
+        "wirkungslos. "
+        "WICHTIGER ALS DAS ERGEBNIS: die erste Fassung meldete +1018% netto. Die "
+        "Merkmale nutzten close[t], das Ziel open[t+1]/open[t] -- auf H1 ist das "
+        "dasselbe, Korrelation +0.9999. Um eine Kerze verschoben: -0.0059. Neuntes "
+        "Scheinfund, groesstes bisher. `assert_no_leak` bricht jetzt ab, wenn ein "
+        "Merkmal ueber 0.2 mit dem Ziel korreliert.",
+    ),
+    (
         "Meta-Labeling (Auswahl unter den Signalen)",
         "erledigt",
         "E1, vorab registriert in audit/EXPERIMENTS_NEXT.yaml. Die Begruendung, mit "

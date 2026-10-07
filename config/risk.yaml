@@ -126,6 +126,27 @@ limits:
   # 3.6 times less so, purely from paying the toll less often. It is not an
   # edge and must not be reported as one.
   #
+  # **The open question is answered, 07.10.2026.** The four-market measurement
+  # above had the gross difference at +0.0799 R with an interval of
+  # [-0.033, +0.195] -- straddling zero, which is why two thirds of the gain
+  # was undecided. Twelve markets and 43,727 signals later
+  # (`python scripts/study_costcap.py --with-refused --symbols <all twelve>`):
+  #
+  #   cheap vs expensive at cap 0.08, 6,525 against 20,847 signals
+  #   gross   +0.0190 vs -0.0371   difference +0.0561  [+0.017, +0.097]  EXCLUDES ZERO
+  #   cost    +0.0291 vs +0.1741   difference -0.1450  [-0.162, -0.134]
+  #   net     -0.0097 vs -0.2111   difference +0.2013  [+0.157, +0.250]
+  #
+  # So the gross difference is real: cheap trades capture more movement, not
+  # just pay less toll. The conservative reading (-0.015 R) was too
+  # pessimistic; measured, a cheap trade runs at -0.0097 R.
+  #
+  # **And it still is not an edge.** R per trade at cap 0.08 is +0.0107 with
+  # an interval of [-0.041, +0.061] -- that one straddles zero. What is
+  # established is the *difference* between the two populations, not that the
+  # cheap population is profitable. R TOTAL at 0.08 is +31.5 against -179.6
+  # at 0.15, and the sweep replicates at 1.11x in the earlier half.
+  #
   # **Why 0.08 and not 0.04, which measured better.** 0.08 keeps 94% of the
   # improvement with 2.9 times the trade flow. The forward journal is at seven
   # trades and is the only evidence replay cannot produce; at 0.04 it would
