@@ -55,6 +55,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from traidingbrain.learn.frozen import load as frozen_load
 from traidingbrain.learn.goalsim import (
     GOAL_DAYS,
     Outcome,
@@ -91,6 +92,13 @@ SEED = 20261007
 #: Plausibles Band für einen Stop-Abstand als ANTEIL des Preises. Ein Stop
 #: unter 0,05 % oder über 25 % ist kein Stop, sondern ein Einheitenfehler.
 STOP_BAND = (0.0005, 0.25)
+
+#: Stop-Anteil fuer eine eingefrorene Prediction-Menge, die keinen traegt.
+#: GEMESSEN, nicht gewaehlt: Median ueber 2'734 Replay-Trades des Journals
+#: am 07.10.2026 (Mittel 0.019554, p10 0.007777, p90 0.037760). Der Median
+#: statt des Mittels, weil die Verteilung rechtsschief ist und ein breiter
+#: Stop die Positionsgroesse senkt -- die optimistische Richtung.
+FROZEN_STOP_FRACTION = 0.013090
 
 #: Laufende Kosten in CHF je Monat. Bei 1 000 CHF Startkapital ist das keine
 #: Fussnote: 50 CHF über sechs Monate sind 30 % des Kapitals.
@@ -164,6 +172,68 @@ def load(source: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     return np.array(r), np.array(ts, dtype="int64"), np.array(adverse), fractions
 
 
+def load_frozen(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Dasselbe aus einer eingefrorenen Prediction-Menge.
+
+    Abschnitt 12 des Auftrags verlangt als Eingabe „nur eingefrorene,
+    zeitpunktkorrekte Out-of-Sample-Predictions". Ohne diesen Pfad las die
+    Zielsimulation das Journal, also die Papierhistorie — und Lieferpunkt 6
+    (`learn/frozen.py`) war gebaut, aber nicht angeschlossen.
+
+    **Die Einheitsprüfung ist der Grund, warum `freeze()` `unit` erzwingt.**
+    Diese Simulation rechnet in R: sie teilt Bewegung durch Risiko und
+    kettet das Ergebnis auf ein Konto. Eine Netto-Rendite je Kerze ist
+    durch nichts geteilt. Beide stehen in einer Spalte namens `net_r`, und
+    ohne diese Prüfung wäre aus E2s Kerzenreihe eine R-Verteilung geworden,
+    die aussieht wie eine und keine ist.
+
+    `max_adverse_r` und der Stop-Abstand stehen nicht in einer eingefrorenen
+    Menge — sie sind Eigenschaften des Trade-**Pfades**, nicht der Prediction.
+    Deshalb kommen hier Ersatzwerte, und die erste Fassung dieses Docstrings
+    nannte sie „konservativ". Für den Stop-Anteil stimmt das (der Median
+    statt des Mittels, und ein breiterer Stop senkt die Positionsgrösse).
+
+    **Für `max_adverse_r` ist es falsch, und zwar gefährlich falsch.** `max(1,
+    |R|)` sieht den Ausschlag *während* des Trades nicht: ein Trade, der auf
+    -2R lief und bei +0,5R schloss, bekommt 1,0 statt 2,0. Die Liquidation
+    wird damit **unterschätzt**. Mit diesen Werten stand in der Tabelle
+    „0,0 % liquidiert" bei 15x, wo dieselbe Simulation auf echten Pfaden
+    100 % liest. Die Liquidationsspalte wird für eine eingefrorene Quelle
+    deshalb nicht gerechnet, sondern als nicht bestimmbar ausgewiesen.
+    """
+    frame, meta = frozen_load(path)
+    unit = str(meta.get("unit", "unbekannt"))
+    if unit != "net_r_per_signal":
+        raise SystemExit(
+            f"{path.name} traegt die Einheit '{unit}'.\n"
+            f"Diese Simulation rechnet in R -- sie teilt Bewegung durch Risiko und\n"
+            f"kettet das Ergebnis auf ein Konto. '{unit}' ist durch nichts geteilt,\n"
+            f"und beide heissen in der Datei `net_r`. Hier wird nicht umgerechnet:\n"
+            f"wer die Kerzenreihe von E2 als Zielverteilung will, braucht eine\n"
+            f"eigene Simulation mit Positionsgroesse und Kapitalbindung."
+        )
+
+    taken = frame.loc[frame["selected"].astype(bool)].sort_values("decision_ms")
+    if taken.empty:
+        raise SystemExit(f"{path.name}: der Arm hat nichts genommen.")
+
+    r = taken["net_r"].to_numpy(dtype=float)
+    ts = taken["decision_ms"].to_numpy(dtype="int64")
+    adverse = np.maximum(1.0, np.abs(r))
+    stop = np.full(r.size, FROZEN_STOP_FRACTION)
+    print(
+        f"  Eingefroren: {path.name}\n"
+        f"    Datenstand {str(meta.get('data_vintage', '?'))[:12]}, "
+        f"Signatur {meta.get('run_signature', '?')}\n"
+        f"    {len(frame):,} Entscheidungen, davon {len(taken):,} genommen\n"
+        f"    ANNAHME: Stop-Anteil pauschal {100 * FROZEN_STOP_FRACTION:.2f}% "
+        f"(Median des Journals).\n"
+        f"    max_adverse_r steht nicht in dieser Menge und wird NICHT ersetzt "
+        f"-- die Liquidationsspalte bleibt leer."
+    )
+    return r, ts, adverse, stop
+
+
 def scenarios() -> list[Scenario]:
     """Die Szenarioliste aus Abschnitt 12 des Auftrags, vorab festgelegt.
 
@@ -232,8 +302,16 @@ def scenarios() -> list[Scenario]:
 
 
 def report(
-    outcomes: list[Outcome], *, source: str, trades: int
+    outcomes: list[Outcome], *, source: str, trades: int, liquidation_known: bool = True
 ) -> None:
+    """Die Tabelle. `liquidation_known=False` leert die Liquidationsspalte.
+
+    Ein Hinweis über der Tabelle genügt dafür nicht. Solange dort „0,0 %"
+    steht, ist das die Zahl, die jemand zitiert — und bei einer
+    eingefrorenen Quelle stammt sie aus einem Ersatzwert, der den Ausschlag
+    während des Trades nicht kennt und die Liquidation deshalb
+    unterschätzt. Eine leere Zelle kann man nicht falsch zitieren.
+    """
     print("\n" + "=" * 110)
     print(
         f"Zielchance und Verlustchance nebeneinander -- "
@@ -247,11 +325,12 @@ def report(
     print(header)
     print("  " + "-" * 106)
     for out in outcomes:
+        liquid = f"{100 * out.liquidated:>7.1f}%" if liquidation_known else f"{'--':>8s}"
         print(
             f"  {out.scenario:34s} {100 * out.reached_at_end:>9.2f}% "
             f"{100 * out.reached_ever:>7.2f}% {100 * out.below_start:>6.1f}% "
             f"{100 * out.below_half:>6.1f}% {100 * out.below_ruin:>6.1f}% "
-            f"{100 * out.liquidated:>7.1f}% {out.median_end:>9.0f} {out.cvar_5:>8.0f}"
+            f"{liquid} {out.median_end:>9.0f} {out.cvar_5:>8.0f}"
         )
 
     print("\n  Quantile des Endkapitals in CHF:\n")
@@ -371,12 +450,25 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--paths", type=int, default=DEFAULT_PATHS)
     parser.add_argument("--source", default="replay", choices=("replay", "live"))
+    parser.add_argument(
+        "--frozen",
+        type=Path,
+        default=None,
+        help=(
+            "Eine eingefrorene Prediction-Menge aus data/frozen/ statt des Journals. "
+            "Abschnitt 12 des Auftrags verlangt genau das als Eingabe."
+        ),
+    )
     parser.add_argument("--days", type=int, default=GOAL_DAYS)
     args = parser.parse_args()
 
-    r, ts, adverse, stop = load(args.source)
+    if args.frozen is not None:
+        r, ts, adverse, stop = load_frozen(args.frozen)
+    else:
+        r, ts, adverse, stop = load(args.source)
     trades = round(TRADES_PER_DAY * args.days)
 
+    label = args.frozen.name if args.frozen is not None else args.source
     print("=" * 110)
     print(
         f"Zielsimulation: {START_EQUITY:,.0f} CHF -> {TARGET_EQUITY:,.0f} CHF"
@@ -384,7 +476,7 @@ def main() -> int:
     )
     print("=" * 110)
     print(
-        f"\n  Quelle           {args.source} ({r.size:,} Trades, Mittel {r.mean():+.4f} R)\n"
+        f"\n  Quelle           {label} ({r.size:,} Trades, Mittel {r.mean():+.4f} R)\n"
         f"  Takt             {TRADES_PER_DAY} Trades/Tag -> {trades} Trades je Pfad\n"
         f"  Pfade            {args.paths:,}, Seed {SEED}\n"
         f"  Stop-Abstand     Median {100 * float(np.median(stop)):.3f}% des Preises\n"
@@ -394,10 +486,32 @@ def main() -> int:
     for leverage in (1.0, 3.0, 5.0, 10.0, 15.0):
         distance = liquidation_distance(leverage)
         in_r = distance / float(np.median(stop))
+        if args.frozen is not None:
+            # Die Spalte wird NICHT gerechnet, und das ist der Punkt. Eine
+            # eingefrorene Prediction-Menge traegt keinen `max_adverse_r` --
+            # das ist eine Eigenschaft des Trade-PFADES, nicht der Vorhersage.
+            # Der Ersatzwert max(1, |R|) ist fuer das Ergebnis je Trade
+            # richtig und fuer die Liquidation falsch, und zwar in der
+            # GEFAEHRLICHEN Richtung: ein Trade, der auf -2R lief und bei
+            # +0.5R schloss, bekommt 1.0 statt 2.0. Mit diesen Werten stand
+            # hier "0.0% liquidiert" bei 15x, wo dieselbe Simulation auf
+            # echten Pfaden 100% liest.
+            print(
+                f"    {leverage:>5.0f}x  {100 * distance:>7.3f}%  = {in_r:>6.2f} R des "
+                f"Median-Stops  ->  NICHT BESTIMMBAR aus einer eingefrorenen Menge"
+            )
+            continue
         share = float((adverse >= distance / stop).mean())
         print(
             f"    {leverage:>5.0f}x  {100 * distance:>7.3f}%  = {in_r:>6.2f} R des "
             f"Median-Stops  -> {100 * share:>5.1f}% der Trades waeren liquidiert worden"
+        )
+    if args.frozen is not None:
+        print(
+            "\n  ! Die Liquidations- und Ruinspalten dieser Tabelle sind mit einer\n"
+            "    eingefrorenen Quelle NICHT zu lesen. Der Hebelteil der Frage braucht\n"
+            "    echte Pfade: `--source replay` ohne `--frozen`. Belegt ist hier die\n"
+            "    Verteilung des Ergebnisses je Trade dieses Arms, nichts darueber."
         )
 
     outcomes = [
@@ -415,7 +529,7 @@ def main() -> int:
         )
         for scenario in scenarios()
     ]
-    report(outcomes, source=args.source, trades=trades)
+    report(outcomes, source=label, trades=trades, liquidation_known=args.frozen is None)
     verdict(outcomes, paths=args.paths, trades=trades)
     return 0
 

@@ -42,14 +42,41 @@ def registry(tmp_path: Path) -> Registry:
     return Registry(tmp_path / "jobs.json", log_dir=tmp_path / "logs")
 
 
-def wait_until_done(registry: Registry, job_id: str, *, seconds: float = 20.0) -> None:
-    deadline = time.time() + seconds
+def wait_until_done(registry: Registry, job_id: str, *, seconds: float = 60.0) -> None:
+    """Warten, bis ein echtes Kind fertig ist -- mit einem lesbaren Scheitern.
+
+    Das Budget war 20 s und ist 60 s, und der Grund gehoert hierher statt in
+    eine Commit-Zeile. Diese Tests starten echte Prozesse. Am 07.10.2026 fiel
+    `test_the_job_id_is_derived_from_the_command` im Gesamtlauf, waehrend
+    parallel ein FreqAI-Backtest lief -- 18 python.exe-Prozesse auf der
+    Maschine. Dieselbe Datei lief unmittelbar danach dreimal hintereinander
+    gruen, allein und unter derselben Last.
+
+    Ein `print()`-Kind braucht unter einer Sekunde. 60 s sind also weiter
+    sechzigfach grosszuegig und erkennen einen wirklich haengenden Job
+    immer noch. Was sich aendert, ist die Lesbarkeit des Scheiterns: ein
+    rotes Ergebnis, das "die Maschine war beschaeftigt" bedeutet, erzieht
+    dazu, rote Ergebnisse zu ignorieren -- und das ist teurer als der Test
+    wert ist.
+    """
+    started = time.time()
+    deadline = started + seconds
     while time.time() < deadline:
         job = registry.get(job_id)
         if job is not None and job.state != State.RUNNING:
             return
         time.sleep(0.2)
-    pytest.fail(f"{job_id} lief nach {seconds}s noch")
+    waited = time.time() - started
+    job = registry.get(job_id)
+    pytest.fail(
+        f"{job_id} lief nach {waited:.1f}s noch (Zustand "
+        f"{job.state if job else 'nicht gefunden'}).\n"
+        f"Das ist eine Wanduhr-Zusicherung auf einem echten Unterprozess. Bevor "
+        f"dies als Defekt gelesen wird: laeuft noch etwas Grosses auf der "
+        f"Maschine? Ein Backtest neben dem Gesamtlauf hat genau das hier schon "
+        f"einmal ausgeloest. Diese Datei allein laufen lassen -- bleibt sie rot, "
+        f"ist es der Code."
+    )
 
 
 def test_a_job_starts_and_reports_itself(registry: Registry, tmp_path: Path) -> None:
