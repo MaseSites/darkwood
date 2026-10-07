@@ -1211,9 +1211,12 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
 
 ## 17. Zusammenfassung, Stand 07.10.2026
 
-1. **[GEMESSEN]** 19 Familien (18 erledigt, 1 nicht testbar), über 124 Versuche:
-   **kein belegter Vorteil in der Richtungsvorhersage.** Neu dazu und beide negativ:
-   Meta-Labeling (E1) und die Haltezone (E2).
+1. **[GEMESSEN]** 21 Familien (20 erledigt, 1 nicht testbar): **kein belegter Vorteil in
+   der Richtungsvorhersage.** Neu dazu und alle vier negativ: Meta-Labeling (E1), die
+   Haltezone (E2), die Ausgangspolitik (E3) und der Carry nach voller Kostenrechnung (E6).
+   Bei E3 und E6 sind es die schärferen Formen: E3.3 ist *zuverlässig schlechter* als die
+   bestehende Politik, und E6 passierte als Erstes im Projekt ein korrigiertes Intervall
+   ohne Null — und fiel am Replikationstor mit gekipptem Vorzeichen.
 2. **[GEMESSEN]** Auf der gemessenen Börse ist der grösste belegte Einstiegsvorsprung
    **3,8× kleiner als deren billigste Maut.** **Aber auf einer anderen Venue ist die ganze
    Taker/Taker-Runde auf BTC 22× *kleiner* als dieser Vorsprung** (0,0005 % gegen 0,0106 %).

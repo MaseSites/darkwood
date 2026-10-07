@@ -345,6 +345,64 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "ueberhaupt, mit Kenntnis jeder zukuenftigen Rate: 12.000 -> 12.027.",
     ),
     (
+        "Ausgangspolitik (E3)",
+        "erledigt",
+        "E3, vorab registriert. Die Frage, die am laengsten offen blieb, weil der "
+        "Bericht sie mit einer Kuerzungsrechnung geschlossen hatte: Groesse und "
+        "Hebel kuerzen sich aus net_r heraus, der STOP nicht -- er verschiebt den "
+        "Ausstiegszeitpunkt und damit den ganzen Pfad. study_stop_path.py hatte "
+        "gemessen, dass die Annahme 'gleicher Pfad' oft verletzt ist, und "
+        "ausdruecklich gesagt, dass nur ein neu simulierter Pfad entscheidet. "
+        "7.255 Faelle, 12 Maerkte, jeder Arm auf DENSELBEN Einstiegen, gepaart je "
+        "Trade, korrigiert auf 46 Vergleiche: Basis (Stop+Ziel, 48h) -0.0205 R bei "
+        "14.4h Haltezeit; Stop+24h-Uhr ohne Ziel -0.0824 R, gepaart -0.0619 "
+        "[-0.1316, +0.0071]; Stop+2.0-ATR-Trail -0.0762 R, gepaart -0.0557 "
+        "[-0.1123, -0.0060] -- ZUVERLAESSIG SCHLECHTER, Intervall ohne Null auf "
+        "der falschen Seite. "
+        "WARUM: das Ziel arbeitet. 31.1% der Trades verlassen darueber, und beide "
+        "Alternativen nehmen genau diese Tuer weg. Bei E3.3 faellt die Haltezeit "
+        "von 14.4 auf 7.9h und der Trail greift in 99% der Faelle -- ein "
+        "Trailing-Stop, der fast immer zuerst greift, ist kein Gewinnschutz, "
+        "sondern ein engerer Stop mit mehr Schritten. "
+        "UND UMGEKEHRT, erstmals in diesem Register: die BESTEHENDE Politik ist "
+        "messbar besser als beide Alternativen. Das macht das System nicht "
+        "profitabel, aber es schliesst eine Richtung, in die zu optimieren waere. "
+        "Die 2.0 ATR standen vorab fest und wurden nicht nachjustiert.",
+    ),
+    (
+        "Carry nach Basis, Maut und Margin (E6)",
+        "erledigt",
+        "E6.1, und es nimmt dem Projekt die letzte Zahl mit positivem Vorzeichen. "
+        "Der Carry las +5.5 bis +14.8% p.a. aufs Notional -- das ist die EINNAHME, "
+        "nicht der Ertrag. Blockiert war E6 an 'keine Spot-Reihe auf der Platte'; "
+        "backfill_spot.py holt sie fuer die acht Maerkte mit BINANCE-Funding (die "
+        "anderen vier tragen Bybit und waeren kein Same-Venue-Arm), je 33.013 "
+        "Stundenkerzen. "
+        "DIE BASIS WAR NICHT DAS PROBLEM, und das ist selbst ein Ergebnis: mit "
+        "Spot long und Perp short ist der Preis-PnL exakt q*(b_ein - b_aus), alles "
+        "andere kuerzt sich, und die Basis bewegt sich ueber 30 Tage um +-0.002% -- "
+        "sie kehrt zurueck, weil Perp und Spot konvergieren. Hypothese geprueft und "
+        "widerlegt. DIE MAUT war es: 0.280% je Runde gegen 0.2 bis 0.5% Funding in "
+        "30 Tagen. "
+        "Die Maut faellt je RUNDE, das Funding je ZEIT, also verduennt langes "
+        "Halten sie -- Vorhersage aus der Zerlegung, alle vier Haltedauern "
+        "berichtet. Bei 180 Tagen +1.5554% je Fenster mit [+0.2405, +3.0046], das "
+        "ERSTE MAL im Projekt, dass etwas nach voller Kostenrechnung ein "
+        "korrigiertes Intervall ohne Null schafft. "
+        "UND DANN FIEL ES AM ZWEITEN TOR: Replikation frueher +2.9374% gegen "
+        "spaeter -0.1120%, Verhaeltnis -0.04x gegen das Band 0.5-2.0, Vorzeichen "
+        "gekippt. Der ganze Befund stammt aus der frueheren Haelfte -- der "
+        "Anschluss an das bekannte Schrumpfen des Fundings in 11 von 12 Maerkten. "
+        "Ab 2024-11-18 allein: bei keiner Haltedauer positiv, bei 30 Tagen "
+        "zuverlaessig NEGATIV mit [-0.3323, -0.0762]. Ein Tor allein haette hier "
+        "einen Kandidaten gemeldet -- das ist der Fall, der die Doppelpruefung "
+        "rechtfertigt. "
+        "Hebel rettet die Kapitaleffizienz nicht: Spot bindet voll, der Short "
+        "bindet Margin, bei 1x ist der Nenner 2x Notional, und selbst bei 1x wird "
+        "das Short-Bein in bis zu 4.2% der 30-Tage-Fenster liquidiert, bei 5x in "
+        "ueber einem Drittel.",
+    ),
+    (
         "Haltezone (Wechsel statt Signal bepreisen)",
         "erledigt",
         "E2, vorab registriert. Der vorhandene Kostenfilter fragt 'ist die runde "
