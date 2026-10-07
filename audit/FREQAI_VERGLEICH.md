@@ -126,28 +126,71 @@ OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 \
 **Status: läuft.** Dasselbe Fenster, dasselbe Kapital, derselbe Einsatz,
 dieselbe Gebühr — nur die Entscheidung kommt aus dem Modell.
 
-Gemessener Takt: **~63 s je Fold** (davon ~9 s LightGBM, der Rest
-Merkmalsaufbau), 83 Folds je Markt, drei Märkte — **249 Folds, rund
-4 Stunden**. Beim Schreiben dieses Berichts: Fold **76 von 83** auf Markt 1
-von 3.
+**Der Lauf ist durchgelaufen**, 249 Folds, ~63 s je Fold, rund vier Stunden,
+`FT_EXIT=0`. Der vorige starb bei **75 von 83** an der Cache-Kollision;
+dieser ging mit **null** Vorkommen von `different features furnished by
+current strategy`, `Could not load` oder einer Ausnahme durch. Defekt 1.3 ist
+damit nicht nur behoben, sondern belegt behoben.
 
-**Dass er an dieser Stelle noch läuft, ist selbst das Ergebnis zu Defekt 1.3.**
-Der vorige Lauf starb bei **75 von 83** an der Cache-Kollision. Dieser ist
-daran vorbei, mit **null** Vorkommen von `different features furnished by
-current strategy`, `Could not load` oder einer Ausnahme im ganzen Protokoll.
-Der Schlüssel trägt.
+### Der Vergleich, dieselben Zeilen für beide
 
-### Wenn der Lauf landet
+| Kennzahl | BaselineTrend | FreqaiCostFiltered |
+|---|---|---|
+| Trades | 15 624 (26,98/Tag) | **921** (1,59/Tag) |
+| Absolut | −5 785,30 USDT | **−429,09 USDT** |
+| Gesamt | −0,58 % | **−0,04 %** |
+| **Expectancy je Trade** | **−0,37 USDT** | **−0,47 USDT** |
+| Expectancy-Ratio | −0,56 | −0,15 |
+| Profit-Faktor | 0,35 | 0,66 |
+| Trefferquote | — | **54,7 %** |
+| Sharpe (geschlossen) | −196,81 | −4,64 |
+| p-Wert des mittleren Gewinns | 0 | 4,114e−06 |
+| Tage gewonnen/neutral/verloren | 34 / 19 / 526 | 115 / **345** / 119 |
+| Längste Verlustserie | 102 | 14 |
+| Handelsvolumen | 6 249 345 USDT | 368 411 USDT |
+| Bester Markt | SOL −0,16 % | BTC −0,01 % |
 
-Die Zahlen gehören in die Tabelle in Abschnitt 2 daneben, und zwar diese:
-Trades, absolut, Gesamt-%, Expectancy je Trade, Profit-Faktor, Tage
-gewonnen/neutral/verloren, p-Wert. Dieselben Zeilen, damit nichts durch
-Auswahl der Kennzahl besser aussieht.
+### Abnahme: NICHT BELEGT
 
-Fällt der Lauf doch noch, ist die Stelle im Protokoll
-(`$TMPDIR/freqai2.log`) die Antwort und nicht ein neuer Versuch mit anderen
-Einstellungen — ein geänderter Parameter nach einem Abbruch ist ein neuer
-Lauf und braucht einen neuen `identifier`, sonst beginnt Defekt 1.3 von vorn.
+Gegen die Bedingungen, die **vor** der Zahl festgelegt waren:
+
+1. **Absolut positiv, Intervall ohne Null** → **nein.** −0,04 % mit einem
+   p-Wert von 4,1e−06: der mittlere Gewinn ist zuverlässig negativ, nicht
+   bloss ununterscheidbar von null.
+2. **„Besser als die Basislinie" zählt nicht.** Ein kleinerer Verlust ist
+   kein Gewinn.
+
+### Und die Zahl, die man beim Hinsehen verpasst
+
+Der Verlust fällt um **92,6 %** (−5 785 → −429). Die Trades fallen um
+**94,1 %** (15 624 → 921). Das Volumen ebenso (5,9 %).
+
+**Je Trade ist FreqAI um 25,8 % schlechter als die Basislinie**: −0,4659
+gegen −0,3703 USDT. Freqtrade rechnet das selbst aus und nennt es
+`Expectancy`: −0,47 gegen −0,37.
+
+Der Kostenfilter hat also **keinen Vorteil erzeugt — er hat aufgehört, für
+dessen Abwesenheit zu bezahlen.** Und wenn er doch handelt, zahlt er sogar
+etwas mehr je Trade. Das ist genau, was der Testplan als erste Priorität
+vorhersagt, und es ist kein Fortschritt in Richtung Ertrag.
+
+**Die 54,7 % Trefferquote gehören daneben gelesen.** Mehr als die Hälfte der
+Trades gewinnt, und das Ding verliert trotzdem zuverlässig. Das ist in
+diesem Projekt die dritte unabhängige Stelle, an der eine höhere
+Trefferquote weniger verdient.
+
+**345 von 579 Tagen ohne einen Trade** — an 60 % der Tage tut diese
+Strategie nichts. Das ist der Filter bei der Arbeit, und es ist auch der
+Grund, warum die Gesamtsumme so viel freundlicher aussieht als die
+Einzelentscheidung.
+
+### Was den alten 28-Trade-Lauf angeht
+
+Der las −0,16 % bei einem p-Wert von **0,864** — also nichts. Die damalige
+Lesart („der Filter verwandelt einen ruinösen Verlust in gar nichts") war
+auf 28 Trades keine Evidenz. Auf 921 Trades und p = 4,1e−06 ist sie es, und
+die Aussage ist schärfer als damals vermutet: nicht „in gar nichts", sondern
+**in viel weniger von demselben, zu einem höheren Preis je Stück.**
 
 ### Wie der Vergleich zu lesen sein wird
 
