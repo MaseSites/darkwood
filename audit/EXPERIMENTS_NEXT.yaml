@@ -313,7 +313,52 @@ experiments:
   - id: E3
     title: "Ausgaenge als kausale Handelspolitik"
     priority: 2
-    status: registriert
+    status: erledigt_negativ
+    result:
+      stand: 2026-10-07
+      bericht: audit/E3_AUSGAENGE.md
+      skript: scripts/study_exits.py
+      faelle: 7255
+      maerkte: 12
+      gepaart: >-
+        Jeder Arm auf DENSELBEN Einstiegen, verglichen als gepaarte Differenz
+        je Trade. Unverbunden wuerde der Vergleich die Streuung der Einstiege
+        mitmessen, die beide Arme gemeinsam haben -- und die ist um
+        Groessenordnungen groesser als der gesuchte Effekt.
+      arme:
+        E3.1_stop_und_ziel: "-0.0205 R, 14.4h gehalten (Basis)"
+        E3.2_stop_und_24h: "-0.0824 R, gepaart -0.0619 [-0.1316, +0.0071] -- unentschieden, Richtung negativ"
+        E3.3_trail_2atr: "-0.0762 R, gepaart -0.0557 [-0.1123, -0.0060] -- ZUVERLAESSIG SCHLECHTER"
+      warum: >-
+        Das Ziel arbeitet: 31.1% der Trades verlassen darueber. Beide
+        Alternativen nehmen diese Tuer weg und schneiden den Gewinner
+        frueher ab -- die Haltezeit faellt bei E3.3 von 14.4 auf 7.9h, der
+        Trail greift in 99% der Faelle. Ein Trailing-Stop, der fast immer
+        zuerst greift, ist kein Gewinnschutz, sondern ein engerer Stop mit
+        mehr Schritten.
+      population: >-
+        ANDERE als in E1, mit Absicht. E1 filtert nur `liquidation` und
+        behaelt die von Kosten- und Chance-Risiko-Regel abgelehnten Signale.
+        E3 nimmt nur, was das System TATSAECHLICH handelt -- eine
+        Ausstiegspolitik gilt nur fuer eine Position, die es gibt. Auf BTC
+        bleiben 203 von 2552 Signalen. Die Fallzahlen von E1 und E3 sind
+        NICHT vergleichbar.
+      urteil: >-
+        NICHT BELEGT. Kein Arm absolut positiv, kein gepaarter Mehrwert --
+        und E3.3 verfehlt die Abnahme in die GEGENRICHTUNG.
+      und_umgekehrt: >-
+        Die BESTEHENDE Ausstiegspolitik ist messbar besser als beide
+        Alternativen, bei E3.3 mit Intervall ohne Null. Das ist das erste
+        Mal in diesem Projekt, dass etwas, das das System schon tut, gegen
+        eine benannte Alternative verteidigt werden kann statt nur nicht
+        widerlegt zu sein. Es macht das System nicht profitabel; es
+        schliesst eine Richtung, in die zu optimieren waere.
+      nicht_nachjustiert: >-
+        Die 2.0 ATR standen vorab fest. Ein anderer Trail-Abstand koennte
+        besser abschneiden; ihn nach dem Ergebnis zu suchen waere genau der
+        Griff, den der Auftrag verbietet. Die Zerlegung sagt ohnehin, woran
+        es liegt: nicht am Abstand, sondern daran, dass der Trail die
+        Ziel-Tuer ersetzt.
     depends_on: [E0]
     rationale: >-
       Am 07.10.2026 gemessen (scripts/study_stop_path.py): ein Stop 1.5x so weit
