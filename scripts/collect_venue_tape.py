@@ -390,12 +390,18 @@ def main() -> int:
                     market.next_book = now + BOOK_EVERY
 
             if not args.quiet and now - last_note >= NOTE_EVERY:
+                # `gaps`, nicht `missed`. Der alte Name ueberlebte hier die
+                # Umbenennung und riss den Lauf nach genau zehn Minuten ab --
+                # also erst dann, wenn dieser Zweig zum ersten Mal lief. Jeder
+                # Rauchtest lief kuerzer als NOTE_EVERY und hat den Pfad nie
+                # beruehrt. Ein Codepfad, dessen Ausloeser laenger ist als der
+                # Test, ist ungetestet, egal wie gruen der Test war.
                 done = sum(m.tally.trades for m in markets)
                 books = sum(m.tally.books for m in markets)
-                missed = sum(m.tally.missed for m in markets)
+                gaps = sum(m.tally.gaps for m in markets)
                 print(
                     f"  [{(now - started) / 3600:5.2f}h] {done:,} Trades, "
-                    f"{books:,} Buecher, {missed:,} verloren",
+                    f"{books:,} Buecher, {gaps:,} Luecken",
                     flush=True,
                 )
                 last_note = now
