@@ -57,7 +57,41 @@ die Wirklichkeit sagt         ⟺  ihre Kennung steht in einem Trade
 
 ## 3. Das Ergebnis — und es ist das Gegenteil der Sorge
 
-**545 344 beobachtete Orders, sechs Märkte, 823 Buchaufnahmen.**
+**657 647 beobachtete Orders, sechs Märkte, 981 Buchaufnahmen** (volle
+11-Stunden-Aufnahme). Die Tabelle unten stand zuerst auf 545 344 Orders aus
+9,5 h; auf der vollen Aufnahme ist die gepoolte Rate **0,6 % [0,6; 0,7]** —
+**unverändert, Verhältnis 1,00×.**
+
+| Markt | Orders | Falschfüllung | verpasst |
+|---|---|---|---|
+| BTC | 179 134 | 0,8 % [0,7; 0,9] | 95,0 % |
+| ETH | 172 280 | 1,1 % [1,0; 1,2] | 87,5 % |
+| SOL | 138 462 | 0,5 % [0,4; 0,6] | 96,4 % |
+| XRP | 74 574 | 0,2 % [0,1; 0,3] | 97,5 % |
+| DOGE | 55 633 | 0,1 % [0,0; 0,1] | 93,7 % |
+| LINK | 37 564 | 0,1 % [0,0; 0,3] | 99,5 % |
+| **gepoolt** | **657 647** | **0,6 % [0,6; 0,7]** | — |
+
+Am Antritt (0–1 bp) füllen **12,4 %** der echten Orders — vorher 12,9 %.
+
+### Und das ist die Pointe im Vergleich mit dem Rest der Aufnahme
+
+Vier Grössen wurden auf voller Abdeckung neu gemessen:
+
+| Grösse | 3,2–9,5 h | 11 h | Verhältnis |
+|---|---|---|---|
+| **E9 Falschfüllung** | 0,6 % | 0,6 % | **1,00×** |
+| Taker-Drift BTC 1 s | +0,078 bp | +0,086 bp | 1,10× |
+| Maker-Markout BTC 1 s | −0,195 bp | −0,083 bp | **0,43×** |
+| Niveau-Differenz | +0,342 bp | −0,504 bp | **Vorzeichen** |
+
+Die Ordnung ist kein Zufall: E9 und die Taker-Drift rechnen über das **ganze
+Tape**, der Maker-Markout und die Niveau-Differenz über eine **Auswahl**.
+Siehe `audit/TAPE_VOLLE_ABDECKUNG.md`.
+
+---
+
+**Die ursprüngliche Tabelle, 9,5 h, unverändert:**
 
 | Markt | Orders | belegt gefüllt | **Falschfüllung** | **verpasst** |
 |---|---|---|---|---|
