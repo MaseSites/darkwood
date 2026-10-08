@@ -62,6 +62,13 @@ ROTATE_MS = 3_600_000
 #: zum ersten Mal ausgefuehrt -- genau daran starb der erste Collector.
 NOTE_EVERY = 600.0
 
+#: Nach so vielen Sekunden ohne neuen Trade meldet sich die Aufnahme laut.
+#: In der Nacht vom 07./08.10.2026 fiel die Verbindung nach einer Stunde
+#: aus; beide Collectoren liefen zwoelf Stunden weiter und zaehlten still
+#: Fehler. 338 Fehler gegen 59 Abfragen, und der Bericht meldete am Ende
+#: 'Keine Luecke' -- richtig und vollkommen irrefuehrend.
+STALL_AFTER = 300.0
+
 #: Behalten wird, was die Auswertung braucht. `a` die Kennung, `T` die
 #: Zeit, `p`/`q` der Trade, `m` die Aggressor-Seite (true = der Kaeufer war
 #: Maker, der Trade lief also am Bid). Verworfen: `f`, `l` (erste und
@@ -119,6 +126,27 @@ def poll(market: Market) -> None:
     market.polls += 1
 
 
+def report(markets: list[Market], *, started: float) -> None:
+    ran = (time.time() - started) / 3600
+    print(f"\n  Aufgenommen in {ran:.2f}h:")
+    print(f"  {'Markt':10s} {'Abfragen':>9s} {'Trades':>10s} {'verloren':>9s} {'Fehler':>7s}")
+    print("  " + "-" * 50)
+    for m in markets:
+        print(f"  {m.symbol:10s} {m.polls:>9,} {m.trades:>10,} {m.missed:>9,} {m.errors:>7,}")
+    lost = sum(m.missed for m in markets)
+    got = sum(m.trades for m in markets)
+    if lost:
+        print(
+            f"\n  ! {lost:,} von {lost + got:,} Trades sind durchgefallen "
+            f"({100 * lost / max(1, lost + got):.2f}%).\n"
+            f"    Das ist hier eine ECHTE Zahl, keine Obergrenze: `a` laeuft pro\n"
+            f"    Symbol, also ist die Luecke zaehlbar."
+        )
+    else:
+        print("\n  Keine Luecke: die Aufnahme ist lueckenlos.")
+    print(f"\n  Liegt unter {OUT}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--hours", type=float, default=9.5)
@@ -143,6 +171,8 @@ def main() -> int:
     started = time.time()
     deadline = started + args.hours * 3600
     last_note = started
+    last_progress = started
+    last_count = 0
     try:
         while time.time() < deadline:
             now = time.time()
@@ -154,6 +184,19 @@ def main() -> int:
                         market.errors += 1
                         market.last_error = str(problem)[:120]
                     market.next_poll = now + EVERY
+            collected = sum(m.trades for m in markets)
+            if collected > last_count:
+                last_count, last_progress = collected, now
+            elif now - last_progress >= STALL_AFTER:
+                errs = sum(m.errors for m in markets)
+                recent = next((m.last_error for m in markets if m.last_error), "")
+                print(
+                    f"  ! STILLSTAND: seit {(now - last_progress) / 60:.0f} Minuten kein "
+                    f"neuer Trade. {errs:,} Fehler.\n    zuletzt: {recent[:150]}",
+                    flush=True,
+                )
+                last_progress = now
+
             if now - last_note >= NOTE_EVERY:
                 done = sum(m.trades for m in markets)
                 lost = sum(m.missed for m in markets)
@@ -167,24 +210,7 @@ def main() -> int:
     except KeyboardInterrupt:
         print("\n  Abgebrochen. Was geschrieben ist, bleibt.")
 
-    ran = (time.time() - started) / 3600
-    print(f"\n  Aufgenommen in {ran:.2f}h:")
-    print(f"  {'Markt':10s} {'Abfragen':>9s} {'Trades':>10s} {'verloren':>9s} {'Fehler':>7s}")
-    print("  " + "-" * 50)
-    for m in markets:
-        print(f"  {m.symbol:10s} {m.polls:>9,} {m.trades:>10,} {m.missed:>9,} {m.errors:>7,}")
-    lost = sum(m.missed for m in markets)
-    got = sum(m.trades for m in markets)
-    if lost:
-        print(
-            f"\n  ! {lost:,} von {lost + got:,} Trades sind durchgefallen "
-            f"({100 * lost / max(1, lost + got):.2f}%).\n"
-            f"    Das ist hier eine ECHTE Zahl, keine Obergrenze: `a` laeuft pro\n"
-            f"    Symbol, also ist die Luecke zaehlbar."
-        )
-    else:
-        print("\n  Keine Luecke: die Aufnahme ist lueckenlos.")
-    print(f"\n  Liegt unter {OUT}")
+    report(markets, started=started)
     return 0
 
 

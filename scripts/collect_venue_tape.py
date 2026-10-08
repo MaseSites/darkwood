@@ -91,6 +91,11 @@ BOOK_EVERY = 30.0
 #: keine Logwand werden.
 NOTE_EVERY = 600.0
 
+#: Nach so vielen Sekunden ohne einen einzigen neuen Trade meldet sich die
+#: Aufnahme laut. Fuenf Minuten: laenger als jede normale Flaute auf BTC
+#: (7.5 Trades/s), kurz genug, dass ein Ausfall nicht die Nacht kostet.
+STALL_AFTER = 300.0
+
 #: Neue Datei je Stunde. Haelt eine einzelne Datei lesbar und macht einen
 #: Abbruch billig: was geschrieben ist, bleibt.
 ROTATE_MS = 3_600_000
@@ -343,6 +348,52 @@ def report(markets: list[Market], *, started: float) -> None:
     print(f"\n  Liegt unter {OUT}")
 
 
+def banner(markets: list[Market], *, hours: float) -> None:
+    """Was dieser Lauf vorhat, bevor er es tut."""
+    print("=" * 72)
+    print("Aufnahme: Quotes UND Trades, mit lokaler Empfangszeit")
+    print("=" * 72)
+    print(f"\n  Dauer    {hours:.1f}h\n  Ziel     {OUT}")
+    print(f"  Buch     alle {BOOK_EVERY:.0f}s je Markt")
+    print(f"  Stillstand wird nach {STALL_AFTER / 60:.0f} Minuten ohne Trade gemeldet")
+    print("\n  Trade-Takt je Markt, aus der gemessenen Rate und PAGE=100:")
+    for m in markets:
+        print(f"    {m.symbol:6s} id {m.market_id:>3d}  alle {m.every:5.1f}s "
+              f"({RATE.get(m.symbol, 0):.2f} Trades/s gemessen)")
+    print("\n  Nur lesen. Kein Schluessel, keine Order.\n", flush=True)
+
+
+def watch_stall(
+    markets: list[Market], *, collected_before: int, since: float, now: float
+) -> tuple[int, float]:
+    """Meldet laut, wenn die Aufnahme nichts mehr aufnimmt.
+
+    STILLSTAND ist ein Ereignis, kein Nichts.
+
+    In der Nacht vom 07. auf den 08.10.2026 fiel die Verbindung nach einer
+    Stunde aus. Der Prozess lief weiter, zaehlte Fehler und schrieb brav
+    alle zehn Minuten denselben Vermerk: "60'297 Trades" -- sieben Stunden
+    lang dieselbe Zahl. Gemerkt hat es niemand, auch der Wachhund nicht,
+    denn der prueefte auf TOD und der Prozess lebte.
+
+    Zwoelf Stunden Aufnahmezeit, verloren an eine Kennzahl, die sich nicht
+    bewegte und das nicht sagte.
+    """
+    collected = sum(m.tally.trades for m in markets)
+    if collected > collected_before:
+        return collected, now
+    if now - since >= STALL_AFTER:
+        errors = sum(m.tally.errors for m in markets)
+        recent = next((m.tally.last_error for m in markets if m.tally.last_error), "")
+        print(
+            f"  ! STILLSTAND: seit {(now - since) / 60:.0f} Minuten kein neuer Trade. "
+            f"{errors:,} Fehler insgesamt.\n    zuletzt: {recent[:150]}",
+            flush=True,
+        )
+        return collected, now
+    return collected, since
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--hours", type=float, default=11.0)
@@ -355,20 +406,13 @@ def main() -> int:
     if not markets:
         raise SystemExit(f"Keine aktiven Maerkte unter {wanted}.")
 
-    print("=" * 72)
-    print("Aufnahme: Quotes UND Trades, mit lokaler Empfangszeit")
-    print("=" * 72)
-    print(f"\n  Dauer    {args.hours:.1f}h\n  Ziel     {OUT}")
-    print(f"  Buch     alle {BOOK_EVERY:.0f}s je Markt")
-    print("\n  Trade-Takt je Markt, aus der gemessenen Rate und PAGE=100:")
-    for m in markets:
-        print(f"    {m.symbol:6s} id {m.market_id:>3d}  alle {m.every:5.1f}s "
-              f"({RATE.get(m.symbol, 0):.2f} Trades/s gemessen)")
-    print("\n  Nur lesen. Kein Schluessel, keine Order.\n", flush=True)
+    banner(markets, hours=args.hours)
 
     started = time.time()
     deadline = started + args.hours * 3600
     last_note = started
+    last_progress = started
+    last_count = 0
 
     try:
         while time.time() < deadline:
@@ -388,6 +432,10 @@ def main() -> int:
                         market.tally.errors += 1
                         market.tally.last_error = str(problem)[:120]
                     market.next_book = now + BOOK_EVERY
+
+            last_count, last_progress = watch_stall(
+                markets, collected_before=last_count, since=last_progress, now=now
+            )
 
             if not args.quiet and now - last_note >= NOTE_EVERY:
                 # `gaps`, nicht `missed`. Der alte Name ueberlebte hier die
