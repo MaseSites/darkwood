@@ -162,6 +162,55 @@ die durch die Risk Engine kamen, wurden gefüllt. Der Flaschenhals ist die
 Risikoprüfung, nicht die Füllung. Für den Vorwärtslauf ist die Frage bisher
 ohne Wirkung; sie betrifft die Replay-Population.
 
+## 4b. Nachtrag vom 08.10.2026: die Hypothese ist widerlegt
+
+Abschnitt 4 hat eine Hypothese mit benannter Richtung hinterlassen: unsere
+Regel verweigere genau die Einstiege, bei denen der Preis das Level berührt
+und umkehrt, und nehme bevorzugt die, bei denen er durchläuft — also die
+Verlierer.
+
+Der Mechanismus dahinter war sogar besser begründet als er aussah: **unsere
+Einstiegslevel sind frühere Preisextreme.** „Hoch genau gleich Limit" ist
+damit kein Grenzfall, sondern der Normalfall „der Markt kam exakt zum alten
+Hoch zurück und drehte". Ein Treffer auf den Tick ist bei einem Level, das
+selbst ein gehandelter Preis war, plausibel häufig.
+
+**Gemessen ist er das nicht.** 7 340 genommene Signale unter der
+Hauptsignatur, Fenster 32 M15-Kerzen (8 h) auf Minutendaten:
+
+| | n | Anteil |
+|---|---|---|
+| **durch** das Level → unsere Regel füllt | 7 221 | **98,4 %** |
+| nie erreicht → beide Regeln verweigern | 73 | 1,0 % |
+| **genau berührt** → nur unsere Regel verweigert | **39** | **0,5 %** |
+| kein Fenster in den Daten | 7 | 0,1 % |
+
+Die beiden Regeln sind sich auf **99,4 %** der Fälle einig. Selbst wenn alle
+39 perfekte Gewinner wären, könnten sie an keiner Schlussfolgerung aus 7 221
+Trades etwas ändern.
+
+Der Grund ist einfach und im Nachhinein offensichtlich: innerhalb von acht
+Stunden auf Minutendaten wird ein Level, das berührt wird, fast immer um
+mindestens einen Tick überschritten. Ein exakter Halt auf den Tick ist
+seltener, als die Herkunft des Levels vermuten lässt.
+
+### Damit ist die Füllfrage für dieses System geschlossen
+
+Drei Messungen, und sie greifen ineinander:
+
+1. Unsere Regel füllt nur bei Durchhandeln → **0,6 % Falschfüllung** auf
+   657 647 echten Orders.
+2. Für unsere echten Einstiege unterscheiden sich Berührung und Durchhandeln
+   auf **0,5 %** der Fälle.
+3. Also ist das Füllmodell **in keiner gemessenen Grösse dieses Projekts eine
+   wesentliche Fehlerquelle** — weder nach oben noch durch Auswahl.
+
+Was offen bleibt, ist nicht die Regel, sondern die **Warteschlange** — und
+zwar nur für einen Betrieb als Market Maker, der quotiert statt zu warten. Die
+12,4 % Füllquote am Antritt aus Abschnitt 3 gilt für Quotes, nicht für
+Einstiege, zu denen der Preis erst hinläuft: dort wird die Warteschlange beim
+Durchhandeln aufgebraucht, und die Füllung ist belegt statt angenommen.
+
 ## 5. Grenzen
 
 **Es sind die Orders anderer Leute**, alle 30 s abgetastet, also sind
