@@ -43,10 +43,10 @@ meta:
   # Die Zahl, auf die korrigiert wird. Summe der `comparisons` aller Arme unten
   # plus die bereits gelesenen Zellen der Vorgaenger-Suche, soweit dieselbe
   # Frage betroffen ist.
-  total_comparisons: 49
+  total_comparisons: 50
   correction: >-
-    Bonferroni auf 49 Vergleiche, also Schwelle 0.05/49 = 0.00102 und ein
-    99.898%-Intervall. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
+    Bonferroni auf 50 Vergleiche, also Schwelle 0.05/50 = 0.00100 und ein
+    99.900%-Intervall. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
     angemeldete Sensitivitaet erlaubt, nicht als Ersatz. Sie werden zusaetzlich
     berichtet, nicht anstelle.
 
@@ -771,6 +771,103 @@ experiments:
       - >-
         Kein Umbau des Simulators aufgrund dieser Zahl ohne ausdrueckliche
         Zustimmung des Nutzers.
+
+  - id: E10
+    title: "Der Stop-AUSLOESER: Beruehrung gegen Schlusskurs"
+    priority: 1
+    status: erledigt_negativ
+    angelegt: 2026-10-09
+    result:
+      stand: 2026-10-09
+      bericht: audit/E10_STOP_AUSLOESER.md
+      skript: scripts/study_stop_trigger.py
+      faelle: 7255
+      maerkte: 12
+      arme:
+        E10.1_beruehrung: >-
+          -0.0205 R, 14.4h gehalten, unter -1R 55.0 %, schlimmster -1.890 R,
+          5%-Quantil -1.075 R, 0 Liquidationen
+        E10.2_schlusskurs: >-
+          -0.0141 R, 15.9h gehalten, unter -1R 50.6 %, schlimmster -6.841 R,
+          5%-Quantil -1.528 R, 8 Liquidationen
+      gepaarte_differenz: "-0.0064 R [-0.0297, +0.0161] -- Null ENTHALTEN"
+      replikation: >-
+        frueher -0.0071 R, spaeter +0.0038 R, Verhaeltnis -0.54x --
+        AUSSERHALB 0.5-2.0, Vorzeichenwechsel. BEIDE Tore verfehlt.
+      der_rand_ist_der_befund: >-
+        Der Mittelwert sieht minimal besser aus und das Intervall sagt, dass
+        das nichts ist. Bezahlt wird es mit dem 3.6-fachen schlimmsten
+        Einzelverlust: -6.841 gegen -1.890 R. Bei 1 % Risiko je Trade ist das
+        ein Konto-Einschlag von 6.8 % aus EINEM Trade -- mehr als die harte
+        3-%-Grenze zulaesst. Haette nur der Mittelwert im Bericht gestanden,
+        waeren +0.0064 R eine Verbesserung gewesen.
+      ausloeser: >-
+        Eine Zeile im Papierprotokoll. post_mortem.stopped_by_wick zaehlt 967
+        von 2.749 Trades: 35.2 % aller Trades, 51.9 % aller Stops. Die
+        groesste Population des Projekts, die nie als eigene Politik geprueft
+        war -- E3 prueft Politiken, study_widen_stop.py die Weite, keiner den
+        AUSLOESER.
+      was_nicht_gilt: >-
+        "Ohne die Docht-Stops waere das System +0.4151 R je Trade." Diese
+        Zahl steht im Bericht nur als Warnung. Man darf die Verlierer nicht
+        entfernen und den Rest behalten -- ein anderer Ausloeser verschiebt
+        den Pfad ALLER Trades, auch der 2.256 mit erreichtem Ziel.
+      bestehende_politik: >-
+        Zum zweiten Mal nach E3 ist die bestehende Politik messbar besser als
+        die Alternative. Es ist die Richtung, die ein Mensch beim Lesen der
+        Nachbetrachtungen zuerst vorschlagen wuerde, weil 35.2 % gross aussieht.
+    frage: >-
+      Das Journal zaehlt selbst, wie oft ein Stop von einem Docht geholt wird,
+      dessen Kerze wieder auf der richtigen Seite schliesst: `stopped_by_wick`.
+      Gemessen ueber 2.749 Trades sind das **967, also 35.2 % ALLER Trades und
+      51.9 % aller Stops**. Das ist die groesste einzelne Population, die in
+      diesem Projekt noch nie als eigene Politik geprueft wurde.
+    warum_das_neu_ist: >-
+      E3 hat Ausgangs-POLITIKEN geprueft (24h-Uhr, 2.0-ATR-Trail) und
+      study_widen_stop.py die WEITE des Stops. Beide lassen den AUSLOESER
+      unangetastet: der Stop greift bei Beruehrung. Ein schlusskurs-
+      bestaetigter Stop laesst den Stop, wo er ist, und verlangt eine
+      Bestaetigung. Das ist eine dritte Sache und steht in keinem der 49
+      bisherigen Vergleiche.
+    arme:
+      E10.1: "Basis, unveraendert: Stop bei Beruehrung, Ziel bei Beruehrung"
+      E10.2: >-
+        Stop nur, wenn eine Signalkerze (M15) JENSEITS des Stops SCHLIESST.
+        Ziel unveraendert bei Beruehrung.
+    methode: "Gepaart auf identischen Einstiegen, wie E3. Differenz je Trade."
+    metrik: "Gepaarte Differenz des net_r, mit Block-Bootstrap-Intervall"
+    comparisons: 1
+    zwei_sicherungen_die_ein_naiver_test_vergisst:
+      - >-
+        LIQUIDATION GREIFT WEITER BEI BERUEHRUNG. Die Boerse wartet auf keinen
+        Schlusskurs. Ohne das waere der Arm eine Fiktion, in der man Verluste
+        aussitzt, die ein echtes Konto nicht aussitzen kann -- und der Hebel
+        ist so gesetzt, dass die Liquidation nur 2.5 Stop-Abstaende hinter dem
+        Stop liegt.
+      - >-
+        DIE VERLUSTVERTEILUNG WIRD BERICHTET, NICHT NUR DER MITTELWERT. Ein
+        Stop, der auf einen Schlusskurs wartet, kann mehr als 1R verlieren.
+        Der Anteil der Trades unter -1R, der schlimmste Einzelverlust und die
+        Zahl der Liquidationen gehoeren in den Bericht, sonst ist ein besserer
+        Mittelwert eine Taeuschung ueber den Rand der Verteilung.
+    tore:
+      - "Korrigiertes Intervall ohne Null, Niveau 0.05/50"
+      - "Replikation 0.5-2.0x zwischen Entwicklungs- und Bestaetigungsfenster"
+    vorab_festgelegt:
+      - >-
+        Ein besserer Mittelwert bei gleichzeitig schwererem linken Rand ist
+        KEIN positives Ergebnis. Beides wird berichtet, und die Entscheidung
+        darueber gehoert dem Nutzer, nicht dem Skript.
+      - >-
+        Dieser Arm aendert die Bedeutung von `risk_amount`: der geplante
+        Verlust ist nicht mehr der tatsaechliche Hoechstverlust. Das beruehrt
+        die harte 3-%-Grenze und laeuft deshalb AUSSCHLIESSLICH im Simulator,
+        als Stressszenario -- nicht als Vorschlag fuer die Risk Engine.
+      - >-
+        Die 35.2 % sind eine Haeufigkeit, kein Ertrag. Die Rechnung "ohne die
+        Docht-Stops waere das System +0.4151 R je Trade" steht im Journal und
+        ist BEDEUTUNGSLOS: man darf die Verlierer nicht entfernen und den Rest
+        behalten. Nur ein neu simulierter Pfad entscheidet.
 
 # ---------------------------------------------------------------------------
 

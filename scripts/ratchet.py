@@ -370,6 +370,39 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "Die 2.0 ATR standen vorab fest und wurden nicht nachjustiert.",
     ),
     (
+        "Stop-Ausloeser: Beruehrung gegen Schluss (E10)",
+        "erledigt",
+        "E10, angemeldet am 09.10.2026 VOR dem ersten Lauf; total_comparisons 49 "
+        "-> 50. Ausloeser war EINE ZEILE im Protokoll des laufenden Papierhandels: "
+        "'Stop von einem Docht geholt; die Kerze schloss wieder auf der richtigen "
+        "Seite.' Das Journal zaehlt das selbst -- post_mortem.stopped_by_wick -- und "
+        "es sind 967 von 2.749 Trades: 35.2 % ALLER Trades, 51.9 % aller Stops. Die "
+        "groesste Population des Projekts, die nie als eigene Politik geprueft war: "
+        "E3 prueft Ausgangs-POLITIKEN, study_widen_stop.py die WEITE, keiner den "
+        "AUSLOESER. "
+        "WAS NICHT GILT und darum im Bericht steht: 'ohne die Docht-Stops waere das "
+        "System +0.4151 R je Trade statt -0.0865'. Man darf die Verlierer nicht "
+        "entfernen und den Rest behalten -- ein anderer Ausloeser verschiebt den Pfad "
+        "ALLER Trades, auch der 2.256 mit erreichtem Ziel. "
+        "7.255 gepaarte Faelle auf identischen Einstiegen, 12 Maerkte, dieselbe "
+        "Population wie E3. Beruehrung -0.0205 R gegen Schlusskurs -0.0141 R, gepaart "
+        "-0.0064 R [-0.0297, +0.0161] -- NULL ENTHALTEN, Punktschaetzer negativ. Tor 2 "
+        "ebenfalls verfehlt: frueher -0.0071, spaeter +0.0038, Verhaeltnis -0.54x, "
+        "Vorzeichenwechsel. "
+        "UND DER RAND IST DER EIGENTLICHE BEFUND, weil er vorab anzumelden war: der "
+        "schlimmste Einzelverlust waechst von -1.890 auf -6.841 R, das 3.6-fache. Bei "
+        "1 % Risiko je Trade ist das ein Konto-Einschlag von 6.8 % aus EINEM Trade -- "
+        "mehr als die harte 3-%-Grenze ueberhaupt zulaesst. Dazu 8 Liquidationen gegen "
+        "0 in der Basis. Haette nur der Mittelwert im Bericht gestanden, waeren die "
+        "+0.0064 R eine Verbesserung gewesen. "
+        "ZWEITE SICHERUNG, die ein naiver Test vergisst: Liquidation greift in BEIDEN "
+        "Armen bei Beruehrung. Die Boerse wartet auf keinen Schlusskurs, und der Hebel "
+        "laesst nur 2.5 Stop-Abstaende Luft. "
+        "Damit ist die bestehende Politik zum zweiten Mal nach E3 messbar besser als "
+        "die Alternative -- und es ist die Richtung, die ein Mensch beim Lesen der "
+        "Nachbetrachtungen zuerst vorschlagen wuerde.",
+    ),
+    (
         "Alpha oder Beta (E8)",
         "erledigt",
         "E8, angemeldet am 08.10.2026 VOR dem ersten Lauf; total_comparisons 46 -> "
