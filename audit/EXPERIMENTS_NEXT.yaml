@@ -611,6 +611,18 @@ experiments:
   - id: E8
     title: "Alpha oder Beta: traegt die Richtungswahl, oder traegt der Markt?"
     priority: 1
+    arms:
+      - id: E8.1
+        name: "Zerlegung ueber alle Journal-Trades, Benchmark BTCUSDT"
+        role: "Hauptzelle"
+      - id: E8.2
+        name: "Dieselbe Zerlegung nur ueber die Live-Trades (vorwaerts)"
+    acceptance: >-
+      Achsenabschnitt `a` mit korrigiertem Intervall ohne Null UND Replikation
+      0.5-2.0x. Ein positives `b` bei einem `a`, dessen Intervall die Null
+      enthaelt, ist ausdruecklich ein NEGATIVES Ergebnis: das System ist dann
+      eine gehebelte Marktposition ohne eigenen Beitrag. Ein negatives `a`
+      wird genauso berichtet wie ein positives.
     status: erledigt_negativ
     angelegt: 2026-10-08
     result:
@@ -688,6 +700,19 @@ experiments:
   - id: E9
     title: "Ist unsere Fuell-Annahme realistisch? Gegen das echte Buch gemessen"
     priority: 1
+    arms:
+      - id: E9.1
+        name: "Unsere Regel: gefuellt, wenn der Preis STRENG durch das Level handelt"
+        role: "zu pruefende Regel"
+      - id: E9.2
+        name: "Der belegte Ausgang aus dem Tape, per Id-Join (order_id gegen ask_id/bid_id)"
+        role: "Wahrheit, kein Modell"
+    acceptance: >-
+      Falschfuell-Rate mit Intervall, berichtet als OBERGRENZE: das Buch wird
+      alle 30s abgetastet, also sind langlebige Orders ueberrepraesentiert und
+      die Verzerrung geht nach oben. Eine hohe Rate ist ein Befund GEGEN den
+      eigenen Simulator und wird genauso berichtet wie eine niedrige. Kein
+      Umbau des Simulators aufgrund dieser Zahl ohne Zustimmung des Nutzers.
     status: erledigt_positiv_fuer_den_simulator
     angelegt: 2026-10-08
     result:
@@ -775,6 +800,19 @@ experiments:
   - id: E10
     title: "Der Stop-AUSLOESER: Beruehrung gegen Schlusskurs"
     priority: 1
+    arms:
+      - id: E10.1
+        name: "Stop bei Beruehrung (bestehende Politik)"
+        role: "Basis"
+      - id: E10.2
+        name: "Stop nur, wenn eine Signalkerze jenseits des Stops SCHLIESST"
+    acceptance: >-
+      Gepaarte Differenz mit korrigiertem Intervall ohne Null UND Replikation
+      0.5-2.0x. Zusaetzlich zwingend: der linke Rand der Verteilung (Anteil
+      unter -1R, schlimmster Einzelverlust, Quantil, Zahl der Liquidationen).
+      Ein besserer Mittelwert bei schwererem Rand ist KEIN positives Ergebnis.
+      Liquidation greift in beiden Armen bei Beruehrung -- die Boerse wartet
+      auf keinen Schlusskurs.
     status: erledigt_negativ
     angelegt: 2026-10-09
     result:

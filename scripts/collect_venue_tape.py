@@ -55,6 +55,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from traidingbrain.storage.singleton import AlreadyRunningError, SingleInstance
+
 BASE = "https://mainnet.zklighter.elliot.ai/api/v1"
 MARKETS_PATH = f"{BASE}/orderBooks"
 TRADES_PATH = BASE + "/recentTrades?market_id={market_id}&limit=100"
@@ -464,5 +466,15 @@ def main() -> int:
     return 0
 
 
+def guarded() -> int:
+    """Eine Aufnahme je Rolle. Zwei verdoppeln die Anfragerate."""
+    try:
+        with SingleInstance('venue_tape', directory=ROOT / "data"):
+            return main()
+    except AlreadyRunningError as refusal:
+        print(f"Start abgelehnt: {refusal}", file=sys.stderr, flush=True)
+        return 2
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(guarded())

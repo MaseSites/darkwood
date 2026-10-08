@@ -46,6 +46,7 @@ from traidingbrain.journal.signals import SignalStore
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.journal.version import run_signature
 from traidingbrain.live.paper import POLL_SECONDS, QUOTE, PaperTrader, state_path
+from traidingbrain.storage.singleton import AlreadyRunningError, SingleInstance
 
 #: Damit das Alter eines Fehlschlags in Stunden statt in 300 Minuten steht.
 MINUTES_PER_HOUR = 60.0
@@ -434,7 +435,26 @@ def main() -> int:
                 print(f"  {trader.symbol}: nichts offen")
         return 0
 
-    return run(traders, source, cycles=args.cycles)
+    # Ein Händler je Datenverzeichnis, vom Betriebssystem erzwungen.
+    #
+    # Am 07.10.2026 liefen zwei davon gleichzeitig. Sie verdoppelten die
+    # Anfragerate gegen dieselbe IP, liefen ins Rate-Limit und erzeugten 58
+    # fehlgeschlagene Zyklen -- und keiner von beiden merkte etwas, weil ein
+    # fehlgeschlagener Zyklus für sich normal aussieht. Die Sperre sitzt hier
+    # und nicht am Anfang von `main`, damit `--status`, `--reset` und
+    # `--close-out` neben einem laufenden Händler weiter benutzbar bleiben.
+    try:
+        with SingleInstance("papertrade", directory=config.engine.paths.data_dir):
+            return run(traders, source, cycles=args.cycles)
+    except AlreadyRunningError as refusal:
+        print(f"\nStart abgelehnt: {refusal}", file=sys.stderr, flush=True)
+        print(
+            "  Ein zweiter Händler würde die Anfragerate verdoppeln und beide\n"
+            "  ins Rate-Limit treiben. Beende zuerst den laufenden.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 2
 
 
 if __name__ == "__main__":

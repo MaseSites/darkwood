@@ -1,0 +1,175 @@
+# Phase 1 — Datenintegrität und Betriebsfehler
+
+**Lauf:** 08.10.2026, 22:34–22:50 UTC · **Commit vor der Arbeit:** `6074abe`
+**Prüfung bezieht sich auf:** P15–P20 und P40–P45 des `PROBLEMBERICHT_20X.md`
+
+Jede Zeile unten trennt **gemessen**, **Annahme** und **offen**.
+
+---
+
+## 1. OHLCV: erwartete gegen tatsächliche Kerzen
+
+Geprüft: 72 Reihen (12 Märkte × 6 Zeitebenen), rund 45 Millionen Kerzen.
+Erwartet wurde `(letzter − erster) / Schrittweite + 1` je Reihe.
+
+### Gemessen
+
+| | |
+|---|---|
+| **Duplikate** über alle 72 Reihen | **0** |
+| **Nicht-monotone Zeitstempel** | **0** |
+| Fehlende Kerzen insgesamt | **1 830** |
+| **Alle 12 M1-Reihen** | **0 fehlend** |
+
+Die Lücken sitzen fast ausschliesslich in M15, und sie sind klein:
+
+| Reihe | fehlen | Anteil | Lücken |
+|---|---|---|---|
+| SOL / ETH / XRP M15 | je 251 | 0,14 % | je 8 |
+| ADA / ATOM / AVAX / BNB / DOGE / DOT / LINK / LTC M15 | je ~132 | 0,06 % | je 6 |
+| BTC M15 | 14 | 0,01 % | 1 |
+| BTC / ETH / SOL / XRP H1 | je 2 | 0,00 % | je 1 |
+
+Das BTC-M15-Loch ist der Rest des Nachladens vom 08.10.: von acht Lücken
+blieb eine mit 14 Kerzen, und die liegt **vor** dem nachgeladenen Fenster
+(30.09.).
+
+**Befund:** Die Behauptung „historische Datenlücken" aus P15–P20 trifft zu,
+aber die Grössenordnung ist 0,004 % des Bestands, und die Zeitebene, auf der
+alle Ausgänge aufgelöst werden (M1), ist lückenlos.
+
+## 2. Das M1-Archiv ist alt — und was das wirklich kostet
+
+### Gemessen
+
+| Markt | M1 endet | M15 endet | Rückstand |
+|---|---|---|---|
+| BTC, ETH, SOL, XRP | 01.10. 13:57 UTC | 08.10. 22:15 UTC | **176,3 h** |
+| ADA, AVAX, LINK | 03.10. 16:20–17:28 | 08.10. 22:15 | 124,8–125,9 h |
+| ATOM, BNB, DOGE, DOT, LTC | 04.10. 08:54–11:47 | 08.10. 22:15 | 106,5–109,3 h |
+
+### Und das ist Absicht, nicht ein Fehler
+
+Im Code dokumentiert (`live/paper.py`): der Papierhändler **holt** M1 jeden
+Zyklus (240 Minuten) und löst damit **im Speicher** die offene Position auf —
+er archiviert es bewusst nicht, weil die M1-Tabelle 2,6 Millionen Zeilen je
+Symbol hat und jeder Schreibvorgang eine ganze Jahrespartition neu validiert.
+*„The collector and the sync keep that table; this one borrows from it."*
+
+Die Zusage im Modul-Docstring, der Vorwärtshandel löse „minute by minute,
+exactly as in the backtests" auf, ist damit **zutreffend**. Ich hatte sie
+zuerst für falsch gehalten; die Prüfung hat das widerlegt.
+
+### Die Konsequenz, gemessen statt vermutet
+
+Ich hatte vermutet, das alte M1-Archiv verhungere das Replikationsfenster
+neuer Studien. Gemessen:
+
+> **7 von 7 340 genommenen Signalen (0,1 %)** liegen hinter dem Ende des
+> M1-Archivs und sind deshalb nicht nachsimulierbar.
+
+Die Vermutung ist widerlegt. Dass E10 im späteren Fenster nur 496 von 7 255
+Paaren hatte, liegt an der Verteilung des Signalspeichers selbst, nicht am
+M1-Rückstand.
+
+**Offen:** Niemand aktualisiert das M1-Archiv automatisch. Solange nur 0,1 %
+betroffen sind, ist das kein Blocker; sobald eine Studie das jüngste Fenster
+braucht, ist es einer.
+
+## 3. Journal: sechs Konsistenzprüfungen
+
+Siehe `audit/BASELINE_REPRODUCTION.md` §2.2. Zusammengefasst: **0 Duplikate,
+0 verdrehte Zeitstempel, 0 Arithmetikfehler** in 2 749 Trades. Gebühren und
+Funding sind getrennt gespeichert und vorzeichenrichtig verbucht.
+
+**Bisher unerwähnt und hiermit erwähnt:** 1 Liquidation und 2 manuelle
+Schliessungen im Journal. Keine Audit-Datei nennt sie.
+
+## 4. P44 behoben: ein Prozess je Rolle, vom Betriebssystem erzwungen
+
+### Was gebaut wurde
+
+`src/traidingbrain/storage/singleton.py` — eine Sperrdatei mit exklusiver
+Betriebssystem-Sperre: `msvcrt.locking` unter Windows, `fcntl.flock` sonst.
+Verdrahtet in `scripts/papertrade.py` (Rolle `papertrade`),
+`scripts/collect_venue_tape.py` (`venue_tape`) und
+`scripts/collect_binance_tape.py` (`binance_tape`).
+
+Der entscheidende Grund für eine Betriebssystem-Sperre statt einer PID-Datei:
+**das Betriebssystem gibt beim Prozessende von sich aus frei** — auch bei
+Absturz oder Kill. Es gibt keine verwaiste Sperre, die ein späterer Start
+erst als veraltet erkennen müsste, und genau diese Erkennung ist die Stelle,
+an der selbstgebaute Locks falsch werden.
+
+### Gemessen, Ende zu Ende
+
+```
+Prozess A hält die Sperre.
+Prozess B: python scripts/papertrade.py --cycles 1
+  -> "Start abgelehnt: papertrade laeuft bereits
+      (pid=38736 seit=2026-10-08 22:47:21 UTC)."
+  -> Rückgabewert 2
+```
+
+Der Rückgabewert wurde **ohne** `| tail` geprüft; eine Pipe verschluckt ihn,
+und das steht als Falle in den Projektnotizen.
+
+### Zwei Dinge, die der Test gefunden hat
+
+**`msvcrt.locking` ist eine *mandatory* Sperre.** Solange sie gehalten wird,
+verweigert Windows jedem anderen Handle sogar das **Lesen** des gesperrten
+Bereichs — auch demselben Prozess. Eine Sperre bei Versatz 0 hätte damit genau
+die Diagnose unlesbar gemacht, die sie erklären soll: `holder()` hätte
+„unbekannt" gemeldet, während alles in Ordnung war. Gelöst durch eine Sperre
+bei Versatz 4096, hinter dem Dateiende, mit kurzem Text davor. `fcntl.flock`
+ist dagegen beratend und lässt Lesen zu.
+
+**Mein erster Test war grün aus dem falschen Grund.** Er tötete `child.pid` —
+und das venv-`python.exe` ist unter Windows ein Starter, der den eigentlichen
+Interpreter als weiteren Prozess startet. Gemessen: `child.pid` 16040, Halter
+der Sperre 9772. Der Kill traf den Starter, dessen stdin-Pipe sich schloss,
+worauf der echte Halter auf EOF in sein `release()` lief und sich **ordentlich**
+beendete. Der Test hätte die Freigabe durch das Betriebssystem nie geprüft.
+Jetzt meldet das Kind seine eigene PID und die wird getötet. *Dieselbe Falle
+hat in diesem Projekt schon einmal „vier Prozesse = zwei Händler" ergeben.*
+
+### Tests
+
+`tests/test_singleton.py`, **7 Tests, alle grün**: Erwerb mit PID-Vermerk,
+zweiter Erwerb im selben Prozess, verschiedene Rollen kollidieren nicht,
+Freigabe und Wiedererwerb, **echter zweiter Prozess**, **hart getöteter
+Halter**, und: eine abgelehnte Übernahme darf die Diagnose des Halters nicht
+leeren.
+
+### Offen — eine Lücke im Übergang
+
+Der **laufende** Papierhändler wurde vor dem Lock gestartet und hält ihn
+nicht. Die Garantie gilt ab seinem nächsten Start. Gemessen: ein Zweitstart
+lief einen Zyklus mit, bevor der Lock verdrahtet war.
+
+## 5. Funding-Fehlmeldungen beim Start — geprüft, ohne Folge
+
+Zwölf Zeilen „Funding nicht abrufbar" im Papierprotokoll, alle beim Start um
+~16:16 UTC, als beide Tape-Collectoren dieselbe IP sättigten.
+
+**Gemessen:** der Funding-Bestand steht für alle Märkte auf **08.10. 16:00
+UTC**, der letzten Abrechnung (Binance siedelt 00:00/08:00/16:00 ab). Die
+nächste war zum Prüfzeitpunkt noch nicht fällig. Bei Fehlschlag liest der
+Händler den gespeicherten Bestand weiter, und `top_up_funding` läuft **alle 20
+Zyklen** im Hauptlauf. **Es fehlt kein Funding.**
+
+## 6. Was in Phase 1 **nicht** erledigt ist
+
+| Auftragspunkt | Stand |
+|---|---|
+| Rohereignisse mit Event- und Empfangszeit | **offen** — die Tape-Collectoren speichern `received_ms`, aber es gibt keinen WebSocket-Collector mit Sequenzkontrolle |
+| Reconnect, Heartbeat, Backoff mit Jitter | **offen** — Polling mit Wiederholung, kein Streaming |
+| Stale-Data-Erkennung sperrt abgeleitete Signale | **offen** — Stillstand wird gemeldet (`! STILLSTAND` nach 5 min), aber kein Signal wird daraufhin gesperrt |
+| Zentrales Rate-Limit-Handling | **offen** — jeder Prozess begrenzt sich selbst; der Lock verhindert jetzt den schlimmsten Fall |
+| Fehlerfall-Tests (DNS, Sequenzlücke, doppelte Nachricht, …) | **teilweise** — nur die Lock-Fälle sind getestet |
+| Absichtlich eingeführter Fehler ⇒ klarer ungültiger Status | **nicht erfüllt** — das Abnahmekriterium von Phase 1 ist damit **nicht** erreicht |
+
+**Ehrliche Einordnung:** Von Phase 1 sind der Datenintegritäts-Report und P44
+erledigt. Die Streaming-Anforderungen (Punkte 3–5 und 10 des Auftrags) gehören
+zum Collector aus Phase 3 und sind ohne ihn nicht erfüllbar. Das Phase-1-
+Abnahmekriterium ist deshalb **offen**, und nicht als bestanden darzustellen.
