@@ -74,6 +74,10 @@ MAX_LAG = 10
 #: Unter so vielen gemeinsamen Zellen wird nichts geschätzt.
 MIN_CELLS = 300
 
+#: Unter diesem Anteil belegter Zellen gilt die Spanne als loechrig und
+#: wird als solche gemeldet.
+HOLE_SHARE = 0.9
+
 
 @dataclass(frozen=True, slots=True)
 class PricePath:
@@ -167,9 +171,26 @@ def one_pair(symbol: str, binance: str, *, grid_ms: int) -> None:
         print(f"  {symbol:5s} nur {grid.size} gemeinsame Zellen -- unter {MIN_CELLS}")
         return
 
+    # Spanne UND Abdeckung, nie nur die Spanne.
+    #
+    # Die Aufnahme lief in der Nacht vom 07./08.10. eine Stunde, fiel aus und
+    # wurde am Morgen neu gestartet. Beide Fenster liegen in denselben
+    # Verzeichnissen, also haette "ueber 13.9h" dagestanden, wo 1.7h Daten
+    # sind. Eine Spanne ohne ihre Abdeckung ist eine Einladung, ein Loch fuer
+    # eine Messung zu halten.
     span = (grid[-1] - grid[0]) * grid_ms / 3_600_000
+    covered = grid.size * grid_ms / 3_600_000
     print(f"\n{symbol} gegen {binance}  --  {grid.size:,} gemeinsame "
-          f"{grid_ms / 1000:.0f}s-Zellen ueber {span:.2f}h")
+          f"{grid_ms / 1000:.0f}s-Zellen")
+    print(f"  Spanne {span:.2f}h, davon belegt {covered:.2f}h "
+          f"({100 * covered / max(1e-9, span):.1f} %)")
+    if covered < HOLE_SHARE * span:
+        blocks = int(np.sum(np.diff(grid) > 1)) + 1
+        print(
+            f"  ! Die Zellen liegen in {blocks} getrennten Bloecken. Alles unten\n"
+            f"    rechnet nur ueber belegte Zellen, aber die Spanne oben ist\n"
+            f"    KEINE Aufnahmedauer."
+        )
     print(f"  Trades: Venue {v_stamps.size:,}  Binance {b_stamps.size:,} "
           f"(aggregiert, nicht vergleichbar)")
 

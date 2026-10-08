@@ -49,11 +49,12 @@ from traidingbrain.domain.protocols import Clock, DataSource
 from traidingbrain.journal.build import reason_at
 from traidingbrain.journal.postmortem import examine
 from traidingbrain.journal.record import JournalEntry, Source, TradeReason
+from traidingbrain.journal.signals import Action, SignalRecord, SignalStore
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.live.paperstate import PaperState, PaperStateStore, Tally
 from traidingbrain.sim.broker import Fill, OpenPosition, SimBroker
 from traidingbrain.sim.engine import AnalysisStrategy
-from traidingbrain.sim.plan import plan_entry
+from traidingbrain.sim.plan import Assessment, assess, setup_label
 from traidingbrain.strategies.guide import GuidePool
 
 #: Bars refetched per timeframe each cycle.
@@ -199,6 +200,8 @@ class PaperTrader:
         clock: Clock,
         funding: list[FundingRate] | None = None,
         strategy: AnalysisStrategy | None = None,
+        signals: SignalStore | None = None,
+        run_signature: str = "",
     ) -> None:
         self.symbol = symbol
         self.config = config
@@ -209,6 +212,10 @@ class PaperTrader:
         self.spec = spec
         self.clock = clock
         self.strategy = strategy or GuidePool.for_config(config)
+        # Optional, damit jeder bestehende Aufruf unveraendert weiterlaeuft.
+        # Ohne Speicher wird nichts aufgezeichnet und nichts bricht.
+        self.signals = signals
+        self.run_signature = run_signature
         self.stats = PaperStats()
 
         self.broker = SimBroker(spec, config.engine.simulation, funding)
@@ -550,7 +557,20 @@ class PaperTrader:
 
         signal_ms = timeframe_ms(self.config.engine.timeframes.signal)
         created = decision_time_ms(bar_ts, self.config.engine.timeframes.signal)
-        entry = plan_entry(
+        # `assess` statt `plan_entry`: dieselbe Rechnung, aber mit dem Urteil
+        # daneben statt nur der Order.
+        #
+        # Bis zum 08.10.2026 warf der Papierhaendler das Urteil weg und
+        # behielt nur die Order. Folge: `signals.sqlite` enthielt 67'786
+        # Replay-Signale und **null** Live-Signale. Das Projekt misst
+        # abgelehnte Signale im Replay ausgiebig (study_refused.py, zwoelf
+        # Maerkte, 34'699 Ablehnungen) und hatte vom LAUFENDEN System keinen
+        # einzigen -- weder was es erwogen noch was es verworfen hat.
+        #
+        # Das blockierte auch E0 Punkt 3: "Teste Signale, die auf der
+        # bisherigen Venue ENTSTEHEN, mit einer Ausfuehrung auf der neuen"
+        # braucht Signale aus dem Aufnahmefenster, und die gab es nicht.
+        verdict = assess(
             intent,
             None,
             symbol=self.symbol,
@@ -560,6 +580,8 @@ class PaperTrader:
             created_ts=created,
             expires_ts=created + self.config.engine.simulation.entry_expiry_bars * signal_ms,
         )
+        entry = verdict.entry
+        self._record_signal(intent, verdict, decided_ts=created)
         if entry is None or not self.broker.submit(entry):
             self.stats.tally.refused_by_risk += 1
             return
@@ -647,6 +669,50 @@ class PaperTrader:
         )
         self.journal.record([entry])
         return entry
+
+    def _record_signal(
+        self, intent: object, verdict: Assessment, *, decided_ts: int
+    ) -> None:
+        """Jedes erwogene Signal aufschreiben, genommen wie abgelehnt.
+
+        Spiegelt `sim/engine.py:586` -- dieselben Felder, dieselbe Bedeutung,
+        nur `source=LIVE`. Dass die beiden sich gleichen, ist der Punkt: eine
+        Live-Zeile und eine Replay-Zeile muessen dieselbe Frage beantworten
+        koennen, sonst ist der Vergleich der beiden Populationen keiner.
+
+        Ein Fehler beim Schreiben darf den Handel nicht anhalten. Die
+        Aufzeichnung ist Beobachtung, nicht Betrieb -- wer die Reihenfolge
+        umdreht, hat einen Haendler, den sein Notizbuch stoppen kann.
+        """
+        if self.signals is None:
+            return
+        try:
+            self.signals.record((
+                SignalRecord(
+                    signal_id=f"{self.symbol}-{decided_ts}-{setup_label(intent)}",
+                    run_signature=self.run_signature,
+                    decided_ts=decided_ts,
+                    symbol=self.symbol,
+                    source=Source.LIVE,
+                    action=Action.TAKEN if verdict.entry is not None else Action.REFUSED,
+                    refused_by=verdict.refused_by,
+                    detail=verdict.detail,
+                    setup_key=setup_label(intent),
+                    setup_timeframe="",
+                    signal_timeframe=self.config.engine.timeframes.signal.value,
+                    side=intent.side,  # type: ignore[attr-defined]
+                    entry=intent.entry,  # type: ignore[attr-defined]
+                    stop=intent.stop,  # type: ignore[attr-defined]
+                    target=intent.target,  # type: ignore[attr-defined]
+                    reward_risk=verdict.reward_risk,
+                    cost_fraction=verdict.cost_fraction,
+                    risk_amount=verdict.risk_amount,
+                    qty=verdict.qty,
+                    leverage=verdict.leverage,
+                ),
+            ))
+        except Exception as problem:
+            self.stats.errors.append(f"Signal nicht aufgezeichnet: {problem}")
 
     def _announce_fill(self, position: OpenPosition) -> None:
         """Was wirklich in den Trade gegangen ist, zum echten Fill-Preis.

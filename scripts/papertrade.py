@@ -42,7 +42,9 @@ from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
 from traidingbrain.journal.record import JournalEntry, Source
+from traidingbrain.journal.signals import SignalStore
 from traidingbrain.journal.store import JournalStore
+from traidingbrain.journal.version import run_signature
 from traidingbrain.live.paper import POLL_SECONDS, QUOTE, PaperTrader, state_path
 
 #: Damit das Alter eines Fehlschlags in Stunden statt in 300 Minuten steht.
@@ -82,6 +84,10 @@ def build_traders(
     journal = JournalStore(config.engine.paths.data_dir / JOURNAL_NAME)
     funding_store = FundingStore(config.engine.paths.funding_dir)
     clock = SystemClock()
+    # Derselbe Speicher und dieselbe Signatur wie im Replay, damit eine
+    # Live-Zeile und eine Replay-Zeile dieselbe Frage beantworten koennen.
+    signal_store = SignalStore(config.engine.paths.data_dir / "signals.sqlite")
+    signature = run_signature(config)
 
     source: MarketData | None = None
     if not offline:
@@ -107,6 +113,10 @@ def build_traders(
                 spec=spec,
                 clock=clock,
                 funding=funding_store.read(symbol),
+                # Damit das laufende System aufschreibt, was es erwaegt und
+                # ablehnt -- bis zum 08.10.2026 gab es davon keine Zeile.
+                signals=signal_store,
+                run_signature=signature,
             )
         )
     return traders, source
