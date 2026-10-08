@@ -1295,7 +1295,22 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
     arbeitet: 31,1 % der Trades verlassen darüber, und beide Alternativen nehmen diese Tür
     weg. **Erstmals in diesem Projekt ist etwas, das das System schon tut, gegen eine
     benannte Alternative verteidigt** statt nur nicht widerlegt.
-16. **[FAKT]** Und der unbequeme Teil bleibt unverkleinert: **nichts davon ist ein Vorteil.**
+16. **[GEMESSEN 08.10.2026]** **Der erste Befund, der beide Tore passiert** — und er ist
+    kein Ertrag (`audit/TAPE_MAKER_BEFUND.md`). Auf 67 037 beobachteten Buch-Orders der
+    neuen Venue: **8,3 % belegt gefüllt, 91,4 % belegt storniert.** Der Markout auf belegten
+    Fills ist bei allen vier Horizonten **zugunsten des Makers** (1 s: −0,195 bp
+    [−0,226; −0,162] auf 5 200 Fills), und er **repliziert** über zwei getrennte Fenster mit
+    **1,18×** — im Band 0,5–2,0. E6 passierte das erste Tor und fiel am zweiten; dies
+    passiert beide.
+    **Und trotzdem kein Ertrag**, aus vier Gründen, deren erster alles bestimmt: gemessen
+    sind **die Orders anderer Leute**. Ihre günstigen Fills spiegeln ihre
+    Warteschlangenposition, ihre Storno-Logik, ihre Latenz — adverse Selektion sagt, dass
+    ein langsamer Teilnehmer genau dann gefüllt wird, wenn es schlecht für ihn ist. Dazu die
+    Grössenordnung: 0,195 bp sind auf einer 200-CHF-Position **0,0039 CHF je Fill**, also
+    bräuchte das Ziel **757 000 Fills** und neun Millionen gestellte Orders. Was es wert ist,
+    ist eine **Richtung**: auf dieser Venue ist der Taker-Fluss uninformiert genug, dass die
+    Steller im Schnitt gewinnen. Ob ein neuer Teilnehmer davon etwas bekommt, ist offen.
+17. **[FAKT]** Und der unbequeme Teil bleibt unverkleinert: **nichts davon ist ein Vorteil.**
     Zwei Begründungen, mit denen ich Untersuchungen vorzeitig geschlossen hatte, sind
     gefallen — das macht vier Fragen wieder offen und beantwortet keine. Die Charge hat
     gemessen, repariert und zwei eigene Fehler kassiert. Einen Kandidaten hat sie nicht
