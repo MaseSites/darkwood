@@ -51,9 +51,33 @@ TIMEOUT = 20.0
 #: Hoechstes `limit` der API.
 PAGE = 1000
 
-#: Takt. 10.1 Trades/s auf BTC heisst 99s Abdeckung je Seite; 30s laesst
-#: dreifache Reserve, auch wenn die Rate sich verdreifacht.
-EVERY = 30.0
+#: Starttakt. **Und ein Befund daran.** Die erste Fassung stand fest auf 30s,
+#: begruendet mit 10.1 Trades/s auf BTC: `limit=1000` deckt dann 99s, also
+#: dreifache Reserve. Nach neun Stunden am 08.10.2026 meldete der Zaehler
+#: 693,220 gesammelte gegen **1,099,312 verlorene** Trades -- 38.7 % Abdeckung.
+#:
+#: Die Rechnung war nicht falsch, sie war abgelaufen. Der Markt fiel in diesen
+#: Stunden (BTC 84,751 -> 80,991) und handelte 27.7 Trades/s je Symbol, also
+#: 2.7x so viel wie bei der Kalibrierung. `limit=1000` deckt dann 36s, und
+#: gegen einen Takt von 30s ist das 1.20x Reserve -- eine langsame Antwort oder
+#: ein Schub genuegt. **Ein einmal gemessener Takt ist eine Konstante, die
+#: stillschweigend verfaellt.** Darum regelt er sich jetzt selbst.
+EVERY = 15.0
+
+#: Untergrenze. Eine Abfrage mit `limit=1000` kostet Gewicht 20, erlaubt sind
+#: 2400/min je IP. Zwei Maerkte alle 8s sind 300/min -- und diese IP teilt sich
+#: der Papierhaendler, der hier schon einmal ans Limit gelaufen ist, als
+#: versehentlich zwei von ihm liefen.
+FLOOR = 8.0
+
+#: Obergrenze, wenn nichts verloren geht. Kein Grund, schneller zu fragen als
+#: noetig: jede Abfrage ist Gewicht, das der Papierhaendler auch braucht.
+CEILING = 30.0
+
+#: So viele verlustfreie Abfragen hintereinander, bevor der Takt sich wieder
+#: entspannt. Einseitig schnell: halbieren bei einem einzigen Verlust,
+#: verlangsamen erst nach Belegen.
+CALM = 20
 
 #: Neue Datei je Stunde, wie beim Venue-Tape.
 ROTATE_MS = 3_600_000
@@ -88,7 +112,34 @@ class Market:
     errors: int = 0
     last_error: str = ""
     next_poll: float = 0.0
+    #: Der eigene Takt, je Markt. BTC und ETH handeln nicht gleich viel.
+    every: float = EVERY
+    #: Wie oft der Takt verkuerzt wurde, und wie oft die Seite voll war.
+    tightened: int = 0
+    saturated: int = 0
+    _calm: int = 0
     _seen: set[int] = field(default_factory=set)
+
+    def adapt(self, *, lost: bool, full: bool) -> None:
+        """Takt nachziehen.
+
+        Eine Luecke ist der Beleg, dass der Takt zu langsam war. Eine volle
+        Seite ist ein Warnzeichen ohne Beleg: `len(fresh) == PAGE` heisst, dass
+        genau so viele neue Trades da waren, wie die Seite tragen kann -- es
+        koennten mehr gewesen sein, und wir wuessten es nicht. Beides verkuerzt,
+        weil der Beleg hier teuer ist und die Abfrage billig.
+        """
+        if lost or full:
+            self.every = max(FLOOR, self.every / 2)
+            self.tightened += 1
+            self._calm = 0
+            if full:
+                self.saturated += 1
+            return
+        self._calm += 1
+        if self._calm >= CALM:
+            self.every = min(CEILING, self.every * 1.5)
+            self._calm = 0
 
 
 def path_for(symbol: str, received_ms: int) -> Path:
@@ -98,17 +149,24 @@ def path_for(symbol: str, received_ms: int) -> Path:
     return folder / f"trades-{hour}.jsonl"
 
 
-def poll(market: Market) -> None:
+def poll(market: Market) -> tuple[bool, bool]:
+    """Eine Seite holen. Gibt zurueck, ob etwas verloren ging und ob sie voll war."""
     received = int(time.time() * 1000)
     url = f"{BASE}?symbol={market.symbol}&limit={PAGE}"
     with urllib.request.urlopen(url, timeout=TIMEOUT) as answer:
         rows = json.loads(answer.read())
     if not rows:
-        return
+        return False, False
 
     ids = [int(r["a"]) for r in rows]
     oldest, newest = min(ids), max(ids)
     fresh = [r for r in rows if int(r["a"]) > market.high_id]
+
+    # Erst ab der zweiten Abfrage aussagekraeftig: beim ersten Mal ist
+    # `high_id` null, also ist jede Zeile neu und die Seite zwangslaeufig voll.
+    started = market.high_id > 0
+    lost = started and oldest > market.high_id + 1
+    full = started and len(fresh) >= PAGE
 
     if market.high_id and oldest > market.high_id + 1:
         # Echte Zahl, weil `a` pro Symbol fortlaeuft: zwischen der zuletzt
@@ -124,26 +182,45 @@ def poll(market: Market) -> None:
         market.trades += len(fresh)
     market.high_id = max(market.high_id, newest)
     market.polls += 1
+    return lost, full
 
 
 def report(markets: list[Market], *, started: float) -> None:
     ran = (time.time() - started) / 3600
     print(f"\n  Aufgenommen in {ran:.2f}h:")
-    print(f"  {'Markt':10s} {'Abfragen':>9s} {'Trades':>10s} {'verloren':>9s} {'Fehler':>7s}")
-    print("  " + "-" * 50)
+    print(
+        f"  {'Markt':10s} {'Abfragen':>9s} {'Trades':>10s} {'verloren':>11s} "
+        f"{'Abdeckung':>10s} {'Takt':>6s} {'enger':>6s} {'Fehler':>7s}"
+    )
+    print("  " + "-" * 78)
     for m in markets:
-        print(f"  {m.symbol:10s} {m.polls:>9,} {m.trades:>10,} {m.missed:>9,} {m.errors:>7,}")
+        seen = m.trades + m.missed
+        share = 100 * m.trades / seen if seen else 100.0
+        print(
+            f"  {m.symbol:10s} {m.polls:>9,} {m.trades:>10,} {m.missed:>11,} "
+            f"{share:>9.1f}% {m.every:>5.0f}s {m.tightened:>6,} {m.errors:>7,}"
+        )
     lost = sum(m.missed for m in markets)
     got = sum(m.trades for m in markets)
+    rate = (lost + got) / max(1.0, ran * 3600) / max(1, len(markets))
     if lost:
         print(
             f"\n  ! {lost:,} von {lost + got:,} Trades sind durchgefallen "
             f"({100 * lost / max(1, lost + got):.2f}%).\n"
             f"    Das ist hier eine ECHTE Zahl, keine Obergrenze: `a` laeuft pro\n"
-            f"    Symbol, also ist die Luecke zaehlbar."
+            f"    Symbol, also ist die Luecke zaehlbar.\n"
+            f"\n    Gemessene Rate: {rate:.1f} Trades/s je Markt. `limit={PAGE}` deckt\n"
+            f"    damit {PAGE / max(0.1, rate):.0f}s. Wer diese Aufnahme auswertet, zitiert die\n"
+            f"    Abdeckung oben mit -- eine Luecken-Statistik auf einem lueckenhaften\n"
+            f"    Tape ist eine Aussage ueber den Collector, nicht ueber den Markt."
         )
     else:
         print("\n  Keine Luecke: die Aufnahme ist lueckenlos.")
+    print(
+        f"\n  Takt zu Beginn {EVERY:.0f}s, Spanne {FLOOR:.0f}-{CEILING:.0f}s, "
+        f"{sum(m.tightened for m in markets):,}x verkuerzt "
+        f"(davon {sum(m.saturated for m in markets):,}x wegen voller Seite)."
+    )
     print(f"\n  Liegt unter {OUT}")
 
 
@@ -160,7 +237,8 @@ def main() -> int:
     print("=" * 74)
     print(
         f"\n  Dauer   {args.hours:.1f}h\n  Ziel    {OUT}\n"
-        f"  Takt    alle {EVERY:.0f}s, limit={PAGE} (deckt ~99s bei 10 Trades/s)\n"
+        f"  Takt    {EVERY:.0f}s zu Beginn, regelt sich selbst in {FLOOR:.0f}-{CEILING:.0f}s\n"
+        f"          (halbiert bei Luecke oder voller Seite, entspannt nach {CALM} sauberen)\n"
         f"  Maerkte {', '.join(m.symbol for m in markets)}\n"
         f"\n  Luecken sind hier als ZAHL messbar: `a` laeuft pro Symbol, nicht\n"
         f"  global wie die trade_id der neuen Venue.\n"
@@ -179,11 +257,12 @@ def main() -> int:
             for market in markets:
                 if now >= market.next_poll:
                     try:
-                        poll(market)
+                        lost, full = poll(market)
+                        market.adapt(lost=lost, full=full)
                     except (urllib.error.URLError, TimeoutError, OSError) as problem:
                         market.errors += 1
                         market.last_error = str(problem)[:120]
-                    market.next_poll = now + EVERY
+                    market.next_poll = now + market.every
             collected = sum(m.trades for m in markets)
             if collected > last_count:
                 last_count, last_progress = collected, now
@@ -200,8 +279,11 @@ def main() -> int:
             if now - last_note >= NOTE_EVERY:
                 done = sum(m.trades for m in markets)
                 lost = sum(m.missed for m in markets)
+                share = 100 * done / max(1, done + lost)
+                takt = "/".join(f"{m.every:.0f}s" for m in markets)
                 print(
-                    f"  [{(now - started) / 3600:5.2f}h] {done:,} Trades, {lost:,} verloren",
+                    f"  [{(now - started) / 3600:5.2f}h] {done:,} Trades, {lost:,} verloren, "
+                    f"{share:.1f}% Abdeckung, Takt {takt}",
                     flush=True,
                 )
                 last_note = now
