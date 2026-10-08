@@ -7,9 +7,14 @@
 Re-running is safe and cheap: it resumes from the newest stored bar, and writing
 the same data twice produces identical files.
 
-Prices come from Bybit's public mainnet endpoint. No credentials are used here and
-no account is touched -- a testnet's history is too thin to backtest against, and
-reading public prices needs no key.
+Prices come from whichever venue `exchange.name` in config/settings.yaml names,
+through its public mainnet endpoint -- today `binance`, so Binance USD-M. The
+line above said "Bybit" long after that stopped being true: this script reads
+the config and always did. A wrong provenance note already blocked a research
+axis in this project for a day, because nobody re-measures a comment.
+
+No credentials are used here and no account is touched -- a testnet's history is
+too thin to backtest against, and reading public prices needs no key.
 """
 
 from __future__ import annotations

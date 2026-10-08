@@ -370,6 +370,43 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "Die 2.0 ATR standen vorab fest und wurden nicht nachjustiert.",
     ),
     (
+        "Alpha oder Beta (E8)",
+        "erledigt",
+        "E8, angemeldet am 08.10.2026 VOR dem ersten Lauf; total_comparisons 46 -> "
+        "48. Ausloeser war die erste positive Vorwaertszahl des Projekts: +0.8023 R "
+        "je Trade auf 14 Live-Trades, in einem Fenster, in dem LINK 13.4%, DOGE "
+        "12.2%, ADA 6.0% und BTC 4.4% fielen. Short verdiente +1.0598 R je Trade, "
+        "long +0.1586 -- beide Seiten gehandelt, verdient nur die zur "
+        "Marktrichtung. "
+        "ZERLEGUNG je Trade, nicht Eimer nach Regime: r_multiple ~ a + b * (seite * "
+        "btc_rendite / stop_anteil), also die Marktbewegung ueber SEIN Haltefenster "
+        "in derselben Einheit wie das Ergebnis. Gegen BTC und nicht gegen das "
+        "eigene Symbol, weil Letzteres fast tautologisch ist. "
+        "MECHANIK GEPRUEFT an einer bekannten Antwort: gegen das eigene Symbol b = "
+        "+0.874 [+0.767, +0.950], nahe 1 wie es sein muss, Rest -0.0505 R = Maut "
+        "plus Pfad. "
+        "ERGEBNIS: 2.748 Trades, b = +0.985 [+0.873, +1.105] -- das Beta ist EINS. "
+        "Der Rest daneben a = -0.0823 R [-0.1414, -0.0119], Intervall ohne Null auf "
+        "48 Vergleiche korrigiert, also ZUVERLAESSIG NEGATIV. Und die 14 "
+        "Live-Trades: b = +1.788, a = +0.0048 R. Der ganze Vorwaertsgewinn ist "
+        "gehebelte Marktrichtung, daneben liegt nichts. "
+        "TOR 2 VERFEHLT: Replikation a -0.0560 gegen -0.1321, Verhaeltnis +2.36x "
+        "ausserhalb 0.5-2.0. Vorzeichen repliziert, Groesse nicht. Das Tor bleibt "
+        "stehen, auch wenn das Ergebnis negativ ist -- belegt ist die ABWESENHEIT "
+        "eines positiven Rests, nicht die Groesse des negativen. "
+        "WAS ES KOSTET: 44 Trades bis zum 30.10. tragen 44 x 0.0823 R ~ 3.6 R, bei "
+        "1% Risiko rund 3.6% des Kontos, nur dafuer, dass eine Marktmeinung durch "
+        "44 Trades statt durch eine Position laeuft. Die einzige Groesse, die dann "
+        "noch zaehlt, ist die Marktrichtung selbst -- und die ordnen 35 Merkmale "
+        "mit Korrelation 0.004. "
+        "ZWEI FEHLER UNTERWEGS, beide korrigiert und beide im Bericht: (1) 'alle 14 "
+        "short' kam aus payload['side'], einem Schluessel, den es nicht gibt -- die "
+        "Seite steht in payload['reason']['side']. (2) Vier Live-Trades fielen "
+        "zuerst aus, weil die BTC-M15-Reihe acht Loecher seit dem 01.10. hatte, und "
+        "DREI DER VIER waren Gewinner. Nachgeladen mit resume=False, sonst springt "
+        "der Zeiger auf die neueste Kerze und die Loecher bleiben.",
+    ),
+    (
         "Carry nach Basis, Maut und Margin (E6)",
         "erledigt",
         "E6.1, und es nimmt dem Projekt die letzte Zahl mit positivem Vorzeichen. "

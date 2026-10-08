@@ -43,10 +43,10 @@ meta:
   # Die Zahl, auf die korrigiert wird. Summe der `comparisons` aller Arme unten
   # plus die bereits gelesenen Zellen der Vorgaenger-Suche, soweit dieselbe
   # Frage betroffen ist.
-  total_comparisons: 46
+  total_comparisons: 48
   correction: >-
-    Bonferroni auf 46 Vergleiche, also Schwelle 0.05/46 = 0.00109 und ein
-    99.891%-Intervall. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
+    Bonferroni auf 48 Vergleiche, also Schwelle 0.05/48 = 0.00104 und ein
+    99.896%-Intervall. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
     angemeldete Sensitivitaet erlaubt, nicht als Ersatz. Sie werden zusaetzlich
     berichtet, nicht anstelle.
 
@@ -608,6 +608,83 @@ experiments:
         beweist aber nicht deren Unmoeglichkeit. News mit historischem Datum
         bevorzugt vorwaerts testen.
 
+  - id: E8
+    title: "Alpha oder Beta: traegt die Richtungswahl, oder traegt der Markt?"
+    priority: 1
+    status: erledigt_negativ
+    angelegt: 2026-10-08
+    result:
+      stand: 2026-10-08
+      bericht: audit/E8_ALPHA_ODER_BETA.md
+      skript: scripts/study_beta_alpha.py
+      mechanik_geprueft: >-
+        Gegen das eigene Symbol b = +0.874 [+0.767, +0.950] -- nahe 1, wie es
+        sein muss. Der Rest dort, -0.0505 R, ist Maut plus Pfad.
+      zellen:
+        E8.1_alle_journal_trades: >-
+          n=2748, a = -0.0823 R [-0.1414, -0.0119] (Null AUS),
+          b = +0.985 [+0.873, +1.105]
+        E8.2_nur_live_vorwaerts: >-
+          n=14, a = +0.0048 R, b = +1.788 -- kein Intervall, wie vorab
+          festgelegt (unter 30 Trades)
+      replikation: >-
+        Entwicklung a = -0.0560, Bestaetigung a = -0.1321, Verhaeltnis +2.36x
+        -- AUSSERHALB 0.5-2.0x. Vorzeichen repliziert, Groesse nicht. Das Tor
+        bleibt stehen: belegt ist die Abwesenheit eines positiven Rests, nicht
+        die Groesse des negativen.
+      befund: >-
+        Das Beta ist eins (Replay) bis 1.79 (Live). Die +0.8023 R des
+        Vorwaertslaufs sind gehebelte Marktrichtung und daneben +0.0048 R,
+        also nichts. Ueber 2748 Trades ist der Rest zuverlaessig negativ.
+        Nach der vorab festgelegten Lesehilfe ist das ein negatives Ergebnis.
+      kosten_der_form: >-
+        44 Trades bis zum 30.10. tragen 44 x 0.0823 R ~ 3.6 R Maut, bei 1 %
+        Risiko also rund 3.6 % des Kontos -- nur dafuer, dass eine
+        Marktmeinung durch 44 Trades statt durch eine Position laeuft.
+    frage: >-
+      Der Vorwaertslauf steht bei +0.8023 R je Trade auf 14 Trades. Alle
+      vierzehn waren Short, und der Markt fiel im selben Fenster um 1.3 bis
+      13.4 %. Zwei Erklaerungen passen gleich gut auf dieselbe Zahl, und sie
+      fuehren zu entgegengesetzten Entscheidungen: entweder waehlt das System
+      die Richtung, oder es war short in einer Abwaertswoche.
+    methode: >-
+      Zerlegung je Trade, nicht Eimer nach Regime. Fuer jeden Trade wird die
+      BTC-Rendite ueber SEIN Haltefenster berechnet, mit dem Vorzeichen der
+      Trade-Seite versehen und durch die Stop-Weite des Trades geteilt -- damit
+      steht sie in derselben Einheit wie das Ergebnis, naemlich R. Dann
+      Regression:
+          r_multiple ~ a + b * (seite * btc_rendite / stop_anteil)
+      `b` ist das Beta des Trades zum Kryptomarkt, `a` ist das, was ueberbleibt.
+      Stop-Anteil aus `risk_amount / (qty * entry_price)`, weil der Stop nicht
+      im Journal-Payload steht.
+    warum_btc_und_nicht_das_eigene_symbol: >-
+      Gegen das eigene Symbol gerechnet ist die Frage fast tautologisch: wer
+      short ist und dessen Symbol faellt, gewinnt. Gegen BTC gerechnet ist der
+      Rest genau die Auswahlleistung -- "dieses Symbol fiel mehr, als sein
+      Beta zu BTC erwarten liess, und wir waren auf der richtigen Seite".
+    metrik: "Achsenabschnitt a in R, mit Block-Bootstrap-Intervall"
+    comparisons: 2
+    zellen:
+      - "a ueber alle Journal-Trades (Replay, grosse Stichprobe)"
+      - "a ueber die Live-Trades allein (klein, aber vorwaerts)"
+    tore:
+      - "Korrigiertes Intervall ohne Null, Niveau 0.05/48"
+      - "Replikation 0.5-2.0x zwischen Entwicklungs- und Bestaetigungsfenster"
+    vorab_festgelegt:
+      - >-
+        Ein positives `b` bei einem Achsenabschnitt, dessen Intervall die Null
+        enthaelt, ist ein NEGATIVES Ergebnis fuer diesen Arm: das System ist
+        dann eine gehebelte Marktposition ohne eigenen Beitrag.
+      - >-
+        Ein negatives `a` wird genauso berichtet wie ein positives. Der Arm
+        darf nach dem Lesen nicht zur "deskriptiven Nebenauswertung" erklaert
+        werden.
+      - >-
+        Die 14 Live-Trades koennen dieses Tor nicht allein passieren. Bei
+        dieser Stichprobe ist ein Intervall auf Niveau 0.05/48 breiter als
+        jeder plausible Effekt. Das ist vorher bekannt und kein Grund, das
+        Niveau nachher zu senken.
+
 # ---------------------------------------------------------------------------
 
 # Was ein Ergebnis NICHT zu einem Kandidaten macht, hier festgehalten, damit es
@@ -629,4 +706,19 @@ order:
 
 # Jede Aenderung nach dem ersten gelesenen Ergebnis kommt hierhin, mit Datum
 # und Grund. Leer zu sein ist der gute Zustand.
-amendments: []
+amendments:
+  - date: 2026-10-08
+    by: "Claude, autonome Arbeitsphase"
+    change: "Neuer Arm E8 angelegt. total_comparisons 46 -> 48."
+    reason: >-
+      Der Vorwaertslauf steht nach 14 Trades bei +0.8023 R je Trade. Alle
+      vierzehn waren Short, und in demselben Fenster fiel LINK 13.4 %, DOGE
+      12.2 %, ADA 6.0 %, BTC 4.4 %. Damit ist die Zahl nicht interpretierbar:
+      sie kann die Richtungswahl des Systems messen oder die Richtung dieser
+      sechs Tage. Diese Frage ist in keinem der 46 angemeldeten Vergleiche
+      enthalten -- sie wird darum als neuer Arm angemeldet und nicht als
+      Nebenauswertung eines bestehenden eingeschmuggelt.
+    declared_before_reading: true
+    note: >-
+      Angelegt VOR der ersten Ausfuehrung von scripts/study_beta_alpha.py. Es
+      existiert zu diesem Zeitpunkt keine Zahl zu diesem Arm.
