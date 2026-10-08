@@ -43,10 +43,10 @@ meta:
   # Die Zahl, auf die korrigiert wird. Summe der `comparisons` aller Arme unten
   # plus die bereits gelesenen Zellen der Vorgaenger-Suche, soweit dieselbe
   # Frage betroffen ist.
-  total_comparisons: 48
+  total_comparisons: 49
   correction: >-
-    Bonferroni auf 48 Vergleiche, also Schwelle 0.05/48 = 0.00104 und ein
-    99.896%-Intervall. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
+    Bonferroni auf 49 Vergleiche, also Schwelle 0.05/49 = 0.00102 und ein
+    99.898%-Intervall. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
     angemeldete Sensitivitaet erlaubt, nicht als Ersatz. Sie werden zusaetzlich
     berichtet, nicht anstelle.
 
@@ -684,6 +684,93 @@ experiments:
         dieser Stichprobe ist ein Intervall auf Niveau 0.05/48 breiter als
         jeder plausible Effekt. Das ist vorher bekannt und kein Grund, das
         Niveau nachher zu senken.
+
+  - id: E9
+    title: "Ist unsere Fuell-Annahme realistisch? Gegen das echte Buch gemessen"
+    priority: 1
+    status: erledigt_positiv_fuer_den_simulator
+    angelegt: 2026-10-08
+    result:
+      stand: 2026-10-08
+      bericht: audit/E9_FUELL_REALISMUS.md
+      skript: scripts/study_fill_realism.py
+      orders: 545344
+      maerkte: 6
+      falschfuellung_gepoolt: "0.6 % [0.6, 0.7]"
+      je_markt: >-
+        BTC 0.8 %, ETH 0.6 %, SOL 0.5 %, XRP 0.2 %, DOGE 0.1 %, LINK 0.1 % --
+        repliziert ueber alle sechs
+      verpasste_fuellungen: "95-99 % je Markt"
+      befund: >-
+        Der Simulator ist auf der Fuellseite KONSERVATIV, nicht optimistisch.
+        Wenn ein Trade jenseits eines Preises druckt, wurde alles an diesem
+        Preis aufgebraucht -- `fill_on_touch: false` ist fast eine
+        Implikation, keine Schaetzung. Umgekehrt verweigert die Regel
+        praktisch jede echte Maker-Fuellung, weil ein Maker BEI seinem Preis
+        gefuellt wird und nicht jenseits.
+      verbietet_touch: >-
+        Selbst am Antritt (0-1 bp vom Mid) fuellen nur 12.9 % der echten
+        Orders. `fill_on_touch: true` waere um ein Vielfaches zu grosszuegig.
+      nicht_belegt: >-
+        Dass das System besser ist als gemessen. Die Regel verweigert
+        Einstiege, bei denen der Preis das Level beruehrt und umkehrt -- bei
+        einem Short oberhalb des Marktes der beste Einstieg. Das ist eine
+        Hypothese mit benannter Richtung und gehoert gemessen.
+      dringlichkeit_begrenzt: >-
+        Im Vorwaertsbetrieb: 105 vorgeschlagen, 86 von der Risk Engine
+        abgelehnt, 19 eroeffnet, 0 verfallen. Keine wartende Order ist je
+        unbefuellt verfallen -- der Flaschenhals ist die Risikopruefung.
+      warum_nicht_gegen_liquid: >-
+        Fuellmodell nicht dokumentiert (geprueft); kein Replay, Liquid laeuft
+        live; Gebuehren 0.095/0.065 % gegen angesetzte 0.055/0.02 %, also
+        waere jede PnL-Differenz eine Gebuehrendifferenz; und der
+        Papierhaendler ist ein Python-Prozess ohne MCP.
+      keine_codeaenderung: >-
+        Nichts am Simulator geaendert. Ein Vorschlag liegt dem Nutzer vor und
+        wartet auf Zustimmung.
+    frage: >-
+      Unser Simulator fuellt eine Limit-Order, wenn der Preis DURCH das Level
+      handelt (`fill_on_touch: false`). Das ist strenger als Beruehrung, aber
+      es ignoriert die Warteschlange: wer an einem Preis steht, wird nicht
+      gefuellt, nur weil dort gehandelt wurde -- es kommt darauf an, wie viel
+      vor einem liegt.
+    warum_nicht_gegen_liquid: >-
+      Die naheliegende Referenz waere Liquids Paper-Modus. Sie taugt nicht:
+      (a) Liquids Fuellmodell ist NICHT dokumentiert, ein Unterschied gegen
+      eine Blackbox sagt nur, dass zwei Modelle sich unterscheiden, nicht
+      welches recht hat; (b) Liquid laeuft gegen LIVE-Daten, unsere Journal-
+      Trades sind historisch, ein Replay gibt es nicht; (c) Liquids
+      Perp-Gebuehren (Taker 0.095 %, Maker 0.065 %) sind das 1.7- bzw.
+      3.25-fache der im Simulator angesetzten, womit jede PnL-Differenz von
+      der Gebuehr dominiert waere und nicht von der Fuellung.
+    methode: >-
+      Gegen das aufgenommene Lighter-Tape, wo eine Fuellung BELEGT ist statt
+      modelliert: das Buch traegt `order_id`, die Trades tragen `ask_id` und
+      `bid_id`. Fuer jede beobachtete ruhende Order wird gefragt, was UNSERE
+      Regel gesagt haette -- hat waehrend ihrer Lebenszeit ein Trade STRENG
+      jenseits ihres Preises gedruckt -- und das gegen den belegten Ausgang
+      gestellt.
+    metrik: >-
+      Falschfuell-Rate: Anteil der Orders, fuer die unsere Regel 'gefuellt'
+      sagt, waehrend die Order belegt storniert wurde.
+    comparisons: 1
+    zellen:
+      - "Falschfuell-Rate ueber alle beobachteten Orders, mit Intervall"
+    begleitend_deskriptiv:
+      - "Dieselbe Rate nach Abstand vom Mid, weil unsere Einstiege nicht am Antritt liegen"
+      - "Verpasste Fuellungen: Regel sagt nein, Order wurde belegt gefuellt"
+    vorab_festgelegt:
+      - >-
+        Eine hohe Falschfuell-Rate ist ein Befund GEGEN den eigenen Simulator
+        und wird genauso berichtet wie eine niedrige.
+      - >-
+        Die beobachtete Population sind die Orders anderer Leute, alle 30s
+        abgetastet, also sind langlebige ueberrepraesentiert. Das verzerrt zu
+        mehr beobachteten Stornos und damit zu einer HOEHEREN Falschfuell-Rate.
+        Die Zahl ist deshalb eine Obergrenze, und das steht vor dem Lauf fest.
+      - >-
+        Kein Umbau des Simulators aufgrund dieser Zahl ohne ausdrueckliche
+        Zustimmung des Nutzers.
 
 # ---------------------------------------------------------------------------
 
