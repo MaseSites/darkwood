@@ -1,5 +1,16 @@
 # Der erste Befund, der beide Tore passiert — und warum er trotzdem kein Ertrag ist
 
+> **ÜBERHOLT AM 08.10.2026, von 11 Stunden statt 3,2.** Der Markout auf BTC
+> fiel von −0,195 auf **−0,083 bp**, Verhältnis **0,43×** — ausserhalb des
+> Bandes 0,5–2,0. **Dieser Befund fällt damit am zweiten Tor.** Von vier
+> Horizonten schliesst nur noch einer die Null aus statt aller vier. Die
+> Richtung hält und hält jetzt auf drei Märkten (ETH −0,178, SOL −0,417), die
+> Grösse nicht. Ursache ist der Vorbehalt aus Abschnitt 6 dieses Dokuments:
+> die 30-Sekunden-Abtastung des Buches. Er war die grössere Hälfte der Zahl.
+> Vollständig in `audit/TAPE_VOLLE_ABDECKUNG.md`. Die Zahlen unten bleiben
+> unverändert stehen, weil ein Dokument, das nachträglich auf das bessere
+> Ergebnis umgeschrieben wird, keine Aufzeichnung ist.
+
 Reproduktion:
 
 ```bash
@@ -68,6 +79,11 @@ beiden identisch (8,3 %), die Storno-Quote praktisch (90,9 gegen 91,3 %).
 
 **Beide Tore bestanden, zum ersten Mal in diesem Projekt.**
 
+> Und auf dreifacher Datenmenge nicht mehr: 0,43× gegen das Band. Die drei
+> Fenster oben lagen innerhalb von 3,2 Stunden und haben die Streuung über
+> einen Tag nicht gesehen. Eine Replikation zwischen zwei Stunden desselben
+> Nachmittags ist keine Replikation.
+
 ## 4. Warum das trotzdem kein Ertrag ist
 
 Vier Gründe, und der erste ist der aus der Vorbemerkung.
@@ -78,7 +94,10 @@ ist nicht ein Vorbehalt unter mehreren, das ist der Kern.
 **Die Grössenordnung ist winzig.** 0,195 bp je Fill. Bei 1 000 CHF Konto und
 einer Position von 200 CHF sind das **0,0039 CHF je Fill**. Um die 2 953 CHF
 zum Ziel zu verdienen, bräuchte es rund **757 000 Fills** — bei 8,3 %
-Füllquote also neun Millionen gestellte Orders. Das ist keine Strategie,
+Füllquote also neun Millionen gestellte Orders.
+
+> Mit den 0,083 bp der vollen Aufnahme: 0,0017 CHF je Fill, **1,78 Millionen
+> Fills, 21,4 Millionen gestellte Orders.** Das ist keine Strategie,
 das ist eine andere Firma.
 
 **Es ist kein Richtungsvorteil, und das Problem des Systems ist die

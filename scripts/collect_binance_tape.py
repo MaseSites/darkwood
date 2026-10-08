@@ -70,9 +70,23 @@ EVERY = 15.0
 #: versehentlich zwei von ihm liefen.
 FLOOR = 8.0
 
-#: Obergrenze, wenn nichts verloren geht. Kein Grund, schneller zu fragen als
-#: noetig: jede Abfrage ist Gewicht, das der Papierhaendler auch braucht.
+#: Harte Obergrenze, wenn nichts verloren geht. Kein Grund, schneller zu
+#: fragen als noetig: jede Abfrage ist Gewicht, das der Papierhaendler auch
+#: braucht.
+#:
+#: Sie ist nur die HARTE Grenze. Die wirksame Obergrenze rechnet `Market.
+#: ceiling()` aus der gemessenen Rate, und zwar wegen eines Befunds des Laufs
+#: vom 08.10.2026: 94.9 % Abdeckung, und alle 37 Verkuerzungen kamen von
+#: vollen Seiten. Der Melder arbeitete also -- aber die feste 30s liessen den
+#: Takt danach wieder dorthin zurueckdriften. Bei den gemessenen 35.1 Trades/s
+#: deckt eine Seite 28.5s, und ein Takt von 30s verliert dann zwangslaeufig.
+#: Eine Obergrenze, die die Rate nicht kennt, ist derselbe Fehler wie der
+#: feste Takt davor, nur eine Ebene hoeher.
 CEILING = 30.0
+
+#: Reserve zwischen Seitenabdeckung und Takt. Dieselbe Zahl wie im
+#: Venue-Collector, damit beide Aufnahmen dieselbe Vorsicht haben.
+SAFETY = 3.0
 
 #: So viele verlustfreie Abfragen hintereinander, bevor der Takt sich wieder
 #: entspannt. Einseitig schnell: halbieren bei einem einzigen Verlust,
@@ -114,11 +128,33 @@ class Market:
     next_poll: float = 0.0
     #: Der eigene Takt, je Markt. BTC und ETH handeln nicht gleich viel.
     every: float = EVERY
+    #: Wann die erste Abfrage lief, fuer die Ratenschaetzung.
+    first_ms: float = 0.0
     #: Wie oft der Takt verkuerzt wurde, und wie oft die Seite voll war.
     tightened: int = 0
     saturated: int = 0
     _calm: int = 0
     _seen: set[int] = field(default_factory=set)
+
+    def rate(self) -> float:
+        """Gemessene Trades je Sekunde, oder 0 solange nichts gemessen ist."""
+        if not self.first_ms or self.trades <= 0:
+            return 0.0
+        elapsed = time.time() - self.first_ms
+        return self.trades / elapsed if elapsed > 1.0 else 0.0
+
+    def ceiling(self) -> float:
+        """Wirksame Obergrenze: so langsam, dass eine Seite dreifach reicht.
+
+        Ohne Messung gilt die harte Grenze. Mit Messung gilt, was die Rate
+        erlaubt -- und das ist bei einem schnellen Markt deutlich weniger als
+        30s. Verloren geht sonst genau dann etwas, wenn der Markt interessant
+        wird, was der schlechteste Zeitpunkt dafuer ist.
+        """
+        measured = self.rate()
+        if measured <= 0:
+            return CEILING
+        return max(FLOOR, min(CEILING, PAGE / (SAFETY * measured)))
 
     def adapt(self, *, lost: bool, full: bool) -> None:
         """Takt nachziehen.
@@ -138,7 +174,7 @@ class Market:
             return
         self._calm += 1
         if self._calm >= CALM:
-            self.every = min(CEILING, self.every * 1.5)
+            self.every = min(self.ceiling(), self.every * 1.5)
             self._calm = 0
 
 
@@ -152,6 +188,8 @@ def path_for(symbol: str, received_ms: int) -> Path:
 def poll(market: Market) -> tuple[bool, bool]:
     """Eine Seite holen. Gibt zurueck, ob etwas verloren ging und ob sie voll war."""
     received = int(time.time() * 1000)
+    if not market.first_ms:
+        market.first_ms = time.time()
     url = f"{BASE}?symbol={market.symbol}&limit={PAGE}"
     with urllib.request.urlopen(url, timeout=TIMEOUT) as answer:
         rows = json.loads(answer.read())
@@ -199,6 +237,7 @@ def report(markets: list[Market], *, started: float) -> None:
         print(
             f"  {m.symbol:10s} {m.polls:>9,} {m.trades:>10,} {m.missed:>11,} "
             f"{share:>9.1f}% {m.every:>5.0f}s {m.tightened:>6,} {m.errors:>7,}"
+            f"   (Rate {m.rate():.1f}/s, Obergrenze {m.ceiling():.0f}s)"
         )
     lost = sum(m.missed for m in markets)
     got = sum(m.trades for m in markets)
