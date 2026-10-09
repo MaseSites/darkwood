@@ -30,7 +30,7 @@ E8/E9 gewachsen. E8 lief auf **2 748** Trades und 14 Live-Trades, hier sind es
 | `study_fill_realism.py` | 2 min 35 s | 657 647 Orders; gepoolt 0,6 % [0,6; 0,7]; BTC 0,8 / ETH 1,1 / SOL 0,5 / XRP 0,2 / DOGE 0,1 / LINK 0,1 % | **exakt**, alle sechs Märkte |
 | `study_beta_alpha.py` | 2,6 s | siehe unten | **mit Abweichungen** |
 | `study_basis.py` | läuft | — | offen |
-| `study_target_20x.py` | nicht ausgeführt | — | **offen** |
+| `study_target_20x.py` | 9 s | 0,00 % Zielerreichung bei 1 % Risiko, Median 657, CVaR5% 347, **0,0 % Liquidationen** | **reproduziert**, siehe `EXECUTION_COSTS.md` §7 |
 | `papertrade.py` | **absichtlich nicht gestartet** | — | siehe 2.3 |
 
 ### 2.1 E8 — reproduziert, mit kleinen und einer grossen Abweichung
@@ -132,7 +132,7 @@ Vorabregistrierung im Umlauf gewesen, deren eigene Prüfung fehlschlägt.
 
 | Was | Grund |
 |---|---|
-| `study_target_20x.py` | in diesem Block nicht ausgeführt. Die Monte-Carlo-Zahlen im Problembericht (0,00 % Zielerreichung, 44,16 %/99,56 % Ruin) stammen aus einer **eigenen** Rechnung auf den 2 734 Journal-Trades, nicht aus diesem Skript. Beide gehören gegeneinander geprüft. |
+| ~~`study_target_20x.py`~~ | **nachgeholt.** Es stimmt mit meiner eigenen Rechnung im Vorzeichen und in der Grössenordnung überein (0,00 % Zielerreichung), ist aber reicher: es führt hypothetische Vorteile mit, und daraus folgt die wichtigste Zahl des Projekts — **das Ziel verlangt +0,7280 R je Trade**, und selbst +0,40 R endet bei 5 200 CHF. Siehe `EXECUTION_COSTS.md` §7. |
 | `study_basis.py` (E6) | lief zum Berichtszeitpunkt noch |
 | `FREQAI_VERGLEICH.md` | braucht einen Freqtrade-Lauf, nicht in diesem Block |
 | `TAPE_*`-Befunde | gegen `data/quarantine/` reproduzierbar, in diesem Block nicht erneut gerechnet; die Korrektur auf volle Abdeckung liegt in `TAPE_VOLLE_ABDECKUNG.md` vom selben Tag |

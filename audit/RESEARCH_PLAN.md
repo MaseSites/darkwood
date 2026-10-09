@@ -13,13 +13,13 @@ angemeldete Vergleiche, Niveau 99,9000 %).
 
 | Phase | Gegenstand | Status | Abhängig von | Artefakt |
 |---|---|---|---|---|
-| **P0** | Baseline reproduzieren | **erledigt, mit Lücken** | — | `BASELINE_REPRODUCTION.md` |
+| **P0** | Baseline reproduzieren | **erledigt** | — | `BASELINE_REPRODUCTION.md` |
 | **P1** | Datenintegrität und Betrieb | **teilweise** | — | `DATA_INTEGRITY_AUDIT.md` |
 | P2 | E4 Relative Value | **blockiert an Preisen** | Kurse fuer ein Punkt-in-Zeit-Universum | `E4V_RELATIVE_VALUE_VORPRUEFUNG.md` |
 | P3 | E5 Streaming / Orderflow | **blockiert an Marktdaten** | WS-Auslieferung an diese IP | `E5_ORDERFLOW.md` |
 | P4 | P26 Lead-Lag | **blockiert, mit P3** | P3 | `E5_ORDERFLOW.md` §3 |
 | P5 | E7 LLM-Shadow | **registriert** | P0 | `E7_LLM_SHADOW.md` |
-| P6 | Fill- und Kostenmodell | **teilweise** | laufend | `EXECUTION_COSTS.md` |
+| P6 | Fill- und Kostenmodell | **erledigt, mit benannten Lücken** | laufend | `EXECUTION_COSTS.md` |
 | P7 | Unabhängige Replikation | **nicht begonnen** | ein Kandidat | — |
 
 ### Was aus P0 und P1 wirklich belegt ist
@@ -112,6 +112,29 @@ nicht zeigt, kann einen Sekundenvorlauf nicht von einem Uhrenversatz trennen.
 
 Damit bleiben **E5, P26 und das Phase-1-Abnahmekriterium** gemeinsam offen,
 und keines davon aus einem Grund, den Code behebt.
+
+## P6 abgeschlossen — und eine eigene Behauptung entkräftet
+
+**P38 war falsch.** Ich hatte behauptet, 1 000 CHF kollidiere mit den
+Mindestgrössen. Gemessen: die Position ist bei 1 % Risiko das 0,76-fache des
+Eigenkapitals, also 764 USDT, und das höchste effektive Minimum ist 82,39
+(BTC). Der **Kontoboden liegt bei 108 USDT** — fast eine Grössenordnung unter
+1 000.
+
+**Was wirklich bindet, ist die Körnung:** auf BTC ist eine Schrittweite 10,79 %
+der Position, das angestrebte Risiko also nur in 11-%-Schritten treffbar. Auf
+den anderen elf Märkten ≤ 3,45 %.
+
+**Und das Journal mischt drei Risiko-Epochen** (32–53 / 5,0 / 10,0 USDT). Jede
+R-Aussage bleibt gültig, jede Geld-Aussage über die Gesamtpopulation nicht.
+
+**Die Zielarithmetik, reproduziert:** das Ziel verlangt **+0,7280 R je Trade**
+über 413 Trades. Selbst ein hypothetischer Vorteil von **+0,40 R** endet bei
+5 200 CHF. Gemessen: −0,0906 R.
+
+**Die abgeleitete Hebelpolitik bestätigt sich ein weiteres Mal:** 0,0 %
+Liquidationen im gemessenen Szenario, gegen 37,1 % bei festen 5× und 98,3 %
+bei festen 10×.
 
 ## Nächster Schritt — genau einer
 
