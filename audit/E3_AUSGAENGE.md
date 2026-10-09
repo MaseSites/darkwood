@@ -1,5 +1,19 @@
 # E3: Ausgänge als kausale Handelspolitik
 
+> **NACHTRAG 09.10.2026 — die Grenze von E3.3 war zu schmal gerechnet.**
+> Der Bootstrap konnte bei den ausgelieferten 3 000 Ziehungen das korrigierte
+> Perzentil nicht auflösen: unter der unteren Grenze lagen 1,44 Ziehungen, die
+> Grenze war damit fast das Minimum der Stichprobe. Mit der jetzt
+> niveau-abhängigen Ziehungszahl (20 801 bei Bonferroni auf 52) lautet die
+> gepaarte Differenz von E3.3 **−0,0557 [−0,1091; −0,0001]** statt
+> [−0,1123; −0,0060]. Sie schliesst die Null noch aus — um ein Zehntausendstel
+> R. **Das Urteil lautet damit „am Rand", nicht „zuverlässig schlechter".**
+> Über sieben Saatwerte war es bei 3 000 Ziehungen 6 zu 1, bei 200 000
+> einstimmig. E3.2 bleibt unverändert unentschieden. Vollständig in
+> `audit/BOOTSTRAP_RAND.md`. Die Zahlen unten bleiben stehen, weil ein Bericht,
+> der nachträglich umgeschrieben wird, keine Aufzeichnung ist.
+
+
 Reproduktion: `python scripts/study_exits.py`
 
 **Ergebnis: kein Kandidat — und zum ersten Mal ist etwas, das das System

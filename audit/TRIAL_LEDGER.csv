@@ -1,0 +1,89 @@
+id,quelle,familie,stufe,status,n,mittel,unten,oben,null_ausgeschlossen,vergleiche,bericht,notiz
+gebuehr_minus_10,ratchet.TRIED,,test,verworfen,3300,-0.0291,-0.075,0.017,nein,1,scripts/ratchet.py,"BNB-Rabatt. Besser, aber die Null liegt bei 69% Rabatt."
+gebuehr_minus_25,ratchet.TRIED,,test,verworfen,3300,-0.0217,-0.067,0.024,nein,1,scripts/ratchet.py,VIP 1 + BNB. Reicht nicht; selbst bei Gebuehr null nur +0.0151 R.
+lernfilter,ratchet.TRIED,,test,verworfen,433,-0.0605,-0.23,0.1,nein,1,scripts/ratchet.py,"Findet echte Struktur (0 von 100 Zufallslaeufen, p ~ 0.010) und ist 0.0689 R schlechter als die bestehenden Regeln. Zwei verschiedene Fragen."
+zieldeckel_1_75R,ratchet.TRIED,,test,verworfen,549,-0.0201,-0.16,0.12,nein,1,scripts/ratchet.py,"Trefferquote stieg 38.6% -> 41.9%, pro Trade schlechter. Hit rate taeuscht."
+chance_risiko_regel_lockern,ratchet.TRIED,,test,verworfen,4745,-0.1334,-0.047,0.012,nein,1,scripts/ratchet.py,Abgelehnte treffen 55% und verlieren 0.13 R. Die Regel hat recht.
+kostenregel_lockern,ratchet.TRIED,,test,verworfen,4726,-0.2996,-0.099,-0.011,ja,1,scripts/ratchet.py,"Schlechteste Gruppe im Protokoll, Intervall ohne Null. Die Regel hat recht."
+mehr_plaetze,ratchet.TRIED,,explore,verworfen,0,0.0,0.0,0.0,nein,1,scripts/ratchet.py,"max_open_positions ist toter Konfigurationstext; SimBroker hat einen Platz, hart im Code. 1 von 24 belegt. Nicht als Arm messbar ohne Umbau."
+vorhersage_5h,ratchet.TRIED,,test,verworfen,34400,0.0039,0.0,0.0,nein,1,scripts/ratchet.py,"35 Merkmale, p 0.52-0.58. Bei null ist jede Bandbreite gleich gut."
+vorhersage_10h,ratchet.TRIED,,test,verworfen,34395,0.0045,0.0,0.0,nein,1,scripts/ratchet.py,"35 Merkmale, p 0.26-0.48. Das Modell waehlte schlechter als der Durchschnitt."
+einstieg_versatz_0_05,ratchet.TRIED,,test,verworfen,3324,-0.0473,-0.092,-0.001,ja,1,scripts/ratchet.py,"95.9% gefuellt, Intervall ohne Null. Schlechter als die -0.0338 R bei Versatz null."
+einstieg_versatz_0_10,ratchet.TRIED,,test,verworfen,3324,-0.046,-0.092,0.001,nein,1,scripts/ratchet.py,92.9% gefuellt. Schlechter als die -0.0338 R bei Versatz null.
+einstieg_versatz_0_20,ratchet.TRIED,,test,verworfen,3324,-0.0482,-0.097,0.002,nein,1,scripts/ratchet.py,86.3% gefuellt. Schlechter als die -0.0338 R bei Versatz null.
+einstieg_versatz_0_30,ratchet.TRIED,,test,verworfen,3324,-0.0603,-0.113,-0.006,ja,1,scripts/ratchet.py,"79.8% gefuellt, Intervall ohne Null. Schlechter als die -0.0338 R bei Versatz null."
+einstieg_versatz_0_50,ratchet.TRIED,,test,verworfen,3324,-0.1075,-0.169,-0.046,ja,1,scripts/ratchet.py,"68.3% gefuellt, Haltedauer 5h statt 11h. Schlechter als die -0.0338 R bei Versatz null."
+Fortsetzung / Zonen-Rueckkehr,ratchet.FAMILIES,Fortsetzung / Zonen-Rueckkehr,,erledigt,,,,,,,scripts/ratchet.py,"Die fünf ausgelieferten Setups. 9 Hypothesen, 8 tot, 1 unentschieden."
+Volatilitaetsausbruch,ratchet.FAMILIES,Volatilitaetsausbruch,,erledigt,,,,,,,scripts/ratchet.py,"42 Zustandszellen, 2 Horizonte: kein Treffer. Der eine Kandidat (hohe ATR-Perzentile) scheitert an der Korrektur UND wiederholt sich im anderen Fenster nur zu 0.16-0.26x."
+VWAP und Tageszeit,ratchet.FAMILIES,VWAP und Tageszeit,,erledigt,,,,,,,scripts/ratchet.py,"Drei Sessions, 2 Horizonte: Differenz unter 0.01%, Intervalle mit Null."
+Mean Reversion,ratchet.FAMILIES,Mean Reversion,,erledigt,,,,,,,scripts/ratchet.py,"Brutto 0.17 bp auf M15 (700k Beobachtungen), reproduziert das Preprint. Maut 79x."
+Handelsspannen-Ausbruch,ratchet.FAMILIES,Handelsspannen-Ausbruch,,erledigt,,,,,,,scripts/ratchet.py,Donchian-Position in Terzilen: kein Band ohne Null.
+Momentum mit Volumen,ratchet.FAMILIES,Momentum mit Volumen,,erledigt,,,,,,,scripts/ratchet.py,Bewegung gekreuzt mit Relativvolumen: kein Band ohne Null.
+Trendfolge mit Ruecksetzer,ratchet.FAMILIES,Trendfolge mit Ruecksetzer,,erledigt,,,,,,,scripts/ratchet.py,"Umgekehrt widerlegt: OHNE Ruecksetzer ist am besten (+0.367%), und das wiederholt sich im anderen Fenster nur zu 0.29x. Tiefe Ruecksetzer sind schlechter, nicht besser."
+Regime-Umschaltung,ratchet.FAMILIES,Regime-Umschaltung,,erledigt,,,,,,,scripts/ratchet.py,"Umschaltgewinn als Differenz der Differenzen: +0.257% [-0.073, +0.609] auf 24h, +0.007% [-1.139, +1.121] auf 168h. Beide mit Null."
+Funding / Relative Value,ratchet.FAMILIES,Funding / Relative Value,,erledigt,,,,,,,scripts/ratchet.py,"Funding als Perzentil-Merkmal, 2 Horizonte: kein Band ohne Null."
+Orderflow (Taker-Volumen),ratchet.FAMILIES,Orderflow (Taker-Volumen),,erledigt,,,,,,,scripts/ratchet.py,"30 Zellen, keine positiv. Fortsetzung und Erschoepfung trennen sich nicht."
+Orderflow (Orderbuch-Tiefe),ratchet.FAMILIES,Orderflow (Orderbuch-Tiefe),,nicht testbar,,,,,,,scripts/ratchet.py,Keine historischen Snapshots; heutige genuegen nicht. Taker-Volumen war das Erreichbare.
+Laengere Horizonte (Preis allein),ratchet.FAMILIES,Laengere Horizonte (Preis allein),,erledigt,,,,,,,scripts/ratchet.py,"24/72/168h, 2 Modelle, 3 Maerkte: keine Konfiguration schlaegt ihre Basisquote."
+Makro (FRED),ratchet.FAMILIES,Makro (FRED),,erledigt,,,,,,,scripts/ratchet.py,"Sechs Serien ohne Schluessel ueber den CSV-Weg, 10-65 Jahre. P gegen P+M auf gemeinsamem Fenster: auf ALLEN drei Horizonten schlechter als Preis allein (+1.87 -> +1.21, -0.03 -> -0.44, -0.75 -> -1.02). Durchgehende Richtung ist die Signatur von Rauschen. P+M+O mit 22 Merkmalen ebenso: -1.61 bis +0.9"
+On-Chain und Stablecoin-Liquiditaet,ratchet.FAMILIES,On-Chain und Stablecoin-Liquiditaet,,erledigt,,,,,,,scripts/ratchet.py,"Erste Achse ausserhalb der Boerse. Coin Metrics Community (9-11.8 J) plus DefiLlama (8.8 J), inkl. Boersen-Zu-/Abfluessen -- die der Auftrag als kostenlos unbestaetigt einstufte. P gegen P+O auf gemeinsamem Fenster, 16 statt 7 Merkmale: kein Vorsprung, und bei 72h/LightGBM ein Intervall ohne Null in"
+Laengere Horizonte (mit Derivaten),ratchet.FAMILIES,Laengere Horizonte (mit Derivaten),,erledigt,,,,,,,scripts/ratchet.py,"Herkunft nachgemessen (Bybit, exakt). P gegen P+D auf gemeinsamem Fenster: Unterschied +-1.6 Punkte ohne Richtung, jedes Intervall mit Null."
+Funding-Carry (ohne Richtung),ratchet.FAMILIES,Funding-Carry (ohne Richtung),,erledigt,,,,,,,scripts/ratchet.py,"Nicht 'Funding als Merkmal fuer die Richtung' (das ist die Zeile darueber und ist tot), sondern Funding EINSAMMELN: Perp short gegen Spot long, Preis herausgehedgt, keine Vorhersage noetig. 12 Maerkte, 3.8-6.7 Jahre: 11 von 12 mit Intervall ueber Null, +5.5% bis +14.8% p.a. aufs Notional (BNBUSDT be"
+Ausgangspolitik (E3),ratchet.FAMILIES,Ausgangspolitik (E3),,erledigt,,,,,,,scripts/ratchet.py,"E3, vorab registriert. Die Frage, die am laengsten offen blieb, weil der Bericht sie mit einer Kuerzungsrechnung geschlossen hatte: Groesse und Hebel kuerzen sich aus net_r heraus, der STOP nicht -- er verschiebt den Ausstiegszeitpunkt und damit den ganzen Pfad. study_stop_path.py hatte gemessen, da"
+Marktbereinigter Querschnitt (E4V),ratchet.FAMILIES,Marktbereinigter Querschnitt (E4V),,erledigt,,,,,,,scripts/ratchet.py,"E4V, angemeldet am 09.10.2026 VOR dem ersten Lauf; total_comparisons 50 -> 52. ZUERST EINE KORREKTUR AN MIR SELBST: E4 stand seit dem 07.10. als 'entsperrt', weil build_universe.py die Punkt-in-Zeit-Tabelle liefert. Das war zu schnell -- die Tabelle nennt, WELCHE Symbole wann handelbar waren, nicht "
+Stop-Ausloeser: Beruehrung gegen Schluss (E10),ratchet.FAMILIES,Stop-Ausloeser: Beruehrung gegen Schluss (E10),,erledigt,,,,,,,scripts/ratchet.py,"E10, angemeldet am 09.10.2026 VOR dem ersten Lauf; total_comparisons 49 -> 50. Ausloeser war EINE ZEILE im Protokoll des laufenden Papierhandels: 'Stop von einem Docht geholt; die Kerze schloss wieder auf der richtigen Seite.' Das Journal zaehlt das selbst -- post_mortem.stopped_by_wick -- und es si"
+Alpha oder Beta (E8),ratchet.FAMILIES,Alpha oder Beta (E8),,erledigt,,,,,,,scripts/ratchet.py,"E8, angemeldet am 08.10.2026 VOR dem ersten Lauf; total_comparisons 46 -> 48. Ausloeser war die erste positive Vorwaertszahl des Projekts: +0.8023 R je Trade auf 14 Live-Trades, in einem Fenster, in dem LINK 13.4%, DOGE 12.2%, ADA 6.0% und BTC 4.4% fielen. Short verdiente +1.0598 R je Trade, long +0"
+"Carry nach Basis, Maut und Margin (E6)",ratchet.FAMILIES,"Carry nach Basis, Maut und Margin (E6)",,erledigt,,,,,,,scripts/ratchet.py,"E6.1, und es nimmt dem Projekt die letzte Zahl mit positivem Vorzeichen. Der Carry las +5.5 bis +14.8% p.a. aufs Notional -- das ist die EINNAHME, nicht der Ertrag. Blockiert war E6 an 'keine Spot-Reihe auf der Platte'; backfill_spot.py holt sie fuer die acht Maerkte mit BINANCE-Funding (die anderen"
+Haltezone (Wechsel statt Signal bepreisen),ratchet.FAMILIES,Haltezone (Wechsel statt Signal bepreisen),,erledigt,,,,,,,scripts/ratchet.py,"E2, vorab registriert. Der vorhandene Kostenfilter fragt 'ist die runde Fahrt klein gegen das Risiko'; das ist etwas anderes als 'rechtfertigt der erwartete Gewinn einen WECHSEL'. Eine bestehende Position zu halten kostet keine runde Fahrt. BTC und ETH auf H1, 8.780 Kerzen Bestaetigungsfenster, Ridg"
+Meta-Labeling (Auswahl unter den Signalen),ratchet.FAMILIES,Meta-Labeling (Auswahl unter den Signalen),,erledigt,,,,,,,scripts/ratchet.py,"E1, vorab registriert in audit/EXPERIMENTS_NEXT.yaml. Die Begruendung, mit der die Frage vorher geschlossen war, traegt nicht: ein Pool ohne Vorteil schliesst keine positive Teilmenge aus (study_subset.py: Pool -0.0906 R, rating_band=eindeutig +0.0311 R, beides ex ante bekannt). Gemessen auf 42.849 "
+Querschnitt (Markt gegen Markt),ratchet.FAMILIES,Querschnitt (Markt gegen Markt),,erledigt,,,,,,,scripts/ratchet.py,"Die einzige Richtung, die der Auftrag nie benannt hat: alle 87 Arme davor massen einen Markt gegen seine EIGENE Zukunft, mit 'immer long' als Basis -- also den gemeinsamen Faktor gegen sich selbst. Long oberstes Drittel / short unterstes, 12 Maerkte, 5 Jahre, 6 Zellen: eine ohne Null (mom_7/1T, +0.1"
+E0.1,EXPERIMENTS_NEXT.yaml,E0,vorab_registriert,registriert,,,,,,,,"Bestehende Venue, Taker/Taker"
+E0.2,EXPERIMENTS_NEXT.yaml,E0,vorab_registriert,registriert,,,,,,,,"Bestehende Venue, Maker-Eintritt / Taker-Stop"
+E0.3,EXPERIMENTS_NEXT.yaml,E0,vorab_registriert,registriert,,,,,,,,"Neue Venue A, Maker/Maker soweit gefuellt"
+E0.4,EXPERIMENTS_NEXT.yaml,E0,vorab_registriert,registriert,,,,,,,,"Neue Venue A, Taker/Taker"
+E0,EXPERIMENTS_NEXT.yaml,E0,angemeldete_zellen,registriert,,,,,,4,,Ausfuehrungskosten und Signaluebertragung
+E1.1,EXPERIMENTS_NEXT.yaml,E1,vorab_registriert,registriert,,,,,,,,Ungefilterter gueltiger Pool
+E1.2,EXPERIMENTS_NEXT.yaml,E1,vorab_registriert,registriert,,,,,,,,Vorhandener FakeBrain-/Kostenfilter
+E1.3,EXPERIMENTS_NEXT.yaml,E1,vorab_registriert,registriert,,,,,,,,Zufallsfilter gleicher ex-ante-Selektivitaet
+E1.4,EXPERIMENTS_NEXT.yaml,E1,vorab_registriert,registriert,,,,,,,,Regularisierte logistische Regression
+E1.5,EXPERIMENTS_NEXT.yaml,E1,vorab_registriert,registriert,,,,,,,,"Flaches LightGBM, Komplexitaet vorab fixiert"
+E1,EXPERIMENTS_NEXT.yaml,E1,angemeldete_zellen,registriert,,,,,,10,,Meta-Labeling bestehender Signale
+E2.1,EXPERIMENTS_NEXT.yaml,E2,vorab_registriert,registriert,,,,,,,,"Lineare Regression, naive Vorzeichenentscheidung"
+E2.2,EXPERIMENTS_NEXT.yaml,E2,vorab_registriert,registriert,,,,,,,,"Lineare Regression, kostenbewusste Zone mit Hysterese"
+E2.3,EXPERIMENTS_NEXT.yaml,E2,vorab_registriert,registriert,,,,,,,,"XGBoost, naive Vorzeichenentscheidung"
+E2.4,EXPERIMENTS_NEXT.yaml,E2,vorab_registriert,registriert,,,,,,,,"XGBoost, kostenbewusste Zone mit Hysterese"
+E2.5,EXPERIMENTS_NEXT.yaml,E2,vorab_registriert,registriert,,,,,,,,Passives risikovergleichbares Exposure
+E2,EXPERIMENTS_NEXT.yaml,E2,angemeldete_zellen,registriert,,,,,,8,,Oekonomische Vorhersage mit Handels-/Haltezone
+E3.1,EXPERIMENTS_NEXT.yaml,E3,vorab_registriert,erledigt_negativ,7255,,,,,,audit/E3_AUSGAENGE.md,Bisheriger Stop und TP
+E3.2,EXPERIMENTS_NEXT.yaml,E3,vorab_registriert,erledigt_negativ,7255,,,,,,audit/E3_AUSGAENGE.md,Bisheriger Stop mit festem Zeitausstieg (24h)
+E3.3,EXPERIMENTS_NEXT.yaml,E3,vorab_registriert,erledigt_negativ,7255,,,,,,audit/E3_AUSGAENGE.md,"ATR-Trailing-Exit, Parameter vorab festgelegt (2.0 ATR)"
+E3,EXPERIMENTS_NEXT.yaml,E3,angemeldete_zellen,erledigt_negativ,,,,,,3,audit/E3_AUSGAENGE.md,Ausgaenge als kausale Handelspolitik
+E4.1,EXPERIMENTS_NEXT.yaml,E4,vorab_registriert,blockiert_an_preisen,,,,,,,,Residual-Momentum nach kausal geschaetztem BTC/ETH-Faktor
+E4.2,EXPERIMENTS_NEXT.yaml,E4,vorab_registriert,blockiert_an_preisen,,,,,,,,Spread-Reversion ausgewaehlter liquider Paare
+E4.3,EXPERIMENTS_NEXT.yaml,E4,vorab_registriert,blockiert_an_preisen,,,,,,,,Gleichgewichtetes Halten desselben Universums
+E4,EXPERIMENTS_NEXT.yaml,E4,angemeldete_zellen,blockiert_an_preisen,,,,,,6,,Marktbereinigte Relative-Value-Entscheidung
+E5.1,EXPERIMENTS_NEXT.yaml,E5,vorab_registriert,blockiert_an_marktdaten,,,,,,,,"Taker-Flow allein, lineares Modell"
+E5.2,EXPERIMENTS_NEXT.yaml,E5,vorab_registriert,blockiert_an_marktdaten,,,,,,,,"Taker-Flow plus L2-Imbalance/Microprice/Spread, lineares Modell"
+E5,EXPERIMENTS_NEXT.yaml,E5,angemeldete_zellen,blockiert_an_marktdaten,,,,,,4,,Orderflow auf einem tatsaechlich handelbaren Horizont
+E6.1,EXPERIMENTS_NEXT.yaml,E6,vorab_registriert,erledigt_negativ,,,,,,,audit/CARRY_NACH_KOSTEN.md,"Spot-long / Perp-short, SAME VENUE, synchrone Quotes"
+E6.2,EXPERIMENTS_NEXT.yaml,E6,vorab_registriert,erledigt_negativ,,,,,,,audit/CARRY_NACH_KOSTEN.md,"Cross-Venue-Funding-Differenz, Long-Perp A gegen Short-Perp B"
+E6.3,EXPERIMENTS_NEXT.yaml,E6,vorab_registriert,erledigt_negativ,,,,,,,audit/CARRY_NACH_KOSTEN.md,Durchhalten ohne Auswahl
+E6,EXPERIMENTS_NEXT.yaml,E6,angemeldete_zellen,erledigt_negativ,,,,,,5,audit/CARRY_NACH_KOSTEN.md,"Carry und Basis als getrennter, kleinerer Ertragsarm"
+E7.1,EXPERIMENTS_NEXT.yaml,E7,vorab_registriert,registriert,,,,,,,,Kein Urteil
+E7.2,EXPERIMENTS_NEXT.yaml,E7,vorab_registriert,registriert,,,,,,,,"FakeBrain, arithmetisch"
+E7.3,EXPERIMENTS_NEXT.yaml,E7,vorab_registriert,registriert,,,,,,,,Kalibriertes kleines ML-Modell aus E1
+E7.4,EXPERIMENTS_NEXT.yaml,E7,vorab_registriert,registriert,,,,,,,,"Echtes Claude-Urteil, Prompt/Schema/Modell eingefroren"
+E7,EXPERIMENTS_NEXT.yaml,E7,angemeldete_zellen,registriert,,,,,,6,,LLM-Urteil als Shadow-Studie
+E8.1,EXPERIMENTS_NEXT.yaml,E8,vorab_registriert,erledigt_negativ,,,,,,,audit/E8_ALPHA_ODER_BETA.md,"Zerlegung ueber alle Journal-Trades, Benchmark BTCUSDT"
+E8.2,EXPERIMENTS_NEXT.yaml,E8,vorab_registriert,erledigt_negativ,,,,,,,audit/E8_ALPHA_ODER_BETA.md,Dieselbe Zerlegung nur ueber die Live-Trades (vorwaerts)
+E8,EXPERIMENTS_NEXT.yaml,E8,angemeldete_zellen,erledigt_negativ,,,,,,2,audit/E8_ALPHA_ODER_BETA.md,"Alpha oder Beta: traegt die Richtungswahl, oder traegt der Markt?"
+E9.1,EXPERIMENTS_NEXT.yaml,E9,vorab_registriert,erledigt_positiv_fuer_den_simulator,545344,,,,,,audit/E9_FUELL_REALISMUS.md,"Unsere Regel: gefuellt, wenn der Preis STRENG durch das Level handelt"
+E9.2,EXPERIMENTS_NEXT.yaml,E9,vorab_registriert,erledigt_positiv_fuer_den_simulator,545344,,,,,,audit/E9_FUELL_REALISMUS.md,"Der belegte Ausgang aus dem Tape, per Id-Join (order_id gegen ask_id/bid_id)"
+E9,EXPERIMENTS_NEXT.yaml,E9,angemeldete_zellen,erledigt_positiv_fuer_den_simulator,,,,,,1,audit/E9_FUELL_REALISMUS.md,Ist unsere Fuell-Annahme realistisch? Gegen das echte Buch gemessen
+E10.1,EXPERIMENTS_NEXT.yaml,E10,vorab_registriert,erledigt_negativ,7255,,,,,,audit/E10_STOP_AUSLOESER.md,Stop bei Beruehrung (bestehende Politik)
+E10.2,EXPERIMENTS_NEXT.yaml,E10,vorab_registriert,erledigt_negativ,7255,,,,,,audit/E10_STOP_AUSLOESER.md,"Stop nur, wenn eine Signalkerze jenseits des Stops SCHLIESST"
+E10,EXPERIMENTS_NEXT.yaml,E10,angemeldete_zellen,erledigt_negativ,,,,,,1,audit/E10_STOP_AUSLOESER.md,Der Stop-AUSLOESER: Beruehrung gegen Schlusskurs
+E4V.1,EXPERIMENTS_NEXT.yaml,E4V,vorab_registriert,erledigt_negativ,2221,,,,,,audit/E4V_RELATIVE_VALUE_VORPRUEFUNG.md,"Residual-Momentum nach kausal geschaetztem Marktfaktor, Haltedauer 1 Tag"
+E4V.2,EXPERIMENTS_NEXT.yaml,E4V,vorab_registriert,erledigt_negativ,2221,,,,,,audit/E4V_RELATIVE_VALUE_VORPRUEFUNG.md,Gleichgewichtetes Halten derselben zwoelf Maerkte
+E4V,EXPERIMENTS_NEXT.yaml,E4V,angemeldete_zellen,erledigt_negativ,,,,,,2,audit/E4V_RELATIVE_VALUE_VORPRUEFUNG.md,"Vorpruefung von E4 auf dem Ueberlebenden-Satz -- ein Schirm, kein Ergebnis"
+LUECKE_vorgaengersuche,behauptet_ohne_aufzaehlung,,,offen,,,,,,110,audit/EXPERIMENTS_NEXT.yaml:meta.prior_search,meta.prior_search behauptet 124 Versuche und 87 Arme. Aufzaehlbar sind 14 Arme mit Zahlen aus ratchet.TRIED. Fuer die Differenz existiert keine Liste -- weder hier noch im Zustandsbericht.

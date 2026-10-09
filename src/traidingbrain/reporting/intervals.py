@@ -40,6 +40,7 @@ reason: an interval whose width depends on a parameter has to state it.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -49,9 +50,59 @@ import numpy as np
 #: scripts keep lists; everything inside here is already an array.
 type Numbers = Sequence[float] | np.ndarray
 
-#: Resamples per interval. Enough that the percentile bounds are stable to about
-#: a thousandth of an R, which is well below any effect worth acting on.
+#: Resamples per interval, as a FLOOR. The count actually used is raised to
+#: whatever the requested level needs -- see `draws_for`.
+#:
+#: **Und hier lag ein Defekt, gemessen am 09.10.2026.** Der Kommentar hier sagte
+#: "enough that the percentile bounds are stable to about a thousandth of an R".
+#: Das stimmt für ein 95%-Intervall und nicht für die korrigierten Niveaus, mit
+#: denen dieses Projekt arbeitet. Bei Bonferroni auf 52 Vergleiche liegt die
+#: untere Grenze beim 0.048-Promille-Perzentil, und 3000 Ziehungen haben dort
+#: **1.92** Ziehungen unter sich. Eine Grenze, die auf zwei Ziehungen beruht,
+#: ist kein Perzentil, sondern fast das Minimum der Stichprobe.
+#:
+#: Was das anrichtete, gemessen an E3.3 (2.0-ATR-Trail gegen die Basis, 7.255
+#: gepaarte Fälle, obere Grenze bei -0.0014):
+#:
+#:       3.000 Ziehungen:  Null ausgeschlossen in 6 von 7 Saatwerten
+#:      40.000 Ziehungen:  6 von 7
+#:     200.000 Ziehungen:  7 von 7
+#:
+#: Das Urteil "zuverlässig schlechter" war also bei den ausgelieferten
+#: Einstellungen **saatwert-abhängig**. Es hält -- der benutzte Saatwert war
+#: nicht der eine abweichende, und bei genug Ziehungen hält es durchgehend.
+#: Aber es wurde mit einer Methode festgestellt, die es nicht verlässlich
+#: sagen konnte.
 DRAWS = 3000
+
+#: So viele Ziehungen müssen unter dem gesuchten Perzentil liegen, damit die
+#: Grenze eine Schätzung und nicht ein Extremwert ist. Zehn ist eine
+#: Entscheidung, keine Ableitung: bei zehn wackelt die Grenze über Saatwerte
+#: noch, aber unter dem Mass, das hier je eine Rolle spielt.
+MIN_TAIL_DRAWS = 10
+
+#: Obergrenze, damit ein sehr strenges Niveau nicht Minuten kostet. Gemessen
+#: auf 2.752 Beobachtungen: 3.000 Ziehungen 116 ms, 20.000 672 ms, 50.000
+#: 1.7 s. Bei 200.000 ist ein Intervall rund sieben Sekunden, und eine Studie
+#: rechnet Dutzende.
+MAX_DRAWS = 200_000
+
+
+def draws_for(level: float, *, floor: int = DRAWS) -> int:
+    """Ziehungen, die dieses Niveau braucht -- mindestens `floor`.
+
+    Das gesuchte Perzentil liegt bei `(1 - level) / 2`. Damit dort
+    `MIN_TAIL_DRAWS` Ziehungen darunter liegen, braucht es
+    `MIN_TAIL_DRAWS / ((1 - level) / 2)` Ziehungen.
+
+    Bindet `MAX_DRAWS`, ist die Grenze schlechter aufgelöst als verlangt. Das
+    ist am `tail_draws` des Intervalls ablesbar und wird nicht verschwiegen.
+    """
+    half = (1.0 - level) / 2.0
+    if half <= 0:
+        return MAX_DRAWS
+    needed = int(np.ceil(MIN_TAIL_DRAWS / half))
+    return int(min(MAX_DRAWS, max(floor, needed)))
 
 #: Below this many observations no interval is reported at all.
 #:
@@ -71,10 +122,26 @@ class Interval:
     high: float
     block: int
     n: int
+    #: Wie viele Ziehungen gerechnet wurden, und wie viele davon unter dem
+    #: gesuchten Perzentil lagen. Das zweite ist die Zahl, an der sich
+    #: ablesen laesst, ob die Grenze eine Schaetzung oder ein Extremwert ist.
+    draws: int = DRAWS
+    tail_draws: float = float("nan")
 
     @property
     def excludes_zero(self) -> bool:
         return self.low > 0 or self.high < 0
+
+    @property
+    def tail_resolved(self) -> bool:
+        """Ob der Rand mit genug Ziehungen belegt ist.
+
+        Ist das falsch, beruht die Grenze auf einer Handvoll Extremwerten und
+        wackelt ueber Saatwerte. Sie bleibt lesbar -- aber ein Urteil
+        'Intervall ohne Null' daraus ist nicht verlaesslich.
+        """
+
+        return math.isnan(self.tail_draws) or self.tail_draws >= MIN_TAIL_DRAWS
 
     def __str__(self) -> str:
         return f"[{self.low:+.3f}, {self.high:+.3f}]"
@@ -82,7 +149,10 @@ class Interval:
     def labelled(self) -> str:
         """The form a report prints: bounds, block length, and the verdict."""
         tail = "  <- Null ausgeschlossen" if self.excludes_zero else ""
-        return f"{self} (Block {self.block}, n={self.n}){tail}"
+        warn = "" if self.tail_resolved else (
+            f"  ! Rand auf {self.tail_draws:.1f} Ziehungen -- nicht aufgeloest"
+        )
+        return f"{self} (Block {self.block}, n={self.n}){tail}{warn}"
 
 
 def suggested_block(values: Numbers) -> int:
@@ -168,7 +238,10 @@ def block_bootstrap(
         return None
 
     length = suggested_block(series) if block is None else max(1, min(int(block), n))
-    means = _resampled_means(series, length=length, draws=draws, seed=seed)
+    # Die Ziehungen richten sich nach dem NIVEAU, nicht nach einer festen Zahl.
+    # `draws` ist der Boden; ein korrigiertes Niveau hebt ihn an.
+    used = draws_for(level, floor=draws)
+    means = _resampled_means(series, length=length, draws=used, seed=seed)
 
     half = (1.0 - level) / 2.0
     return Interval(
@@ -177,6 +250,8 @@ def block_bootstrap(
         high=float(np.percentile(means, 100 * (1 - half))),
         block=length,
         n=n,
+        draws=used,
+        tail_draws=used * half,
     )
 
 
@@ -213,7 +288,8 @@ def paired_difference(
 
     difference = b - a
     length = suggested_block(difference) if block is None else max(1, min(int(block), n))
-    means = _resampled_means(difference, length=length, draws=draws, seed=seed)
+    used = draws_for(level, floor=draws)
+    means = _resampled_means(difference, length=length, draws=used, seed=seed)
 
     half = (1.0 - level) / 2.0
     return Interval(
@@ -222,6 +298,8 @@ def paired_difference(
         high=float(np.percentile(means, 100 * (1 - half))),
         block=length,
         n=n,
+        draws=used,
+        tail_draws=used * half,
     )
 
 
@@ -255,9 +333,10 @@ def two_group_difference(
     if a.size < MIN_OBSERVATIONS or b.size < MIN_OBSERVATIONS:
         return None
 
+    used = draws_for(level, floor=draws)
     means = _resampled_means(
-        a, length=suggested_block(a), draws=draws, seed=seed
-    ) - _resampled_means(b, length=suggested_block(b), draws=draws, seed=seed + 1)
+        a, length=suggested_block(a), draws=used, seed=seed
+    ) - _resampled_means(b, length=suggested_block(b), draws=used, seed=seed + 1)
 
     half = (1.0 - level) / 2.0
     return Interval(
@@ -268,4 +347,6 @@ def two_group_difference(
         # width that depends on both.
         block=max(suggested_block(a), suggested_block(b)),
         n=min(a.size, b.size),
+        draws=used,
+        tail_draws=used * half,
     )
