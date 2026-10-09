@@ -78,6 +78,11 @@ class Tally:
     closed: int = 0
     expired: int = 0
     abandoned_bars: int = 0
+    #: Signalbalken, die VOR dem zuletzt entschiedenen lagen und darum
+    #: verworfen wurden. Eine gelungene Abfrage mit alter Antwort --
+    #: selten, aber mit `!=` statt `>` haette sie den Zeiger rueckwaerts
+    #: gesetzt und alles dazwischen erneut entschieden.
+    stale_bars: int = 0
     """Signal bars given up on after repeated failures.
 
     Evidence that was lost rather than measured. Separate from `failures`

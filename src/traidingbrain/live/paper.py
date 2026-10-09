@@ -360,7 +360,33 @@ class PaperTrader:
         twenty-nine cycles in thirty.
         """
         newest = self._newest
-        if not newest or newest == self.state.last_decided_ts:
+        # GRÖSSER, nicht bloss UNGLEICH. Der Unterschied ist ein Defekt, der
+        # erst sichtbar wird, wenn eine Antwort veraltet ist statt zu fehlen.
+        #
+        # Der Fehlschlag-Pfad ist sicher: `self._newest` wird in `settle()`
+        # erst nach einem vollständig gelungenen `refresh_data()` gesetzt, also
+        # bleibt der Zeiger bei einem Abruffehler stehen und hier passiert
+        # nichts. Was nicht sicher war: eine Abfrage, die GELINGT und einen
+        # alten Balken zurückgibt -- eine zwischengespeicherte oder
+        # gespiegelte Antwort. Dass das kein Hirngespinst ist, zeigt der
+        # Befund vom 09.10.2026 zu `stream.binancefuture.com`: Preise auf den
+        # Cent richtig, Kennraum um Faktor 11 falsch. Eine Antwort kann
+        # richtig aussehen und alt sein.
+        #
+        # Mit `!=` hätte ein solcher Rückschritt zwei Dinge getan: einen längst
+        # entschiedenen Balken erneut entscheiden, und den Zeiger unten
+        # RÜCKWÄRTS setzen -- womit alle Balken dazwischen zum zweiten Mal
+        # entschieden würden. Mit `>` passiert nichts, und es wird vermerkt.
+        if not newest:
+            return
+        if newest <= self.state.last_decided_ts:
+            if newest < self.state.last_decided_ts:
+                self.stats.tally.stale_bars += 1
+                self._failed(
+                    f"Veralteter Signalbalken verworfen: {newest} liegt vor dem "
+                    f"zuletzt entschiedenen {self.state.last_decided_ts}"
+                )
+                self._persist()
             return
         try:
             self._maybe_open(newest)
@@ -406,7 +432,7 @@ class PaperTrader:
 
         Let a runner see the expensive work coming before it starts it.
         """
-        return bool(self._newest) and self._newest != self.state.last_decided_ts
+        return bool(self._newest) and self._newest > self.state.last_decided_ts
 
     def _failed(self, message: str) -> None:
         """Record a failed cycle where somebody will see it.

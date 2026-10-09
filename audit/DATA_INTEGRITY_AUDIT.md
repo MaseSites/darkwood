@@ -203,13 +203,61 @@ darunter und darüber, und der echte Vorfall nachgespielt.
 **Offen:** warum W1. Dass es der erste Abruf jedes Zyklus ist, ist eine
 Beobachtung und keine Erklärung.
 
+## 5c. Phase 1 Punkt 5: veraltete Daten sperren jetzt ein Signal
+
+Der Auftrag verlangt: *„Erkenne veraltete Daten und sperre daraus abgeleitete
+Signale."* Beim Nachsehen, ob das fehlt, zeigte sich erst, **dass der
+naheliegende Pfad schon sicher ist** — und dann, dass ein anderer es nicht war.
+
+**Sicher, und zwar aus einem konkreten Grund.** Bei einem Abruffehler wird
+`self._newest` nie gesetzt: die Zuweisung in `settle()` passiert erst nach
+einem vollständig gelungenen `refresh_data()`. Der Zeiger bleibt stehen, und
+`decide()` tut nichts. Gemessen während des 47-%-Ausbruchs: keine verlorene
+Entscheidung, Konto durchgehend aktuell. *Ich hatte vermutet, die Sicherheit
+hänge an der Reihenfolge von `context` — W1 zuerst, also bricht ein
+W1-Fehlschlag alles ab. Das war falsch: die Zuweisung-nach-Erfolg trägt es
+unabhängig von der Reihenfolge.*
+
+**Nicht sicher war der andere Fall:** eine Abfrage, die **gelingt** und einen
+**alten** Balken zurückgibt. `decide()` verglich `newest == last_decided_ts` —
+ein Rückschritt ist *ungleich* und wäre durchgegangen. Er hätte zwei Dinge
+getan:
+
+1. einen längst entschiedenen Balken erneut entschieden,
+2. den Zeiger **rückwärts** gesetzt (`last_decided_ts = newest`), womit jeder
+   Balken dazwischen zum zweiten Mal entschieden worden wäre.
+
+Dass eine gelungene Antwort alt sein kann, ist an demselben Tag belegt: auf
+`stream.binancefuture.com` waren die Preise auf den Cent richtig und der
+Kennraum um Faktor 11 falsch (siehe `E5_ORDERFLOW.md` §3). Eine Antwort kann
+richtig aussehen und falsch sein.
+
+**Behoben:** der Vergleich ist jetzt `>` statt `!=`, in `decide()` **und** in
+`wants_decision` — hätte nur eines gewechselt, hätte ein Läufer die teure
+Analyse für einen Balken angestossen, den `decide()` danach verwirft. Ein
+Rückschritt wird verworfen, gezählt (`tally.stale_bars`) und vermerkt, mit
+beiden Zeitstempeln in der Meldung. Still verwerfen wäre derselbe Fehler wie
+still entscheiden.
+
+`tests/test_stale_bar.py`, **10 Tests**: neuerer Balken wird entschieden,
+derselbe nicht zweimal, älterer entscheidet nichts, älterer bewegt den Zeiger
+nicht zurück, älterer wird gezählt und laut gemeldet, kein Balken bleibt
+stumm, und `wants_decision` stimmt mit `decide()` in allen vier Fällen überein.
+
+**Zum Stand der Veralterung, gemessen:** alle zwölf Märkte über alle fünf
+Zeitebenen liegen bei **1,36 bis 1,71 Balken-Intervallen** — der neueste
+Balken ist der gerade geschlossene. Nichts ist derzeit veraltet. Die Wache ist
+also ein **Netz**, kein Fix für einen laufenden Schaden, und so gehört sie
+berichtet. Der Schwellwert muss dabei je Zeitebene gelten: zwei Wochen sind
+für W1 normal und für M15 ein Ausfall.
+
 ## 6. Was in Phase 1 **nicht** erledigt ist
 
 | Auftragspunkt | Stand |
 |---|---|
 | Rohereignisse mit Event- und Empfangszeit | **offen** — die Tape-Collectoren speichern `received_ms`, aber es gibt keinen WebSocket-Collector mit Sequenzkontrolle |
 | Reconnect, Heartbeat, Backoff mit Jitter | **offen** — Polling mit Wiederholung, kein Streaming |
-| Stale-Data-Erkennung sperrt abgeleitete Signale | **teilweise** — Stillstand der Collectoren wird gemeldet, und seit 09.10. meldet der Papierhandel auch eine erhöhte Fehlerquote (`FailureWatch`). Gesperrt wird daraufhin weiterhin kein Signal |
+| Stale-Data-Erkennung sperrt abgeleitete Signale | **erledigt** — siehe §5c. Ein Signalbalken vor dem zuletzt entschiedenen wird verworfen, gezählt und gemeldet; der Zeiger geht nicht rückwärts |
 | Zentrales Rate-Limit-Handling | **offen** — jeder Prozess begrenzt sich selbst; der Lock verhindert jetzt den schlimmsten Fall |
 | Fehlerfall-Tests (DNS, Sequenzlücke, doppelte Nachricht, …) | **teilweise** — nur die Lock-Fälle sind getestet |
 | Absichtlich eingeführter Fehler ⇒ klarer ungültiger Status | **nicht erfüllt** — das Abnahmekriterium von Phase 1 ist damit **nicht** erreicht |
