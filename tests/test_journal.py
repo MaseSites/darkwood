@@ -593,3 +593,21 @@ def test_the_entry_records_which_configuration_made_it() -> None:
 def test_an_old_entry_without_a_signature_still_loads() -> None:
     """Alles vor dem 09.10.2026 traegt keine. Das darf nichts brechen."""
     assert entry().run_signature == ""
+
+
+def test_the_signature_survives_the_store(tmp_path) -> None:
+    """Ein neues Feld kann im Speicher still verschwinden.
+
+    `JournalEntry` gewann `run_signature` am 09.10.2026, damit die Frage "sind
+    diese Vorwaertstrades EINE Stichprobe" aus den Daten beantwortbar ist statt
+    aus der Git-Historie. Ein Feld im Objekt nuetzt dafuer nichts, wenn der
+    Speicher es beim Schreiben oder Lesen fallen laesst -- und genau das
+    passiert, wenn irgendwo eine feste Spaltenliste steht.
+    """
+    signature = "1000.0|['A','B']|0.08|M15|refused-v1"
+    store = JournalStore(tmp_path / "journal.sqlite")
+    store.record([entry("BTCUSDT-1", run_signature=signature)])
+
+    back = store.all()
+    assert len(back) == 1
+    assert back[0].run_signature == signature
