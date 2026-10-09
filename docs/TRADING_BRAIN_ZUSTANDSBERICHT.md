@@ -20,7 +20,7 @@ die Kurzfassung, weil die betroffenen Abschnitte unten sonst in die Irre führen
 |---|---|---|
 | „Eine Auswahl unter Einträgen ohne Vorteil kann nichts beitragen" | **Falsch.** Kategoriefehler. Pool −0,0906 R, Teilmenge `rating_band=eindeutig` **+0,0311 R**, beides ex ante bekannt. Und das Projekt hatte drei Tage vorher Setup C auf genau dieser Grundlage abgeschaltet. | 6.4 |
 | „Stop, Positionsgrösse und Hebel kürzen sich heraus" | Grösse und Hebel ja, **der Stop nicht.** Er verschiebt den Ausstieg: ein 1,5× weiterer Stop hätte **70,1 %** der ausgestoppten Trades nicht beendet. | 3.1 |
-| „Keine Gebührensenkung kann das Vorzeichen drehen" | **Nur für diese Börsenfamilie.** An Primärquellen und an den Marktdaten der Venue selbst geprüft: 0 % Maker **und** 0 % Taker existieren. Gemessener Taker/Taker-Round-Trip auf BTC bei 1 000 USD: **0,0005 %** — 22× unter der Obergrenze des gemessenen Vorsprungs. | 4.2, 11.1 |
+| „Keine Gebührensenkung kann das Vorzeichen drehen" | **Nur für diese Börsenfamilie.** An Primärquellen und an den Marktdaten der Venue selbst geprüft: 0 % Maker **und** 0 % Taker existieren. Gemessener Taker/Taker-Round-Trip auf BTC bei 1 000 USD: **0,0005 %** — 22× unter der Obergrenze des gemessenen Vorsprungs. **Und dieser Faktor hat seit dem 08.10.2026 zwei Lesarten:** die Taker-Drift nach dem Trade ist gemessen (+0,086 bp bei 1 s, Intervall ohne Null) und **revertiert** — permanent gedacht ist der Faktor **4,8×**, revertierend bleibt er 21×. Welche gilt, hängt an der Haltedauer. Keine der beiden ist belegt. Dazu: die 0,0106 % sind selbst die *Obergrenze* der einzigen von vier Zellen mit Intervall ohne Null — wer den Faktor zitiert, stellt eine Obergrenze gegen eine Untergrenze. | 4.2, 11.1 |
 | „BNBUSDT-Funding ist kaputt (49,6 % Nullen)" | **Die Nullen sind echt** (73/73 auch bei der Venue, `observed_zero`). Der Ausschluss war ein Fehler. Der wirkliche Defekt ist grösser: **das Funding-Verzeichnis mischt zwei Börsen** — 4 Bybit, 8 Binance. | 8.1, 9.1 |
 | „FreqAI hat kein Purging und kein Embargo" | **Zu grob.** Training → Vorhersage ist sauber (der Shift schützt sich selbst). Training → **interne Validierung** leckt, und das ist die Grenze, an der Early Stopping hängt. `test_size` steht jetzt auf 0. | 9.3 I9 |
 
@@ -1291,12 +1291,28 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
 15. **[GEMESSEN 07.10.2026]** **Die bestehende Ausstiegspolitik ist die beste der drei**
     (E3, `audit/E3_AUSGAENGE.md`). 7 255 Fälle, gepaart auf denselben Einstiegen: Stop+Ziel
     −0,0205 R, Stop+24h-Uhr −0,0824 R, Stop+2,0-ATR-Trail −0,0762 R mit einer gepaarten
-    Differenz von **−0,0557 [−0,1123; −0,0060]** — zuverlässig *schlechter*. Das Ziel
+    Differenz von **−0,0557 [−0,1123; −0,0060]** — zuverlässig *schlechter*.
+    **KORRIGIERT 09.10.2026:** der Bootstrap konnte bei 3 000 Ziehungen das
+    korrigierte Perzentil nicht auflösen (1,44 Ziehungen unter der Grenze, also
+    fast das Minimum der Stichprobe). Mit niveau-abhängiger Ziehungszahl lautet
+    die Differenz **−0,0557 [−0,1091; −0,0001]** — die Null um ein
+    Zehntausendstel R ausgeschlossen. Das Urteil ist **am Rand**, nicht
+    zuverlässig: über sieben Saatwerte war es bei 3 000 Ziehungen 6 zu 1 und
+    erst bei 200 000 einstimmig (`audit/BOOTSTRAP_RAND.md`). Das Ziel
     arbeitet: 31,1 % der Trades verlassen darüber, und beide Alternativen nehmen diese Tür
     weg. **Erstmals in diesem Projekt ist etwas, das das System schon tut, gegen eine
     benannte Alternative verteidigt** statt nur nicht widerlegt.
-16. **[GEMESSEN 08.10.2026]** **Der erste Befund, der beide Tore passiert** — und er ist
-    kein Ertrag (`audit/TAPE_MAKER_BEFUND.md`). Auf 67 037 beobachteten Buch-Orders der
+16. **[GEMESSEN 08.10.2026, ÜBERHOLT 08.10. ABENDS]** **Der Befund, der beide Tore
+    passierte — und auf dreifacher Datenmenge am zweiten fiel.** Auf 11 Stunden statt
+    3,2 sank der Markout auf BTC von −0,195 auf **−0,083 bp**, Verhältnis **0,43×**,
+    ausserhalb des Bandes; von vier Horizonten schliesst nur noch einer die Null aus.
+    Die Richtung hält und hält auf drei Märkten (ETH −0,178, SOL −0,417) auf 23 399
+    belegten Fills. Ursache ist der Vorbehalt aus dem Bericht selbst: die
+    30-Sekunden-Abtastung des Buches — er war die grössere Hälfte der Zahl
+    (`audit/TAPE_VOLLE_ABDECKUNG.md`). Für das Ziel: 0,0017 CHF je Fill, also **1,78
+    Millionen Fills** und 21,4 Millionen gestellte Orders. Der Text unten steht
+    unverändert, weil ein nachträglich umgeschriebener Bericht keine Aufzeichnung ist.
+    (`audit/TAPE_MAKER_BEFUND.md`). Auf 67 037 beobachteten Buch-Orders der
     neuen Venue: **8,3 % belegt gefüllt, 91,4 % belegt storniert.** Der Markout auf belegten
     Fills ist bei allen vier Horizonten **zugunsten des Makers** (1 s: −0,195 bp
     [−0,226; −0,162] auf 5 200 Fills), und er **repliziert** über zwei getrennte Fenster mit
@@ -1316,9 +1332,106 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
     gemessen, repariert und zwei eigene Fehler kassiert. Einen Kandidaten hat sie nicht
     hervorgebracht, und das ist das Ergebnis, nicht sein Ausbleiben.
 
+18. **[GEMESSEN 08.10.2026]** **Das System ist gehebeltes Marktbeta ohne eigenen
+    Beitrag** (E8, `audit/E8_ALPHA_ODER_BETA.md`). Zerlegung je Trade gegen die
+    BTC-Bewegung über sein Haltefenster, Beta aus einem rückwärtigen Fenster: über
+    2 752 Trades ist **b = +0,985** [+0,872; +1,101] und der Rest daneben
+    **a = −0,0831 R** [−0,1453; −0,0217], Intervall ohne Null. Vorwärts: b = +1,788,
+    a ≈ 0. **Die +0,80 R des Vorwärtslaufs waren Hebel auf einen fallenden Markt.**
+    Mechanik an einer bekannten Antwort geprüft (gegen das eigene Symbol b = +0,874,
+    wie es sein muss). Tor 2 verfehlt (+2,36×), also belegt ist die *Abwesenheit*
+    eines positiven Rests, nicht die Grösse des negativen.
+19. **[GEMESSEN 08.10.2026]** **Die Füllannahme ist zu streng, nicht zu grosszügig**
+    (E9, `audit/E9_FUELL_REALISMUS.md`). Gegen das echte Buch, wo ein Fill per Id-Join
+    **belegt** ist: auf 657 647 beobachteten Orders **0,6 % Falschfüllung**
+    [0,6; 0,7] — und 95 bis 99 % **verpasste** Fills, weil ein Maker *bei* seinem Preis
+    gefüllt wird und die Regel *jenseits* verlangt. Am Antritt füllen nur **12,4 %** der
+    echten Orders, also bleibt `fill_on_touch: false` richtig. Und die naheliegende
+    Folgehypothese ist widerlegt: für unsere echten Einstiege unterscheiden sich
+    Berührung und Durchhandeln auf **0,5 %** der Fälle (39 von 7 340). **Das Füllmodell
+    ist in keiner gemessenen Grösse dieses Projekts eine wesentliche Fehlerquelle.**
+20. **[GEMESSEN 09.10.2026]** **Der Stop-Auslöser ist ausgereizt** (E10,
+    `audit/E10_STOP_AUSLOESER.md`). 35,2 % aller Trades werden von einem Docht geholt,
+    dessen Kerze zurückschliesst — die grösste nie geprüfte Population des Projekts. Ein
+    schlusskurs-bestätigter Stop, 7 255 gepaarte Fälle: gepaarte Differenz
+    **−0,0064 R** [−0,0297; +0,0161], beide Tore verfehlt. **Und der Rand ist der
+    Befund:** der schlimmste Einzelverlust wächst von −1,890 auf **−6,841 R** und es
+    kommen 8 Liquidationen hinzu. Bei 1 % Risiko wäre das ein Konto-Einschlag von 6,8 %
+    aus einem Trade — mehr, als die harte 3-%-Grenze zulässt. Hätte nur der Mittelwert
+    im Bericht gestanden, wären die +0,0064 R eine Verbesserung gewesen.
+21. **[GEMESSEN 09.10.2026]** **Der marktbereinigte Querschnitt trägt nichts, und beide
+    Vorzeichen verlieren** (E4V/E4W, `audit/E4V_*.md`, `audit/E4W_*.md`). Täglich:
+    −12,43 bp/Tag [−23,40; −1,35], Null ausgeschlossen *auf der falschen Seite*; Brutto
+    5,20 bp gegen eine Maut von 7,15 — **beide Vorzeichen verlieren nach Kosten**, ohne
+    dass das Vorzeichen nachträglich gedreht werden muss. Wöchentlich fällt die Maut um
+    Faktor 5 und das Brutto **nicht** (6,72 bp), also trägt der Querschnitt Information
+    je *Zeit* — erstmals in diesem Projekt wird eine Kostensenkung nicht sofort von
+    einem schrumpfenden Brutto gefressen. Beide Tore fallen trotzdem, und die
+    Nachrechnung schliesst die Frage: **31,9 Jahre** Kalenderzeit wären nötig (11,1
+    unkorrigiert), vorhanden sind 6,1, und Perps gibt es seit sieben. **Nicht
+    entscheidbar**, nicht nur unentschieden.
+22. **[KORRIGIERT 09.10.2026]** **Dabei habe ich E4 zu früh entsperrt.** Die
+    Punkt-in-Zeit-Tabelle nennt, *welche* Symbole wann handelbar waren — nicht deren
+    Kurse. Gemessen: 232 handelbare Perps am 01.06.2022, **749** am 01.06.2026, Kurse
+    auf der Platte für **zwölf**. E4 steht wieder auf `blockiert_an_preisen`; der Schirm
+    E4V hat den Kursdownload *entbehrlich* gemacht, nicht möglich.
+23. **[GEMESSEN 09.10.2026]** **E5 und P26 sind nicht baubar, und der Host, der liefert,
+    ist der falsche** (`audit/E5_ORDERFLOW.md`). Handshake gelingt, `SUBSCRIBE` wird
+    bestätigt, dann **null** Marktnachrichten in 12 s gegen ~95 fällige. Vier Pfade
+    geprüft. Und `stream.binancefuture.com` liefert — mit Preisen, die **auf den Cent**
+    stimmen, und einem Kennraum, der um **Faktor 11** abweicht, bei einem Sechstel der
+    Rate. Eine Preisprüfung hätte das nie gefunden. **Kein Bauproblem:** ein Collector
+    mit Sequenzkontrolle ist ein Tagwerk — er hätte nur nichts zu lesen.
+24. **[KORRIGIERT 09.10.2026]** **Und die Statistik selbst hatte einen Defekt.** Bei
+    3 000 Ziehungen liegen unter dem korrigierten Perzentil **1,44 Ziehungen** — die
+    Grenze war fast das Minimum der Stichprobe und hörte auf, breiter zu werden, wenn
+    das Niveau strenger wurde. Betroffen war genau ein Urteil, und es war das stärkste
+    (Punkt 15). Behoben: die Ziehungen richten sich jetzt nach dem Niveau, und das
+    Intervall trägt mit, ob sein Rand aufgelöst ist. Die Fehlerrichtung war glücklich —
+    zu wenige Ziehungen machen Intervalle zu *schmal*, also Effekte zu leicht gesichert,
+    und gesichert wurde hier fast nichts (`audit/BOOTSTRAP_RAND.md`).
+
 ---
 
-## 18. Der eine nächste Schritt — LÄUFT seit 07.10.2026, 17:39 UTC
+## 18. Der eine nächste Schritt — ÜBERHOLT, siehe 19
+
+Was hier stand, ist getan: die parallele Aufnahme lief 11,00 Stunden, S7 ist
+aufgehoben, und die drei Tape-Analysen sind auf voller Abdeckung gerechnet. Der
+Abschnitt bleibt als Aufzeichnung stehen.
+
+---
+
+## 19. Der eine nächste Schritt — 09.10.2026: warten, und zwar begründet
+
+**Es gibt keinen Forschungsschritt mehr, der ohne eine Entscheidung des
+Kontoinhabers vorangeht.** Alle Wege sind gemessen, blockiert oder als nicht
+entscheidbar belegt — die Übersicht steht in `audit/RESEARCH_PLAN.md`.
+
+Was bleibt, ist **ein Termin**, und er folgt aus einer Rechnung statt aus einer
+Hoffnung (`audit/WANN_WEISS_MAN_ES.md`):
+
+| nötiger Vorteil | Trades | Tage | fertig am |
+|---|---|---|---|
+| **+0,7280 R** ← *was das Ziel verlangt* | **41** | **22** | **30.10.2026** |
+| +0,4000 R | 136 | 72 | 19.12.2026 |
+| +0,1000 R | 2 175 | 1 145 | 26.11.2029 |
+
+**Der Vorteil, den das Ziel verlangt, wäre bis zum Zieldatum nachweisbar.** Das
+ist kein Zufall, sondern eine Folge der Grössen: ein Vorteil, der 1 000 CHF in
+sechs Monaten auf 20 000 bringt, ist so gross, dass 41 Trades ihn zeigen.
+**Das Ziel prüft sich selbst.**
+
+Daraus die Handlung, und es ist eine Unterlassung: **den Vorwärtslauf laufen
+lassen und nichts an ihm ändern.** Jede Änderung an Strategie, Risiko oder
+Schwellen setzt den Zähler inhaltlich zurück — dafür existiert
+`run_signature`.
+
+Und die Kehrseite gehört dazu: **der Vorwärtslauf kann nur grosse Vorteile
+beantworten.** Ein echter Edge von +0,10 R bräuchte 2 175 Trades und bis 2029.
+
+**Stand des Vorwärtslaufs:** 18 geschlossene Trades, +0,3938 R je Trade,
+Intervall über die Null, Konto 12 085,55 USDT. Seit 09.10. mit
+Singleton-Lock, Fehlerquoten-Melder und Veraltungs-Wache.
 
 **Er ist nicht mehr nur benannt, er läuft.** `scripts/collect_venue_tape.py`
 nimmt seit 17:39 UTC Quotes **und Trades** auf sechs Märkten auf, mit lokaler
@@ -1340,7 +1453,7 @@ keiner von ihnen kommt ohne sie weiter:
 
 * **E0 Punkt 3** — ob ein Signal, das auf der alten Börse entsteht, auf der neuen
   überhaupt noch ausführbar ist. Ohne das ist die gemessene Kostensenkung (22× unter dem
-  Vorsprung auf BTC) interessant und nicht entscheidend.
+  Vorsprung auf BTC — **oder 4,8×, siehe §1**) interessant und nicht entscheidend.
 * **S7** — ohne Trade-Tape lässt sich in diesem Buch eine Teilausführung nicht von einer
   Teil-Storno trennen. 33 von 41 „Fills" lagen an nie erreichten Preisen. Damit gibt es
   keinen Markout, und ohne Markout keine Aussage über adverse Selektion.
