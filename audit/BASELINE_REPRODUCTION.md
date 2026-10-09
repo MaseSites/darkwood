@@ -26,7 +26,7 @@ E8/E9 gewachsen. E8 lief auf **2 748** Trades und 14 Live-Trades, hier sind es
 | Skript | Laufzeit | Ergebnis | gegen Audit-Datei |
 |---|---|---|---|
 | `ratchet.py` | < 1 s | 22 erledigt, 0 offen, 1 nicht testbar, 0 gesperrt; „KEIN BELEGTER VORTEIL"; Prüffenster 0 Konsultationen | **exakt** |
-| `study_exits.py` | 9,4 s | 7 255 Fälle; −0,0205 / −0,0824 / −0,0762 R; gepaart −0,0619 [−0,1316; +0,0071] und −0,0557 [−0,1123; −0,0060] | **exakt**, Ziffer für Ziffer |
+| `study_exits.py` | 9,4 s | 7 255 Fälle; −0,0205 / −0,0824 / −0,0762 R; gepaart −0,0619 [−0,1316; +0,0071] und −0,0557 [−0,1123; −0,0060] | **exakt**, Ziffer für Ziffer — **und beide Grenzen wurden später korrigiert**, weil der Bootstrap bei 3 000 Ziehungen das korrigierte Perzentil nicht auflösen konnte. Jetzt [−0,1290; +0,0115] und [−0,1091; **−0,0001**]. Die Reproduktion war damit korrekt und reproduzierte einen Defekt mit (`audit/BOOTSTRAP_RAND.md`) |
 | `study_fill_realism.py` | 2 min 35 s | 657 647 Orders; gepoolt 0,6 % [0,6; 0,7]; BTC 0,8 / ETH 1,1 / SOL 0,5 / XRP 0,2 / DOGE 0,1 / LINK 0,1 % | **exakt**, alle sechs Märkte |
 | `study_beta_alpha.py` | 2,6 s | siehe unten | **mit Abweichungen** |
 | `study_basis.py` | läuft | — | offen |

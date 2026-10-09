@@ -1,5 +1,12 @@
 # E8 — Alpha oder Beta: das System *ist* die Marktrichtung, gehebelt
 
+> **Hinweis 09.10.2026 zur Verwechslungsgefahr.** Die „14 Trades" in diesem
+> Bericht sind der Stand vom 08.10. — *alle* damals geschlossenen
+> Vorwärtstrades. Seit dem 09.10. steht eine andere Vierzehn daneben: die
+> **homogene** Stichprobe nach der letzten Strategieänderung, mit +0,6208 R
+> statt der hier genannten +0,8023 R. Es sind nicht dieselben Trades
+> (`audit/DIE_VORWAERTSSTICHPROBE.md`).
+
 Reproduktion:
 
 ```bash
