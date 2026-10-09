@@ -15,7 +15,7 @@ angemeldete Vergleiche, Niveau 99,9000 %).
 |---|---|---|---|---|
 | **P0** | Baseline reproduzieren | **erledigt, mit Lücken** | — | `BASELINE_REPRODUCTION.md` |
 | **P1** | Datenintegrität und Betrieb | **teilweise** | — | `DATA_INTEGRITY_AUDIT.md` |
-| P2 | E4 Relative Value | **nicht begonnen** | P0, P1 | `E4_RELATIVE_VALUE.md` |
+| P2 | E4 Relative Value | **blockiert an Preisen** | Kurse fuer ein Punkt-in-Zeit-Universum | `E4V_RELATIVE_VALUE_VORPRUEFUNG.md` |
 | P3 | E5 Streaming / Orderflow | **blockiert** | Collector | `E5_ORDERFLOW.md` |
 | P4 | P26 Lead-Lag | **blockiert** | P3 (Streaming + Uhr) | `P26_LEAD_LAG.md` |
 | P5 | E7 LLM-Shadow | **registriert** | P0 | `E7_LLM_SHADOW.md` |
@@ -75,23 +75,50 @@ Kryptomarkt tragen und daneben **−0,0827 R** [−0,1404; −0,0151] übrig las
 Jeder neue Kandidat muss gegen diese marktgerichtete Baseline antreten, nicht
 gegen Null.
 
+## P2 abgeschlossen — mit einer Korrektur und einer Entscheidung
+
+**E4 war nie entsperrt.** Die Punkt-in-Zeit-Tabelle nennt, *welche* Symbole
+wann handelbar waren, nicht deren Kurse. Gemessen: 232 handelbare Perps am
+01.06.2022, **749** am 01.06.2026 — Kurse liegen für **zwölf** vor. E4 steht
+wieder auf `blockiert_an_preisen`.
+
+**Der Schirm E4V ist gelaufen und negativ.** 2 221 Tage, netto −12,43 bp/Tag
+[−22,46; −1,33], Intervall ohne Null auf der falschen Seite, Replikation
++1,76× im Band, kein einzelner Markt trägt es. Und das Spiegelbild verliert
+ohne zweiten Lauf: Brutto 5,20 bp gegen eine Maut von 7,15 bp.
+
+**Entscheidung nach der vorab festgelegten Asymmetrie:** E4 bleibt blockiert,
+und der Kursdownload für 232–749 Symbole plus 138 delistete **unterbleibt**.
+Das war der grösste offene Einzelbau dieses Plans.
+
 ## Nächster Schritt — genau einer
 
-**E4 (Relative Value) rechnen.** Begründung: er nutzt ausschliesslich Daten,
-die vorhanden und als integer geprüft sind; er greift Tor 6 direkt an, weil
-marktbereinigte Residualrenditen genau das messen, was E8 als fehlend
-ausgewiesen hat; und er braucht keinen neuen Collector.
+**Den Streaming-Collector bauen (Phase 3, E5).** Er ist jetzt der einzige
+Weg, der noch irgendwo hinführt, und er trägt drei Dinge auf einmal:
 
-Vor dem ersten Lauf zu registrieren: Universum und Ausschlussregeln,
-Schätzverfahren der gemeinsamen Marktkomponente (nur aus zum
-Entscheidungszeitpunkt verfügbaren Daten), Signale, Haltehorizonte, Baselines
-(Cash, Markt-Beta, einfache Relative-Value-Regel) und das Kostenmodell.
+1. **E5** (Orderflow auf handelbarem Horizont) ist ohne ihn nicht rechenbar.
+2. **P26** (die Lead-Lag-Asymmetrie) ist die *einzige* gemessene Grösse des
+   Projekts mit möglicherweise positivem Vorzeichen — und ohne getrennte
+   Event- und Empfangszeit nicht von einem Uhrenversatz zu trennen.
+3. Das **Phase-1-Abnahmekriterium** („ein absichtlich eingeführter Fehler
+   führt zu einem klaren ungültigen Status") verlangt ihn.
+
+Zuerst nur BTC und ETH als technische Prüfung: Diff Depth, Book-Ticker,
+Aggregated Trades, mit Sequenzkontrolle nach dem **USDⓈ-M-Futures**-Verfahren
+(nicht dem Spot-Beispiel), Reconnect, Stale-Erkennung, append-only Rohdaten
+und Lückenmetriken. Erst wenn der Collector stabil läuft, Features.
+
+**Was E4V darüber sagt, und es ist eine Warnung:** die Maut war 7,15 bp gegen
+ein Brutto von 5,20. Jeder Kandidat aus E5 wird gegen dieselbe Struktur
+antreten, nur auf einem kürzeren Horizont, wo die Maut je Zeit noch grösser
+ist. Der Collector ist zu bauen, um die Frage zu *beantworten* — nicht in der
+Erwartung, dass sie positiv ausgeht.
 
 ## Nicht als nächstes, und warum
 
 | | |
 |---|---|
-| **E5 / P26** | Brauchen einen WebSocket-Collector mit Sequenzkontrolle und getrennter Event-/Empfangszeit. Das ist der grösste Einzelbau im Plan, und P26 ist ohne Uhrvalidierung nicht einmal identifizierbar. |
+| **E4 selbst** | Blockiert an Kursen für ein Punkt-in-Zeit-Universum. Der Schirm E4V hat den Download entbehrlich gemacht, nicht möglich. |
 | **E7** | `calibration_proven` bleibt `false`. Die kalibrierte Zuversicht ist von der Basisrate nicht unterscheidbar (−0,00005 [−0,00011; +0,00001]). Ein weiterer Lauf gegen dieselbe Null kostet Budget ohne Aussicht. |
 | **Mehr Märkte, Indikatoren, Hebel, Trades** | Gemessen erledigt. Siehe `PROBLEMBERICHT_20X.md` §6: zehn Wege mit Beleg zugemauert. |
 

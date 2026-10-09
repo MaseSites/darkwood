@@ -370,6 +370,40 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "Die 2.0 ATR standen vorab fest und wurden nicht nachjustiert.",
     ),
     (
+        "Marktbereinigter Querschnitt (E4V)",
+        "erledigt",
+        "E4V, angemeldet am 09.10.2026 VOR dem ersten Lauf; total_comparisons 50 "
+        "-> 52. ZUERST EINE KORREKTUR AN MIR SELBST: E4 stand seit dem 07.10. als "
+        "'entsperrt', weil build_universe.py die Punkt-in-Zeit-Tabelle liefert. Das "
+        "war zu schnell -- die Tabelle nennt, WELCHE Symbole wann handelbar waren, "
+        "nicht deren KURSE. Gemessen: 232 handelbare Perps am 01.06.2022, 749 am "
+        "01.06.2026, und Kurse liegen fuer ZWOELF auf der Platte. Eine "
+        "Querschnittsstudie darauf ist die Studie der heute liquidesten "
+        "Ueberlebenden, also genau die 'nachtraegliche Auswahl der Gewinner-Coins', "
+        "die E4s acceptance ausschliesst. E4 steht wieder auf blockiert_an_preisen. "
+        "DER SCHIRM, mit vorab festgelegter Asymmetrie: negativ auf den zwoelf ist "
+        "aussagekraeftig (liquidester, am staerksten ueberlebender Satz, den es "
+        "gibt), positiv waere nur die Rechtfertigung fuer den Download. Verbraucht "
+        "keine von E4s sechs Zellen. "
+        "Faktor je Stichtag kausal: Querschnittsmittel DESSELBEN Tages, Beta aus "
+        "einem rueckwaertigen 60-Tage-Fenster, das am Stichtag endet. Vorzeichen "
+        "vorab fixiert: Long das NIEDRIGSTE Residuum. "
+        "2.221 Tage: brutto -5.20 bp/Tag, Umschlag 1.30, netto -12.43 bp/Tag "
+        "[-22.46, -1.33] -- Intervall ohne Null AUF DER FALSCHEN SEITE. Kontrolle "
+        "(gleichgewichtet halten) +12.53 [-16.20, +47.56], also Krypto-Beta und auf "
+        "diesem Niveau nicht von Null zu unterscheiden. Tor 2: +1.76x, im Band -- der "
+        "negative Befund replikiert. Jeden Markt einmal ausgelassen: -11.47 bis "
+        "-16.54 bp/Tag, keiner traegt es. "
+        "UND DAS SPIEGELBILD VERLIERT AUCH, ohne zweiten Lauf: Brutto 5.20 bp gegen "
+        "eine Maut von 7.15 bp. Reversion -12.35, Momentum -1.95 bp/Tag. Die Maut "
+        "ist groesser als das Brutto, also verlieren beide Vorzeichen -- dieselbe "
+        "Struktur, die dieses Projekt schon fuenfmal gefunden hat: nicht die "
+        "Richtung ist das Problem, sondern dass sie kleiner ist als der Weg zu ihr. "
+        "ENTSCHEIDUNG: E4 bleibt blockiert, der Kursdownload fuer 232-749 Symbole "
+        "plus 138 delistete unterbleibt. Der groesste offene Einzelbau des "
+        "Forschungsplans, erledigt durch eine Messung von einer Minute.",
+    ),
+    (
         "Stop-Ausloeser: Beruehrung gegen Schluss (E10)",
         "erledigt",
         "E10, angemeldet am 09.10.2026 VOR dem ersten Lauf; total_comparisons 49 "

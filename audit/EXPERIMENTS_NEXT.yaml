@@ -43,10 +43,10 @@ meta:
   # Die Zahl, auf die korrigiert wird. Summe der `comparisons` aller Arme unten
   # plus die bereits gelesenen Zellen der Vorgaenger-Suche, soweit dieselbe
   # Frage betroffen ist.
-  total_comparisons: 50
+  total_comparisons: 52
   correction: >-
-    Bonferroni auf 50 Vergleiche, also Schwelle 0.05/50 = 0.00100 und ein
-    99.900%-Intervall. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
+    Bonferroni auf 52 Vergleiche, also Schwelle 0.05/52 = 0.00096 und ein
+    99.904%-Intervall. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
     angemeldete Sensitivitaet erlaubt, nicht als Ersatz. Sie werden zusaetzlich
     berichtet, nicht anstelle.
 
@@ -403,7 +403,31 @@ experiments:
   - id: E4
     title: "Marktbereinigte Relative-Value-Entscheidung"
     priority: 2
-    status: registriert_entsperrt
+    status: blockiert_an_preisen
+    blocker_korrigiert:
+      stand: 2026-10-09
+      was_falsch_war: >-
+        Am 07.10.2026 wurde E4 als "entsperrt" gefuehrt, weil
+        build_universe.py die Punkt-in-Zeit-Tabelle liefert. Das war zu
+        schnell: die Tabelle nennt, WELCHE Symbole wann handelbar waren --
+        sie liefert keine KURSE. Gemessen am 09.10.2026 aus
+        data/universe/binance_um_perps.json (1.062 Eintraege, 138 mit
+        letztem Datentag):
+            01.06.2022   232 Perps handelbar
+            01.06.2023   256
+            01.06.2024   329
+            01.06.2025   514
+            01.06.2026   749
+        Preisdaten liegen fuer ZWOELF Maerkte auf der Platte. Eine
+        Querschnittsstudie darauf ist keine Studie des Universums, sondern
+        eine Studie der heute liquidesten Ueberlebenden -- also genau die
+        "nachtraegliche Auswahl der Gewinner-Coins", die `acceptance`
+        ausschliesst und die `pitfalls_declared` als ungeklaerte
+        Survivorship-Richtung benennt.
+      echter_blocker: >-
+        Tages- oder Stundenkerzen fuer das Punkt-in-Zeit-Universum, inklusive
+        der delisteten Symbole aus data.binance.vision. Die Universums-
+        tabelle ist Voraussetzung dafuer und war nie der letzte Schritt.
     unblocked:
       stand: 2026-10-07
       was: >-
@@ -906,6 +930,95 @@ experiments:
         Docht-Stops waere das System +0.4151 R je Trade" steht im Journal und
         ist BEDEUTUNGSLOS: man darf die Verlierer nicht entfernen und den Rest
         behalten. Nur ein neu simulierter Pfad entscheidet.
+
+  - id: E4V
+    title: "Vorpruefung von E4 auf dem Ueberlebenden-Satz -- ein Schirm, kein Ergebnis"
+    priority: 1
+    status: erledigt_negativ
+    angelegt: 2026-10-09
+    result:
+      stand: 2026-10-09
+      bericht: audit/E4V_RELATIVE_VALUE_VORPRUEFUNG.md
+      skript: scripts/study_relative_value.py
+      tage: 2221
+      arme:
+        E4V.1_residual_reversion: >-
+          brutto -5.20 bp/Tag, Umschlag 1.30, Funding -0.06 bp,
+          netto -12.43 bp/Tag [-22.46, -1.33] -- Null AUSGESCHLOSSEN, auf der
+          falschen Seite
+        E4V.2_gleichgewichtet: >-
+          brutto +20.73 bp/Tag, netto +12.53 bp/Tag [-16.20, +47.56] --
+          Null enthalten. Krypto-Beta, auf diesem Niveau nicht von Null zu
+          unterscheiden
+      replikation: "frueher -11.67, spaeter -20.55, Verhaeltnis +1.76x -- IM BAND"
+      einzelmarkt_pruefung: >-
+        Jeden der zwoelf Maerkte einmal ausgelassen: -11.47 bis -16.54 bp/Tag,
+        groesste Verschiebung -4.11 bp (ohne ATOM). Kein einzelner Markt
+        traegt das Ergebnis.
+      und_das_spiegelbild_verliert_auch: >-
+        Brutto 5.20 bp gegen eine Maut von 1.30 x 5.5 = 7.15 bp. Reversion
+        -12.35, Momentum +5.20 - 7.15 = -1.95 bp/Tag. BEIDE Vorzeichen
+        verlieren nach Kosten -- darum braucht das Spiegelbild keinen zweiten
+        Lauf und das Vorzeichen wird nicht nachtraeglich gedreht.
+      no_trade_zone: >-
+        In E4s requirements genannt, hier bewusst nicht implementiert: sie
+        ueberspringt Tage, an denen das Brutto die Maut nicht deckt, und
+        fuehrt bei negativem Brutto gegen Null statt ins Positive.
+      entscheidung: >-
+        Nach der vorab festgelegten Asymmetrie: E4 bleibt blockiert, der
+        grosse Kursdownload (232-749 Symbole plus 138 delistete aus dem
+        Archiv) unterbleibt. Der groesste offene Einzelbau des
+        Forschungsplans ist durch eine Messung von einer Minute Laufzeit
+        nicht mehr zu rechtfertigen.
+    frage: >-
+      Traegt ein marktbereinigter Querschnitt ueberhaupt etwas, wenn man ihn
+      auf den zwoelf Maerkten rechnet, fuer die Kurse vorliegen?
+    warum_als_eigener_arm_und_nicht_als_E4: >-
+      E4 verlangt ein Punkt-in-Zeit-Universum mit Kursen. Das fehlt (siehe
+      E4.blocker_korrigiert). Diese Vorpruefung auf zwoelf Ueberlebenden darf
+      deshalb NICHT als E4 gelten und verbraucht keine von E4s sechs
+      angemeldeten Zellen. Sie ist ein Schirm mit einer klaren Asymmetrie:
+        * Faellt sie NEGATIV aus, ist das aussagekraeftig -- der Satz ist der
+          liquideste und am staerksten ueberlebende, den es gibt, und eine
+          Methode, die dort nichts findet, wird durch mehr Symbole nicht
+          besser. Dann bleibt E4 blockiert und der grosse Kursdownload
+          unterbleibt.
+        * Faellt sie POSITIV aus, ist das KEIN Befund, sondern genau die
+          Rechtfertigung fuer den Download. Erst danach zaehlt E4.
+      Die Richtung der Survivorship-Verzerrung ist bei Long/Short NICHT
+      vorab bestimmt -- das steht schon in E4.pitfalls_declared und gilt
+      hier genauso. Darum taugt ein positives Ergebnis hier nicht als Beleg.
+    arms:
+      - id: E4V.1
+        name: "Residual-Momentum nach kausal geschaetztem Marktfaktor, Haltedauer 1 Tag"
+      - id: E4V.2
+        name: "Gleichgewichtetes Halten derselben zwoelf Maerkte"
+        role: "Kontrolle"
+    methode: >-
+      Faktor je Stichtag NUR aus der Vergangenheit: Querschnittsmittel der
+      Renditen des Vortages als Marktkomponente, Beta je Markt aus einem
+      rueckwaertigen Fenster. Residual = Rendite minus Beta mal Faktor.
+      Signal = Rang des Residuums, Long die untere Haelfte oder obere Haelfte
+      je nach vorab fixiertem Vorzeichen, dollar-neutral. Kosten: Maut je
+      Umschichtung auf beiden Beinen, Funding je Haltezeit.
+    metric: "Netto-Rendite je Umschichtung, mit Block-Bootstrap-Intervall"
+    comparisons: 2
+    acceptance: >-
+      Korrigiertes Intervall ohne Null auf Niveau 0.05/52 UND Replikation
+      0.5-2.0x zwischen Entwicklungs- und Bestaetigungsfenster. Zusaetzlich
+      zwingend: das Ergebnis darf nicht an einem einzelnen Markt haengen --
+      die Rechnung wird je Markt ausgelassen und erneut gemacht.
+    vorab_festgelegt:
+      - "Vorzeichen des Signals steht VOR dem Lauf fest: Long das NIEDRIGSTE Residuum (Reversion)."
+      - "Haltedauer 1 Tag, taegliche Umschichtung. Kein zweiter Horizont in diesem Schirm."
+      - >-
+        Zwoelf korrelierte Maerkte sind NICHT zwoelf unabhaengige
+        Beobachtungen. Das Intervall wird ueber die Zeitreihe der
+        Portfoliorenditen gerechnet, nicht ueber Markt-Trade-Paare.
+      - >-
+        Die frueheren Arme mom_7/mom_30/vol_30 werden NICHT wiederbelebt. Der
+        Unterschied ist die Faktorbereinigung, und wenn der bereinigte Arm
+        dasselbe Ergebnis liefert wie der rohe, ist das zu berichten.
 
 # ---------------------------------------------------------------------------
 
