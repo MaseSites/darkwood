@@ -96,6 +96,14 @@ ignore = ["PLR0913"]
 # provenance of the source material stays checkable; their shape is not the
 # codebase's to argue with.
 "scripts/*youtube*.py" = ["E402", "PLR0912", "PLR0915", "PLR2004"]
+# Freqtrade reads `minimal_roi`, `order_types` and `order_time_in_force` off
+# the strategy class -- they are the framework's declared interface, not state.
+# RUF012 wants them annotated `ClassVar`, and that is not available here:
+# `IStrategy` declares them as plain annotated attributes (`minimal_roi: dict =
+# {}`, interface.py:72), so a `ClassVar` in the subclass earns
+# "Cannot override instance variable ... with class variable" from mypy.
+# Checked, not assumed. The two linters disagree and the base class decides.
+"freqtrade/user_data/strategies/*.py" = ["RUF012"]
 
 [tool.mypy]
 python_version = "3.12"

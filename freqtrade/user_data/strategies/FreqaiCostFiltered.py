@@ -42,10 +42,9 @@ from typing import Any
 
 import numpy as np
 import talib.abstract as ta
+from freqtrade.strategy import IStrategy
 from pandas import DataFrame
 from technical import qtpylib
-
-from freqtrade.strategy import IStrategy
 
 #: Binance spot: 0.1% a side. The round trip before slippage.
 ROUND_TRIP = 0.002

@@ -34,9 +34,8 @@ from __future__ import annotations
 from typing import Any
 
 import talib.abstract as ta
-from pandas import DataFrame
-
 from freqtrade.strategy import IStrategy
+from pandas import DataFrame
 
 #: Periods. Named rather than inlined so the startup count below is visibly
 #: derived from them instead of being a number someone hoped was big enough.
