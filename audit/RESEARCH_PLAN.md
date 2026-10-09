@@ -16,8 +16,8 @@ angemeldete Vergleiche, Niveau 99,9000 %).
 | **P0** | Baseline reproduzieren | **erledigt, mit Lücken** | — | `BASELINE_REPRODUCTION.md` |
 | **P1** | Datenintegrität und Betrieb | **teilweise** | — | `DATA_INTEGRITY_AUDIT.md` |
 | P2 | E4 Relative Value | **blockiert an Preisen** | Kurse fuer ein Punkt-in-Zeit-Universum | `E4V_RELATIVE_VALUE_VORPRUEFUNG.md` |
-| P3 | E5 Streaming / Orderflow | **blockiert** | Collector | `E5_ORDERFLOW.md` |
-| P4 | P26 Lead-Lag | **blockiert** | P3 (Streaming + Uhr) | `P26_LEAD_LAG.md` |
+| P3 | E5 Streaming / Orderflow | **blockiert an Marktdaten** | WS-Auslieferung an diese IP | `E5_ORDERFLOW.md` |
+| P4 | P26 Lead-Lag | **blockiert, mit P3** | P3 | `E5_ORDERFLOW.md` §3 |
 | P5 | E7 LLM-Shadow | **registriert** | P0 | `E7_LLM_SHADOW.md` |
 | P6 | Fill- und Kostenmodell | **teilweise** | laufend | `EXECUTION_COSTS.md` |
 | P7 | Unabhängige Replikation | **nicht begonnen** | ein Kandidat | — |
@@ -91,28 +91,56 @@ ohne zweiten Lauf: Brutto 5,20 bp gegen eine Maut von 7,15 bp.
 und der Kursdownload für 232–749 Symbole plus 138 delistete **unterbleibt**.
 Das war der grösste offene Einzelbau dieses Plans.
 
+## P3 geprüft — und der Collector ist nicht baubar
+
+**Die Dokumentation ist verifiziert, und das bleibt nutzbar.** Die
+Futures-Prozedur liegt wörtlich vor; `pu` ist der Unterschied zur
+Spot-Fassung, und wer das Spot-Verfahren anwendet, invalidiert sein Buch
+dauernd oder nie. Payloads empirisch belegt statt aus dem Gedächtnis.
+
+**Der Blocker hat sich verschoben.** Nicht „es gibt keinen Collector", sondern:
+Produktions-WebSocket-Marktdaten werden an diese IP **nicht ausgeliefert**.
+Handshake gelingt, `SUBSCRIBE` wird bestätigt, dann null Nachrichten in 12 s —
+gegen rund 95 fällige. Vier Pfade, alle stumm, Client am Echo-Dienst in
+Ordnung.
+
+**Und der Host, der liefert, ist der falsche.** `stream.binancefuture.com`
+gibt Daten, mit Preisen, die auf den Cent stimmen — und einem Kennraum, der um
+**Faktor 11** abweicht, bei einem Sechstel der Rate. Eine Preisprüfung hätte
+das nie gefunden. Für P26 wäre er wertlos: ein Strom, der 85 % der Ereignisse
+nicht zeigt, kann einen Sekundenvorlauf nicht von einem Uhrenversatz trennen.
+
+Damit bleiben **E5, P26 und das Phase-1-Abnahmekriterium** gemeinsam offen,
+und keines davon aus einem Grund, den Code behebt.
+
 ## Nächster Schritt — genau einer
 
-**Den Streaming-Collector bauen (Phase 3, E5).** Er ist jetzt der einzige
-Weg, der noch irgendwo hinführt, und er trägt drei Dinge auf einmal:
+**Keiner, der ohne eine Entscheidung des Kontoinhabers vorangeht.**
 
-1. **E5** (Orderflow auf handelbarem Horizont) ist ohne ihn nicht rechenbar.
-2. **P26** (die Lead-Lag-Asymmetrie) ist die *einzige* gemessene Grösse des
-   Projekts mit möglicherweise positivem Vorzeichen — und ohne getrennte
-   Event- und Empfangszeit nicht von einem Uhrenversatz zu trennen.
-3. Das **Phase-1-Abnahmekriterium** („ein absichtlich eingeführter Fehler
-   führt zu einem klaren ungültigen Status") verlangt ihn.
+Das ist die ehrliche Antwort, und sie steht hier statt einer Beschäftigung:
 
-Zuerst nur BTC und ETH als technische Prüfung: Diff Depth, Book-Ticker,
-Aggregated Trades, mit Sequenzkontrolle nach dem **USDⓈ-M-Futures**-Verfahren
-(nicht dem Spot-Beispiel), Reconnect, Stale-Erkennung, append-only Rohdaten
-und Lückenmetriken. Erst wenn der Collector stabil läuft, Features.
+| Weg | Stand |
+|---|---|
+| E4 Relative Value | blockiert an Kursen; der Schirm E4V war negativ und hat den Download **entbehrlich** gemacht |
+| E5 Orderflow | blockiert an WS-Marktdaten für diese IP |
+| P26 Lead-Lag | blockiert mit E5 — die einzige Grösse mit offenem Vorzeichen |
+| E7 LLM-Shadow | `calibration_proven: false`; kalibrierte Zuversicht von der Basisrate nicht unterscheidbar |
+| Phase-1-Abnahme | verlangt Sequenz- und Stale-Zustände, also E5 |
+| mehr Märkte, Indikatoren, Hebel, Trades | gemessen erledigt, zehn Wege mit Beleg zugemauert |
 
-**Was E4V darüber sagt, und es ist eine Warnung:** die Maut war 7,15 bp gegen
-ein Brutto von 5,20. Jeder Kandidat aus E5 wird gegen dieselbe Struktur
-antreten, nur auf einem kürzeren Horizont, wo die Maut je Zeit noch grösser
-ist. Der Collector ist zu bauen, um die Frage zu *beantworten* — nicht in der
-Erwartung, dass sie positiv ausgeht.
+**Was weiterläuft, ohne Entscheidung:** der Vorwärtshandel. Er ist die einzige
+Evidenzquelle, die noch wächst, und sie wächst mit ~1,9 Trades/Tag. 17
+geschlossene Live-Trades; 100 brauchen etwa 52 Tage. Das ist langsam und es
+ist echt.
+
+**Was eine Entscheidung bräuchte:**
+
+1. **Zugang zu Produktions-Streamdaten**, auf regulärem Weg. Erst damit sind
+   E5, P26 und das Phase-1-Kriterium überhaupt adressierbar. Ich schlage
+   keinen Weg um die Beschränkung herum vor.
+2. **Oder** die Feststellung, dass das Projekt mit Polling auskommen muss.
+   Dann ist P26 nicht entscheidbar und E5 nicht rechenbar, und das wäre
+   festzuhalten statt offen zu lassen.
 
 ## Nicht als nächstes, und warum
 

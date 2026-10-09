@@ -476,7 +476,46 @@ experiments:
   - id: E5
     title: "Orderflow auf einem tatsaechlich handelbaren Horizont"
     priority: 3
-    status: blockiert
+    status: blockiert_an_marktdaten
+    blocker_praezisiert:
+      stand: 2026-10-09
+      bericht: audit/E5_ORDERFLOW.md
+      vorher: "es gibt keinen Streaming-Collector"
+      jetzt: >-
+        Produktions-WebSocket-Marktdaten werden an diese IP nicht
+        ausgeliefert. Gemessen 08:24-08:27 UTC: REST funktioniert, DNS loest,
+        der Handshake gegen fstream.binance.com gelingt mit gueltigem
+        Sec-WebSocket-Accept, SUBSCRIBE wird mit {"result":null,"id":1}
+        bestaetigt -- und danach kommen NULL Marktnachrichten in 12s. Zur
+        Gegenprobe: 1000 REST-aggTrades spannen 126.9s, also 7.9 Trades/s,
+        also waeren rund 95 Nachrichten faellig gewesen. Vier Pfade geprueft
+        (/stream, /public/stream, /ws, /public/ws), alle stumm. Der Client
+        funktioniert an einem neutralen Echo-Dienst.
+      falsche_loesung: >-
+        stream.binancefuture.com ist als gleichwertig dokumentiert und
+        LIEFERT -- 24 aggTrades in 20s. Es ist nicht der Produktionsstrom:
+        die Preise stimmen auf den Cent (82573.30 auf beiden, Abstand 0.00),
+        aber die aggTrade-Kennungen unterscheiden sich um Faktor 11
+        (314.122.791 gegen 3.480.283.205) und die Rate ist ein Sechstel. Eine
+        Preispruefung haette das NIE gefunden. Auf diesem Strom waere jede
+        Lueckenzaehlung, jeder Id-Join gegen Mainnet-REST und jede
+        Buch-Sequenzpruefung ueber U/u/pu falsch.
+      kein_bauproblem: >-
+        Ein Collector mit Sequenzkontrolle, Reconnect, Stale-Erkennung und
+        Lueckenmetriken ist in einem Tag geschrieben. Er haette nur nichts zu
+        lesen.
+      dokumentation_verifiziert: >-
+        Die Futures-Prozedur liegt woertlich vor (Drop u < lastUpdateId;
+        erstes Ereignis U <= lastUpdateId AND u >= lastUpdateId;
+        Kontinuitaet pu == voriges u). `pu` ist der Unterschied zur
+        Spot-Fassung, die U == voriges u + 1 prueft. Empirisch belegte
+        Payloads: depth ['E','T','asks','bids','lastUpdateId'], aggTrade
+        ['E','T','a','e','f','l','m','nq','p','q','s','st'].
+      nicht_vorgeschlagen: >-
+        Kein Weg um die Beschraenkung herum. Der Auftrag verbietet die
+        Umgehung von Boersenbedingungen. Ob der Zugang auf regulaerem Weg
+        herzustellen ist, entscheidet der Kontoinhaber mit Anbieter und
+        Boerse.
     depends_on: [E0, "L2-Collector mit lueckenloser Aufnahme"]
     rationale: >-
       Die Familie "Orderbuch-Tiefe" steht im Register als nicht testbar, weil

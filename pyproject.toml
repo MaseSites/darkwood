@@ -22,6 +22,12 @@ dependencies = [
     # Raspberry Pi collector is the first fresh install since, and it failed
     # here.
     "psycopg[pool]>=3.2",
+    # Fuer den Streaming-Collector. Version 17.1 war auf dieser Maschine
+    # vorhanden, ohne erklaert zu sein -- dieselbe Falle wie bei psycopg
+    # darueber, und sie faellt erst auf einer frischen Installation auf. Ein
+    # geschuetzter Import waere die falsche Antwort gewesen: er haette den
+    # Fehler versteckt statt die Abhaengigkeit benannt.
+    "websockets>=13.0",
 ]
 
 [project.optional-dependencies]
