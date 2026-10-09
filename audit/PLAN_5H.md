@@ -168,3 +168,35 @@ Dazu ungeplant: ein OS-Lock gegen zwei Papierhändler, eine Fehlerquoten-Wache
 **Kein Kandidat gefunden.** Das war auch nicht der Plan — die vier Punkte
 waren Messungen und Absicherungen, keine Suche. Die einzige Evidenzquelle,
 die noch wächst, ist der Vorwärtslauf, und der braucht 30 weitere Trades.
+
+**16:40 — eine dritte Prüfung der Stichprobe, ungeplant und nötig.** Die 11
+stimmen; meine Begründung von 15:15 nicht. Die beiden Commits, auf die ich
+geschnitten hatte, sind im Live-Pfad **wirkungslos** — je eine Strategie, die
+nichts Lebendes importiert, plus ein Beschriftungsfeld ohne Verzweigung. Ich
+hatte sie danach ausgewählt, **wie strategiewirksam ihr Titel klingt.** Die
+echte Grenze liegt bei **04.10. 21:52 UTC** und heisst *„Stop losing forward
+evidence while it is being recorded"*: `MAX_DECISION_ATTEMPTS = 3`. Dieselben
+11 Trades, +0,7867 R, Termin 24.10.2026 — richtiger Grund. Neu dafür:
+`scripts/live_path_changes.py`.
+
+Nebenbei gemessen und beruhigend: die Episodenbildung entwertet die 41 nicht
+(ρ = 0,0249 über 508 Replay-Episoden, Designeffekt 1,03, also 42 statt 41) —
+mein erster Versuch schätzte die Streuung aus fünf Episoden und kam auf 72.
+Und eine vorab festgelegte Erwartung für die nächsten 30 Trades steht jetzt
+da: **−0,0867 R und 35,4 % Treffer**, aus dem Replay bei genau der Mischung
+geplanter Verhältnisse, die diese elf Trades haben.
+
+**17:05 — neun Lint-Fehler, die vier Tage lagen.** Gefunden, weil ich den
+Exitcode diesmal sichtbar gemacht habe. `ruff check . | tail -3` gibt den
+Exitcode von `tail` zurück, nicht von ruff, und „Found 9 errors" war die
+vierte Zeile von hinten. **Ich habe in dieser Sitzung mehrfach „Lint sauber"
+berichtet, ohne es geprüft zu haben** — und dieselbe Falle steht im
+Gedächtnis. Behoben, und die sieben nicht behebbaren (RUF012 gegen mypy, die
+Basisklasse entscheidet) stehen mit geprüfter Begründung in `pyproject.toml`.
+
+**Was als nächstes an dieser Stelle fehlt:** ein Golden-Test über den
+**Live**-Entscheidungspfad. Der Replay-Pfad hat einen, der Papierhandel nicht
+— und er erzeugt die einzige wachsende Evidenz. Die Archäologie von heute wäre
+damit überflüssig gewesen. Bewusst **nicht halb begonnen**: die Vorrichtung
+steht, aber die Fixture muss erst nachweislich Signale der echten Strategie
+erzeugen, sonst hasht der Test eine leere Folge und besteht immer.

@@ -247,6 +247,33 @@ und passte auf nichts. `git log` meldete **keine Commits** — was aussieht wie
 „keine Änderungen". Das Skript übergibt die Pfade jetzt als Argumente und hat
 den Fall im Docstring stehen.
 
+### Was fehlt, und es ist kein Werkzeug, sondern ein Test
+
+Die Archäologie oben war nötig, weil der Live-Entscheidungspfad **keinen
+Golden-Test** hat. Der Replay-Pfad hat einen: `tests/golden/` friert über
+`fingerprint(...)` die Fills und die Kapitalkurve eines Backtests ein, und
+eine Verhaltensänderung bricht ihn. Der Papierhandel hat nichts
+Entsprechendes — und **er ist der Pfad, der die einzige noch wachsende
+Evidenz erzeugt.** `MAX_DECISION_ATTEMPTS = 3` hätte einen solchen Test
+gebrochen und wäre am Tag seines Entstehens als Schnitt sichtbar gewesen,
+statt vier Tage später aus Diffs rekonstruiert.
+
+**Der nächste Schritt an dieser Stelle:** ein Golden-Test, der die echte
+Strategie (`GuidePool`, nicht `FixedIntent`) auf einem eingefrorenen Band
+durch N Zyklen fährt und die **Signalfolge** hasht — jeden Vorschlag und jede
+Ablehnung, aus dem `SignalStore`. Die Vorrichtung dafür steht schon in
+`tests/test_papertrade.py`: `TapeSource` mit wanderndem Schnitt, `FixedClock`,
+`synthetic_rows`.
+
+**Und die Falle, die dabei ausdrücklich zu vermeiden ist.** Die bestehenden
+Tests nehmen `FixedIntent` statt der echten Strategie, und zwar mit Begründung
+im Modul: *„a real setup fires on a handful of bars in a fixture and on none in
+some."* Feuert die echte Strategie auf der Fixture **nie**, ist der Hash über
+eine leere Folge stabil, egal was sich ändert — ein Test, der immer dasselbe
+sagt. Der Test muss deshalb seine eigene Signalzahl als Untergrenze mit
+behaupten, sonst besteht er leer. Begonnen und bewusst nicht halb
+hinterlassen: die Fixture muss erst nachweislich Signale erzeugen.
+
 ## 9. Was dabei nebenbei gemessen wurde
 
 Drei Dinge, die ohne diese Prüfung offen geblieben wären.
