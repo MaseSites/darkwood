@@ -1,0 +1,100 @@
+{
+ "befehl": "python scripts/freeze_decision_tape.py --bars 800 --symbols BTCUSDT,DOTUSDT --until 1791500400000",
+ "balken_je_ebene": 800,
+ "letzter_balken": 1791500400000,
+ "symbole": [
+  "BTCUSDT",
+  "DOTUSDT"
+ ],
+ "ebenen": [
+  "W1",
+  "D1",
+  "H4",
+  "H1",
+  "M15"
+ ],
+ "rahmen": {
+  "BTCUSDT": {
+   "W1": {
+    "balken": 260,
+    "erster_ts": 1633910400000,
+    "letzter_ts": 1790553600000
+   },
+   "D1": {
+    "balken": 800,
+    "erster_ts": 1722384000000,
+    "letzter_ts": 1791417600000
+   },
+   "H4": {
+    "balken": 800,
+    "erster_ts": 1779984000000,
+    "letzter_ts": 1791489600000
+   },
+   "H1": {
+    "balken": 800,
+    "erster_ts": 1788616800000,
+    "letzter_ts": 1791500400000
+   },
+   "M15": {
+    "balken": 800,
+    "erster_ts": 1790781300000,
+    "letzter_ts": 1791500400000
+   }
+  },
+  "DOTUSDT": {
+   "W1": {
+    "balken": 320,
+    "erster_ts": 1597622400000,
+    "letzter_ts": 1790553600000
+   },
+   "D1": {
+    "balken": 800,
+    "erster_ts": 1722384000000,
+    "letzter_ts": 1791417600000
+   },
+   "H4": {
+    "balken": 800,
+    "erster_ts": 1779984000000,
+    "letzter_ts": 1791489600000
+   },
+   "H1": {
+    "balken": 800,
+    "erster_ts": 1788624000000,
+    "letzter_ts": 1791500400000
+   },
+   "M15": {
+    "balken": 800,
+    "erster_ts": 1790662500000,
+    "letzter_ts": 1791500400000
+   }
+  }
+ },
+ "dateien": {
+  "BTCUSDT/D1/2024.parquet": "37fe8b347fa541cddae10942d5d3ef588d9e3227b4ee9b13320f72765cd2da14",
+  "BTCUSDT/D1/2025.parquet": "56299913956f0cd94f0f55390fdb5b449b4f20be6809dc5eb88e8290414de51f",
+  "BTCUSDT/D1/2026.parquet": "73045af3fec99b2983e0e014dfccefef5af0e6c693dae06bb5dc6ef513ccaf47",
+  "BTCUSDT/H1/2026.parquet": "d6395af9fe04bc88859da183ee0a6b47ab8babdd93af33df4250c9ad8b4db218",
+  "BTCUSDT/H4/2026.parquet": "41c818c3c0353be0856809ea510fa4f222f1ae652cd8cf7cdda7dc17be236373",
+  "BTCUSDT/M15/2026.parquet": "49fd07904d749c66e9cd81e027194406a49f9190d3c018069e88b53dc42f2b64",
+  "BTCUSDT/W1/2021.parquet": "fe2d955007f546a10dd20c51da74e783b09568060c5ffd1a25883361a68e01e6",
+  "BTCUSDT/W1/2022.parquet": "c65922fee6c3937cd49cc8d456ec7c0dc3c93d3d65aa8bf7f1618eb9f2cf2d43",
+  "BTCUSDT/W1/2023.parquet": "170771f7a883e7526f0d014d77a45efc81827148183076a2a019a88ea59b8da6",
+  "BTCUSDT/W1/2024.parquet": "698113c29fec20b6db5f1f81ee0ba018b61b5829fa4a8989a515a0bf3680db7f",
+  "BTCUSDT/W1/2025.parquet": "aa83b1cfc9c52a47338f0d25f551ccde7fb5f25a2abfde3c64f78e4a14435063",
+  "BTCUSDT/W1/2026.parquet": "b5e11a2b15c6999272f57d8e6d37a20afdcba2a59054a473c7554ddc39748861",
+  "DOTUSDT/D1/2024.parquet": "094eed37cbb3487e82b79f8fad95ca4ce7241c42f27f0a8edffde778f19584f5",
+  "DOTUSDT/D1/2025.parquet": "1770eb5cdafb2a3c20d8e7aae106e9b720054f3b0bf505db30735ab8847cd296",
+  "DOTUSDT/D1/2026.parquet": "a5dd0a3e071164afb310bbeb8fa3bb97bd3b2d7c0ebd8338f16921d053cd0c68",
+  "DOTUSDT/H1/2026.parquet": "2b986b27ac2484b46d876a6d359788c94aa78eb0ee67f01ddb1b074ce0966a27",
+  "DOTUSDT/H4/2026.parquet": "f0484e4338e71d5aed4a9d257c234257099f4fc13cb461bab7fdc06887bb20fd",
+  "DOTUSDT/M15/2026.parquet": "64a87e4945cfd428d4f61ec9189b3c7664e1a11ad4f5c06b15f7b8a80799a7fc",
+  "DOTUSDT/W1/2020.parquet": "7b8fab2da3964ea89b69fdb145573df9a38c17a400bd81eb5836c37e3f876c23",
+  "DOTUSDT/W1/2021.parquet": "6b1fd6ca29fa082eba8c23138dae9c2de842ee50a75a5b600302883be5a5b9ca",
+  "DOTUSDT/W1/2022.parquet": "78afdaf17fca13c4d7a1d32e95d1866c8cfeee839f90ee3c0677348134d2d151",
+  "DOTUSDT/W1/2023.parquet": "9a77924d4532febd4adc15da0d2e5dd3e77ad6ac532f9856c1b897373246bcf8",
+  "DOTUSDT/W1/2024.parquet": "be924a55ac4dc91484bcc3a104a95176694ee0898cf9efbeb661f9211c1513d8",
+  "DOTUSDT/W1/2025.parquet": "9b46b6b63d2e7707b3a01bbcfaa8e855ca9c080e449f7134a3a57ce9db9fd23a",
+  "DOTUSDT/W1/2026.parquet": "a2c0b6aa1162b84cadd2747243ca43a935259386ea7efb6f5fca554cc2e329d6"
+ },
+ "bandhash": "4636af02369f4d6d7ccb6a62b5872378e131210869ab64aa16759f8b9b1dff90"
+}

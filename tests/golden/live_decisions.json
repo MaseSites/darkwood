@@ -1,0 +1,97 @@
+{
+  "runs": {
+    "BTCUSDT": {
+      "counters": {
+        "failures": 0,
+        "not_ready": 0,
+        "opened": 1,
+        "proposed": 1,
+        "refused_by_risk": 0
+      },
+      "signals": [
+        {
+          "action": "genommen",
+          "cost_fraction": 0.059541,
+          "decided_ts": 1791473400000,
+          "detail": "confidence 60 -> 1.0% of equity",
+          "entry": 81316.0,
+          "leverage": 10.0,
+          "qty": 0.006,
+          "refused_by": null,
+          "reward_risk": 2.0,
+          "risk_amount": 8.604,
+          "run_signature": "1000.0|['A', 'B', 'E', 'F', 'G']|0.08|M15|refused-v1",
+          "setup_key": "B Trendlinien-Fakeout (V06)",
+          "setup_timeframe": "",
+          "side": "short",
+          "signal_id": "BTCUSDT-1791473400000-B Trendlinien-Fakeout (V06)",
+          "signal_timeframe": "M15",
+          "source": "live",
+          "stop": 82750.0,
+          "symbol": "BTCUSDT",
+          "target": 78448.0
+        }
+      ]
+    },
+    "DOTUSDT": {
+      "counters": {
+        "failures": 0,
+        "not_ready": 0,
+        "opened": 1,
+        "proposed": 2,
+        "refused_by_risk": 1
+      },
+      "signals": [
+        {
+          "action": "abgelehnt",
+          "cost_fraction": 0.0,
+          "decided_ts": 1791469800000,
+          "detail": "Chance-Risiko 0.80 unter dem Minimum 1.50",
+          "entry": 1.1099,
+          "leverage": 0.0,
+          "qty": 0.0,
+          "refused_by": "chance_risiko",
+          "reward_risk": 0.8,
+          "risk_amount": 0.0,
+          "run_signature": "1000.0|['A', 'B', 'E', 'F', 'G']|0.08|M15|refused-v1",
+          "setup_key": "F Inducement-Orderblock (V12)",
+          "setup_timeframe": "",
+          "side": "long",
+          "signal_id": "DOTUSDT-1791469800000-F Inducement-Orderblock (V12)",
+          "signal_timeframe": "M15",
+          "source": "live",
+          "stop": 1.0969,
+          "symbol": "DOTUSDT",
+          "target": 1.1203
+        },
+        {
+          "action": "genommen",
+          "cost_fraction": 0.0690247,
+          "decided_ts": 1791472500000,
+          "detail": "confidence 60 -> 1.0% of equity",
+          "entry": 1.0781,
+          "leverage": 10.0,
+          "qty": 609.756,
+          "refused_by": null,
+          "reward_risk": 1.5,
+          "risk_amount": 9.9999984,
+          "run_signature": "1000.0|['A', 'B', 'E', 'F', 'G']|0.08|M15|refused-v1",
+          "setup_key": "A Momentum-Breakout (V08)",
+          "setup_timeframe": "",
+          "side": "short",
+          "signal_id": "DOTUSDT-1791472500000-A Momentum-Breakout (V08)",
+          "signal_timeframe": "M15",
+          "source": "live",
+          "stop": 1.0945,
+          "symbol": "DOTUSDT",
+          "target": 1.0535
+        }
+      ]
+    }
+  },
+  "steps": 40,
+  "symbols": [
+    "BTCUSDT",
+    "DOTUSDT"
+  ]
+}
