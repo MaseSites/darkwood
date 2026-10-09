@@ -115,3 +115,56 @@ anfasst statt eine Vorrichtung.
 
 **13:48** Papierhandel gesund, +23 Zyklen in 75 s, Lock gehalten,
 `stale_bars` 0.
+
+**15:15 — eine Korrektur, die nicht auf dem Plan stand.** Beim Warten auf die
+Latenzmessung geprüft, ob die Vorwärtsstichprobe *eine* Stichprobe ist. Sie
+war es nicht, und zwar zweimal nicht: nach dem Konfigurationsschnitt (18 → 14)
+kamen noch zwei **Code**-Änderungen, die verändern, welche Trades entstehen,
+und **keine davon bewegt `run_signature`**. Homogen sind **11 Trades**,
++0,7867 R, Intervall [−1,043; +1,976]. Termin **24.10.2026**. Der Mittelwert
+steigt mit jedem Schnitt — als Gefahr benannt, nicht als Ergebnis.
+`JournalEntry` trägt jetzt beide Felder: Signatur *und* Commit, weil keines
+allein entscheidet.
+
+**15:44 — Punkt 2 erledigt, und die Antwort lautet „nicht W1".** 1 415 Abrufe
+über 2,5 Stunden, Reihenfolge gedreht. Streuung über **Zeitebenen 3 ms**, über
+**Positionen 37 ms** — der erste Abruf eines Zyklus zahlt 36 ms, die Ebene ist
+gleichgültig. Die Abnahme ist erfüllt: eine Verteilung je Ebene liegt vor, und
+die Aussage ist eindeutig.
+
+**Und sie erklärt den Ausbruch nicht.** ccxt bricht bei 10 000 ms ab; der
+schlechteste von 1 415 Abrufen war 840 ms, Faktor zwölf darunter. Der
+Kaltstart verschiebt den Körper der Verteilung und fügt **keinen Rand** hinzu
+— ein Timeout ist ein Randereignis. Das ist Evidenz *gegen* den einzigen
+Mechanismus, den die Messung sehen konnte, nicht bloss zu wenig davon.
+
+**Zwei Beinahe-Fehler dabei, beide vom Typ „was ich nie variiert habe".**
+Erst hielt ich den gemessenen Host für den falschen: `settings.yaml` sagt
+`testnet: true`, und der Testnet-Host ist tatsächlich 1,9× langsamer — das
+**Elffache** des Positionseffekts. Zwanzig Minuten war das mein Ergebnis, bis
+`papertrade.py:105` mit `testnet=False` und einer Begründung dastand. Die
+Messung war richtig; die Grösse mit dem stärksten Effekt war konstant
+richtig **aus Glück**. Zweitens: das Skript rechnete 1 415 Messungen in eine
+Zusammenfassung und verwarf sie. Behoben für den nächsten Lauf, für diesen
+nicht nachholbar.
+
+Und ein Kandidat, der ausdrücklich **nicht** umgesetzt wird: ein Aufwärm-Abruf
+würde Position 1 entlasten — und die Vorwärtsstichprobe zurücksetzen, ohne
+dass `run_signature` es aufzeichnet. Nach den 41 Trades, nicht davor.
+
+## Bilanz der fünf Stunden
+
+| Punkt | Stand |
+|---|---|
+| 1 — die 110 unaufgezählten Versuche | **erledigt**, 110 → 12, und 59 Zellen unabhängig nachgerechnet |
+| 2 — warum W1 | **erledigt**, Antwort: nicht W1. Der Ausbruch bleibt unerklärt, jetzt richtig gestellt |
+| 3 — Arm mit kleinerem Umschlag (E4W) | **erledigt**, beide Tore gefallen, und **nicht entscheidbar**: 31,9 Jahre nötig, 6,1 vorhanden |
+| 4 — veraltete Daten sperren Signale | **erledigt**, mit Test; dabei einen Rückwärts-Zeiger gefunden, der stillgeschwiegen hätte |
+
+Dazu ungeplant: ein OS-Lock gegen zwei Papierhändler, eine Fehlerquoten-Wache
+(die mich erst einmal acht Minuten Ausfall gekostet hat), `code_version` und
+`run_signature` im Journaleintrag, und die Stichprobenkorrektur auf 11.
+
+**Kein Kandidat gefunden.** Das war auch nicht der Plan — die vier Punkte
+waren Messungen und Absicherungen, keine Suche. Die einzige Evidenzquelle,
+die noch wächst, ist der Vorwärtslauf, und der braucht 30 weitere Trades.

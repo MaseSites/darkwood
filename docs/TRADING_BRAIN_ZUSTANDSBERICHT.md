@@ -1391,6 +1391,25 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
     zu wenige Ziehungen machen Intervalle zu *schmal*, also Effekte zu leicht gesichert,
     und gesichert wurde hier fast nichts (`audit/BOOTSTRAP_RAND.md`).
 
+25. **[GEMESSEN 09.10.2026]** **Der Fehler-Ausbruch lag nicht an W1 — und bleibt
+    trotzdem unerklärt.** 1 415 Abrufe über 2,5 Stunden, fünf Zeitebenen,
+    Reihenfolge je Durchgang gedreht: die Streuung über **Zeitebenen ist 3 ms**,
+    die über **Positionen 37 ms**. Eine Wochenkerze kostet nichts Eigenes; der
+    *erste* Abruf eines Zyklus kostet 36 ms mehr, gleichgültig welche Ebene er
+    holt. Damit ist eine ganze Hypothesenfamilie tot. **Aber der Kaltstart ist
+    nicht der Mechanismus:** ccxt bricht bei 10 000 ms ab, der schlechteste von
+    1 415 Abrufen lag bei 840 ms, und die Verschiebung fügt **keinen Rand** hinzu
+    — ein Timeout ist aber ein Randereignis. Dazu wiederholt sich der Ausbruch
+    nicht: 0 Fehler hier, und **4 010 ccxt-Zyklen des Papierhandels seit dem
+    Ausbruch ohne einen neuen Fehlschlag**. Die Frage lautet jetzt richtig
+    gestellt: warum scheitert der *erste* Abruf, in Ausbrüchen, die sich in Ruhe
+    nicht andeuten — beantwortbar nur durch eine Aufzeichnung *während* eines
+    Ausbruchs (`audit/WARUM_W1.md`). **Der naheliegende Fix bleibt liegen:** ein
+    Aufwärm-Abruf würde Position 1 entlasten und die homogene Vorwärtsstichprobe
+    zurücksetzen, ohne dass `run_signature` es aufzeichnet. Ein
+    Zuverlässigkeits-Fix *ist* eine Strategieänderung, weil ein gescheiterter
+    Zyklus eine nicht getroffene Entscheidung ist.
+
 ---
 
 ## 18. Der eine nächste Schritt — ÜBERHOLT, siehe 19

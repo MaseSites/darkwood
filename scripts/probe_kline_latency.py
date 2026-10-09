@@ -23,6 +23,17 @@ ohne sie messen Reihenfolge und Zeitebene dasselbe.
 
 **Nur lesen.** Kein Schlüssel, keine Order, derselbe öffentliche Endpunkt, den
 der Papierhandel benutzt.
+
+*Dass es derselbe ist, wurde geprüft und nicht angenommen:* `settings.yaml`
+sagt `testnet: true`, und `venue.build()` schickt einen Testnet-Client auf
+`demo-fapi.binance.com` -- rund doppelt so langsam (848 gegen 442 ms Median).
+Aber `papertrade.py:105` übergibt ausdrücklich `testnet=False`, weil Kerzen
+öffentlich sind. Die Zeile in der Konfiguration gilt dem Ausführer, nicht den
+Daten. Gemessen wird also der Pfad, der auch gescheitert ist.
+
+**Die Rohwerte bleiben.** Eine Zusammenfassung ohne ihre Stichprobe lässt sich
+nicht nachprüfen; alle Einzelmessungen gehen nach
+`data/probe_kline_latency.json`.
 """
 
 from __future__ import annotations
@@ -36,6 +47,7 @@ import urllib.error
 import urllib.request
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -58,6 +70,10 @@ GAP = 2.0
 
 #: Pause zwischen Durchgängen.
 EVERY = 30.0
+
+#: Wohin die Einzelmessungen gehen. Ohne sie ist der Bericht eine Behauptung
+#: über eine Stichprobe, die niemand mehr hat.
+OUT = ROOT / "data" / "probe_kline_latency.json"
 
 
 def one_call(interval: str, limit: int) -> tuple[float, str]:
@@ -147,6 +163,7 @@ def main() -> int:
     by_frame: dict[str, list[float]] = defaultdict(list)
     by_position: dict[int, list[float]] = defaultdict(list)
     errors: dict[str, int] = defaultdict(int)
+    raw: list[dict[str, Any]] = []
     deadline = time.time() + args.minutes * 60
     rounds = 0
 
@@ -155,6 +172,13 @@ def main() -> int:
             order = FRAMES[rounds % len(FRAMES):] + FRAMES[: rounds % len(FRAMES)]
             for position, (interval, limit) in enumerate(order):
                 spent, problem = one_call(interval, limit)
+                raw.append({
+                    "round": rounds,
+                    "position": position,
+                    "frame": interval,
+                    "ms": round(spent, 3),
+                    "error": problem,
+                })
                 if problem:
                     errors[interval] += 1
                     print(f"  ! {interval} nach {spent:.0f}ms: {problem}", flush=True)
@@ -171,6 +195,13 @@ def main() -> int:
     except KeyboardInterrupt:
         print("\n  Abgebrochen. Was gemessen ist, bleibt.")
 
+    if raw:
+        OUT.parent.mkdir(parents=True, exist_ok=True)
+        OUT.write_text(
+            json.dumps({"symbol": SYMBOL, "rounds": rounds, "calls": raw}, indent=1),
+            encoding="utf-8",
+        )
+        print(f"\n  {len(raw):,} Einzelmessungen nach {OUT.relative_to(ROOT)}")
     if rounds:
         report(by_frame, by_position, errors, rounds)
     return 0

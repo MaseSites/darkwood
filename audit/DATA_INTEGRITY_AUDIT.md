@@ -203,6 +203,22 @@ darunter und darüber, und der echte Vorfall nachgespielt.
 **Offen:** warum W1. Dass es der erste Abruf jedes Zyklus ist, ist eine
 Beobachtung und keine Erklärung.
 
+> **Gemessen am 09.10., 13:14–15:44 UTC — es ist nicht W1.** 1 415 Abrufe,
+> fünf Zeitebenen, Reihenfolge je Durchgang gedreht. Die Streuung über
+> **Zeitebenen** ist **3 ms**, die über **Positionen 37 ms**: eine Wochenkerze
+> kostet nichts Eigenes, der *erste* Abruf eines Zyklus kostet 36 ms mehr.
+> W1 trug den Hut der Position 1.
+>
+> **Der Ausbruch ist damit trotzdem nicht erklärt.** ccxt bricht bei 10 000 ms
+> ab; der schlechteste Einzelwert aus 1 415 Abrufen war 840 ms, und der
+> Kaltstart verschiebt die Verteilung, ohne einen Rand hinzuzufügen — ein
+> Timeout ist aber ein Randereignis. Dazu wiederholt sich der Ausbruch nicht:
+> 0 Fehler in dieser Messung, und **4 010 Zyklen des Papierhandels durch ccxt
+> seit dem Ausbruch mit 0 neuen Fehlschlägen** (der Zähler steht unverändert
+> auf 5 043). Richtig gestellt lautet die Frage jetzt: warum scheitert der
+> erste Abruf, in Ausbrüchen, die sich in Ruhe nicht andeuten. Vollständig in
+> `audit/WARUM_W1.md`.
+
 ## 5c. Phase 1 Punkt 5: veraltete Daten sperren jetzt ein Signal
 
 Der Auftrag verlangt: *„Erkenne veraltete Daten und sperre daraus abgeleitete
