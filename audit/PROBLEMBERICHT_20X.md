@@ -565,14 +565,16 @@ beantworten. *(`audit/WANN_WEISS_MAN_ES.md`)*
 | **Veraltungs-Wache** | Ein Signalbalken *vor* dem zuletzt entschiedenen wird verworfen; mit `!=` hätte er den Zeiger rückwärts gesetzt |
 | **Und ein selbstverschuldeter Ausfall** | Der Melder selbst stürzte den Papierhandel am 09.10. um 13:37 ab — `stats.tally` statt `tally`, sechs Tests grün, Vorrichtung falsch geformt. Acht Minuten, nichts verloren |
 
-**Stand:** 18 Vorwärtstrades — aber **die homogene Stichprobe sind 14.**
+**Stand:** 18 Vorwärtstrades — aber **die homogene Stichprobe sind 11.**
 Zwischen dem 03. und 04.10. standen vier strategiewirksame
 Konfigurationsänderungen; die homogene Reihe beginnt nach der letzten und
-steht bei **+0,6208 R** je Trade, Intervall [−1,070; +1,960]. Die 18
-zusammen ergeben +0,3938 R und sind eine Mischung aus vier Konfigurationen.
+steht bei **+0,7867 R** je Trade, Intervall [−1,043; +1,976]. Die 18
+zusammen ergeben +0,3938 R und sind eine Mischung aus sechs Ständen — vier
+Konfigurations- und zwei Code-Änderungen, und die Signatur erfasst nur die
+ersten vier.
 
-**Und der Termin wird dadurch früher:** 27 fehlende Trades bei 1,9/Tag sind
-14 Tage, also der **23.10.2026** — vor dem Stichtag des Ziels
+**Und der Termin wird dadurch früher:** 30 fehlende Trades bei 1,9/Tag sind
+16 Tage, also der **24.10.2026** — vor dem Stichtag des Ziels
 (`audit/DIE_VORWAERTSSTICHPROBE.md`).
 
 Konto 12 085,55 USDT. Ratchet: **24 erledigt, 0 offen, 1 nicht testbar.**

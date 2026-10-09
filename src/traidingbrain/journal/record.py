@@ -187,6 +187,24 @@ class JournalEntry:
     #: homogene Stichprobe waren 14 Trades, nicht 18. Eine Eigenschaft, die man
     #: nur durch Git-Archaeologie findet, ist keine aufgezeichnete Eigenschaft.
     run_signature: str = ""
+    #: Der Commit, unter dem dieser Trade entstand. Derselbe Wert, den der
+    #: Signalspeicher seit laengerem je Zeile traegt -- hier fehlte er.
+    #:
+    #: **Und er ist noetig, weil die Signatur allein nicht genuegt.** Am
+    #: 09.10.2026 sollte `run_signature` die Frage beantworten, ob 18
+    #: Vorwaertstrades EINE Stichprobe sind. Sie konnte es nicht: sie deckt
+    #: Startkapital, Setup-Liste, Kostendeckel, Signalzeitebene und
+    #: Ablehnungsversion -- also Konfiguration. Zwischen dem 04. und 05.10.
+    #: aenderte sich aber CODE: die Regel, welches Ziel bevorzugt wird, und
+    #: eine zweite Strategiefamilie. Beide veraendern, welche Trades
+    #: entstehen, und keines bewegt die Signatur. Die homogene Stichprobe war
+    #: nicht 14, sondern 11.
+    #:
+    #: Die beiden Felder sind absichtlich BEIDE da, weil keines allein reicht:
+    #: die Signatur ist zu grob (sie verpasst Verhalten, das im Code wohnt),
+    #: der Commit ist zu fein (er aendert sich, wenn ein Bericht geschrieben
+    #: wird). Zusammen lassen sie die Frage entscheiden; einzeln nicht.
+    code_version: str = ""
 
     @property
     def won(self) -> bool:

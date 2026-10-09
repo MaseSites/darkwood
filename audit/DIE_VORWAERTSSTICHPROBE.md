@@ -1,5 +1,23 @@
 # Die Vorwärtsstichprobe sind 14 Trades, nicht 18 — und das Journal konnte es nicht sagen
 
+> **ZWEITE KORREKTUR, 09.10.2026, 15:15 UTC — es sind 11, nicht 14.** Dieser
+> Bericht schnitt bei der letzten *Konfigurations*-Änderung. Danach kamen noch
+> zwei **Code**-Änderungen, die verändern, welche Trades entstehen: am 04.10.
+> 20:43 UTC *„Prefer a target that gets hit over one that pays more"* und am
+> 05.10. 12:38 UTC eine zweite Strategiefamilie. **Keine von beiden bewegt
+> `run_signature`** — die Signatur deckt Konfiguration, nicht Code. Die
+> homogene Stichprobe sind **11 Trades**, Mittel **+0,7867 R**, Intervall
+> [−1,043; +1,976]. Termin: 30 fehlende Trades, 16 Tage, **24.10.2026**.
+>
+> **Und der Mittelwert steigt mit jedem Schnitt** — 18 → +0,3938, 14 →
+> +0,6208, 11 → +0,7867. Das ist ein Warnzeichen und gehört benannt: wer den
+> Schnitt nach hinten schiebt, wählt die jüngeren Trades, und die waren
+> besser. Die Schnitte stammen aus Commit-Zeitstempeln, nicht aus Ergebnissen
+> — aber die Richtung der Drift ist eine Gefahr, nicht ein Ergebnis. Bei 11
+> Trades und einem Intervall von drei R Breite ist nichts belegt.
+>
+> Siehe Abschnitt 7 für die Konsequenz an den Daten.
+
 Stand 09.10.2026, 14:15 UTC. Commit vor der Arbeit: `610f021`.
 
 ---
@@ -107,3 +125,37 @@ die Frage ohne mich.
 **Vier gleichzeitig offene Positionen auf korrelierten Perps sind keine vier
 unabhängigen Beobachtungen.** Die effektive Stichprobe ist kleiner als 14, und
 die 27 fehlenden sind damit eine Untergrenze.
+
+
+## 7. Zweite Konsequenz: die Signatur allein genügt nicht
+
+**Der Signalspeicher konnte die Frage bereits exakt beantworten.** Er trägt
+seit längerem `code_version` je Zeile, und für die Live-Signale sieht das so
+aus:
+
+| `code_version` | Signale | Zeitraum |
+|---|---|---|
+| `870d12c` | 27 | 08.10. 11:00 – 09.10. 13:00 |
+| `8f26cdb-dirty` | 1 | 09.10. 13:45 |
+| `dee4d98` | 1 | 09.10. 14:45 |
+
+Er unterscheidet damit sogar die drei Neustarts von heute. Der
+**Journaleintrag** trug das nicht — und genau dort kam die Frage auf.
+
+**Behoben, mit dem vorhandenen Helfer statt einem neuen.** `JournalEntry`
+trägt jetzt `code_version`, erzeugt von `journal/version.py:code_version()` —
+derselbe Aufruf, den der Signalspeicher benutzt. *Ich hatte zuerst eine eigene
+Fassung geschrieben und dabei nicht nachgesehen; `ruff` meldete die
+Doppeldefinition, und meine Fassung ist geflogen.*
+
+**Beide Felder sind absichtlich da, weil keines allein reicht:**
+
+| | deckt | verpasst |
+|---|---|---|
+| `run_signature` | Startkapital, Setup-Liste, Kostendeckel, Signalzeitebene, Ablehnungsversion | **Verhalten, das im Code wohnt** |
+| `code_version` | den Code exakt | nichts — aber **ändert sich auch, wenn nur ein Bericht geschrieben wird** |
+
+Die Signatur ist zu **grob**, der Commit zu **fein**. Zusammen lassen sie die
+Frage entscheiden: gleiche Signatur heisst gleiche Konfiguration, und für die
+Commits dazwischen lässt sich prüfen, ob einer von ihnen Verhalten berührt
+hat. Einzeln entscheidet keines.

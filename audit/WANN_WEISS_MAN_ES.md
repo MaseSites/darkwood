@@ -5,9 +5,10 @@
 > 03. und 04.10. standen vier strategiewirksame Konfigurationsänderungen, die
 > beiden letzten (M15-Kadenz, Setup C aus) verändern, welche Signale
 > überhaupt entstehen. **Die homogene Stichprobe ist 14 Trades**, Mittel
-> **+0,6208 R**, Intervall [−1,070; +1,960]. Der Termin wird dadurch
-> **früher**: 27 fehlende Trades bei 1,9/Tag sind 14 Tage, also der
-> **23.10.2026** — vor dem Stichtag des Ziels. Und das Journal konnte die
+> **+0,6208 R**. **ZWEITE KORREKTUR 15:15 UTC: es sind 11, nicht 14** — nach
+> dem Konfigurationsschnitt kamen noch zwei Code-Änderungen, die die Signatur
+> nicht bewegt. 11 Trades, **+0,7867 R**, Intervall [−1,043; +1,976]. Termin:
+> 30 fehlende Trades, 16 Tage, **24.10.2026** — vor dem Stichtag des Ziels. Und das Journal konnte die
 > Frage nicht beantworten, weil `run_signature` nicht im Eintrag stand; das
 > ist jetzt behoben. Vollständig in `audit/DIE_VORWAERTSSTICHPROBE.md`.
 

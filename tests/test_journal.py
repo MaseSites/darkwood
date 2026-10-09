@@ -611,3 +611,23 @@ def test_the_signature_survives_the_store(tmp_path) -> None:
     back = store.all()
     assert len(back) == 1
     assert back[0].run_signature == signature
+
+
+def test_the_entry_records_the_commit_too(tmp_path) -> None:
+    """Signatur UND Commit, weil keines allein die Frage entscheidet.
+
+    Die Signatur deckt Konfiguration und verpasst Verhalten, das im Code
+    wohnt -- am 09.10.2026 waren das eine geaenderte Ziel-Regel und eine
+    zweite Strategiefamilie, und die homogene Stichprobe war 11 statt 14. Der
+    Commit deckt den Code exakt, aendert sich aber auch, wenn nur ein Bericht
+    geschrieben wird. Darum beide.
+    """
+    made = entry("BTCUSDT-1", run_signature="sig", code_version="abc1234")
+    assert made.run_signature == "sig"
+    assert made.code_version == "abc1234"
+
+    store = JournalStore(tmp_path / "journal.sqlite")
+    store.record([made])
+    back = store.all()[0]
+    assert back.run_signature == "sig"
+    assert back.code_version == "abc1234"

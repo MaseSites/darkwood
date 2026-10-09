@@ -1430,11 +1430,17 @@ Und die Kehrseite gehört dazu: **der Vorwärtslauf kann nur grosse Vorteile
 beantworten.** Ein echter Edge von +0,10 R bräuchte 2 175 Trades und bis 2029.
 
 **Stand des Vorwärtslaufs:** 18 geschlossene Trades — aber **die homogene
-Stichprobe sind 14.** Zwischen dem 03. und 04.10. standen vier
-strategiewirksame Konfigurationsänderungen; die homogene Reihe beginnt nach
-der letzten (Setup C aus, 04.10. 12:30 UTC) und steht bei **+0,6208 R** je
-Trade, Intervall [−1,070; +1,960]. **Damit wird der Termin früher:** 27
-fehlende Trades sind 14 Tage, also der **23.10.2026**.
+Stichprobe sind 11.** Zwischen dem 03. und 05.10. standen sechs Änderungen,
+die verändern, welche Trades entstehen: vier in der Konfiguration und **zwei
+im Code** (die Ziel-Regel am 04.10. 20:43 UTC, eine zweite Strategiefamilie
+am 05.10. 12:38 UTC). Die Signatur erfasst nur die ersten vier. Die homogene
+Reihe steht bei **+0,7867 R** je Trade, Intervall [−1,043; +1,976]. **Damit
+wird der Termin früher:** 30 fehlende Trades sind 16 Tage, also der
+**24.10.2026**.
+
+Und der Mittelwert steigt mit jedem Schnitt (18 → +0,3938, 14 → +0,6208,
+11 → +0,7867). Die Schnitte stammen aus Commit-Zeitstempeln, nicht aus
+Ergebnissen — aber die Richtung der Drift ist eine Gefahr und gehört benannt.
 
 Und das Journal konnte diese Frage nicht beantworten — `run_signature` stand
 nicht im Eintrag, sondern nur im Signalspeicher, also war sie nur über

@@ -51,6 +51,7 @@ from traidingbrain.journal.postmortem import examine
 from traidingbrain.journal.record import JournalEntry, Source, TradeReason
 from traidingbrain.journal.signals import Action, SignalRecord, SignalStore
 from traidingbrain.journal.store import JournalStore
+from traidingbrain.journal.version import code_version
 from traidingbrain.live.paperstate import PaperState, PaperStateStore, Tally
 from traidingbrain.sim.broker import Fill, OpenPosition, SimBroker
 from traidingbrain.sim.engine import AnalysisStrategy
@@ -698,6 +699,9 @@ class PaperTrader:
             # Git-Historie, und dort standen vier strategiewirksame
             # Aenderungen in zwei Tagen.
             run_signature=self.run_signature,
+            # Derselbe Helfer, den der Signalspeicher benutzt. Die Signatur
+            # allein genuegt nicht: sie deckt Konfiguration, nicht Code.
+            code_version=code_version(),
         )
         self.journal.record([entry])
         return entry
