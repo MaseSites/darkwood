@@ -462,6 +462,114 @@ zweiten Zeitfenster wieder auftaucht.
 
 ---
 
+---
+
+# 10. NACHTRAG 09.10.2026 — was sich seit diesem Bericht geändert hat
+
+Der Bericht oben bleibt unverändert stehen. Was seitdem gemessen wurde, steht
+hier — einschliesslich **vier Punkte, die widerlegt oder präzisiert sind.**
+
+## 10.1 Widerlegt
+
+**P38 war falsch** („1 000 CHF kollidiert mit Mindestgrössen"). Live an
+`exchangeInfo` geprüft: die Position ist bei 1 % Risiko das 0,76-fache des
+Eigenkapitals (764 USDT bei 1 000), das höchste effektive Minimum ist 82,39
+(BTC), und der **Kontoboden liegt bei 108 USDT** — fast eine Grössenordnung
+unter 1 000. Was stattdessen bindet: die **Körnung**. Auf BTC ist eine
+Schrittweite 10,79 % der Position, das angestrebte Risiko also nur in
+11-%-Schritten treffbar. Auf den anderen elf ≤ 3,45 %.
+*(`audit/EXECUTION_COSTS.md`)*
+
+**Die Füllfrage ist geschlossen** (P27 betraf Market Making, nicht unsere
+Einstiege). 0,6 % Falschfüllung auf 657 647 echten Orders; und für unsere
+Einstiege unterscheiden sich Berührung und Durchhandeln auf **0,5 %** der
+Fälle. Das Füllmodell ist in keiner gemessenen Grösse eine wesentliche
+Fehlerquelle. *(`audit/E9_FUELL_REALISMUS.md`)*
+
+## 10.2 Präzisiert
+
+**P19/P26 — der Blocker ist nicht „es gibt keinen Collector".** Gemessen:
+REST funktioniert, DNS löst, der WebSocket-Handshake gelingt, `SUBSCRIBE`
+wird mit `{"result":null,"id":1}` bestätigt — und dann kommen **null**
+Marktnachrichten in 12 s gegen rund 95 fällige. Vier Pfade geprüft. Und der
+Host, der *liefert* (`stream.binancefuture.com`), hat Preise **auf den Cent**
+richtig und einen Kennraum um **Faktor 11** daneben, bei einem Sechstel der
+Rate. Eine Preisprüfung hätte das nie gefunden. **Es ist kein Bauproblem.**
+*(`audit/E5_ORDERFLOW.md`)*
+
+**E4 war zu früh entsperrt** — meine eigene Fehleinschätzung. Die
+Punkt-in-Zeit-Tabelle nennt, *welche* Symbole wann handelbar waren, nicht
+deren Kurse: 749 handelbare Perps am 01.06.2026, Kurse auf der Platte für
+**zwölf**. *(`audit/E4V_RELATIVE_VALUE_VORPRUEFUNG.md`)*
+
+## 10.3 Neu gemessen
+
+| | |
+|---|---|
+| **E10** Stop-Auslöser | gepaart −0,0064 R [−0,0297; +0,0161], beide Tore verfehlt. Und der schlimmste Einzelverlust wächst von −1,890 auf **−6,841 R** |
+| **E4V** Querschnitt täglich | −12,43 bp/Tag [−23,40; −1,35], Null ausgeschlossen *auf der falschen Seite*; **beide Vorzeichen verlieren** nach Kosten |
+| **E4W** Querschnitt wöchentlich | Maut fällt um Faktor 5, Brutto **nicht** — und doch **nicht entscheidbar**: 31,9 Jahre nötig, 6,1 vorhanden |
+| **Trial-Ledger** | die behaupteten 124 Versuche sind jetzt zu 112 belegt (59 nachrechenbar aus gespeicherten R-Reihen), **12 ohne Beleg** statt 110 |
+| **unabhängige Bestätigung** | von 59 neu gerechneten Zellen der früheren Suche: **0 mit Intervall ohne Null**, beste +0,0455 R |
+
+## 10.4 Ein Defekt in der Statistik, und er betraf ein Urteil
+
+Bei 3 000 Bootstrap-Ziehungen liegen unter dem korrigierten Perzentil **1,44
+Ziehungen** — die Grenze war fast das Minimum der Stichprobe und hörte auf,
+breiter zu werden, wenn das Niveau strenger wurde. Betroffen war genau ein
+Urteil, und es war das stärkste: E3.3 lautete „zuverlässig schlechter" bei
+[−0,1123; −0,0060] und lautet jetzt **[−0,1091; −0,0001]** — am Rand.
+Über sieben Saatwerte war es bei 3 000 Ziehungen 6 zu 1.
+
+**Die Fehlerrichtung war glücklich:** zu wenige Ziehungen machen Intervalle zu
+*schmal*, also Effekte zu leicht gesichert — und gesichert wurde hier fast
+nichts. *(`audit/BOOTSTRAP_RAND.md`)*
+
+## 10.5 Die Zahl, die alles zusammenfasst
+
+Aus dem bestehenden `study_target_20x.py`, 413 Trades:
+
+| hypothetischer Vorteil je Trade | Endkapital |
+|---|---|
+| +0,10 R | 1 511 CHF |
+| +0,40 R | 5 200 CHF |
+| **+0,7280 R** | **20 000 CHF** ← das Ziel |
+
+**Das Ziel verlangt +0,7280 R je Trade über 413 Trades.** Gemessen: −0,0906.
+Selbst ein Vorteil von +0,40 R — fünf- bis zehnmal mehr, als gute Systeme
+ausweisen — erreicht ein Viertel.
+
+## 10.6 Und ein Termin, der aus einer Rechnung folgt
+
+| nötiger Vorteil | Vorwärtstrades | Tage | fertig am |
+|---|---|---|---|
+| **+0,7280 R** | **41** | **22** | **30.10.2026** |
+| +0,4000 R | 136 | 72 | 19.12.2026 |
+| +0,1000 R | 2 175 | 1 145 | 26.11.2029 |
+
+**Der Vorteil, den das Ziel verlangt, wäre bis zum Zieldatum nachweisbar** —
+41 Trades bei 1,9 am Tag. Das Ziel prüft sich selbst.
+
+Zeigt der Vorwärtslauf bis dahin kein Intervall ohne Null auf der richtigen
+Seite, ist das Ziel **empirisch widerlegt**, nicht nur arithmetisch
+unwahrscheinlich. Und die Kehrseite: ein echter Edge von +0,10 R bräuchte
+2 175 Trades und bis 2029 — der Vorwärtslauf kann nur **grosse** Vorteile
+beantworten. *(`audit/WANN_WEISS_MAN_ES.md`)*
+
+## 10.7 Betrieb
+
+| | |
+|---|---|
+| **P44 behoben** | Ein Prozess je Rolle, vom Betriebssystem erzwungen (`msvcrt`/`flock`). Ende zu Ende geprüft |
+| **Fehlerquoten-Melder** | Ein Ausbruch von ~47 % über zweieinhalb Stunden war unbemerkt geblieben; jetzt meldet er sich |
+| **Veraltungs-Wache** | Ein Signalbalken *vor* dem zuletzt entschiedenen wird verworfen; mit `!=` hätte er den Zeiger rückwärts gesetzt |
+| **Und ein selbstverschuldeter Ausfall** | Der Melder selbst stürzte den Papierhandel am 09.10. um 13:37 ab — `stats.tally` statt `tally`, sechs Tests grün, Vorrichtung falsch geformt. Acht Minuten, nichts verloren |
+
+**Stand:** 18 Vorwärtstrades, +0,3938 R je Trade, Intervall über die Null,
+Konto 12 085,55 USDT. Ratchet: **24 erledigt, 0 offen, 1 nicht testbar.**
+
+---
+
 ## Anhang — Reproduktion
 
 ```bash
