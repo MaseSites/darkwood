@@ -163,12 +163,71 @@ das vorhergesagt, was eintrat, und seine eigene Prüfanweisung mitgeliefert.
 Festgehalten statt wegerklärt: wer die Suite neben einem Backtest laufen
 lässt, bekommt hier einen roten Punkt, der keiner ist.
 
+## 5c. Nachtrag 09.10., 12:40 UTC: die Lücke ist von 110 auf 12 geschrumpft
+
+Die 110 unaufgezählten Versuche liessen sich zum größten Teil belegen, und zwar
+aus Daten, die längst auf der Platte lagen. `data/study_*.json` speichert je
+Zelle die **vollständige R-Reihe**. Damit ist jede Zahl nachrechenbar statt
+abgeschrieben.
+
+Das Ledger hat jetzt vier Belegstufen, 186 Zeilen:
+
+| Stufe | | n |
+|---|---|---|
+| **A** | nachrechenbar, R-Reihe gespeichert | **59** |
+| **B** | berichtet in `ratchet.TRIED` | 14 |
+| **C** | benannt: Studie ohne Ergebnisdatei (von 46 Studien) | 39 |
+| **D** | vorab registriert in `EXPERIMENTS_NEXT.yaml` | 37 |
+
+| | |
+|---|---|
+| `meta.prior_search` behauptet | 124 Versuche, 87 Arme |
+| **mit Zahlen aufzählbar** | **73** |
+| dazu benannt ohne Zahlen | 39 |
+| **ohne jeden Beleg** | **12** |
+
+Von 110 unbelegten Versuchen bleiben **12**. Die Behauptung im Register ist
+damit im Wesentlichen gestützt, nicht widerlegt — sie war nur nirgends
+aufgezählt.
+
+### Und die 59 nachgerechneten Zellen bestätigen den Befund unabhängig
+
+Neu gerechnet aus den gespeicherten R-Reihen, auf dem korrigierten Niveau:
+
+| | |
+|---|---|
+| Zellen mit **positivem** Mittel | **6 von 59** |
+| Zellen mit **Intervall ohne Null** | **0 von 59** |
+| Mittel über alle 59 | **−0,0761 R** |
+| Spanne | −0,7050 bis **+0,0455** |
+
+Die sechs positiven, alle auf **BTCUSDT allein**:
+
+| Zelle | Mittel | Intervall |
+|---|---|---|
+| `cost_floor: Decke 0.100` | **+0,0455 R** | [−0,1889; +0,2768] |
+| `drop_setup: ohne F` | +0,0138 | [−0,1689; +0,2021] |
+| `cadence: H1` | +0,0111 | [−0,1675; +0,1952] |
+| `drop_setup: alle` | +0,0111 | [−0,1675; +0,1952] |
+| `drop_setup: ohne G` | +0,0070 | [−0,1764; +0,1957] |
+| `cadence: M15` | +0,0042 | [−0,1558; +0,1697] |
+
+**Die beste je gespeicherte Zelle des Projekts liegt bei +0,0455 R**, ihr
+Intervall enthält die Null, und sie steht auf einem einzigen Markt — was die
+projekteigene Regel ausdrücklich nicht als Eigenschaft des Systems zählt.
+
+Das Ziel verlangt **+0,7280 R**. Die beste gespeicherte Zelle ist davon um den
+**Faktor 16** entfernt und nicht von Null zu unterscheiden.
+
+Das ist keine Wiederholung der bekannten Aussage, sondern eine **unabhängige
+Herleitung**: gerechnet aus den rohen R-Reihen der früheren Suche, mit der
+korrigierten Ziehungszahl, ohne eine Zahl aus einem Bericht zu übernehmen.
+
 ## 6. Offen
 
-**Die 110 fehlenden Zeilen.** Sie liessen sich nur aus der Git-Historie und
-den Berichten rekonstruieren, und ich habe es nicht getan. Solange die
-Behauptung im Register steht, sollte sie entweder belegt oder auf das
-Aufzählbare zurückgenommen werden.
+**~~Die 110 fehlenden Zeilen.~~ Zwölf.** Der Rest ist in Abschnitt 5c
+belegt. Für die zwölf gibt es keinen Beleg; plausibel sind Wiederholungsläufe
+und Parametervarianten, aber das ist eine Vermutung und steht hier als solche.
 
 **`MIN_TAIL_DRAWS = 10` ist gesetzt, nicht abgeleitet.** Bei zehn wackelt die
 Grenze über Saatwerte noch; gemessen bei E3.3 mit 40 000 Ziehungen ± 0,0019.
