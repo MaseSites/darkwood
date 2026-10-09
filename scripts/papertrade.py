@@ -316,8 +316,13 @@ class FailureWatch:
         self._alarming = False
 
     def _totals(self) -> tuple[int, int]:
-        cycles = sum(t.tally.cycles for t in self._traders)
-        failures = sum(t.tally.failures for t in self._traders)
+        # `stats.tally`, nicht `tally`. Hier lag ein Fehler, der den
+        # Papierhandel am 09.10.2026 um 13:37 UTC abgestuerzt hat: meine
+        # Test-Vorrichtung trug den Zaehler oben, der echte PaperTrader traegt
+        # ihn unter `stats`. Der Test war gruen und der Code falsch -- eine
+        # Vorrichtung, die nicht die Form des Echten hat, prueft nichts.
+        cycles = sum(t.stats.tally.cycles for t in self._traders)
+        failures = sum(t.stats.tally.failures for t in self._traders)
         return cycles, failures
 
     def check(self) -> None:

@@ -18,7 +18,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
-from scripts.papertrade import FAILURE_ALARM, FAILURE_WINDOW, FailureWatch
+from scripts.papertrade import (
+    FAILURE_ALARM,
+    FAILURE_WINDOW,
+    FailureWatch,
+    build_traders,
+)
 
 
 @dataclass
@@ -27,9 +32,26 @@ class _Counters:
     failures: int = 0
 
 
+@dataclass
+class _Stats:
+    tally: _Counters
+
+
 class _Trader:
+    """Die Form des echten `PaperTrader`: der Zaehler sitzt unter `stats`.
+
+    Die erste Fassung dieser Vorrichtung trug `tally` oben. Der Test war gruen
+    und der Code griff auf `t.tally` -- und stuerzte den Papierhandel beim
+    ersten echten Start ab. Eine Vorrichtung, die nicht die Form des Echten
+    hat, prueft nichts.
+    """
+
     def __init__(self) -> None:
-        self.tally = _Counters()
+        self.stats = _Stats(tally=_Counters())
+
+    @property
+    def tally(self) -> _Counters:  # pragma: no cover - nur fuer die Tests unten
+        return self.stats.tally
 
 
 @pytest.fixture
@@ -120,3 +142,25 @@ def test_the_real_episode_would_have_been_reported(fleet, capsys) -> None:
     reported = capsys.readouterr().err
     assert f"FEHLERQUOTE {expected}%" in reported
     assert expected >= 100 * FAILURE_ALARM
+
+
+def test_it_works_against_a_real_paper_trader() -> None:
+    """Der Test, der gefehlt hat -- und dessen Fehlen den Lauf abstuerzte.
+
+    Alle Tests darueber benutzen eine Vorrichtung. Die erste Fassung dieser
+    Vorrichtung trug `tally` oben, der echte `PaperTrader` traegt ihn unter
+    `stats`. Also war die ganze Datei gruen, waehrend `_totals()` auf
+    `t.tally` griff -- und der Papierhandel stuerzte am 09.10.2026 um
+    13:37 UTC beim ersten Zyklus ab.
+
+    Dieser Test fasst das echte Objekt an. Er laeuft offline: `build_traders`
+    mit `offline=True` baut keine Boersenverbindung.
+    """
+    traders, _ = build_traders(["BTCUSDT"], offline=True)
+    watch = FailureWatch(traders)
+
+    cycles, failures = watch._totals()
+    assert cycles >= 0
+    assert failures >= 0
+    # Der Aufruf, der abgestuerzt ist.
+    watch.check()

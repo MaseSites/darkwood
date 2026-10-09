@@ -110,6 +110,35 @@ Intervall enthält die Null, das Vorzeichen kippt zwischen den Fenstern, und
 derselbe Querschnitt hatte auf einem Tag das umgekehrte Vorzeichen. Beide
 Vorzeichen waren vorab angemeldet, damit genau diese Versuchung nicht greift.
 
+## 5b. Und wie viele Daten es bräuchte — die Frage ist nicht beantwortbar
+
+E4W verschiebt den Engpass von der Maut auf die Stichprobe. Dann ist die
+nächste Frage rechenbar: **wie viele Umschichtungen bräuchte es, um +5,33
+bp/Tag von Null zu trennen?**
+
+Aus dem gemessenen Intervall rückgerechnet: halbe Breite 12,24 bp bei z = 3,317
+ergibt eine Streuung des Mittelwerts von 3,69 bp, also **77,6 bp Streuung je
+Umschichtung**. Das Verhältnis von Effekt zu Rauschen ist damit 5,33 / 77,6 =
+**0,069 je Beobachtung.**
+
+| Niveau | z | nötige Umschichtungen | Kalenderzeit | Faktor zu vorhanden |
+|---|---|---|---|---|
+| 95 % *unkorrigiert* | 1,960 | 814 | **11,1 Jahre** | 1,8× |
+| 99,8913 % (46) | 3,267 | 2 262 | 31,0 Jahre | 5,1× |
+| **99,9091 % (55)** | **3,317** | **2 333** | **31,9 Jahre** | **5,3×** |
+
+Vorhanden: **442 Umschichtungen = 6,1 Jahre.**
+
+**Binance-USDT-Perpetuals gibt es seit 2019** — also sieben Jahre. Selbst bei
+einem *unkorrigierten* 95-%-Intervall bräuchte diese Frage mehr Historie, als
+der Markt überhaupt hat.
+
+Damit ist E4W nicht „noch unentschieden", sondern **auf diesem Horizont nicht
+entscheidbar**. Und das gilt unabhängig von Survivorship, Universum und
+Kursdownload: mehr *Symbole* kaufen keine zusätzlichen Fünftagesfenster, weil
+zwölf korrelierte Märkte in derselben Woche eine Beobachtung sind und nicht
+zwölf. Was fehlt, ist Zeit, und die ist nicht beschaffbar.
+
 ## 6. Grenzen
 
 **Derselbe Überlebenden-Satz wie E4V.** Zwölf Märkte mit Kursen, während zu

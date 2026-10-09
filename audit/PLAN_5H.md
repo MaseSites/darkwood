@@ -82,4 +82,36 @@ dass kein Einstieg daraus entsteht.
 
 ## Protokoll
 
-Wird in diesem Dokument fortgeschrieben, mit Zeitstempeln.
+**12:05** Plan angelegt. Latenz-Messung (Punkt 2) angelaufen, 150 Minuten.
+
+**12:40 — Punkt 1 erledigt.** Die 110 unaufgezählten Versuche schrumpfen auf
+**12**. Die Spur waren `data/study_*.json`: sie speichern je Zelle die
+vollständige R-Reihe, also 59 nachrechenbare Zellen. Dazu 14 berichtete
+(`ratchet.TRIED`) und 39 benannte Studien ohne Ergebnisdatei. Und die 59 neu
+gerechneten bestätigen den Befund unabhängig: 6 positive Mittel, **0 mit
+Intervall ohne Null**, beste Zelle +0,0455 R gegen +0,7280 verlangt.
+
+**13:20 — Punkt 3 erledigt, E4W.** Die Maut fällt um Faktor 5, das Brutto
+nicht. Die vorab festgelegte Tötungsbedingung ist damit **nicht** erfüllt —
+der Querschnitt trägt Information je Zeit. Beide Tore fallen trotzdem, und
+die Nachrechnung schliesst die Frage: es bräuchte **31,9 Jahre** Kalenderzeit
+(oder 11,1 unkorrigiert), vorhanden sind 6,1, und Perps gibt es seit sieben.
+**Nicht entscheidbar**, nicht nur unentschieden.
+
+**13:35 — Punkt 4 erledigt.** Veraltete Daten sperren jetzt ein Signal. Der
+Fehlschlag-Pfad war schon sicher; nicht sicher war eine *gelungene* Abfrage
+mit altem Balken, die mit `!=` den Zeiger rückwärts gesetzt hätte.
+
+**13:37 — und dann habe ich den Papierhandel abgestürzt.** Beim Neustart, der
+die drei Verbesserungen holen sollte, warf mein eigener `FailureWatch`
+`AttributeError: 'PaperTrader' object has no attribute 'tally'`. Der Zähler
+sitzt unter `stats.tally`; meine Test-Vorrichtung trug ihn oben. **Sechs
+Tests grün, Code falsch.**
+
+Behoben um **13:43**, Ausfall rund acht Minuten, verloren nichts (der Broker
+holt 240 Minuten nach; die Minute 13:36 war beim Neustart 13:47 aufgeholt).
+Dazu der Test, der gefehlt hat: einer, der das **echte** `PaperTrader`-Objekt
+anfasst statt eine Vorrichtung.
+
+**13:48** Papierhandel gesund, +23 Zyklen in 75 s, Lock gehalten,
+`stale_bars` 0.

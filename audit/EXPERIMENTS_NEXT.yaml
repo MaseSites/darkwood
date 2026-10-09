@@ -1096,6 +1096,17 @@ experiments:
         +5.33 bp/Tag fuer echt genommen ergibt (1.000533)^182 = 1.102x, also
         1.000 -> 1.102 CHF ueber das Zielfenster. Das Ziel verlangt 20.000.
         Faktor 180.
+      nicht_entscheidbar: >-
+        Aus dem Intervall rueckgerechnet: 77.6 bp Streuung je Umschichtung
+        gegen einen Effekt von 5.33 bp, also ein Verhaeltnis von 0.069 je
+        Beobachtung. Noetig waeren 2.333 Umschichtungen = 31.9 Jahre
+        Kalenderzeit (oder 814 = 11.1 Jahre bei einem unkorrigierten
+        95-%-Intervall). Vorhanden: 442 = 6.1 Jahre. Binance-USDT-Perps gibt
+        es seit 2019, also sieben Jahre. E4W ist damit nicht "noch
+        unentschieden", sondern auf diesem Horizont NICHT ENTSCHEIDBAR -- und
+        mehr Symbole helfen nicht, weil zwoelf korrelierte Maerkte in
+        derselben Woche eine Beobachtung sind und nicht zwoelf. Was fehlt, ist
+        Zeit.
       nicht_behauptet: >-
         Dass Momentum auf fuenf Tagen funktioniert. Das Intervall enthaelt die
         Null, das Vorzeichen kippt zwischen den Fenstern, und derselbe
