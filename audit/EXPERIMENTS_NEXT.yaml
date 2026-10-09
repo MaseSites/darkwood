@@ -43,10 +43,10 @@ meta:
   # Die Zahl, auf die korrigiert wird. Summe der `comparisons` aller Arme unten
   # plus die bereits gelesenen Zellen der Vorgaenger-Suche, soweit dieselbe
   # Frage betroffen ist.
-  total_comparisons: 52
+  total_comparisons: 55
   correction: >-
-    Bonferroni auf 52 Vergleiche, also Schwelle 0.05/52 = 0.00096 und ein
-    99.904%-Intervall. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
+    Bonferroni auf 55 Vergleiche, also Schwelle 0.05/55 = 0.00091 und ein
+    99.909%-Intervall. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
     angemeldete Sensitivitaet erlaubt, nicht als Ersatz. Sie werden zusaetzlich
     berichtet, nicht anstelle.
 
@@ -1058,6 +1058,102 @@ experiments:
         Die frueheren Arme mom_7/mom_30/vol_30 werden NICHT wiederbelebt. Der
         Unterschied ist die Faktorbereinigung, und wenn der bereinigte Arm
         dasselbe Ergebnis liefert wie der rohe, ist das zu berichten.
+
+  - id: E4W
+    title: "Derselbe Querschnitt mit kleinerem Umschlag -- woechentlich statt taeglich"
+    priority: 1
+    status: erledigt_negativ
+    angelegt: 2026-10-09
+    result:
+      stand: 2026-10-09
+      bericht: audit/E4W_KLEINERER_UMSCHLAG.md
+      skript: "scripts/study_relative_value.py --hold 5"
+      umschichtungen: 442
+      gegenprobe: >-
+        --hold 1 reproduziert E4V auf die zweite Dezimale (-12.43 bp/Tag). Der
+        Umbau auf einen Horizontparameter hat die alte Rechnung nicht
+        veraendert.
+      arme:
+        E4W.1_reversion: "-8.20 bp/Tag [-21.09, +3.26] -- Null enthalten"
+        E4W.2_momentum: "+5.33 bp/Tag [-6.21, +18.27] -- Null enthalten"
+        E4W.3_kontrolle: "+19.75 bp/Tag [-14.20, +61.86] -- Null enthalten"
+      replikation: "frueher -9.33, spaeter +3.73, Verhaeltnis -0.40x -- AUSSERHALB"
+      einzelmarkt_pruefung: >-
+        -4.99 bis -9.60 bp/Tag, groesste Verschiebung +3.21 bp (ohne AVAX).
+        Kein einzelner Markt traegt es.
+      die_toetungsbedingung_ist_NICHT_erfuellt: >-
+        Vorab festgelegt war: "Faellt das Brutto proportional zum Umschlag, ist
+        die Sache erledigt." Es faellt nicht. Die Maut faellt von 7.15 auf 1.44
+        bp/Tag (Faktor 5), das Brutto steigt von 5.20 auf 6.72. Der Querschnitt
+        traegt Information je ZEIT, nicht je Umschichtung -- das erste Mal in
+        diesem Projekt, dass eine Kostenreduktion nicht sofort von einem
+        schrumpfenden Brutto aufgefressen wird.
+      was_jetzt_bindet: >-
+        Die STICHPROBE, nicht die Maut. 442 Umschichtungen statt 2.221 Tagen
+        reichen nicht, um 5 bp/Tag von Null zu trennen. Mehr Daten wuerden
+        hier helfen, wo sie bei E4V nichts geholfen haetten.
+      und_es_hilft_nichts: >-
+        +5.33 bp/Tag fuer echt genommen ergibt (1.000533)^182 = 1.102x, also
+        1.000 -> 1.102 CHF ueber das Zielfenster. Das Ziel verlangt 20.000.
+        Faktor 180.
+      nicht_behauptet: >-
+        Dass Momentum auf fuenf Tagen funktioniert. Das Intervall enthaelt die
+        Null, das Vorzeichen kippt zwischen den Fenstern, und derselbe
+        Querschnitt hatte auf einem Tag das umgekehrte Vorzeichen. BEIDE
+        Vorzeichen waren vorab angemeldet, damit genau diese Versuchung nicht
+        greift.
+    frage: >-
+      E4V hat gemessen: Brutto 5.20 bp/Tag gegen eine Maut von 7.15 bp/Tag bei
+      taeglicher Umschichtung. Der Bericht hat ausdruecklich notiert, was die
+      Arithmetik NICHT ausschliesst: "ein Signal mit deutlich groesserem
+      Brutto oder deutlich kleinerem Umschlag". Der Umschlag ist die Seite,
+      die sich ohne neue Daten aendern laesst: bei woechentlicher
+      Umschichtung faellt die Maut auf etwa ein Fuenftel.
+    warum_ein_eigener_arm: >-
+      E4V hat vorab festgelegt "Haltedauer 1 Tag, taegliche Umschichtung. Kein
+      zweiter Horizont in diesem Schirm." Dieser Horizont ist deshalb ein
+      neuer Vergleich und wird angemeldet, nicht nachgeschoben.
+    beide_vorzeichen_angemeldet: >-
+      E4V hat das Vorzeichen vorab auf Reversion festgelegt und verloren. Es
+      jetzt auf Momentum zu drehen waere genau der Fehler, gegen den die
+      Vorabregistrierung existiert. Darum laufen BEIDE Vorzeichen als eigene
+      Zellen, und keines wird nach dem Ergebnis gewaehlt. Taegliche Reversion
+      und woechentliches Momentum sind verschiedene Phaenomene; welches
+      Vorzeichen auf diesem Horizont traegt, weiss ich nicht.
+    arms:
+      - id: E4W.1
+        name: "Residual-Reversion ueber 5 Tage, 5 Tage gehalten"
+      - id: E4W.2
+        name: "Residual-Momentum ueber 5 Tage, 5 Tage gehalten"
+      - id: E4W.3
+        name: "Gleichgewichtet halten, gleiche Umschichtungstakt"
+        role: "Kontrolle"
+    methode: >-
+      Wie E4V, mit einem Unterschied: das Residuum wird ueber ein Fenster von
+      5 Handelstagen summiert, und umgeschichtet wird alle 5 Tage. Faktor
+      weiterhin kausal (Querschnittsmittel desselben Tages), Beta aus einem
+      rueckwaertigen 60-Tage-Fenster, das am Stichtag endet. Kosten auf dem
+      gemessenen Umschlag, Funding je gehaltener Position.
+    metric: "Netto-Rendite je Tag, mit Block-Bootstrap-Intervall"
+    comparisons: 3
+    acceptance: >-
+      Korrigiertes Intervall ohne Null auf Niveau 0.05/55 UND Replikation
+      0.5-2.0x. Zusaetzlich zwingend, wie bei E4V: jeden Markt einmal
+      auslassen -- das Ergebnis darf nicht an einem haengen.
+    vorab_festgelegt:
+      - >-
+        Derselbe Ueberlebenden-Satz wie E4V, also dieselbe Einschraenkung: ein
+        POSITIVES Ergebnis ist kein Befund, sondern die Rechtfertigung fuer
+        den Kursdownload eines Punkt-in-Zeit-Universums.
+      - >-
+        Faellt das Brutto proportional zum Umschlag, ist die Sache erledigt --
+        dann traegt der Querschnitt eine Information je Umschichtung und nicht
+        je Zeit, und kein Horizont rettet sie.
+      - "Fenster und Takt stehen auf 5 Tagen und werden nicht variiert."
+      - >-
+        Die frueheren Arme mom_7/mom_30/vol_30 werden NICHT wiederbelebt. Der
+        Unterschied bleibt die Faktorbereinigung und der dollar-neutrale
+        Querschnitt.
 
 # ---------------------------------------------------------------------------
 

@@ -44,8 +44,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from traidingbrain.reporting.intervals import block_bootstrap
 
-#: Bonferroni auf die 52 angemeldeten Vergleiche.
-COMPARISONS = 52
+#: Bonferroni auf die 55 angemeldeten Vergleiche.
+COMPARISONS = 55
 LEVEL = 1.0 - 0.05 / COMPARISONS
 
 #: Die zwölf Märkte mit Kursen. **Das ist der Überlebenden-Satz**, nicht ein
@@ -76,6 +76,9 @@ FEE = 0.00055
 #: Darunter gilt die erste Haelfte als null und das Replikationsverhaeltnis
 #: als nicht berechenbar -- sonst teilt man durch Rauschen.
 NEAR_ZERO = 1e-12
+
+#: Unter so vielen Tagen wird eine Zelle nicht berichtet.
+MIN_DAYS = 30
 
 #: Fenstergrenzen aus `meta.windows`.
 DEV_TO = "2026-03-31"
@@ -153,21 +156,32 @@ def run_arm(
     funding: pd.DataFrame,
     *,
     equal_weight: bool,
+    hold: int = 1,
+    sign: float = -1.0,
 ) -> list[Day]:
     """Einen Arm über alle Stichtage laufen lassen.
 
     `equal_weight=True` ist die Kontrolle: dasselbe Universum einfach gehalten,
     ohne Querschnittsentscheidung. Sie zahlt keine Umschichtung, weil sie
     nichts umschichtet.
+
+    `hold` ist die Haltedauer in Tagen und zugleich der Umschichtungstakt --
+    das ist der ganze Hebel von E4W. `sign=-1` heisst Reversion (long das
+    niedrigste Residuum), `sign=+1` Momentum. Beide sind vorab angemeldet, und
+    keines wird nach dem Ergebnis gewaehlt.
     """
     dates = returns.index
     days: list[Day] = []
     previous = pd.Series(0.0, index=returns.columns)
 
-    for i in range(len(dates) - 1):
-        today, tomorrow = dates[i], dates[i + 1]
+    for i in range(0, len(dates) - hold, hold):
+        today = dates[i]
+        window = dates[i + 1 : i + 1 + hold]
         signal = resid.loc[today].dropna()
-        future = returns.loc[tomorrow]
+        # Die Rendite ueber die ganze Haltedauer, zusammengesetzt. Bei hold=1
+        # ist das genau die Tagesrendite von E4V.
+        future = (1.0 + returns.loc[window]).prod(axis=0) - 1.0
+        tomorrow = window[-1]
         usable = signal.index.intersection(future.dropna().index)
         if len(usable) < MIN_CROSS:
             continue
@@ -180,7 +194,7 @@ def run_arm(
             # Falle steht in E4s `pitfalls_declared` und bleibt offen.
             ranked = signal.loc[usable].rank()
             middle = (len(usable) + 1) / 2.0
-            tilt = -(ranked - middle)
+            tilt = sign * (ranked - middle)
             weights = tilt / tilt.abs().sum()
 
         gross = float((weights * future.loc[usable]).sum())
@@ -198,13 +212,16 @@ def run_arm(
         else:
             funded = 0.0
 
+        # Alles wird auf TAGE normiert, damit Horizonte vergleichbar sind:
+        # eine Woche, die 5 bp bringt, ist 1 bp am Tag. Ohne das waere ein
+        # langerer Horizont automatisch "besser".
         days.append(
             Day(
                 date=tomorrow,
-                gross=gross,
-                net=gross - toll + funded,
+                gross=gross / hold,
+                net=(gross - toll + funded) / hold,
                 turnover=turnover,
-                funding=funded,
+                funding=funded / hold,
                 names=len(usable),
             )
         )
@@ -213,7 +230,7 @@ def run_arm(
 
 
 def judge(name: str, days: list[Day], *, level: float) -> float | None:
-    if len(days) < 30:  # noqa: PLR2004
+    if len(days) < MIN_DAYS:
         print(f"  {name:46s} nur {len(days)} Tage -- kein Intervall")
         return None
     net = [d.net for d in days]
@@ -234,9 +251,48 @@ def judge(name: str, days: list[Day], *, level: float) -> float | None:
     return mean
 
 
+def leave_one_out(
+    returns: pd.DataFrame,
+    funding: pd.DataFrame,
+    base: float | None,
+    *,
+    hold: int,
+) -> None:
+    """Jeden Markt einmal auslassen. Vorab als zwingend angemeldet.
+
+    Zwoelf korrelierte Maerkte koennen ein Ergebnis gemeinsam tragen oder
+    einer allein. Ohne diese Pruefung ist nicht zu unterscheiden, welches von
+    beiden -- und "zwoelf Maerkte" liest sich dann wie zwoelf Belege.
+    """
+    print()
+    print("-" * 88)
+    print("  Jeden Markt einmal auslassen -- haengt das Ergebnis an einem?")
+    print("-" * 88)
+    if base is None:
+        print("    kein Basiswert -- uebersprungen")
+        return
+    for dropped in returns.columns:
+        kept = returns.drop(columns=[dropped])
+        trimmed_resid = residuals(kept, window=BETA_WINDOW)
+        if hold > 1:
+            trimmed_resid = trimmed_resid.rolling(hold, min_periods=hold).sum()
+        trimmed = run_arm(
+            kept, trimmed_resid, funding, equal_weight=False, hold=hold, sign=-1.0
+        )
+        if len(trimmed) < MIN_DAYS:
+            continue
+        value = float(np.mean([d.net for d in trimmed]))
+        print(f"    ohne {dropped:10s} {1e4 * value:>+8.2f} bp/Tag  "
+              f"({1e4 * (value - base):>+7.2f} bp Verschiebung)")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--level", type=float, default=LEVEL)
+    parser.add_argument(
+        "--hold", type=int, default=1,
+        help="Haltedauer und Umschichtungstakt in Tagen. 1 = E4V, 5 = E4W.",
+    )
     args = parser.parse_args()
 
     print("=" * 88)
@@ -263,12 +319,24 @@ def main() -> int:
     print(f"  Funding vorhanden fuer {funding.shape[1]} Maerkte\n")
     print("-" * 88)
 
+    hold = max(1, args.hold)
+    if hold > 1:
+        # Ueber den Horizont summiertes Residuum. Bei hold=1 bleibt es das
+        # Tagesresiduum und damit genau E4V.
+        resid = resid.rolling(hold, min_periods=hold).sum()
+    tag = "E4V" if hold == 1 else "E4W"
     arms = {
-        "E4V.1 Residual-Reversion, 1 Tag": run_arm(returns, resid, funding, equal_weight=False),
-        "E4V.2 Gleichgewichtet halten (Kontrolle)": run_arm(
-            returns, resid, funding, equal_weight=True
+        f"{tag}.1 Residual-Reversion, {hold} Tag(e)": run_arm(
+            returns, resid, funding, equal_weight=False, hold=hold, sign=-1.0
         ),
     }
+    if hold > 1:
+        arms[f"{tag}.2 Residual-Momentum, {hold} Tage"] = run_arm(
+            returns, resid, funding, equal_weight=False, hold=hold, sign=+1.0
+        )
+    arms[f"{tag}.{3 if hold > 1 else 2} Gleichgewichtet halten (Kontrolle)"] = run_arm(
+        returns, resid, funding, equal_weight=True, hold=hold
+    )
     means: dict[str, float | None] = {}
     for name, days in arms.items():
         means[name] = judge(name, days, level=args.level)
@@ -292,23 +360,7 @@ def main() -> int:
         band = "IM BAND" if 0.5 <= ratio <= 2.0 else "AUSSERHALB"  # noqa: PLR2004
         print(f"  Verhaeltnis {ratio:+.2f}x -- {band} (0.5-2.0)")
 
-    # Haengt es an einem einzelnen Markt? Vorab als zwingend angemeldet.
-    print("\n" + "-" * 88)
-    print("  Jeden Markt einmal auslassen -- haengt das Ergebnis an einem?")
-    print("-" * 88)
-    base = means[main_arm]
-    if base is not None:
-        for dropped in returns.columns:
-            kept = returns.drop(columns=[dropped])
-            trimmed = run_arm(
-                kept, residuals(kept, window=BETA_WINDOW), funding, equal_weight=False
-            )
-            if len(trimmed) < 30:  # noqa: PLR2004
-                continue
-            value = float(np.mean([d.net for d in trimmed]))
-            shift = 1e4 * (value - base)
-            print(f"    ohne {dropped:10s} {1e4 * value:>+8.2f} bp/Tag  "
-                  f"({shift:>+7.2f} bp Verschiebung)")
+    leave_one_out(returns, funding, means[main_arm], hold=hold)
 
     print("\n" + "=" * 88)
     print(

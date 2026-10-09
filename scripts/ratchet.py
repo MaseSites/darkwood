@@ -376,6 +376,37 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
         "Die 2.0 ATR standen vorab fest und wurden nicht nachjustiert.",
     ),
     (
+        "Querschnitt mit kleinerem Umschlag (E4W)",
+        "erledigt",
+        "E4W, angemeldet am 09.10.2026 VOR dem ersten Lauf; total_comparisons 52 "
+        "-> 55. E4V hatte ausdruecklich notiert, was seine Arithmetik NICHT "
+        "ausschliesst: 'ein Signal mit deutlich groesserem Brutto oder deutlich "
+        "kleinerem Umschlag'. Der Umschlag ist die Seite, die sich ohne neue Daten "
+        "aendern laesst. BEIDE Vorzeichen vorab angemeldet, weil E4V Reversion "
+        "festgelegt und verloren hatte -- es danach auf Momentum zu drehen waere "
+        "genau der Fehler, gegen den die Registrierung existiert. "
+        "Gegenprobe zuerst: --hold 1 reproduziert E4V auf die zweite Dezimale. "
+        "DIE TOETUNGSBEDINGUNG IST NICHT ERFUELLT, und das ist der Befund. Vorab "
+        "stand: 'faellt das Brutto proportional zum Umschlag, ist die Sache "
+        "erledigt'. Die Maut faellt von 7.15 auf 1.44 bp/Tag (Faktor 5), das Brutto "
+        "STEIGT von 5.20 auf 6.72. Der Querschnitt traegt Information je ZEIT, "
+        "nicht je Umschichtung -- das erste Mal in diesem Projekt, dass eine "
+        "Kostenreduktion nicht sofort von einem schrumpfenden Brutto aufgefressen "
+        "wird. "
+        "UND BEIDE TORE FALLEN TROTZDEM. Reversion -8.20 [-21.09, +3.26], Momentum "
+        "+5.33 [-6.21, +18.27], Kontrolle +19.75 [-14.20, +61.86] -- alle drei mit "
+        "Null im Intervall. Tor 2: -0.40x, Vorzeichenwechsel. Kein einzelner Markt "
+        "traegt es (-4.99 bis -9.60, groesste Verschiebung +3.21 ohne AVAX). "
+        "Der Engpass hat sich verschoben: bindend ist jetzt die STICHPROBE, nicht "
+        "die Maut. 442 Umschichtungen statt 2.221 Tagen reichen nicht, um 5 bp/Tag "
+        "von Null zu trennen -- mehr Daten wuerden hier helfen, wo sie bei E4V "
+        "nichts geholfen haetten. "
+        "UND ES HILFT NICHTS: +5.33 bp/Tag fuer echt genommen ergibt (1.000533)^182 "
+        "= 1.102x, also 1.000 -> 1.102 CHF ueber das Zielfenster, gegen 20.000 "
+        "verlangt. Faktor 180. Nicht 'noch nicht ganz', sondern zwei "
+        "Zehnerpotenzen.",
+    ),
+    (
         "Marktbereinigter Querschnitt (E4V)",
         "erledigt",
         "E4V, angemeldet am 09.10.2026 VOR dem ersten Lauf; total_comparisons 50 "
