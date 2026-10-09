@@ -692,6 +692,12 @@ class PaperTrader:
                 exit_reason=fill.reason,
                 r_multiple=fill.r_multiple,
             ),
+            # Welche Konfiguration diesen Trade erzeugt hat. Ohne das war am
+            # 09.10.2026 nicht aus den Daten zu beantworten, ob 18
+            # Vorwaertstrades EINE Stichprobe sind -- nur aus der
+            # Git-Historie, und dort standen vier strategiewirksame
+            # Aenderungen in zwei Tagen.
+            run_signature=self.run_signature,
         )
         self.journal.record([entry])
         return entry

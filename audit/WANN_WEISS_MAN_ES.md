@@ -1,5 +1,16 @@
 # Wann weiss man es? Das Ziel prüft sich selbst — bis zum 30.10.
 
+> **KORREKTUR 09.10.2026, 14:15 UTC.** Dieser Text stand auf **18**
+> Vorwärtstrades. Geprüft, ob das *eine* Stichprobe ist: nein. Zwischen dem
+> 03. und 04.10. standen vier strategiewirksame Konfigurationsänderungen, die
+> beiden letzten (M15-Kadenz, Setup C aus) verändern, welche Signale
+> überhaupt entstehen. **Die homogene Stichprobe ist 14 Trades**, Mittel
+> **+0,6208 R**, Intervall [−1,070; +1,960]. Der Termin wird dadurch
+> **früher**: 27 fehlende Trades bei 1,9/Tag sind 14 Tage, also der
+> **23.10.2026** — vor dem Stichtag des Ziels. Und das Journal konnte die
+> Frage nicht beantworten, weil `run_signature` nicht im Eintrag stand; das
+> ist jetzt behoben. Vollständig in `audit/DIE_VORWAERTSSTICHPROBE.md`.
+
 Reproduktion: die Rechnung steht unten vollständig; sie braucht nur `σ` aus
 dem Journal und das korrigierte Niveau.
 

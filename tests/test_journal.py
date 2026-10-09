@@ -15,6 +15,7 @@ neither.
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
@@ -570,3 +571,25 @@ def test_the_planned_amounts_of_an_unfilled_order_are_named_apart() -> None:
     assert pending.planned_notional == pytest.approx(200.0)
     assert pending.planned_margin == pytest.approx(50.0)
     assert not hasattr(pending, "notional"), "die Absicht darf nicht wie ein Fill heissen"
+
+
+def test_the_entry_records_which_configuration_made_it() -> None:
+    """Eine Eigenschaft, die man nur durch Git-Archaeologie findet, ist keine.
+
+    Am 09.10.2026 war die Frage, ob die 18 Vorwaertstrades EINE Stichprobe
+    sind -- entscheidend, weil eine Maechtigkeitsrechnung daran haengt. Aus dem
+    Journal war das nicht zu beantworten: der Signaturbegriff existiert und der
+    Signalspeicher traegt ihn je Zeile, der Journaleintrag aber nicht.
+    Beantworten liess es sich nur ueber vier strategiewirksame
+    Konfigurationsaenderungen in der Git-Historie, und die homogene Stichprobe
+    waren 14 Trades statt 18.
+    """
+    made = entry(run_signature="1000.0|['A','B']|0.08|M15|refused-v1")
+    assert made.run_signature == "1000.0|['A','B']|0.08|M15|refused-v1"
+    # Und im gespeicherten Schema, sonst nuetzt das Feld im Objekt nichts.
+    assert asdict(made)["run_signature"] == made.run_signature
+
+
+def test_an_old_entry_without_a_signature_still_loads() -> None:
+    """Alles vor dem 09.10.2026 traegt keine. Das darf nichts brechen."""
+    assert entry().run_signature == ""

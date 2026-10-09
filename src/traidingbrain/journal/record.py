@@ -172,6 +172,21 @@ class JournalEntry:
     r_multiple: float
     reason: TradeReason
     post_mortem: PostMortem
+    #: Welche Konfiguration diesen Trade erzeugt hat. Leer fuer alles, was vor
+    #: dem 09.10.2026 geschrieben wurde.
+    #:
+    #: **Warum das Feld noetig wurde.** Am 09.10.2026 war die Frage, ob die 18
+    #: Vorwaertstrades EINE Stichprobe sind -- entscheidend, weil eine
+    #: Maechtigkeitsrechnung an ihr haengt. Aus dem Journal war das nicht zu
+    #: beantworten: der Signaturbegriff existiert (`journal/version.py`, und der
+    #: Signalspeicher traegt ihn je Zeile), aber der Journaleintrag nicht.
+    #:
+    #: Beantworten liess es sich nur ueber die Git-Historie der Konfiguration,
+    #: und dort standen vier strategiewirksame Aenderungen innerhalb von zwei
+    #: Tagen -- acht Maerkte, zwoelf Maerkte, M15-Kadenz, Setup C aus. Die
+    #: homogene Stichprobe waren 14 Trades, nicht 18. Eine Eigenschaft, die man
+    #: nur durch Git-Archaeologie findet, ist keine aufgezeichnete Eigenschaft.
+    run_signature: str = ""
 
     @property
     def won(self) -> bool:
