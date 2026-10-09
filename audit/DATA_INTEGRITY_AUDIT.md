@@ -158,13 +158,58 @@ nächste war zum Prüfzeitpunkt noch nicht fällig. Bei Fehlschlag liest der
 Händler den gespeicherten Bestand weiter, und `top_up_funding` läuft **alle 20
 Zyklen** im Hauptlauf. **Es fehlt kein Funding.**
 
+## 5b. Nachtrag 09.10.: ein Fehler-Ausbruch, den niemand gemeldet hat
+
+**Gemessen.** Zwischen rund 08:20 und 10:43 UTC lief der Papierhandel mit
+einer Fehlerquote von etwa **47 %**. Alle zwölf Märkte scheiterten wiederholt
+an `fetch_ohlcv(..., W1)` — dem **ersten** Abruf jedes Zyklus — mit einem
+ccxt-Timeout (die Meldung endet nach der URL, ohne Grund; so sieht bei ccxt
+ein Timeout aus). Die Zähler standen danach bei **5 043 Fehlschlägen auf
+46 096 Zyklen**, gegen 1 977 auf 39 636 zwei Stunden davor.
+
+**Der exakte Aufruf funktioniert von hier**, mit und ohne `startTime`, auf
+`1w`, `1d` und `1h`. Es war kein deterministischer Fehler.
+
+**Und er war vorbei, bevor ich ihn fand.** Über ein Fenster von 100 Sekunden
+gemessen: 25 Zyklen, **0 Fehlschläge**. Die Quote jetzt ist null.
+
+**Verloren ging nichts.** Ein Fehlschlag wird gefangen statt geworfen, und der
+Broker holt bis zu `REFRESH_MINUTES = 240` Minuten nach — Ausstiege werden
+also später aufgelöst, nicht übersehen. Die Minute, die der Papierhandel
+zuletzt verarbeitet hat, war durchgehend aktuell.
+
+**Was fehlte, war die Meldung.** Gefunden wurde der Ausbruch, weil jemand die
+Datenbank abgefragt hat. Das ist derselbe Fall, der dieses Projekt schon
+zwölf Stunden Tape-Aufnahme gekostet hat: ein Zustand, den man nur durch
+Nachsehen findet.
+
+**Behoben:** `FailureWatch` in `scripts/papertrade.py` meldet eine
+Fehlerquote über 20 % im gleitenden 20-Zyklen-Fenster — einmal beim Eintritt,
+einmal bei der Entwarnung, nie dazwischen. Ein einzelner Fehlschlag alarmiert
+nicht; gemeldet gehört ein **Zustand**. Die Meldung sagt auch, was er
+bedeutet, sonst steht da eine Zahl und niemand weiss, ob gerade Trades
+verloren gehen.
+
+`tests/test_failure_watch.py`, **6 Tests**, erzwungen geprüft statt erst nach
+zwei Stunden Laufzeit: Schweigen im Normalbetrieb, Alarm genau einmal,
+Entwarnung genau einmal, Schweigen vor vollem Fenster, die Schwelle knapp
+darunter und darüber, und der echte Vorfall nachgespielt.
+
+> Dabei ist mein eigener Test zuerst fehlgeschlagen, weil er `int(20 × 0,47)`
+> rechnete und 45 % erzeugte, während er 47 % erwartete. Die erwartete Zahl
+> wird jetzt aus dem gerechnet, was der Test tatsächlich erzeugt — eine fest
+> hingeschriebene 47 hätte den Code beschuldigt statt den Test.
+
+**Offen:** warum W1. Dass es der erste Abruf jedes Zyklus ist, ist eine
+Beobachtung und keine Erklärung.
+
 ## 6. Was in Phase 1 **nicht** erledigt ist
 
 | Auftragspunkt | Stand |
 |---|---|
 | Rohereignisse mit Event- und Empfangszeit | **offen** — die Tape-Collectoren speichern `received_ms`, aber es gibt keinen WebSocket-Collector mit Sequenzkontrolle |
 | Reconnect, Heartbeat, Backoff mit Jitter | **offen** — Polling mit Wiederholung, kein Streaming |
-| Stale-Data-Erkennung sperrt abgeleitete Signale | **offen** — Stillstand wird gemeldet (`! STILLSTAND` nach 5 min), aber kein Signal wird daraufhin gesperrt |
+| Stale-Data-Erkennung sperrt abgeleitete Signale | **teilweise** — Stillstand der Collectoren wird gemeldet, und seit 09.10. meldet der Papierhandel auch eine erhöhte Fehlerquote (`FailureWatch`). Gesperrt wird daraufhin weiterhin kein Signal |
 | Zentrales Rate-Limit-Handling | **offen** — jeder Prozess begrenzt sich selbst; der Lock verhindert jetzt den schlimmsten Fall |
 | Fehlerfall-Tests (DNS, Sequenzlücke, doppelte Nachricht, …) | **teilweise** — nur die Lock-Fälle sind getestet |
 | Absichtlich eingeführter Fehler ⇒ klarer ungültiger Status | **nicht erfüllt** — das Abnahmekriterium von Phase 1 ist damit **nicht** erreicht |

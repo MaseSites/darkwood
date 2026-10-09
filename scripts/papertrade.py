@@ -45,7 +45,13 @@ from traidingbrain.journal.record import JournalEntry, Source
 from traidingbrain.journal.signals import SignalStore
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.journal.version import run_signature
-from traidingbrain.live.paper import POLL_SECONDS, QUOTE, PaperTrader, state_path
+from traidingbrain.live.paper import (
+    POLL_SECONDS,
+    QUOTE,
+    REFRESH_MINUTES,
+    PaperTrader,
+    state_path,
+)
 from traidingbrain.storage.singleton import AlreadyRunningError, SingleInstance
 
 #: Damit das Alter eines Fehlschlags in Stunden statt in 300 Minuten steht.
@@ -272,6 +278,77 @@ def tend_open_positions(traders: list[PaperTrader]) -> None:
         print(f"  {trader.status()}")
 
 
+#: Ab dieser Fehlerquote im gleitenden Fenster meldet sich der Lauf laut.
+#: Nicht bei einzelnen Fehlschlägen: ein einzelner ist normal, das Netz
+#: wackelt. Was gemeldet gehört, ist ein ZUSTAND.
+FAILURE_ALARM = 0.20
+
+#: Breite des gleitenden Fensters, in Zyklen. Zwanzig Minuten -- lang genug,
+#: dass ein einzelner Ausfall nicht alarmiert, kurz genug, dass ein Zustand
+#: nicht zwei Stunden unbemerkt bleibt.
+FAILURE_WINDOW = 20
+
+
+class FailureWatch:
+    """Meldet eine erhöhte Fehlerquote, solange sie anhält.
+
+    **Anlass, gemessen.** Am 09.10.2026 lief der Papierhandel rund zweieinhalb
+    Stunden mit einer Fehlerquote von etwa 47 %: alle zwölf Märkte scheiterten
+    wiederholt an `fetch_ohlcv(..., W1)`, dem ersten Abruf jedes Zyklus, mit
+    einem ccxt-Timeout. Die Zähler standen danach bei 5.043 Fehlschlägen auf
+    46.096 Zyklen -- und **nichts hat das gemeldet**. Gefunden wurde es, weil
+    jemand die Datenbank abgefragt hat.
+
+    Verloren ging dabei nichts: ein Fehlschlag wird gefangen statt geworfen,
+    und der Broker holt bis zu `REFRESH_MINUTES` Minuten nach, also werden
+    Ausstiege höchstens später aufgelöst, nicht übersehen. Aber ein Zustand,
+    den man nur durch Nachsehen findet, ist genau der Fall, der dieses Projekt
+    schon einmal zwölf Stunden Aufnahme gekostet hat.
+
+    Gemeldet wird der Übergang in beide Richtungen -- auch die Entwarnung.
+    Eine Alarmmeldung ohne Entwarnung lässt den Leser im Dunkeln darüber, ob
+    der Zustand noch besteht.
+    """
+
+    def __init__(self, traders: list[PaperTrader]) -> None:
+        self._traders = traders
+        self._last = self._totals()
+        self._alarming = False
+
+    def _totals(self) -> tuple[int, int]:
+        cycles = sum(t.tally.cycles for t in self._traders)
+        failures = sum(t.tally.failures for t in self._traders)
+        return cycles, failures
+
+    def check(self) -> None:
+        cycles, failures = self._totals()
+        spent = cycles - self._last[0]
+        if spent < FAILURE_WINDOW * len(self._traders):
+            return
+        broke = failures - self._last[1]
+        share = broke / spent if spent else 0.0
+        self._last = (cycles, failures)
+
+        if share >= FAILURE_ALARM and not self._alarming:
+            self._alarming = True
+            print(
+                f"  ! FEHLERQUOTE {100 * share:.0f}% ueber die letzten {spent:,} "
+                f"Zyklen ({broke:,} Fehlschlaege).\n"
+                f"    Ausstiege werden spaeter aufgeloest, nicht uebersehen -- "
+                f"der Broker holt bis zu {REFRESH_MINUTES} Minuten nach.",
+                file=sys.stderr,
+                flush=True,
+            )
+        elif share < FAILURE_ALARM and self._alarming:
+            self._alarming = False
+            print(
+                f"  Fehlerquote wieder normal: {100 * share:.0f}% ueber "
+                f"{spent:,} Zyklen.",
+                file=sys.stderr,
+                flush=True,
+            )
+
+
 def run(traders: list[PaperTrader], source: MarketData | None, *, cycles: int | None) -> int:
     symbols = [trader.symbol for trader in traders]
     print(f"Papertrading läuft: {', '.join(symbols)}")
@@ -292,10 +369,12 @@ def run(traders: list[PaperTrader], source: MarketData | None, *, cycles: int | 
         return 1
 
     done = 0
+    watch = FailureWatch(traders)
     try:
         while cycles is None or done < cycles:
             if done % 20 == 0:
                 top_up_funding(source, traders)
+            watch.check()
             # Two passes, and the order is the point. Settling is what an
             # open position depends on and costs a fetch; deciding costs ten
             # to fifteen seconds of analysis per market. Interleaved, one
