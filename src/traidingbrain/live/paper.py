@@ -54,7 +54,7 @@ from traidingbrain.journal.store import JournalStore
 from traidingbrain.live.paperstate import PaperState, PaperStateStore, Tally
 from traidingbrain.sim.broker import Fill, OpenPosition, SimBroker
 from traidingbrain.sim.engine import AnalysisStrategy
-from traidingbrain.sim.plan import Assessment, assess, setup_label
+from traidingbrain.sim.plan import Assessment, TradeIntent, assess, setup_label
 from traidingbrain.strategies.guide import GuidePool
 
 #: Bars refetched per timeframe each cycle.
@@ -703,7 +703,7 @@ class PaperTrader:
         return entry
 
     def _record_signal(
-        self, intent: object, verdict: Assessment, *, decided_ts: int
+        self, intent: TradeIntent, verdict: Assessment, *, decided_ts: int
     ) -> None:
         """Jedes erwogene Signal aufschreiben, genommen wie abgelehnt.
 
@@ -732,10 +732,10 @@ class PaperTrader:
                     setup_key=setup_label(intent),
                     setup_timeframe="",
                     signal_timeframe=self.config.engine.timeframes.signal.value,
-                    side=intent.side,  # type: ignore[attr-defined]
-                    entry=intent.entry,  # type: ignore[attr-defined]
-                    stop=intent.stop,  # type: ignore[attr-defined]
-                    target=intent.target,  # type: ignore[attr-defined]
+                    side=intent.side,
+                    entry=intent.entry,
+                    stop=intent.stop,
+                    target=intent.target,
                     reward_risk=verdict.reward_risk,
                     cost_fraction=verdict.cost_fraction,
                     risk_amount=verdict.risk_amount,
