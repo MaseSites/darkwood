@@ -171,11 +171,26 @@ Die Lesehilfe im Skript sagte diesen Ausgang vorab:
 > *keiner fällt aus → das Fenster war heute leer, und das ist KEINE Antwort*
 
 Konsequenz, und sie ist operativ: **der Probe muss vor 08:00 UTC laufen.**
-Seit dem 10.10. um **12:20 UTC** läuft er deshalb durchgehend über 23
-Stunden, nicht als geplanter Auftrag auf dieser Maschine. *(Im Commit
-`3fb97f4` stand hier zuerst 12:34 — eine Zahl, die ich geschrieben habe,
-ohne die Startmeldung gelesen zu haben. Der Prozess lief im Hintergrund
-und ich habe seine Ausgabe nie geöffnet.)* Der Tagesverlauf ist dabei
+Seit dem 10.10. um **12:29:49 UTC** läuft er durchgehend über 22 Stunden,
+also bis etwa 10:30 am 11.10. — die Fenster beider Ausbrüche liegen darin.
+
+*Dieser Satz hat zwei falsche Uhrzeiten getragen, bevor er stimmte.* Im
+Commit `3fb97f4` stand 12:34, danach 12:20 — beide Male eine Zahl, die ich
+geschrieben habe, **ohne die Startmeldung des Prozesses zu lesen**. Er lief
+im Hintergrund, seine Ausgabe lag die ganze Zeit in einer Datei, und ich habe
+sie nicht geöffnet. Für einen Bericht, dessen ganzer Gegenstand ein
+*Zeitfenster* ist, ist das keine Nebensache.
+
+*Und zwei Mängel am Werkzeug, beide beim Nachsehen gefunden.* Der feste
+Ausgabepfad hätte beim ersten Checkpoint des zweiten Laufs die Rohwerte des
+ersten überschrieben, und `data/` ist gitignoriert — nichts davon wäre
+wiederherstellbar gewesen. Das Skript schreibt jetzt je Lauf eine eigene
+Datei, benannt nach seiner ersten Runde. Und der erste Neustart lief über ein
+loses `&` statt als verfolgte Hintergrundaufgabe: er hätte sterben können,
+ohne dass es auffällt, und für eine Messung, die morgen früh laufen *muss*,
+ist „läuft vermutlich noch" kein Zustand.
+
+Der Tagesverlauf ist dabei
 nicht Beiwerk, sondern die Kontrolle: steigt die Antwortzeit vor dem Ausbruch
 allmählich, deutet das auf die Leitung; ist sie flach und bricht dann ab, nicht.
 
