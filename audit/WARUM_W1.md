@@ -150,6 +150,32 @@ indem man **während** des Fensters gleichzeitig den Endpunkt und eine zweite,
 unabhängige Adresse abruft. Fällt nur Binance aus, ist es die Börse; fallen
 beide aus, ist es diese Leitung.
 
+### Erster Messversuch: leer, und zwar aus meinem eigenen Fehler
+
+`scripts/probe_burst_window.py` lief am 10.10. von 09:13 bis 10:37 UTC, 84
+Runden, drei Adressen gleichzeitig:
+
+| Adresse | n | Median | p90 | Fehler |
+|---|---|---|---|---|
+| `klines` | 84 | 426 ms | 445 ms | **0** |
+| `time` | 84 | 371 ms | 387 ms | **0** |
+| fremd (Cloudflare) | 84 | 129 ms | 152 ms | **0** |
+
+**Kein einziger Fehler** — und das ist keine Antwort, sondern derselbe Fehler
+wie am Vortag. Der Ausbruch endete um **08:33 UTC**; der Probe startete um
+09:13, also **vierzig Minuten zu spät**. Ich hatte auf einen Nachläufer
+gehofft, weil das Fenster am 09.10. bis 10:43 lief. Es gab keinen.
+
+Die Lesehilfe im Skript sagte diesen Ausgang vorab:
+
+> *keiner fällt aus → das Fenster war heute leer, und das ist KEINE Antwort*
+
+Konsequenz, und sie ist operativ: **der Probe muss vor 08:00 UTC laufen.**
+Seit dem 10.10. um 12:34 UTC läuft er deshalb durchgehend über 23 Stunden,
+nicht als geplanter Auftrag auf dieser Maschine. Der Tagesverlauf ist dabei
+nicht Beiwerk, sondern die Kontrolle: steigt die Antwortzeit vor dem Ausbruch
+allmählich, deutet das auf die Leitung; ist sie flach und bricht dann ab, nicht.
+
 ### Warum das für das Ziel zählt, und nicht nur für die Diagnose
 
 Eine Fehlerquote von 77 % heisst: **drei von vier Entscheidungen fallen nicht.**
