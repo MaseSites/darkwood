@@ -460,3 +460,35 @@ Beobachtungen in zwei Tagen um 0,28 R springen kann.
 UTC. Ein Feld, das im Code steht, aber nicht im laufenden Prozess, ist kein
 aufgezeichnetes Feld. `decision_version` hätte dasselbe Schicksal — darum
 gehört zu diesem Commit ein Neustart, und erst er macht den Stempel wirksam.
+
+---
+
+## 12. VIERTE PRÜFUNG, 10.10.2026 — der Schnitt war inkonsistent, und der Vorteil ist weg
+
+Dieser Bericht hat drei Schnitte gemacht und jedes Mal **nur eine Achse**
+geprüft. Abschnitt 8 schnitt bei der letzten Änderung am *Code* und behandelte
+die Konfigurationsachse als abgeschlossen — sie war es nicht.
+
+**Am 05.10. um 19:15 UTC fiel der Kostendeckel von 0,15 auf 0,08.** Drei Trades
+der Stichprobe reissen ihn, und **alle drei sind Gewinner**: LINK +1,4691
+(Quote 0,0997), ATOM +1,4511 (0,1275), LTC +1,9789 (0,0808).
+
+| Schnitt | n | Mittel | Treffer |
+|---|---|---|---|
+| alle | 18 | +0,3938 R | 50,0 % |
+| nach Konfiguration 04.10. 12:30 | 14 | +0,6208 R | — |
+| nach Code 04.10. 21:52 | 13 | +0,5075 R | 53,8 % |
+| **+ heutige Kostenregel** | **10** | **+0,1699 R** | **40,0 %** |
+
+**Der Vorteil von +0,7867 R, der drei Tage lang das Ergebnis dieses Laufs war,
+war mein eigener inkonsistenter Schnitt.** Vollständig, mit den Zahlen und den
+sieben weiteren bestätigten Defekten, in `audit/EVIDENZ_UND_RISIKO_AUDIT.md`.
+
+Und die Mächtigkeitsrechnung, auf der der Termin stand, war die falsche
+Rechnung: `n = (z·σ/μ)²` ist Präzision, nicht Mächtigkeit. Die prospektive
+Mächtigkeit bei 11 Trades war **0,0505** — der Verwerfungsbereich beginnt bei
+10 von 11 Treffern, also **konnten 7 Treffer nie bestehen**. Mit Mächtigkeit
+und beiden Toren gerechnet: 100 bis 128 Trades, 53 bis 67 Tage, also **Ende
+November bis Mitte Dezember 2026** und nicht der 25.10.
+
+**„Das Ziel prüft sich selbst bis zum 30.10." ist damit zurückgezogen.**
