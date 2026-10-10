@@ -1652,7 +1652,7 @@ function kontoCard(account) {
   const open = account.has_position
     ? `<p class="konto__state">Position offen &middot; ${money(
         account.open_risk
-      )} CHF im Risiko &middot; ${signed(account.unrealised)} CHF unrealisiert</p>`
+      )} USDT im Risiko &middot; ${signed(account.unrealised)} USDT unrealisiert</p>`
     : "";
 
   return `
@@ -1662,7 +1662,7 @@ function kontoCard(account) {
         <span class="konto__value">${money(account.equity)}</span>
       </div>
       <p class="konto__delta ${direction}">
-        ${signed(account.change)} CHF &middot; ${signed(account.change_pct, 2)} %
+        ${signed(account.change)} USDT &middot; ${signed(account.change_pct, 2)} %
         <span style="color: var(--dimmer)">von ${money(account.start_equity)}</span>
       </p>
       ${open}
@@ -1698,14 +1698,19 @@ function renderKonto(portfolio) {
     <div class="total">
       <span class="total__value">${money(portfolio.total_equity)}</span>
       <span class="total__change ${direction}">
-        ${signed(portfolio.total_change)} CHF &middot; ${signed(portfolio.total_change_pct, 2)} %
+        ${signed(portfolio.total_change)} USDT &middot; ${signed(portfolio.total_change_pct, 2)} %
       </span>
       <span class="total__meta">
         ${portfolio.trades} Trades vorwärts &middot; ${hit}<br />
-        ${money(portfolio.open_risk)} CHF gerade im Risiko<br />
+        ${money(portfolio.open_risk)} USDT gerade im Risiko<br />
         <span style="color: var(--dimmer)">
           ${portfolio.accounts.length} getrennte Konten à
-          ${money(portfolio.accounts[0]?.start_equity ?? 0)} &mdash; kein gemeinsames Depot
+          ${money(portfolio.accounts[0]?.start_equity ?? 0)} &mdash; kein gemeinsames Depot<br />
+          Alles in <strong>USDT</strong>, nicht in Franken. Das System setzt
+          stillschweigend 1&thinsp;USDT = 1&thinsp;CHF; der Kurs lag am
+          02.10.2026 bei 0,8293 (FRED&nbsp;DEXSZUS), also sind diese Zahlen
+          rund <strong>17&thinsp;% weniger</strong> echte Franken. Für eine
+          Zielquote ist das egal, für einen Frankenbetrag nicht.
         </span>
       </span>
     </div>
@@ -1747,11 +1752,11 @@ function renderSettings(settings) {
   }
 
   const rows = [
-    ["Startkapital je Markt", `${money(settings.initial_equity)} CHF`, "bei Zurücksetzen"],
+    ["Startkapital je Markt", `${money(settings.initial_equity)} USDT`, "bei Zurücksetzen"],
     [
       "Risiko je Trade",
       `${(settings.risk_pct_floor * 100).toFixed(2)} %`,
-      `das sind ${money(settings.initial_equity * settings.risk_pct_floor)} CHF`,
+      `das sind ${money(settings.initial_equity * settings.risk_pct_floor)} USDT`,
     ],
     ["Hebel höchstens", `${settings.max_leverage}×`, "so gewählt, dass die Liquidation hinter dem Stop liegt"],
     ["Mindest-CRV", `${settings.min_reward_risk}`, "Gewinn muss mindestens so viel wie das Risiko sein"],
@@ -1858,7 +1863,7 @@ function renderLedger(ledger, source) {
           <tr>
             <th>Geschlossen</th><th>Markt</th><th>Setup</th><th>Richtung</th>
             <th class="ledger__num">Ergebnis</th>
-            <th class="ledger__num optional">CHF</th>
+            <th class="ledger__num optional">USDT</th>
             <th class="optional">Grund</th>
             <th class="ledger__num optional">Bewertung</th>
             <th>Was passiert ist</th>
@@ -1977,7 +1982,7 @@ function renderCurve(curve, source) {
   const unit = `
     <p class="settings__note">
       <b>R</b> ist ein Risiko &mdash; der Betrag, den ein Trade verliert, wenn der Stop
-      greift. Bei 1&thinsp;000 CHF Konto und 0,5&thinsp;% Risiko sind das 5 CHF.
+      greift. Bei 1&thinsp;000 USDT Konto und 0,5&thinsp;% Risiko sind das 5 USDT.
       <b>+1.00 R</b> heisst also: so viel gewonnen, wie riskiert wurde.
       Gerechnet wird in R statt in Franken, weil Franken nur auf einem Konto
       vergleichbar sind &mdash; derselbe Trade auf einem Konto von 10&thinsp;000 ergäbe
@@ -2113,7 +2118,7 @@ function openCard(trade) {
           ${signed(trade.r_now)} R
         </span>
         <span class="open-card__money ${ahead ? "up" : "down"}">
-          ${signed(trade.unrealised)} CHF
+          ${signed(trade.unrealised)} USDT
         </span>
         <span class="open-card__chevron">${expanded ? "▾" : "▸"}</span>
       </button>
@@ -2126,8 +2131,8 @@ function openCard(trade) {
         <div><dt>Ziel</dt><dd>${fmt.price(trade.target)}</dd></div>
       </dl>
       <p class="konto__state">
-        ${fmt.money(trade.notional)} CHF Volumen &middot; ${trade.leverage}× Hebel &middot;
-        ${fmt.money(trade.margin)} CHF Margin &middot; ${fmt.money(trade.risk_amount)} CHF im Risiko
+        ${fmt.money(trade.notional)} USDT Volumen &middot; ${trade.leverage}× Hebel &middot;
+        ${fmt.money(trade.margin)} USDT Margin &middot; ${fmt.money(trade.risk_amount)} USDT im Risiko
         &middot; CRV ${trade.reward_risk} &middot; seit ${heldText(trade.held_minutes)}
         ${trade.stop_moved ? "&middot; Stop auf Einstand" : ""}
       </p>
@@ -2238,8 +2243,8 @@ function renderOpen(trades) {
   host.innerHTML = `
     <h3 class="panel__head">Läuft gerade
       <span class="panel__hint">
-        ${trades.length} offen &middot; ${signed(sum)} CHF unrealisiert &middot;
-        ${fmt.money(risk)} CHF im Risiko
+        ${trades.length} offen &middot; ${signed(sum)} USDT unrealisiert &middot;
+        ${fmt.money(risk)} USDT im Risiko
       </span>
     </h3>
     <ul class="open-list">${trades.map(openCard).join("")}</ul>`;
