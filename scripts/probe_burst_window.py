@@ -69,7 +69,12 @@ TARGETS = (
 TIMEOUT = 20.0
 EVERY = 60.0
 GAP = 1.0
-OUT = ROOT / "data" / "probe_burst_window.json"
+#: Je Lauf eine eigene Datei. Ein fester Pfad hat am 10.10. beinahe die
+#: Rohwerte des Vorlaufs geloescht: der zweite Lauf schreibt seinen ersten
+#: Checkpoint nach fuenfzehn Runden, und `data/` ist gitignoriert, also waere
+#: nichts davon wiederherstellbar gewesen. Der Zeitstempel kommt aus der
+#: ersten Runde, nicht aus dem Start, damit er zur Messung passt.
+OUT_DIR = ROOT / "data"
 
 
 def one(url: str) -> tuple[float, str]:
@@ -84,6 +89,13 @@ def one(url: str) -> tuple[float, str]:
             1000.0 * (time.perf_counter() - started),
             f"{type(problem).__name__}: {str(problem)[:70]}",
         )
+
+
+def _target(rows: list[dict[str, float | str]]) -> Path:
+    """Der Dateiname dieses Laufs, benannt nach seiner ersten Runde."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.fromtimestamp(float(rows[0]["ts"]), dt.UTC)
+    return OUT_DIR / f"probe_burst_window_{stamp:%Y%m%d_%H%M}.json"
 
 
 def report(rows: list[dict[str, float | str]]) -> None:
@@ -134,6 +146,7 @@ def main() -> int:
     print("  Nur lesen. Kein Schluessel, keine Order.\n", flush=True)
 
     rows: list[dict[str, float | str]] = []
+    out: Path | None = None
     deadline = time.time() + args.hours * 3600
     try:
         while time.time() < deadline:
@@ -153,16 +166,16 @@ def main() -> int:
                 stamp = dt.datetime.now(dt.UTC)
                 print(f"  [{stamp:%H:%M} UTC] {len(rows)} Runden, {bad} mit Fehler",
                       flush=True)
-                OUT.parent.mkdir(parents=True, exist_ok=True)
-                OUT.write_text(json.dumps({"rounds": rows}, indent=1), encoding="utf-8")
+                out = out or _target(rows)
+                out.write_text(json.dumps({"rounds": rows}, indent=1), encoding="utf-8")
             time.sleep(max(0.0, EVERY - GAP * len(TARGETS)))
     except KeyboardInterrupt:
         print("\n  Abgebrochen. Was gemessen ist, bleibt.")
 
     if rows:
-        OUT.parent.mkdir(parents=True, exist_ok=True)
-        OUT.write_text(json.dumps({"rounds": rows}, indent=1), encoding="utf-8")
-        print(f"\n  {len(rows)} Runden nach {OUT.relative_to(ROOT)}")
+        out = out or _target(rows)
+        out.write_text(json.dumps({"rounds": rows}, indent=1), encoding="utf-8")
+        print(f"\n  {len(rows)} Runden nach {out.relative_to(ROOT)}")
         report(rows)
     return 0
 

@@ -171,8 +171,11 @@ Die Lesehilfe im Skript sagte diesen Ausgang vorab:
 > *keiner fällt aus → das Fenster war heute leer, und das ist KEINE Antwort*
 
 Konsequenz, und sie ist operativ: **der Probe muss vor 08:00 UTC laufen.**
-Seit dem 10.10. um 12:34 UTC läuft er deshalb durchgehend über 23 Stunden,
-nicht als geplanter Auftrag auf dieser Maschine. Der Tagesverlauf ist dabei
+Seit dem 10.10. um **12:20 UTC** läuft er deshalb durchgehend über 23
+Stunden, nicht als geplanter Auftrag auf dieser Maschine. *(Im Commit
+`3fb97f4` stand hier zuerst 12:34 — eine Zahl, die ich geschrieben habe,
+ohne die Startmeldung gelesen zu haben. Der Prozess lief im Hintergrund
+und ich habe seine Ausgabe nie geöffnet.)* Der Tagesverlauf ist dabei
 nicht Beiwerk, sondern die Kontrolle: steigt die Antwortzeit vor dem Ausbruch
 allmählich, deutet das auf die Leitung; ist sie flach und bricht dann ab, nicht.
 
