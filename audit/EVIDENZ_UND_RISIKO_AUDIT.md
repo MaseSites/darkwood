@@ -292,3 +292,51 @@ Neulauf unter heutigen Regeln mehr oder weniger Trades erzeugt.
 
 **Die Mächtigkeitszahlen setzen Unabhängigkeit voraus**, und Abschnitt 2 zeigt,
 dass sie verletzt ist. Die 100 bis 128 Trades sind damit eine **Untergrenze**.
+
+---
+
+## 6. Nachtrag: was das Scharfschalten der toten Sicherungen kostet
+
+Reproduktion:
+
+```bash
+python scripts/study_dead_limits.py
+```
+
+Abschnitt 3.1 und 3.2 nennen vier Sicherungen, die nicht auslösen können.
+Sie zu reparieren ist richtig und **verändert, welche Trades entstehen** —
+also schneidet es die Vorwärtsstichprobe. Statt darüber zu mutmassen, ist der
+Preis jetzt gezählt.
+
+**Und dabei fällt eine Mehrdeutigkeit auf, die selbst ein Befund ist:** die
+Konfiguration sagt nicht, ob die Grenzen **je Konto** oder **über das
+Portfolio** gelten. Der Papierhandel führt zwölf getrennte Händler mit je
+1 000 USDT und je *einem* Positionsplatz.
+
+| Lesart | `max_open_positions` | Tagesverlust | Wochenverlust | Cooldown | **zusammen** |
+|---|---|---|---|---|---|
+| **je Konto** | 0 | 0 | 0 | 0 | **0 von 21** |
+| über das Portfolio | 3 | 0 | 4 | — | **7 von 21** |
+
+*(Portfolio: 3 durch `max_open_positions`, 4 durch den Cooldown, zusammen 7
+ohne Doppelzählung.)*
+
+**Je Konto kostet die Reparatur nichts.** Null von 21 Trades ändern sich, das
+Mittel bleibt bei +0,1893 R. Der Grund ist Arithmetik und keine Nachsicht: ein
+Konto riskiert rund 10 USDT je Trade, der Tagesdeckel liegt bei 5 % von 1 000
+= 50 USDT, und ein einzelner Markt erreicht in 24 Stunden keine drei
+aufeinanderfolgenden Verluste. `max_open_positions: 2` kann je Konto ohnehin
+nicht binden, weil der Broker *einen* Platz hat.
+
+Über das Portfolio gerechnet blockt dieselbe Konfiguration **ein Drittel der
+Stichprobe** und hebt das Mittel auf +0,3728 R über 14 Trades.
+
+**Damit ist der Einwand gegen die Reparatur weg** — für die Lesart, die zur
+gebauten Architektur passt. Die Lesart selbst gehört aber entschieden und
+nicht aus Bequemlichkeit gewählt: dass die billigere Variante auch die
+wirkungslose ist, ist kein Argument für sie.
+
+*Untergrenze, nicht die Veränderung.* Gezählt ist, was die Regeln an den
+**genommenen** Trades tun. Eine blockierte Order gibt ihren Platz frei, und
+ein echter Neulauf nähme danach andere Trades — dieselbe Einschränkung wie bei
+jeder nachträglichen Filterrechnung hier.
