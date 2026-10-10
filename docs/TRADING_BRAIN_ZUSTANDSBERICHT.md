@@ -1410,6 +1410,29 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
     Zuverlässigkeits-Fix *ist* eine Strategieänderung, weil ein gescheiterter
     Zyklus eine nicht getroffene Entscheidung ist.
 
+26. **[BEHOBEN 10.10.2026]** **Der Live-Pfad hat jetzt einen Golden-Test und einen
+    Stempel mit der richtigen Körnung.** Beides schliesst dieselbe Lücke: am 09.10.
+    musste die Vorwärtsstichprobe dreimal nachgeschnitten werden, und zweimal war die
+    Begründung falsch, weil ich Commits nach ihren *Titeln* ausgewählt hatte.
+    **(a) `tests/test_live_decision_golden.py`** fährt den *echten* `PaperTrader` über
+    ein eingefrorenes Band echter Kerzen und hasht, was der Live-Code selbst in den
+    Signalspeicher schreibt — keine Kopie von `_maybe_open`, weil eine Kopie abdriften
+    und dann grün bleiben kann. Daneben ein breiter Test über jeden Balken, weil der
+    Händler nur erwägt, wenn er flach ist. **Mutationsprobe:**
+    `BREAKOUT_FIRST_TARGET_R` 1,5 → 1,6 ergibt `pytest` Exitcode **1**, zurückgesetzt
+    **0**. Der erste Lauf reproduzierte zwei *echte* Live-Entscheidungen exakt
+    (BTCUSDT short @ 81 316,0 Stop 82 750,0; DOTUSDT short @ 1,0781 Stop 1,0945).
+    **(b) `journal/version.py:decision_version()`** hasht die *Bedeutung* der 56
+    Dateien im Entscheidungspfad — ohne Kommentare, Docstrings, Formatierung. Ein
+    Bericht bewegt ihn nicht, **`MAX_DECISION_ATTEMPTS = 3` bewegt ihn**, und das ist
+    genau die Konstante, die `run_signature` am 04.10. verschwiegen hat. Neun Tests,
+    Exitcode 0, mutiert an einer Kopie des Quellbaums. Im Journal als
+    `JournalEntry.decision_version`. **Die beiden greifen ineinander:** beim Einbau
+    bewegte sich der Stempel (`aee9db6a9b43` → `3edf58b5250c`) und der Golden-Test
+    blieb grün — die Änderung ist damit *belegt* verhaltensneutral. Der Stempel trennt
+    die Stichproben, der Golden-Test sagt, ob sie getrennt werden *müssen*
+    (`audit/DIE_VORWAERTSSTICHPROBE.md` §10).
+
 ---
 
 ## 18. Der eine nächste Schritt — ÜBERHOLT, siehe 19

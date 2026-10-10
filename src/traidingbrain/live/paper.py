@@ -51,7 +51,7 @@ from traidingbrain.journal.postmortem import examine
 from traidingbrain.journal.record import JournalEntry, Source, TradeReason
 from traidingbrain.journal.signals import Action, SignalRecord, SignalStore
 from traidingbrain.journal.store import JournalStore
-from traidingbrain.journal.version import code_version
+from traidingbrain.journal.version import code_version, decision_version
 from traidingbrain.live.paperstate import PaperState, PaperStateStore, Tally
 from traidingbrain.sim.broker import Fill, OpenPosition, SimBroker
 from traidingbrain.sim.engine import AnalysisStrategy
@@ -702,6 +702,11 @@ class PaperTrader:
             # Derselbe Helfer, den der Signalspeicher benutzt. Die Signatur
             # allein genuegt nicht: sie deckt Konfiguration, nicht Code.
             code_version=code_version(),
+            # Und der Stempel dazwischen: die Bedeutung des entscheidenden
+            # Codes, ohne Kommentare und Docstrings. Der Commit bewegt sich bei
+            # jedem Bericht, die Signatur bei keiner Codeaenderung -- dieser
+            # bewegt sich genau dann, wenn sich der Entscheidungspfad aendert.
+            decision_version=decision_version(),
         )
         self.journal.record([entry])
         return entry

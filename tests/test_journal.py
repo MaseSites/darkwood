@@ -631,3 +631,34 @@ def test_the_entry_records_the_commit_too(tmp_path) -> None:
     back = store.all()[0]
     assert back.run_signature == "sig"
     assert back.code_version == "abc1234"
+
+
+def test_the_entry_records_the_decision_stamp(tmp_path) -> None:
+    """Der dritte Stempel, und der einzige mit der richtigen Koernung.
+
+    Signatur zu grob, Commit zu fein -- `decision_version` liegt dazwischen und
+    hasht die Bedeutung des entscheidenden Codes. Dass er das tut, prueft
+    `tests/test_decision_version.py`; hier wird nur geprueft, dass er den
+    Speicher ueberlebt. Genau dort ist am 09.10.2026 schon einmal ein Feld
+    still verschwunden, weil es im Objekt stand und nicht im Schema.
+    """
+    made = entry("BTCUSDT-1", decision_version="aee9db6a9b43")
+    assert made.decision_version == "aee9db6a9b43"
+    assert asdict(made)["decision_version"] == "aee9db6a9b43"
+
+    store = JournalStore(tmp_path / "journal.sqlite")
+    store.record([made])
+    assert store.all()[0].decision_version == "aee9db6a9b43"
+
+
+def test_an_entry_without_the_decision_stamp_still_loads(tmp_path) -> None:
+    """Alles, was vor heute entstand, hat den Stempel nicht -- und muss laden.
+
+    18 Live-Trades und 2 734 Replay-Trades liegen ohne ihn im Journal. Ein
+    Default, der sie unlesbar macht, wuerde die ganze vorhandene Evidenz
+    entwerten, um die neue zu beschriften.
+    """
+    assert entry().decision_version == ""
+    store = JournalStore(tmp_path / "journal.sqlite")
+    store.record([entry("BTCUSDT-1")])
+    assert store.all()[0].decision_version == ""

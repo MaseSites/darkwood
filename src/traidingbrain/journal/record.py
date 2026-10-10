@@ -205,6 +205,21 @@ class JournalEntry:
     #: der Commit ist zu fein (er aendert sich, wenn ein Bericht geschrieben
     #: wird). Zusammen lassen sie die Frage entscheiden; einzeln nicht.
     code_version: str = ""
+    #: Ein Stempel ueber die BEDEUTUNG des entscheidenden Codes -- die Koernung,
+    #: die zwischen den beiden oberen liegt.
+    #:
+    #: `journal/version.py:decision_version()` hasht den Quelltext der 56
+    #: Dateien, die der Live-Entscheidungspfad erreicht, ohne Kommentare,
+    #: Docstrings und Formatierung. Damit beantwortet GENAU EIN Feld die Frage,
+    #: fuer die am 09.10.2026 neunzehn Diffs gelesen werden mussten: ein
+    #: Bericht bewegt ihn nicht, `MAX_DECISION_ATTEMPTS = 3` bewegt ihn.
+    #: Belegt, nicht behauptet -- `tests/test_decision_version.py` mutiert
+    #: genau diese Konstante an einer Kopie des Quellbaums.
+    #:
+    #: Bewusst konservativ: der Abschluss enthaelt auch Dateien, deren
+    #: Aenderung keine Entscheidung veraendern kann. Ein ueberfluessiger
+    #: Schnitt kostet Stichprobe, ein fehlender verdirbt sie.
+    decision_version: str = ""
 
     @property
     def won(self) -> bool:

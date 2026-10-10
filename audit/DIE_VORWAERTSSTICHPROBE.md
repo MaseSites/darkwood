@@ -318,3 +318,145 @@ elf Trades liegen bei R:R 2,0, also im Eimer, den jene Regel vermeiden
 *sollte*. Die Regel ist als eigene Strategie gebaut (`CAP = 1.75`) und live
 **nicht aktiv**; die Signatur sagt `refused-v1`, nicht `modest-1.75`. Eine
 Grundlinie gegen etwas, das das System nicht tut, ist keine Grundlinie.
+
+---
+
+## 10. Behoben: ein Stempel mit der richtigen Körnung
+
+Reproduktion:
+
+```bash
+pytest tests/test_decision_version.py tests/test_live_decision_golden.py
+```
+
+Dieser Bericht hat dreimal geschnitten und zweimal falsch begründet. Die
+Ursache war nicht Unachtsamkeit, sondern ein fehlendes Feld: **beide
+vorhandenen Stempel haben die falsche Körnung.**
+
+* `run_signature` deckt **Konfiguration** — Startkapital, Setup-Liste,
+  Kostendeckel, Signalebene, Ablehnungsversion. Zu **grob**: `MAX_DECISION_
+  ATTEMPTS = 3` bewegt sie nicht.
+* `code_version` deckt den **Commit** exakt. Zu **fein**: jeder geschriebene
+  Bericht bewegt ihn, und ein Schnitt je Bericht ist kein Schnitt.
+
+Neu, dazwischen: **`decision_version()`** in `journal/version.py`. Er hasht den
+Quelltext der **56 Dateien**, die der Live-Entscheidungspfad erreicht — ohne
+Kommentare, Docstrings und Formatierung, über `ast.unparse` normalisiert. Der
+Abschluss wird **berechnet, nicht gepflegt**: eine Liste von Hand wäre am Tag
+ihres Schreibens richtig und danach nie wieder, und genau das ist der Fehler,
+den er behebt.
+
+### Belegt, nicht behauptet
+
+`tests/test_decision_version.py`, **9 Tests, Exitcode 0.** Sie mutieren eine
+*Kopie* des Quellbaums, weil eine Behauptung über einen Stempel, die nur im
+Docstring steht, dasselbe Problem ein Stockwerk höher ist:
+
+| Was geändert wird | Stempel |
+|---|---|
+| ein umformulierter Docstring | **bewegt sich nicht** |
+| ein angehängter Kommentar | **bewegt sich nicht** |
+| eine Leerzeile | **bewegt sich nicht** |
+| eine neue Datei ausserhalb des Pfades | **bewegt sich nicht** |
+| `BREAKOUT_FIRST_TARGET_R` 1,5 → 1,6 | **bewegt sich** |
+| **`MAX_DECISION_ATTEMPTS` 3 → 4** | **bewegt sich** |
+| `FIXED_CONFIDENCE` 60 → 65 | **bewegt sich** |
+
+**Die mittlere Zeile ist der historische Fall.** Das ist die Konstante, die am
+04.10.2026 um 21:52 UTC die homogene Stichprobe begrenzt hat und die
+`run_signature` nicht gesehen hat. Der Test ist der Beleg, dass derselbe Fall
+heute auffiele.
+
+Dazu: der Abschluss enthält nachweislich alle zehn Module, die entscheiden
+können (`live.paper`, `strategies.guide`, `strategy.setups`, `sim.plan`,
+`sim.broker`, `risk.sizing`, `risk.leverage`, `analysis.pipeline`,
+`journal.build`, `config.settings`), und der Stempel ist über Prozessgrenzen
+stabil — geprüft mit zwei Unterprozessen, weil Pythons `hash()` je Prozess
+gesalzen ist und ein Schlüssel, der beim Neustart springt, eine Stichprobe in
+so viele Teile teilt wie es Neustarts gab.
+
+Im Journal: `JournalEntry.decision_version`, geschrieben von `paper.py`, mit
+Default `""` für alles, was vorher entstand — zwei Tests belegen den Rundlauf
+durch den echten Speicher und dass die 2 752 alten Einträge weiter laden.
+
+### Die beiden Instrumente greifen ineinander, und das wurde sichtbar
+
+Der Stempel sagt, *dass* sich der Entscheidungscode geändert hat. Er sagt
+**nicht**, ob die Änderung eine Entscheidung verändert. Das beantwortet
+`tests/test_live_decision_golden.py` an gefrorenen Kerzen.
+
+Beim Einbau dieses Feldes liess sich das gleich vorführen: `paper.py` und
+`record.py` wurden geändert, also bewegte sich der Stempel von `aee9db6a9b43`
+auf `3edf58b5250c` — **und der Golden-Test blieb grün.** Die Änderung ist
+damit *belegt* verhaltensneutral statt nur so gemeint. Genau diese Trennung
+hätte am 09.10. die neunzehn Diffs erspart:
+
+> Der Stempel trennt die Stichproben. Der Golden-Test sagt, ob sie getrennt
+> werden *müssen*.
+
+### Grenzen
+
+**Bewusst konservativ.** Der Abschluss enthält Dateien, deren Änderung keine
+Entscheidung verändern kann (`journal/store.py` schreibt nur weg). Der Stempel
+bewegt sich dann ohne Grund. Die Fehlerrichtung ist die richtige: ein
+überflüssiger Schnitt kostet Stichprobe, ein fehlender verdirbt sie. Eine
+handgepflegte Ausnahmeliste wäre wieder ein Urteil, das verrottet.
+
+**An die Python-Version gebunden.** `ast.unparse` darf seine Ausgabe zwischen
+Interpreter-Versionen ändern, und dann bewegt sich jeder Stempel auf einmal.
+Nicht abzufangen, ohne wieder rohe Bytes zu hashen.
+
+**Er beschriftet erst ab jetzt.** Die 18 vorhandenen Live-Trades tragen ihn
+nicht. Für sie bleibt der Schnitt vom 04.10. 21:52 UTC, aus Diffs gelesen —
+die neue Evidenz ist beschriftet, die alte bleibt rekonstruiert.
+
+---
+
+## 11. Stand 10.10.2026: 13 Trades, und der Mittelwert fällt
+
+Zwei neue Trades, **beide Verluste**, beide short:
+
+| zu (UTC) | Markt | R |
+|---|---|---|
+| 09.10. 23:48 | ADAUSDT | −1,0140 |
+| 10.10. 04:52 | AVAXUSDT | −1,0414 |
+
+| | war (11) | **jetzt (13)** |
+|---|---|---|
+| Mittel | +0,7867 R | **+0,5075 R** |
+| Streuung | 1,458 | 1,495 |
+| Trefferquote | 63,6 % | **53,8 %** |
+
+**Das sind nun sechs Verluste in Folge** — 08.10. 20:28 bis 10.10. 04:52, alle
+auf der Short-Seite, alle am Stop. Die Drift, die dieser Bericht als Gefahr
+benannt hat, dreht in Echtzeit:
+
+> *„wer den Schnitt nach hinten schiebt, wählt die jüngeren Trades, und die
+> waren besser"* — und jetzt sind die jüngsten die schlechtesten.
+
+**Und genau das sagt die vorab festgelegte Erwartung aus Abschnitt 9 voraus.**
+Dort steht, aus dem Replay bei der passenden Mischung geplanter Verhältnisse
+gerechnet: **−0,0867 R und 35,4 % Treffer**. Der Abstand des Beobachteten dazu
+war bei 11 Trades 2,06 Standardfehler; bei 13 sind es
+
+    (0,5075 − (−0,0867)) / (1,4061 / √13) = 1,524
+
+Standardfehler — **unter** der unkorrigierten Schwelle von 1,96 und weit unter
+der korrigierten von 3,317. Die Zahl ist also nicht nur gefallen, sie hat auch
+die einzige Hürde verloren, die sie halb genommen hatte.
+
+**Der Termin bleibt und rückt näher.** 41 Trades verlangt die
+Mächtigkeitsrechnung, 13 sind da, 28 fehlen. Bei 1,9 Trades/Tag sind das 15
+Tage: **25.10.2026**. Unverändert vor dem Stichtag des Ziels.
+
+*Nicht behauptet:* dass die sechs Verluste etwas belegen. Sechs Trades sind
+kein Ergebnis, genauso wie die sieben Gewinner davor keines waren. Was sie
+belegen, ist die Breite des Intervalls — und dass ein Mittelwert aus elf
+Beobachtungen in zwei Tagen um 0,28 R springen kann.
+
+**Und ein Nebenbefund zur Provenienz.** Die zwei neuen Trades tragen
+`run_signature`, aber **kein** `code_version`: der laufende Prozess wurde am
+09.10. um 14:24 UTC gestartet, und die `code_version`-Verdrahtung kam um 15:26
+UTC. Ein Feld, das im Code steht, aber nicht im laufenden Prozess, ist kein
+aufgezeichnetes Feld. `decision_version` hätte dasselbe Schicksal — darum
+gehört zu diesem Commit ein Neustart, und erst er macht den Stempel wirksam.

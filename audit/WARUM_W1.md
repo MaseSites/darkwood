@@ -113,7 +113,63 @@ dicht daneben. Der Kaltstart **verschiebt die Verteilung um 36 ms und fügt
 keinen Rand hinzu**. Das ist nicht „zu wenig Evidenz" — das ist Evidenz
 **gegen** den einzigen Mechanismus, den diese Messung sehen konnte.
 
-## 5. Zwei unabhängige Messungen sagen: der Ausbruch wiederholt sich nicht
+## 4b. NACHTRAG 10.10.2026 — er hat sich wiederholt, und zwar schlimmer
+
+**Abschnitt 5 unten ist überholt.** Er stand auf „0 Fehler in 1 415 Abrufen"
+und „4 010 ccxt-Zyklen ohne einen neuen Fehlschlag", und beide Zahlen waren
+richtig — aber beide aus der **Ruhe** gemessen. Ein Ruhe-Mass kann einen
+Ausbruch nicht ausschliessen, und genau das stand als Grenze in Abschnitt 6.
+Jetzt ist es belegt statt eingeräumt.
+
+| | 09.10. | **10.10.** |
+|---|---|---|
+| Fenster (UTC) | 08:20 – 10:43 | **? – 08:33** |
+| Fehlerquote | 47 % | **77 %** |
+| Fehlschläge | 5 043 kumuliert | **+4 879 neue** |
+| Signatur | `fetch_ohlcv(.., W1)`, alle 12 Märkte | **identisch** |
+| Form | ccxt-Timeout nach 4 Versuchen | **identisch** |
+
+Gleichmässig über die Märkte verteilt (825–829 je Markt), also ein geteiltes
+Zeitfenster und kein Marktproblem. Um 08:55 UTC gemessen: **0 Fehlschläge auf
+23 Zyklen** — vorbei, wie beim ersten Mal, bevor ich davor sass.
+
+### Die neue, prüfbare Beobachtung
+
+**Beide Ausbrüche liegen im selben Tagesfenster.** 08:20–10:43 UTC am 09.10.,
+Ende 08:33 UTC am 10.10. Das ist mit zwei Punkten keine Periodizität, aber es
+ist das erste Mal, dass die Frage eine *Richtung* hat, in die man messen kann:
+
+> Nicht „warum W1" (beantwortet: nicht W1, sondern Position 1) und nicht
+> „warum Position 1" (der Kaltstart ist mit 36 ms die falsche Grössenordnung),
+> sondern: **was passiert hier jeden Morgen gegen 08:30 UTC?**
+
+Zwei Kandidaten, beide testbar und keiner gemessen: ein geplanter Vorgang auf
+dieser Maschine (OneDrive-Abgleich, Windows-Update, Sicherung), der die
+Leitung sättigt — oder ein Wartungsfenster der Börse. Das unterscheidet sich,
+indem man **während** des Fensters gleichzeitig den Endpunkt und eine zweite,
+unabhängige Adresse abruft. Fällt nur Binance aus, ist es die Börse; fallen
+beide aus, ist es diese Leitung.
+
+### Warum das für das Ziel zählt, und nicht nur für die Diagnose
+
+Eine Fehlerquote von 77 % heisst: **drei von vier Entscheidungen fallen nicht.**
+Der Vorwärtslauf ist die einzige noch wachsende Evidenzquelle, und er braucht
+28 weitere Trades. Jeder verlorene Zyklus verlängert den Termin.
+
+Verloren ist dabei **kein Geld** — ein Fehlschlag wird gefangen, der Zeiger
+bleibt stehen, und der Broker holt bis zu 240 Minuten nach. Verloren ist
+*Zeit*, und Zeit ist in diesem Projekt die knappe Grösse.
+
+### Was ich daraus ausdrücklich NICHT folgere
+
+Dass ein Aufwärm-Abruf hilft. Der gemessene Kaltstart-Aufschlag ist 36 ms
+gegen eine Schwelle von 10 000 ms; eine Quote von 77 % entsteht daran nicht.
+Die Messung in Abschnitt 3 bleibt gültig und bleibt zu klein, um diesen
+Ausbruch zu erklären.
+
+---
+
+## 5. Zwei unabhängige Messungen aus der RUHE — überholt, siehe 4b
 
 | Quelle | Umfang | Fehler |
 |---|---|---|

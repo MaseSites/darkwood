@@ -32,7 +32,9 @@ force a re-collection that proves nothing.
 
 from __future__ import annotations
 
+import ast
 import functools
+import hashlib
 import subprocess
 from collections.abc import Iterable
 from pathlib import Path
@@ -102,6 +104,150 @@ def code_version() -> str:
     if status is None:
         return f"{head}+{UNKNOWN}"
     return f"{head}-dirty" if status.strip() else head
+
+
+#: Wo der Entscheidungspfad anfängt. `papertrade.py` steht nicht hier, weil es
+#: ein Skript ist und kein Modul; was es importiert, steht.
+DECISION_ENTRY = ("traidingbrain.live.paper", "traidingbrain.live.paperstate")
+
+#: Länge des Entscheidungsstempels. Zwölf Hex-Zeichen sind 48 Bit; bei einigen
+#: hundert Versionen über die Lebensdauer dieses Projekts ist eine Kollision
+#: nicht die Sorge, die eine längere Zeichenkette wert wäre.
+_STAMP = 12
+
+
+@functools.lru_cache(maxsize=1)
+def decision_closure() -> tuple[str, ...]:
+    """Jede Projektdatei, die der Live-Entscheidungspfad transitiv erreicht.
+
+    Berechnet statt gepflegt. Eine Liste von Hand wäre am Tag ihres Schreibens
+    richtig und danach nie wieder — und genau das ist der Fehler, den diese
+    Datei zu reparieren versucht.
+    """
+    return closure_at(Path(__file__).resolve().parents[2])
+
+
+def closure_at(src: Path) -> tuple[str, ...]:
+    """Derselbe Abschluss gegen einen beliebigen Quellbaum.
+
+    Getrennt, damit ein Test den Stempel an einer *Kopie* mit einer Änderung
+    darin prüfen kann, statt die Behauptung „eine Codeänderung bewegt ihn" zu
+    glauben. Eine Behauptung über einen Stempel, die nur im Docstring steht,
+    ist genau das, was dieses Modul abschaffen soll.
+    """
+    seen: set[str] = set()
+    todo = list(DECISION_ENTRY)
+    while todo:
+        module = todo.pop()
+        if module in seen:
+            continue
+        seen.add(module)
+        path = src / (module.replace(".", "/") + ".py")
+        if not path.exists():
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom):
+                if node.level:
+                    base = ".".join(module.split(".")[: -node.level])
+                    todo.append(f"{base}.{node.module}" if node.module else base)
+                elif node.module and node.module.startswith("traidingbrain"):
+                    todo.append(node.module)
+            elif isinstance(node, ast.Import):
+                todo.extend(
+                    alias.name for alias in node.names
+                    if alias.name.startswith("traidingbrain")
+                )
+    return tuple(sorted(
+        module for module in seen
+        if (src / (module.replace(".", "/") + ".py")).exists()
+    ))
+
+
+def _meaning(source: str) -> str:
+    """Der Quelltext ohne Kommentare, Docstrings und Formatierung.
+
+    `ast.parse` verliert Kommentare ohnehin, `ast.unparse` normalisiert die
+    Formatierung, und die Docstrings werden hier ausdrücklich entfernt. Das ist
+    der ganze Zweck: dieses Projekt schreibt sehr lange Docstrings, und ein
+    Stempel, der sich bei einem umformulierten Absatz bewegt, wäre genauso
+    unbrauchbar wie der Commit.
+    """
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if not isinstance(
+            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
+            continue
+        body = node.body
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            # Ein Rumpf darf nicht leer werden, sonst ist der Baum ungültig.
+            node.body = body[1:] if len(body) > 1 else [ast.Pass()]
+    return ast.unparse(ast.fix_missing_locations(tree))
+
+
+@functools.lru_cache(maxsize=1)
+def decision_version() -> str:
+    """Ein Stempel über die **Bedeutung** des entscheidenden Codes.
+
+    Der Grund, warum es diese Funktion gibt, steht als Datum fest. Am
+    09.10.2026 musste die Vorwärtsstichprobe dreimal nachgeschnitten werden
+    (18 → 14 → 11 Trades), und zweimal war die Begründung falsch, weil die
+    beiden vorhandenen Stempel beide die falsche Körnung haben:
+
+    * `run_signature` deckt die **Konfiguration** — Startkapital, Setup-Liste,
+      Kostendeckel, Signalebene, Ablehnungsversion — und verpasst jedes
+      Verhalten, das im Code wohnt.
+    * `code_version` deckt den **Commit** exakt und bewegt sich auch dann, wenn
+      nur ein Bericht geschrieben wurde.
+
+    Zu grob und zu fein. Dieser Stempel liegt dazwischen: er hasht den
+    Quelltext der 56 Dateien, die der Live-Entscheidungspfad erreicht, ohne
+    Kommentare, Docstrings und Formatierung. Ein Commit, der einen Bericht
+    schreibt, bewegt ihn nicht. Ein Commit, der eine Setup-Schwelle ändert,
+    bewegt ihn — und `run_signature` hätte das nicht gesehen.
+
+    **Absichtlich konservativ.** Der Abschluss enthält auch Dateien, deren
+    Änderung keine Entscheidung verändern kann (`journal/store.py` schreibt nur
+    weg). Der Stempel bewegt sich dann, obwohl das Verhalten gleich blieb. Das
+    ist die richtige Richtung für den Fehler: ein überflüssiger Schnitt kostet
+    Stichprobe, ein fehlender verdirbt sie. Eine handgepflegte Ausnahmeliste
+    wäre wieder ein Urteil, das verrottet.
+
+    **Was er nicht leistet.** Er sagt *dass* sich der Entscheidungscode geändert
+    hat, nicht *ob die Änderung eine Entscheidung verändert*. Das entscheidet
+    nur das Lesen des Diffs — oder `tests/test_live_decision_golden.py`, der
+    genau diese Frage an gefrorenen Kerzen beantwortet. Die beiden gehören
+    zusammen: der Stempel trennt die Stichproben, der Golden-Test sagt, ob sie
+    getrennt werden müssen.
+
+    *Gebunden an die Python-Version:* `ast.unparse` darf seine Ausgabe zwischen
+    Interpreter-Versionen ändern, und dann bewegt sich jeder Stempel auf einmal.
+    Das ist nicht abzufangen, ohne wieder rohe Bytes zu hashen; es gehört
+    gewusst und steht darum hier.
+    """
+    return version_at(Path(__file__).resolve().parents[2])
+
+
+def version_at(src: Path) -> str:
+    """Derselbe Stempel gegen einen beliebigen Quellbaum. Siehe `closure_at`."""
+    parts: list[str] = []
+    for module in closure_at(src):
+        path = src / (module.replace(".", "/") + ".py")
+        try:
+            parts.append(f"{module}\n{_meaning(path.read_text(encoding='utf-8'))}")
+        except (OSError, SyntaxError) as problem:
+            # Nicht stillschweigend überspringen: eine ausgelassene Datei ist
+            # ein Loch im Stempel, und ein Loch meldet sich nie.
+            raise RuntimeError(
+                f"{module} nicht lesbar für den Stempel: {problem}"
+            ) from problem
+    joined = "\n\x00\n".join(parts)
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:_STAMP]
 
 
 def _git(*args: str, cwd: Path) -> str | None:
