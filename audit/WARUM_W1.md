@@ -194,6 +194,68 @@ Der Tagesverlauf ist dabei
 nicht Beiwerk, sondern die Kontrolle: steigt die Antwortzeit vor dem Ausbruch
 allmählich, deutet das auf die Leitung; ist sie flach und bricht dann ab, nicht.
 
+### Zweiter Messversuch, 11.10.: diesmal IM Fenster — und er kam nicht
+
+22 Stunden, **1 184 Runden**, drei Adressen gleichzeitig, 10.10. 12:29 bis
+11.10. 10:29 UTC. Die Ausbruchsstunden sind voll abgedeckt (08h: 59 Runden,
+09h: 59).
+
+| Adresse | n | Median | p90 | Fehler |
+|---|---|---|---|---|
+| `klines` | 1 184 | 426 ms | 456 ms | **0** |
+| `time` | 1 184 | 372 ms | 394 ms | **0** |
+| fremd (Cloudflare) | 1 184 | 125 ms | 154 ms | **0** |
+
+**Und der Papierhandel sagt dasselbe.** In genau diesen 22 Stunden lief er
+**14 568 Zyklen** (61 021 → 75 589) mit **null** Fehlschlägen; der
+Fehlerzähler steht unverändert auf 9 922 und der letzte Fehlschlag datiert
+weiter auf den 10.10. um 08:33 UTC.
+
+Zwei unabhängige Instrumente, beide im Fenster, beide leer. Das ist etwas
+anderes als der Fehlversuch vom Vortag: damals habe ich *nach* dem Ausbruch
+gemessen. Diesmal lag die Messung darüber.
+
+> **Der Ausbruch ist nicht täglich.** Zwei Tage hintereinander, am dritten
+> nicht.
+
+Das tötet die naheliegendste Lesart der Zwei-Punkte-Beobachtung: ein
+geplanter Vorgang, der jeden Morgen läuft, hätte heute wieder zugeschlagen.
+
+### Die Kontrolle, die ich versprochen hatte: die Antwortzeit ist flach
+
+Vorab festgelegt stand: *„steigt die Antwortzeit vor dem Ausbruch allmählich,
+deutet das auf die Leitung; ist sie flach und bricht dann ab, nicht."*
+Stundenmediane über die ganzen 22 Stunden:
+
+| | niedrigster | höchster | Streuung |
+|---|---|---|---|
+| `klines` | 416 ms (10h) | 432 ms (08h) | **16 ms** |
+
+Die Ausbruchsstunden — 08h 432 ms, 09h 427 ms, 10h 416 ms — sehen aus wie
+jede andere Stunde des Tages. Es gibt **keinen Tagesverlauf**, keine Rampe,
+keine Vorwarnung.
+
+Damit ist eine zweite Erklärung unwahrscheinlich: eine Leitung, die sich durch
+Sicherung, Abgleich oder Aktualisierung allmählich zusetzt, müsste sich vorher
+zeigen. Was bleibt, ist ein **Abriss aus flachem Grund** — episodisch, ohne
+Vorlauf, und nicht an die Tageszeit gebunden.
+
+*(Eine Stunde zeigt 456 ms, aber mit n = 2; siehe die Lücke unten.)*
+
+### Die Lücke in meiner eigenen Messung
+
+Erwartet waren bei 60 Runden je Stunde über 22 Stunden rund **1 320** Runden,
+aufgezeichnet sind **1 184** — etwa **10 % fehlen**. Sie fehlen nicht gleich
+verteilt, sondern geballt am 10.10. zwischen 14 und 16 Uhr UTC (eine Stunde
+mit 2 statt 59 Runden, zwei weitere mit 51 und 45). Vermutlich hat die
+Testsuite, die zur selben Zeit lief, den Prozess verdrängt — gemessen habe ich
+das nicht, und darum steht es hier als Vermutung und nicht als Ursache.
+
+**Für den Schluss ist es folgenlos**, weil die Fensterstunden volle Abdeckung
+haben. Für das Werkzeug ist es ein Mangel: ein Probe, der still Runden
+verliert, kann ein Ereignis verpassen und sieht dabei aus, als hätte er
+gemessen.
+
 ### Warum das für das Ziel zählt, und nicht nur für die Diagnose
 
 Eine Fehlerquote von 77 % heisst: **drei von vier Entscheidungen fallen nicht.**
