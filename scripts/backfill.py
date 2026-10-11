@@ -20,6 +20,7 @@ too thin to backtest against, and reading public prices needs no key.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -49,6 +50,46 @@ def parse_timeframes(text: str) -> list[Timeframe]:
     return [Timeframe(part.strip().upper()) for part in text.split(",") if part.strip()]
 
 
+def resolve_symbols(args: argparse.Namespace, *, config: object,
+                    parser: argparse.ArgumentParser) -> list[str]:
+    """Welche Maerkte geholt werden, und woran die Liste geprueft wird.
+
+    `available` heisst "wir haben die Daten und koennten das handeln". Fuer
+    eine Datenerweiterung ist das zirkulaer: der Markt kommt erst dort hinein,
+    wenn seine Daten liegen, und die holt genau dieses Skript.
+
+    Die Pruefung gegen `available` bleibt der Normalfall -- sie faengt
+    Tippfehler, und das ist sie wert. Fuer die Erweiterung tritt die vorab
+    erzeugte Liste aus `scripts/universe_for_backfill.py` an ihre Stelle: eine
+    Regel statt einer Tastatureingabe, damit die Marktauswahl nicht die
+    Auswahl nach Ergebnis ist, gegen die das ganze Register steht.
+    """
+    if args.from_universe:
+        universe = config.engine.paths.data_dir / "universe_for_backfill.json"  # type: ignore[attr-defined]
+        if not universe.exists():
+            parser.error(f"{universe} fehlt -- erst scripts/universe_for_backfill.py --write")
+        declared = json.loads(universe.read_text(encoding="utf-8"))
+        chosen = list(args.symbols) or list(declared["to_backfill"])
+        unknown = set(chosen) - set(declared["eligible"])
+        if unknown:
+            parser.error(f"nicht in der vorab erzeugten Liste: {sorted(unknown)}")
+        if not args.quiet:
+            print(f"  Regel: {declared['rule']}")
+            print(f"  {len(chosen)} Maerkte aus {universe.name}\n")
+        return chosen
+
+    available = config.engine.symbols.available  # type: ignore[attr-defined]
+    chosen = (
+        list(available)
+        if args.all
+        else list(args.symbols or config.engine.symbols.active)  # type: ignore[attr-defined]
+    )
+    unknown = set(chosen) - set(available)
+    if unknown:
+        parser.error(f"unknown symbols: {sorted(unknown)}")
+    return chosen
+
+
 def main(argv: list[str] | None = None) -> int:
     config = load_config()
     parser = argparse.ArgumentParser(
@@ -71,16 +112,14 @@ def main(argv: list[str] | None = None) -> int:
         help="also pull funding rate history (needed for realistic holding costs)",
     )
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument(
+        "--from-universe",
+        action="store_true",
+        help="die Liste aus data/universe_for_backfill.json holen (Datenerweiterung)",
+    )
     args = parser.parse_args(argv)
 
-    symbols = (
-        config.engine.symbols.available
-        if args.all
-        else (args.symbols or config.engine.symbols.active)
-    )
-    unknown = set(symbols) - set(config.engine.symbols.available)
-    if unknown:
-        parser.error(f"unknown symbols: {sorted(unknown)}")
+    symbols = resolve_symbols(args, config=config, parser=parser)
 
     store = ParquetStore(config.engine.paths.parquet_dir)
     source = MarketData(
