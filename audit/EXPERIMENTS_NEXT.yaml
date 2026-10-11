@@ -1315,10 +1315,15 @@ experiments:
         ENTHALTEN. Der Rand ist in der Funding-Gruppe BESSER; ohne die
         Randpflicht haette die Zelle wie ein schwacher Negativbefund gelesen.
       E12_3_minute: >-
-        NICHT ENTSCHEIDBAR. Nur M15-Population: :00 n=500 -0.0141 R,
-        :15/:30/:45 n=42 -0.1283 R. 42 liegt unter der vorab festgelegten
-        Mindestbesetzung von 100. Nicht mit der gemischten Population
-        gerettet -- das waere der ausgeschlossene Confound.
+        NICHT ENTSCHEIDBAR, und auf dem alten Lauf prinzipiell nicht messbar.
+        Nur M15-Population: :00 n=500 -0.0141 R, auf 15/30/45 n=2 +1.0259 R,
+        40 weitere zu beliebigen Minuten als Limit-Fills ausgeschlossen.
+        KORREKTUR der ersten Fassung: sie gruppierte gegen "nicht :00" und
+        bekam 42 Faelle bei -0.1283 R, von denen 40 Limit-Fills waren. Der
+        Einstiegszeitstempel ist die Fuellung, nicht die Entscheidung.
+        Richtig gruppiert kippt das Vorzeichen. Ohne die vorab festgelegte
+        Mindestbesetzung von 100 waere daraus eine Entdeckung aus zwei
+        Beobachtungen geworden.
       replikation: >-
         OFFEN. Der 12-Markt-Lauf hatte zum Messzeitpunkt einen Markt fertig.
         Drei Zellen sind auf der neuen Seite nur wegen fehlender Besetzung
@@ -1336,11 +1341,22 @@ experiments:
         R, also um 0.0141 R, und bleibt negativ. Ein Zeitfilter aendert nur,
         welche Trades existieren; ein Hebel, der bloss die Trade-Zahl
         aendert, kann das Vorzeichen nicht drehen.
-      offene_frage_aus_der_messung: >-
-        Von 542 M15-Trades oeffnen 500 auf :00, also 92.25 %. Ein M15-Setup
-        kann auf jeder Viertelstunde feuern. Das ist keine Uhr-Frage, sondern
-        eine an SEARCH_ORDER und _just_closed, und sie war vorher nicht
-        gestellt.
+      kadenz_befund: >-
+        Die Frage "warum oeffnen 500 von 542 M15-Trades auf :00" sah nach
+        einem Defekt in SEARCH_ORDER aus. Es ist keiner: der alte Lauf laeuft
+        auf H1-KADENZ, der heutige auf M15. Bei stuendlicher Entscheidung wird
+        der M15-Chart nur zur vollen Stunde befragt, 72 seiner 96 Tageskerzen
+        werden nie angesehen. config/settings.yaml beschreibt das als
+        behobenen Defekt und steht auf signal: M15; der neue Lauf bestaetigt
+        es mit 65 von 88 M15-Einstiegen auf 15/30/45.
+
+        Das ist ein GROESSERER Unterschied als die Setup-Liste, um die es beim
+        Replay-Neulauf geht, und keine Zeile in den Daten sagte es. Die
+        Replay-Zeilen im Journal tragen keine run_signature; die Kadenz war
+        nur aus der Minutenverteilung zu erschliessen. Das Skript markiert
+        sie als "H1 (erschlossen)" und verweigert jede Replikation ueber zwei
+        Kadenzen. Der Runner schreibt die Kadenz ab Commit 6712704 je Datei
+        UND je Eintrag.
 
 
 rejection_rules:

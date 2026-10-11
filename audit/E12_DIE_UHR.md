@@ -100,18 +100,44 @@ schwacher Negativbefund gelesen. Genau dafür ist die Randpflicht da.
 | | n | Mittel brutto | unter −1R |
 |---|---|---|---|
 | `:00` | 500 | −0,0141 R | 60,4 % |
-| `:15` / `:30` / `:45` | **42** | −0,1283 R | 73,8 % |
+| `:15` / `:30` / `:45` | **2** | **+1,0259 R** | 50,0 % |
+| andere Minuten (Limit-Fills) | 40 | *ausgeschlossen* | |
 
-**NICHT ENTSCHEIDBAR.** 42 Fälle liegen unter der vorab festgelegten
-Mindestbesetzung von 100. Die Zelle wird so berichtet und **nicht** mit der
-gemischten Population gerettet — das wäre genau der Confound, den die
-Vorregistrierung ausgeschlossen hat.
+**NICHT ENTSCHEIDBAR.** Zwei Fälle, gegen eine Mindestbesetzung von 100.
 
-Bemerkenswert bleibt die Besetzung selbst: von 542 M15-Trades öffnen 500 auf
-`:00`. Ein M15-Setup kann auf jeder Viertelstunde feuern, tut es aber in 92 %
-der Fälle zur vollen Stunde. Das ist kein Uhr-Effekt, sondern ein Hinweis
-darauf, wie die Suchreihenfolge über die Zeitebenen läuft — und eine eigene
-Frage.
+**Und die erste Fassung dieser Zelle war falsch gruppiert.** Sie verglich `:00`
+gegen „nicht `:00`" und bekam 42 Fälle bei −0,1283 R. Von diesen 42 lagen
+**40 auf beliebigen Minuten** — 1, 2, 3, 12, 34, 41, 52 — und nur zwei auf
+einer Viertelstundenmarke. Der Einstiegszeitstempel ist die **Füllung**, nicht
+die Entscheidung; bei einer Limit-Order liegen die beiden auseinander, und wer
+nach dem Komplement einer Marke gruppiert, sammelt genau diese Differenz ein.
+
+Richtig gruppiert kippt das Vorzeichen: −0,1283 R über 42 kontaminierte Fälle
+gegen **+1,0259 R** über zwei echte. Ohne die vorab festgelegte
+Mindestbesetzung wäre daraus eine Entdeckung aus zwei Beobachtungen geworden.
+
+### Und der Grund für die zwei Fälle ist nicht die Uhr
+
+Von 542 M15-Trades des alten Laufs öffnen 500 auf `:00` und nur **zwei** auf
+einer Viertelstunde. Das sah nach einem Defekt in `SEARCH_ORDER` aus. Es ist
+keiner.
+
+**Der alte Lauf läuft auf H1-Kadenz, der heutige auf M15.** Bei stündlicher
+Entscheidung wird der M15-Chart nur zur vollen Stunde befragt — 72 seiner 96
+Tageskerzen werden nie angesehen. `config/settings.yaml` beschreibt genau das
+als behobenen Defekt und steht heute auf `signal: M15`. Der neue Lauf
+bestätigt es: auf BTCUSDT liegen 65 von 88 M15-Einstiegen auf 15/30/45.
+
+**Die Vergleichsgruppe existiert im alten Lauf also nicht.** E12.3 ist dort
+nicht „zu klein besetzt", sondern prinzipiell nicht messbar.
+
+Und nichts in den Daten sagte das. Die Replay-Zeilen im Journal tragen keine
+`run_signature`; die Kadenz war nur aus der Minutenverteilung der Einstiege zu
+**erschliessen**. `journal/record.py` nennt diesen Zustand selbst: „Eine
+Eigenschaft, die man nur durch Git-Archäologie findet, ist keine
+aufgezeichnete Eigenschaft." Das Skript markiert sie deshalb als
+`H1 (erschlossen)` und verweigert jede Replikation über zwei Kadenzen —
+der Unterschied wäre grösser als die Zelle, die er prüfen soll.
 
 ---
 
@@ -164,10 +190,14 @@ bleibt negativ.
 
 ## 5. Offen
 
-1. **Replikation** auf dem 12-Markt-Lauf, sobald er durch ist (~6 h). Das
-   Skript ist dafür gebaut und läuft erneut ohne Änderung.
-2. **Warum 92 % der M15-Signale auf `:00` feuern.** Das ist eine Frage an
-   `SEARCH_ORDER` und `_just_closed`, keine an die Uhr.
+1. **Replikation** auf dem 12-Markt-Lauf, sobald er durch ist (~6 h) — aber
+   **nur für E12.1 und E12.2.** E12.3 hat auf der alten Seite keine
+   Vergleichsgruppe; dafür braucht es zwei Läufe gleicher Kadenz, und den
+   zweiten gibt es noch nicht.
+2. **Der alte 4-Markt-Baseline trägt keine Konfiguration.** Jeder Vergleich
+   gegen ihn ist Archäologie. Der neue Runner schreibt `run_signature`,
+   `signal_timeframe` und `execution_timeframe` je Datei und je Eintrag
+   (Commit `6712704`); die Lücke bleibt für alles, was vorher entstand.
 3. **Wodurch genau das Wochenende herausfällt.** Vermutung Kostentor; prüfbar
    über die Ablehnungsgründe im Signalspeicher, gruppiert nach Wochentag.
    Keine neue Messung nötig, nur eine Gruppierung.

@@ -72,6 +72,13 @@ LEVEL = 1 - 0.05 / TOTAL_COMPARISONS
 #: unvollstaendig und nicht widerlegt.
 MARKETS_EXPECTED = 12
 
+#: Ab welchem Viertelstundenanteil eine Population als M15-Kadenz gilt.
+#: Der alte Lauf liegt bei 2/542 = 0.4 %, der neue bei 65/88 = 74 %.
+QUARTER_SHARE_FOR_M15 = 0.10
+
+#: Die Viertelstundenmarken ohne die Stunde selbst.
+QUARTER_MARKS = (15, 30, 45)
+
 #: Samstag ist Wochentag 5, Sonntag 6.
 SATURDAY = 5
 
@@ -163,6 +170,52 @@ def on_the_hour(ts: int) -> bool:
     return at(ts).minute == 0
 
 
+def on_the_quarter(ts: int) -> bool:
+    """Genau :15, :30 oder :45 -- und nicht blosses „nicht :00".
+
+    **Hier lag ein Defekt, gefunden am 11.10.2026.** Die erste Fassung
+    gruppierte gegen „nicht auf der Stunde". Im alten Lauf fielen dadurch 40
+    Limit-Fills zu beliebigen Minuten -- 1, 2, 3, 12, 34, 41, 52 -- in die
+    Viertelstunden-Gruppe, die insgesamt 42 Faelle hatte. Nur ZWEI davon waren
+    echte Viertelstunden-Entscheidungen. Die Gruppe trug also fast
+    ausschliesslich Fuellzeitpunkte und nicht Entscheidungszeitpunkte.
+
+    Der Einstiegszeitstempel ist die Fuellung, nicht die Entscheidung. Bei
+    einer Limit-Order liegen die beiden auseinander, und wer nach dem
+    Komplement einer Marke gruppiert, sammelt genau diese Differenz ein.
+    """
+    return at(ts).minute in QUARTER_MARKS
+
+
+def declared_cadence() -> str:
+    """Die Kadenz, die der neue Lauf in seine Ergebnisdateien schreibt."""
+    for path in sorted(FILLS.glob("*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not payload.get("max_bars") and payload.get("signal_timeframe"):
+            return str(payload["signal_timeframe"])
+    return ""
+
+
+def inferred_cadence(trades: list[dict]) -> str:
+    """Die Kadenz des alten Laufs, aus der Minutenverteilung erschlossen.
+
+    Der alte 4-Markt-Lauf im Journal traegt keine Signatur, also ist das die
+    einzige Quelle -- und sie ist genau die "Eigenschaft, die man nur durch
+    Archaeologie findet", die `journal/record.py` als keine aufgezeichnete
+    Eigenschaft bezeichnet. Sie wird hier benannt und als ERSCHLOSSEN
+    markiert, nicht als gelesen.
+
+    Das Kriterium: ein M15-Signal kann auf jeder Viertelstunde feuern. Wenn
+    praktisch keines das tut, wurde der M15-Chart nur zur Stunde befragt.
+    """
+    m15 = [t for t in trades if t["timeframe"] == "M15"]
+    if len(m15) < MIN_CELL:
+        return "unbekannt"
+    quarters = sum(1 for t in m15 if on_the_quarter(t["opened_ts"]))
+    coarse = "H1 (erschlossen)"
+    return "M15" if quarters / len(m15) > QUARTER_SHARE_FOR_M15 else coarse
+
+
 def tail(values: list[float]) -> dict[str, float]:
     """Der linke Rand. Vorab festgelegt, nicht nachgereicht."""
     if not values:
@@ -229,7 +282,10 @@ def describe(trades: list[dict], label: str) -> dict[str, object]:
           f"= {weekend / len(trades):.1%}  (Kalender: 28.6 %)")
     print(f"    Einstiegsminute {dict(sorted(minutes.items())[:8])}")
     print(f"    Zeitebenen      {dict(frames)}")
+    cadence = inferred_cadence(trades)
+    print(f"    Kadenz          {cadence}")
     return {
+        "cadence": cadence,
         "n": len(trades),
         "markets": sorted(set(t["symbol"] for t in trades)),
         "weekday_counts": dict(days),
@@ -255,19 +311,35 @@ def cells_for(trades: list[dict]) -> list[dict[str, object]]:
     m15 = [t for t in trades if t["timeframe"] == "M15"]
     print(f"\n  E12.3 wird auf der M15-Population gerechnet: {len(m15):,} von "
           f"{len(trades):,} Trades")
+    hour = [t for t in m15 if on_the_hour(t["opened_ts"])]
+    quarter = [t for t in m15 if on_the_quarter(t["opened_ts"])]
+    other = len(m15) - len(hour) - len(quarter)
+    print(f"    davon :00 {len(hour):,}, auf 15/30/45 {len(quarter):,}, "
+          f"zu anderen Minuten {other:,} (Limit-Fills, ausgeschlossen)")
     out.append(cell("E12.3  :00 gegen :15/:30/:45 (nur M15)",
-                    [t for t in m15 if on_the_hour(t["opened_ts"])],
-                    [t for t in m15 if not on_the_hour(t["opened_ts"])],
+                    hour, quarter,
                     left_name="Stundenmarke :00", right_name=":15 / :30 / :45"))
     return out
 
 
-def replication(old_cells: list[dict], new_cells: list[dict]) -> list[dict[str, object]]:
+def replication(old_cells: list[dict], new_cells: list[dict], *,
+                old_cadence: str = "", new_cadence: str = "") -> list[dict[str, object]]:
     """Verhaeltnis der Differenzen. 0.5-2.0x ist das vorab festgelegte Tor."""
     print("\n" + "=" * 74)
     print("Replikation: alter 4-Markt-Lauf gegen neuen 12-Markt-Lauf")
     print("=" * 74)
     rows = []
+    if old_cadence and new_cadence and old_cadence.split(" ", maxsplit=1)[0] != new_cadence:
+        print(f"\n  ABBRUCH: alter Lauf laeuft auf {old_cadence}, "
+              f"neuer auf {new_cadence}.")
+        print("  Zwei Laeufe mit verschiedener Entscheidungskadenz sind keine")
+        print("  Replikation -- der Unterschied ist groesser als die Zelle, die")
+        print("  er pruefen soll. Besonders E12.3: auf H1-Kadenz wird der")
+        print("  M15-Chart nur zur Stunde befragt, die Vergleichsgruppe")
+        print("  EXISTIERT dort nicht.\n")
+        return [{"cell": c["cell"], "replicated": False,
+                 "reason": f"Kadenz {old_cadence} gegen {new_cadence}"}
+                for c in old_cells]
     by_name = {c["cell"]: c for c in new_cells}
     for old in old_cells:
         new = by_name.get(old["cell"])
@@ -367,7 +439,9 @@ def main() -> int:
         print("  Replikation offen, und ein Befund auf einer Seite ist kein")
         print("  Ergebnis -- beide Tore muessen fallen.\n")
 
-    reps = replication(old_cells, new_cells) if (old_cells and new_cells) else []
+    reps = replication(old_cells, new_cells,
+                       old_cadence=shape_old.get("cadence", ""),
+                       new_cadence=declared_cadence()) if (old_cells and new_cells) else []
 
     passed = verdict(reps, old_cells, shape_new)
     OUT.write_text(json.dumps({
