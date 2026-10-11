@@ -182,3 +182,89 @@ Messung an eben diesem Replay abgeschaltet). Der neue Replay ist damit
 **keine unabhängige Stichprobe für die Frage „ist diese Konfiguration gut"**,
 sondern nur eine ehrliche Grundlinie für den Vergleich mit dem Vorwärtslauf.
 Das ist ein Unterschied, der leicht verlorengeht.
+
+---
+
+## Phase A abgeschlossen: 32 Agenten, 0 Ansätze überlebt
+
+Acht Ansatzfamilien, jede eigenständig durchsucht, jeder ernstzunehmende Fund
+anschliessend gegnerisch geprüft. **32 Agenten, 0 Fehler, 40 Minuten,
+1 266 Werkzeugaufrufe.**
+
+> **24 Ansätze geprüft. 0 haben die Prüfung überlebt.**
+
+Und die Widerlegungen sind substanziell, nicht faul. Drei Beispiele:
+
+* **TSMOM (Moskowitz/Ooi/Pedersen 2012):** alle vier Zitate existieren mit
+  exakten Metadaten. Der Prüfer hat das Original im Volltext gelesen und
+  festgestellt, dass *„signifikant für jedes der 58 Instrumente"* die
+  Formulierung des **Abstracts** ist, die der eigene Fliesstext des Papiers
+  widerlegt.
+* **Vol-Targeting-Overlay:** zwei von vier Quellen verifizieren wörtlich, eine
+  hat falsche Kennzahlen, und **die einzige Krypto-Quelle existiert nicht wie
+  zitiert** — eine erfundene Zitation, gefangen.
+* **Langsames Trendsignal mit Tickgrösse als Diskriminante:** Quelle echt und
+  wörtlich korrekt — aber *der Diskriminant des Papiers ordnet unser gesamtes
+  Universum der Schicht zu, in der es den Trend-Ertrag als verschwunden
+  misst*, und eine direkte Messung auf den zwölf Perps bestätigt das.
+
+### Was die acht Familien ergeben
+
+| Familie | Befund |
+|---|---|
+| Zeitreihen-Momentum | Beste Belegbasis, Zerfall gemessen: Sharpe des schnellsten Signals 0,84 → 0,12, des langsamsten 0,70 → 0,40 ± 0,26. Krypto-TSMOM wirkt nur long-only als Markt-Timing — **genau der gehebelte Beta-Befund aus E8**. |
+| Carry | Echtes, grosses Phänomen (>10 % p.a.) — und die Nachprüfung ist negativ: die Autoren selbst zeigen, dass der Spot-ETF den Carry um 36–97 % des Mittelwerts gesenkt hat. Deckt sich mit E6. |
+| Mikrostruktur | Leer. Was gross ist, ist **gleichzeitig statt vorhersagend** (Cont/Kukanov/Stoikov sagen das selbst); was prognostiziert, hat **negatives** Out-of-Sample-R² (−0,37 bis −0,10); was funktioniert, lebt auf Sekunden. |
+| Querschnitt | Ein Überlebender — der in zwölf Large Caps nicht überlebt. Size, Volumen, Illiquidität entstehen in Micro-Caps und verschwinden bei Beschränkung auf grosse Coins. |
+| Saisonalität | Robuste Muster nur in **Volatilität und Liquidität**, nicht in Renditen. Der meistzitierte Befund (Monday-Effekt) hält laut Müller 2024 „nicht in Daten nach 2015". |
+| Volatilität | Gründungsbefund dreifach zerlegt; beim Markt-Faktor ist die gemanagte Kombination out-of-sample **schlechter** als die ungemanagte. |
+| Cross-Asset | Systematisch durchgemessen: 141 Prädiktoren × 4 Horizonte, unsere FRED-Serien als eigene Kategorie, out-of-sample R² **negativ** gegen einen Random Walk. 5,6 % signifikant — die nominale Rate. |
+| Metawissenschaft | Siehe unten. Der eigentliche Befund. |
+
+### Der härteste Befund betrifft nicht eine Strategie, sondern diese Suche
+
+Reproduktion:
+
+```bash
+python scripts/study_trial_budget.py
+```
+
+Bailey, Borwein, López de Prado und Zhu geben die *Minimum Backtest Length*:
+wer `N` Konfigurationen ausprobiert und die beste nimmt, bekommt allein aus
+Rauschen ein In-Sample-Sharpe von `E[max_N]/sqrt(T)`.
+
+Selbst implementiert und **gegen beide Stützpunkte des Papiers geprüft**
+(N = 7 → 1,92 Jahre, N = 45 → 5,00 — beide exakt getroffen):
+
+| gezählt als | N | nötige Jahre | bei ~5 Jahren Daten |
+|---|---|---|---|
+| nur die Familien | 24 | 3,92 | im Budget |
+| nachrechenbare Zellen | **59** | **5,47** | **über dem Budget** |
+| die Arme | **87** | **6,16** | **über dem Budget** |
+| behauptete Versuche | **124** | **6,79** | **über dem Budget** |
+
+**Bei fünf Jahren Daten trägt diese Reihe 45 unabhängige Versuche.** Drei von
+vier Zählweisen liegen darüber.
+
+> **Die Suche hat die Datenlänge überholt.** Jeder weitere positive Fund auf
+> denselben fünf Jahren ist a priori verdächtig — unabhängig davon, wie das
+> Bonferroni-Intervall aussieht. Bonferroni korrigiert die Fehlerrate eines
+> Tests; es verlängert nicht die Reihe.
+
+**Die Gegenrichtung, die dazugehört:** `N` ist die Zahl *unabhängiger*
+Versuche, und Varianten derselben Idee zählen weniger als eine ganze. Die
+effektive Zahl liegt zwischen 24 und 124 und ist hier **nicht gemessen**. Was
+die Rechnung trotzdem sagt: schon bei 45 ist das Budget aufgebraucht, und 45
+liegt mitten in dieser Spanne.
+
+### Was daraus folgt
+
+**Nicht:** dass es keine Kante gibt. Die Rechnung sagt nichts über die Welt,
+sie sagt etwas über diese Datenreihe und diese Suche.
+
+**Sondern:** eine positive Zahl auf *diesen* fünf Jahren ist kein Beleg mehr.
+Der Vorwärtslauf ist deshalb nicht nur die beste verbleibende Evidenzquelle —
+er ist die **einzige**, die überhaupt noch etwas belegen kann, weil er Daten
+erzeugt, auf denen noch nicht gesucht wurde.
+
+Das ist zugleich die unabhängige Begründung dafür, ihn nicht anzufassen.
