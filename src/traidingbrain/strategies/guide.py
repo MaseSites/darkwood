@@ -55,6 +55,7 @@ def _to_intent(signal: SetupSignal) -> TradeIntent | None:
         target=signal.target,
         confidence=FIXED_CONFIDENCE,
         reason=f"{signal.setup} {signal.name} ({signal.source}): {'; '.join(signal.reasons)}",
+        timeframe=signal.timeframe.value,
     )
     return intent if intent.is_coherent else None
 

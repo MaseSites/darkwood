@@ -43,7 +43,7 @@ meta:
   # Die Zahl, auf die korrigiert wird. Summe der `comparisons` aller Arme unten
   # plus die bereits gelesenen Zellen der Vorgaenger-Suche, soweit dieselbe
   # Frage betroffen ist.
-  total_comparisons: 58
+  total_comparisons: 61
   correction: >-
     Bonferroni auf 55 Vergleiche, also Schwelle 0.05/55 = 0.00091 und ein
     99.909%-Intervall. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
@@ -1170,6 +1170,133 @@ experiments:
 
 # Was ein Ergebnis NICHT zu einem Kandidaten macht, hier festgehalten, damit es
 # nicht nachtraeglich verhandelbar ist.
+  - id: E11
+    title: "Die PRAEMISSE des Volatilitaets-Overlays"
+    priority: 1
+    cells: 3
+    comparisons: 3
+    arms:
+      - id: E11.1
+        name: "Niedrigstes Volatilitaets-Terzil bei Entry"
+      - id: E11.2
+        name: "Mittleres Terzil"
+      - id: E11.3
+        name: "Hoechstes Terzil"
+    acceptance: >-
+      Brutto-Erwartung je Trade je Terzil. Vorab festgelegte Lesart: flach ->
+      das Overlay kauft Tail-Kontrolle, keinen Ertrag, Familie zu. STEIGT ->
+      das Overlay ist aktiv schaedlich, Familie zu. FAELLT -> und nur dann
+      lohnt ein Overlay-Backtest. Zwei ueberlappende Intervalle nebeneinander
+      sind KEIN Test; die Differenz bekommt ihr eigenes korrigiertes Intervall.
+    status: erledigt_nicht_entscheidbar
+    angelegt: 2026-10-11
+    declared_before_reading: true
+    registry_nachtrag: >-
+      Dieser Eintrag ist am 11.10.2026 nachgetragen worden, nachdem
+      `test_the_declared_comparison_count_is_the_sum_of_the_arms` rot
+      aufgefallen war. Die Anmeldung selbst lag vor dem Lauf -- sie steht als
+      Nachtrag Nr. 2 unter `amendments`, datiert 2026-10-11, mit
+      `declared_before_reading: true`, und `total_comparisons` wurde damals
+      korrekt von 55 auf 58 gezogen. Was fehlte, war die Zeile in
+      `experiments`, und damit zaehlte die Summe der Arme 55 gegen deklarierte
+      58. Der Test, der genau das bewacht, war beim Commit f32002a rot und
+      wurde nicht gelesen. Die Zahl war richtig, der Nachweis nicht -- und ein
+      Register, dessen Wächter man nicht laufen laesst, ist eine Erzaehlung.
+    result:
+      stand: 2026-10-11
+      commit: f32002a
+      skript: scripts/study_vol_premise.py
+      faelle: 2734
+      vola_mass: >-
+        Realisierte Tagesvolatilitaet ueber 30 Tage VOR dem Einstieg. Bewusst
+        nicht stop_distance_pct: der Stop wird vom Setup gesetzt, ein
+        H4-Setup breiter als ein M15-Setup am selben Tag -- die Stop-Weite
+        vermischt Vola mit Setup-Wahl und haette das gesuchte Ergebnis
+        erzeugt.
+      terzile:
+        niedrigste: "n=911, brutto +0.0259 R [-0.1266, +0.1885], netto -0.0314, Vola 15-54 %"
+        mittlere: "n=911, brutto -0.0676 R [-0.2081, +0.0839], netto -0.1233, Vola 54-80 %"
+        hoechste: "n=912, brutto -0.0629 R [-0.2110, +0.1005], netto -0.1172, Vola 80-357 %"
+      differenz_eigenes_intervall: "-0.0887 R [-0.3044, +0.1251] -- Null ENTHALTEN"
+      urteil: >-
+        Keiner der drei vorab festgelegten Ausgaenge ist belegt. Die Praemisse
+        ist auf diesen Daten NICHT ENTSCHEIDBAR, ein Overlay-Backtest waere
+        nicht begruendet, und die Familie ist nicht geschlossen sondern
+        unentschieden. "Nichts gefunden" und "nicht messbar" sind nicht
+        dasselbe.
+      was_nicht_gilt: >-
+        Das niedrigste Terzil ist die einzige Zelle mit positiver
+        Brutto-Erwartung. Mit einem Intervall von +/-0.16 R um +0.03 ist das
+        Rauschen, und es als Hinweis zu behandeln waere die Auswahl nach dem
+        Ergebnis, gegen die die Vorab-Anmeldung steht.
+
+  - id: E12
+    title: "Die Uhr: Wochenende, Funding-Stunde, Viertelstundenmarke"
+    priority: 1
+    cells: 3
+    comparisons: 3
+    arms:
+      - id: E12.1
+        name: "Wochenende (Sa/So UTC) gegen Werktag (Mo-Fr UTC), Entry-Zeit"
+      - id: E12.2
+        name: "Entry innerhalb 60 min nach einer Funding-Abrechnung gegen sonst"
+      - id: E12.3
+        name: "Entry auf der Stundenmarke (:00) gegen :15/:30/:45"
+    acceptance: >-
+      Zwei-Gruppen-Differenz mit korrigiertem Intervall ohne Null UND
+      Replikation 0.5-2.0x zwischen altem 4-Markt-Lauf und neuem 12-Markt-Lauf.
+      Zwei sich ueberlappende Intervalle nebeneinander sind KEIN Test.
+      Primaerkennzahl ist die BRUTTO-Erwartung je Trade -- sonst ist jedes
+      Ergebnis nur eine Gebuehrengeschichte und sagt nichts ueber den Einstieg.
+      Zusaetzlich zwingend und VORHER festgelegt, nach der Lehre aus E10: der
+      linke Rand beider Gruppen (Anteil unter -1R, schlimmster Einzelverlust,
+      5%-Quantil). Ein besserer Mittelwert bei schwererem Rand ist KEIN
+      positives Ergebnis.
+    status: angelegt
+    angelegt: 2026-10-11
+    declared_before_reading: true
+    confound_E12_3: >-
+      ZWINGEND: E12.3 wird NUR innerhalb der M15-Population gemessen. Die
+      Minutenmarke korreliert mit der Setup-Zeitebene -- H1-Setups steigen
+      per Konstruktion auf :00 ein, M15-Setups auf jeder Viertelstunde. Ein
+      Vergleich ueber alle Trades misst die Zeitebene und nicht die Uhr.
+      Bricht die M15-Gruppe unter 100 Faelle je Zelle, ist die Zelle NICHT
+      ENTSCHEIDBAR und wird so berichtet, nicht mit der gemischten
+      Population gerettet.
+    herkunft: >-
+      Zwei Quellen, beide am 11.10.2026 geprueft.
+
+      (1) Der Nutzer: "Goofia-Maerkte sind am Wochenende geschlossen, ich
+      weiss nicht warum da so viel getradet wird." Die Tatsache ist falsch --
+      Krypto-Perps laufen 24/7, geschlossen sind Aktien und Devisen. Die
+      Intuition darunter ist aber eine Hypothese mit Literaturstuetze und auf
+      unseren Daten pruefbar, und sie war nie gemessen.
+
+      (2) Kim/Hansen, arXiv:2607.09426, "The Quarter-Hour Effect: Periodic
+      Algorithmic Trading and Return Predictability in Cryptocurrency
+      Futures": periodische Volatilitaets- und Volumenschuebe auf Minuten-,
+      Fuenfminuten- und Viertelstundenmarken ueber sechs Binance-Perps,
+      "opening returns show out-of-sample predictability at quarter-hour
+      openings". Unsere Einstiege liegen per Konstruktion auf genau diesen
+      Marken. Dazu die Beobachtung aus der Marktqualitaets-Literatur, dass
+      Spreads um die Funding-Abrechnung weiter werden.
+    was_der_arm_nicht_kann: >-
+      Die Papier-Mechanik ist Orderfluss-Imbalance beim Viertelstunden-Open.
+      Dafuer braucht man ein Trade-Tape, und das haben wir fuer dieses Buch
+      nicht -- siehe die Lehre, dass dieses Buch keinen Fill beweisen kann.
+      E12.3 prueft deshalb nur, ob die BESTEHENDEN Trades sich nach
+      Minutenmarke unterscheiden. Ein Nullergebnis schliesst den
+      Papier-Effekt nicht aus, es schliesst nur aus, dass er bei uns als
+      Gruppenunterschied sichtbar ist.
+    was_ein_positives_ergebnis_waere: >-
+      Ein Zeitfilter aendert nur, WELCHE Trades existieren, nicht ihre
+      Verteilung. Die Lehre aus `entries-carry-no-edge` gilt: ein Hebel, der
+      bloss die Trade-Zahl aendert, kann das Vorzeichen nicht drehen. E12
+      kann also bestenfalls eine Teilpopulation benennen, die fuer sich
+      positiv ist -- und muss dann gegen das messen, was das System heute
+      schon nimmt, nicht gegen alle Signale.
+
+
 rejection_rules:
   - "Ein 95%-Intervall ohne Null bei 46 angesehenen Vergleichen ist kein Ergebnis."
   - "Besser als der Champion (-0.0340 R) ist nicht profitabel."
@@ -1234,3 +1361,13 @@ amendments:
       den Rand, verwandelt aber eine negative Brutto-Erwartung nicht in eine
       positive. Bei -0.0906 R Entry-Erwartung und -0.20 R Vorwaerts-Residuum
       neben dem Markt gibt es nichts zu skalieren.
+
+  - date: 2026-10-11
+    by: "Claude, Wochenend-Arbeitsphase"
+    declared_before_reading: true
+    change: "Neuer Arm E12 angelegt, drei Zellen. total_comparisons 58 -> 61."
+    reason: >-
+      Die Uhr war nie eine Gruppierungsvariable. Ausloeser war eine falsche
+      Tatsachenbehauptung des Nutzers (Krypto-Maerkte seien am Wochenende
+      geschlossen) mit einer richtigen Intuition darunter, plus ein Papier,
+      dessen Gegenstand genau unsere Einstiegsmarken sind.

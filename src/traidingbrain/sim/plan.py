@@ -60,6 +60,15 @@ class TradeIntent:
     target: float
     confidence: float
     reason: str = ""
+    #: Which chart the signal was read off, as a plain string.
+    #:
+    #: A strategy that reads one chart leaves it empty. The guide pool fills
+    #: it, because it searches several and the setup name does not say which
+    #: one fired. Carried through to the `Fill` so that grouping trades by
+    #: their entry minute can control for it -- an H1 signal enters on :00
+    #: and an M15 signal on any quarter, so without this field that grouping
+    #: measures the timeframe and calls it the clock.
+    timeframe: str = ""
 
     @property
     def reward_risk(self) -> float:
@@ -293,6 +302,7 @@ def _order(
     return PendingEntry(
         proposal_id=f"{symbol}-{created_ts}",
         setup=setup_label(intent),
+        timeframe=intent.timeframe,
         side=intent.side,
         order_type=OrderType.LIMIT,
         limit_price=intent.entry,

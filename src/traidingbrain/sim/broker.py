@@ -81,6 +81,14 @@ class PendingEntry:
     #: with one setup switched off -- which answers a different question,
     #: because removing a setup frees its slots for the others.
     setup: str = ""
+    #: Which chart the signal was read off, by the same reasoning as `setup`.
+    #:
+    #: A setup can fire on more than one timeframe, so the setup name does not
+    #: say which one. The entry minute does not say it either: an H1 signal
+    #: enters on :00 and an M15 signal on any quarter, so grouping trades by
+    #: their minute mark without this field measures the timeframe and calls
+    #: it the clock.
+    timeframe: str = ""
 
     @property
     def planned_notional(self) -> float:
@@ -124,6 +132,7 @@ class OpenPosition:
     snapshot_hash: str = ""
     proposal_id: str = ""
     setup: str = ""
+    timeframe: str = ""
     stop_moved: bool = False
     """True once the breakeven rule has pulled the stop up. Checked so the
     move happens once; without it a later dip would re-arm it and the stop
@@ -166,6 +175,7 @@ class Fill:
     funding: float
     risk_amount: float
     setup: str = ""
+    timeframe: str = ""
 
     @property
     def net_pnl(self) -> float:
@@ -358,6 +368,7 @@ class SimBroker:
             opened_ts=ts,
             margin=margin,
             setup=pending.setup,
+            timeframe=pending.timeframe,
             risk_amount=pending.risk_amount,
             fees_paid=notional * fee_rate,
             snapshot_hash=pending.snapshot_hash,
@@ -551,6 +562,7 @@ class SimBroker:
             funding=position.funding_paid,
             risk_amount=position.risk_amount,
             setup=position.setup,
+            timeframe=position.timeframe,
         )
         self.ledger.fills.append(fill)
         self.position = None
