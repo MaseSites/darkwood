@@ -93,3 +93,65 @@ rechnen.
 ## Protokoll
 
 *(wird fortgeschrieben)*
+
+---
+
+## Protokoll
+
+**Phase A angelaufen.** Acht Ansatzfamilien werden parallel durchsucht
+(Zeitreihen-Momentum, Carry, Mikrostruktur, Querschnitt, Saisonalität,
+Volatilität, Cross-Asset, und als achte die Meta-Frage: wie viel publizierte
+Evidenz repliziert überhaupt). Jeder Fund wird anschliessend gegnerisch
+geprüft — Quelle muss existieren und die behauptete Zahl enthalten, sonst
+gilt er als widerlegt.
+
+### Während die Suche läuft: drei Befunde am eigenen System
+
+**1. Die Richtungsschieflage ist strukturell, nicht Regime.** Das System war
+in der Gewinn- *und* der Verlustserie zu ~90 % short. Ursache ist Setup B
+(`TrendlineFakeout`): es ist fest auf `Side.SHORT` verdrahtet und war in
+**665 von 665** Replay-Trades short. Alle anderen Setups sind ausgewogen
+(A 46 %, C 49 %, G 48,5 % short).
+
+Das Spiegelbild — ein schwacher Bruch unter eine *steigende* Trendlinie — ist
+nicht implementiert. **Es zu bauen wäre trotzdem falsch:** Setup B verliert
+−0,0795 R über 665 Trades. Das Spiegelbild eines Verlustmusters ist kein
+Kandidat.
+
+**2. Setup E feuert und wird genommen — es steht nur nicht im Journal.** Erst
+sah es aus, als hätte E nie gefeuert (null Trades im Journal über 2 752).
+Nachgemessen an echten Kerzen: E feuert 29-mal auf 32 605 Balken und gewinnt
+26 davon gegen frühere Setups — die Verdeckungs-These ist widerlegt. Der
+Signalspeicher zeigt **445 genommene E-Signale** im Replay.
+
+**3. Und das ist der eigentliche Fund: die Replay-Grundlage gehört zu einer
+anderen Konfiguration als der laufenden.**
+
+| | |
+|---|---|
+| Journal, 2 734 Replay-Trades | enthält Setup **C** (874 Trades), enthält **kein E** |
+| laufende Konfiguration | `['A', 'B', 'E', 'F', 'G']` — C ist seit 04.10. aus |
+| Signatur auf den Replay-Trades | **null von 2 734** tragen eine |
+
+Jede Kennzahl, die dieses Projekt aus dem Replay zieht, stammt damit aus einem
+System, das so nicht mehr läuft:
+
+| Population | n | Mittel | σ | Treffer | t |
+|---|---|---|---|---|---|
+| wie berichtet (mit C) | 2 734 | −0,0906 R | 1,4061 | 32,5 % | **−3,37** |
+| ohne C, näher am Laufenden | 1 862 | **−0,0631 R** | 1,3493 | 36,9 % | **−2,02** |
+
+**Die Aussage „die genommene Population ist zuverlässig negativ" hängt an
+t = −3,37 gegen eine korrigierte Schwelle von 3,317 — sie passiert also knapp.
+Ohne Setup C ist es t = −2,02 und damit nicht belegt.** Und auch „ohne C" ist
+noch nicht die laufende Konfiguration, weil E weiterhin fehlt.
+
+σ ändert sich kaum (1,4061 → 1,3493), die Mächtigkeitsrechnung also auch nicht
+nennenswert (41 → 38 Trades).
+
+**Folge, und sie ist Arbeit statt Meinung:** der Replay muss unter der
+laufenden Konfiguration neu gerechnet werden, sonst vergleicht der
+Vorwärtslauf gegen eine Grundlinie, die es nicht mehr gibt.
+`scripts/run_backtest.py --strategy guide-all` tut genau das und schreibt
+weder ins Journal noch in den Signalspeicher — geprüft, bevor er gestartet
+wurde, und das Journal ist zusätzlich gesichert.
