@@ -1329,13 +1329,35 @@ experiments:
         Drei Zellen sind auf der neuen Seite nur wegen fehlender Besetzung
         nicht entscheidbar. Das ist kein Negativbefund, und das Skript
         unterscheidet die beiden Faelle selbst.
-      nebenbefund: >-
-        Das System nimmt 18.9 % seiner Trades am Wochenende (alter Lauf),
-        13.3 % auf BTCUSDT im neuen Lauf, wo der Kalender 28.6 % hergaebe. Es
-        meidet das Wochenende bereits, ohne dass es konfiguriert ist --
-        vermutlich ueber das Kostentor, das 44.8 % aller Ablehnungen stellt.
-        Pruefbar als Gruppierung des Signalspeichers nach Wochentag, ohne
-        neue Messung.
+      mechanismus_gemessen: >-
+        Das System nimmt 18.9 % seiner Trades am Wochenende, wo der Kalender
+        28.6 % hergaebe, und der Mechanismus ist exakt bestimmt -- ohne neue
+        Messung, nur als Gruppierung des Signalspeichers nach Wochentag.
+        47.918 Replay-Zeilen unter der laufenden Signatur, Deckel 0.08:
+
+        Werktag n=34.684: genommen 16.9 %, Kosten-Ablehnung 46.3 %,
+        Chance/Risiko 36.8 %, Kostenquote-Median 0.06727, Stopweite-Median
+        0.82683 %.
+
+        Wochenende n=13.234: genommen 11.2 %, Kosten-Ablehnung 51.9 %,
+        Chance/Risiko 36.8 %, Kostenquote-Median 0.08920, Stopweite-Median
+        0.59877 %.
+
+        Die Setups feuern proportional (27.6 % der Signale gegen 28.6 %
+        Kalender), das Chance-Risiko-Tor greift IDENTISCH. Der ganze
+        Unterschied steckt im Kostentor, dessen Deckel bei 0.08 steht: der
+        Wochenend-Median liegt darueber, der Werktags-Median darunter.
+
+        Die Ursache ist eine Identitaet, keine Auslegung: ueber alle 47.918
+        Zeilen ist cost_fraction * stop_fraction konstant 0.00105000, die
+        Rundenkostenrate. Hoehere Kostenquote heisst also zwingend engerer
+        Stop, und die Wochenend-Stopweite ist das 0.724-fache. Geringere
+        Wochenend-Vola zieht strukturbasierte Stops zusammen, bis die feste
+        Gebuehr den Trade frisst.
+
+        Das Wochenende wird nicht gemieden, weil es gefaehrlich ist, sondern
+        weil es teuer ist relativ zur verfuegbaren Bewegung -- dieselbe
+        Achse, an der das ganze System haengt.
       was_nicht_gilt: >-
         Das Wochenende weglassen hebt den Mittelwert von -0.0348 auf -0.0207
         R, also um 0.0141 R, und bleibt negativ. Ein Zeitfilter aendert nur,

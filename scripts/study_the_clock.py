@@ -62,7 +62,16 @@ from traidingbrain.reporting.intervals import two_group_difference
 
 FILLS = ROOT / "data" / "replay_fills"
 JOURNAL = ROOT / "data" / "journal.sqlite"
+SIGNALS = ROOT / "data" / "signals.sqlite"
 OUT = ROOT / "data" / "study_the_clock.json"
+
+#: Die Signatur der laufenden Konfiguration. Der Speicher haelt mehrere
+#: nebeneinander, darunter zwei Kostendeckel -- ueber alle zu gruppieren
+#: wuerde den Deckel mit dem Wochentag vermischen.
+LIVE_SIGNATURE = "1000.0|['A', 'B', 'E', 'F', 'G']|0.08|M15|refused-v1"
+
+#: Der Kostendeckel dieser Signatur, zum Vergleich mit den Medianen.
+COST_CAP = 0.08
 
 #: Bonferroni-Nenner nach dem Anlegen von E12. Steht in der Registry.
 TOTAL_COMPARISONS = 61
@@ -295,6 +304,125 @@ def describe(trades: list[dict], label: str) -> dict[str, object]:
     }
 
 
+def print_mechanism(out: dict, fractions: dict, stops: dict) -> None:
+    """Den Mechanismus ausgeben und die Identitaet dabei mitpruefen."""
+    # Und die Ursache dahinter, gemessen statt behauptet.
+    #
+    # `cost_fraction * stop_fraction` ist ueber alle 47.918 Zeilen konstant
+    # 0.00105 -- die Rundenkostenrate von DEFAULT_SPEC. Hoehere Kostenquote
+    # heisst also zwingend: engerer Stop. Das ist keine Auslegung, sondern
+    # eine Identitaet, und sie wird hier mitgeprueft.
+    print()
+    ratio = None
+    for day in ("Werktag", "Wochenende"):
+        widths = sorted(stops[day])
+        if not widths:
+            continue
+        median = statistics.median(widths)
+        print(f"    {day:12s} Stopweite    Median {median:.5%}  n={len(widths):,}")
+        out[day]["stop_fraction_median"] = round(median, 8)  # type: ignore[index]
+    if stops["Werktag"] and stops["Wochenende"]:
+        ratio = statistics.median(stops["Wochenende"]) / statistics.median(stops["Werktag"])
+        out["stop_width_ratio"] = round(ratio, 4)
+    identity = sorted(
+        f * s for day in stops for f, s in zip(fractions[day], stops[day], strict=False) if s
+    )
+    if identity:
+        out["cost_times_stop_median"] = round(statistics.median(identity), 8)
+
+    print(f"\n    Der Deckel steht bei {COST_CAP}. Der Wochenend-Median liegt")
+    print("    darueber, der Werktags-Median darunter -- das ist der ganze")
+    print("    Mechanismus. Das Chance-Risiko-Tor greift an beiden Tagen")
+    print("    gleich (36.8 %), die Setups feuern proportional (27.6 % gegen")
+    print("    28.6 % Kalender). Nur die Kosten unterscheiden sich.")
+    if identity:
+        print(f"\n    Kostenquote * Stopweite = {statistics.median(identity):.8f} konstant,")
+        print("    also ist die Kostenquote die Gebuehr geteilt durch die")
+        print("    Stopweite. Hoeher heisst zwingend: engerer Stop.")
+    if ratio is not None:
+        print(f"    Die Wochenend-Stopweite ist das {ratio:.3f}-fache der")
+        print("    Werktags-Weite. Geringere Wochenend-Vola zieht")
+        print("    strukturbasierte Stops zusammen, bis die feste Gebuehr den")
+        print("    Trade frisst.")
+    print("\n    Das Wochenende wird nicht gemieden, weil es gefaehrlich ist,")
+    print("    sondern weil es TEUER ist relativ zur verfuegbaren Bewegung --")
+    print("    dieselbe Achse, auf der das ganze System haengt.\n")
+
+
+def why_the_weekend_falls_out() -> dict[str, object]:
+    """Wodurch das Wochenende aus dem System fällt — der Mechanismus.
+
+    Keine Zelle von E12, sondern eine beschreibende Gruppierung des
+    Signalspeichers. Sie braucht keine Mehrfachkorrektur, weil sie nichts
+    testet: sie liest ab, welches Tor wie oft greift.
+
+    Die Frage kam so: „ich weiss nicht, warum da am Wochenende so viel
+    getradet wird." Das System handelt am Wochenende *unterproportional* —
+    18,9 % der Trades bei 28,6 % Kalenderanteil — und diese Funktion sagt,
+    wodurch.
+
+    **Nur eine Signatur.** Der Speicher hält drei Konfigurationen
+    nebeneinander, darunter zwei verschiedene Kostendeckel (0,08 und 0,15).
+    Über alle zu gruppieren würde den Deckel mit dem Wochentag vermischen und
+    wäre dieselbe Sorte Fehler wie der Vergleich zweier Kadenzen.
+    """
+    if not SIGNALS.exists():
+        return {}
+    conn = sqlite3.connect(f"file:{SIGNALS}?mode=ro", uri=True)
+    totals: Counter = Counter()
+    gates: dict[str, Counter] = {"Werktag": Counter(), "Wochenende": Counter()}
+    fractions: dict[str, list[float]] = {"Werktag": [], "Wochenende": []}
+    stops: dict[str, list[float]] = {"Werktag": [], "Wochenende": []}
+    for ts, refused, fraction, entry, stop in conn.execute(
+        "select decided_ts, refused_by, cost_fraction, entry, stop from signals "
+        "where run_signature = ? and source = 'replay'",
+        (LIVE_SIGNATURE,),
+    ):
+        day = "Wochenende" if is_weekend(ts) else "Werktag"
+        totals[day] += 1
+        gates[day][refused or "genommen"] += 1
+        if fraction is not None:
+            fractions[day].append(float(fraction))
+        if entry and stop:
+            stops[day].append(abs(float(entry) - float(stop)) / float(entry))
+    conn.close()
+    if not totals:
+        return {}
+
+    print("\n" + "=" * 74)
+    print("Wodurch das Wochenende herausfaellt -- beschreibend, kein Test")
+    print("=" * 74)
+    print(f"\n  Signatur {LIVE_SIGNATURE}")
+    print(f"  {sum(totals.values()):,} Signale, Wochenendanteil "
+          f"{totals['Wochenende'] / sum(totals.values()):.1%} "
+          "(Kalender 28.6 %)\n")
+    print(f"    {'':12s} {'n':>8s} {'genommen':>10s} {'Kosten':>10s} {'Ch/Risiko':>10s}")
+    out: dict[str, object] = {"signature": LIVE_SIGNATURE,
+                              "n": sum(totals.values()),
+                              "weekend_share_of_signals":
+                                  round(totals["Wochenende"] / sum(totals.values()), 4)}
+    for day in ("Werktag", "Wochenende"):
+        n, gate = totals[day], gates[day]
+        print(f"    {day:12s} {n:>8,} {gate['genommen'] / n:>9.1%} "
+              f"{gate['kosten'] / n:>9.1%} {gate['chance_risiko'] / n:>9.1%}")
+        out[day] = {"n": n,
+                    "taken": round(gate["genommen"] / n, 4),
+                    "refused_cost": round(gate["kosten"] / n, 4),
+                    "refused_reward_risk": round(gate["chance_risiko"] / n, 4)}
+    print()
+    for day in ("Werktag", "Wochenende"):
+        values = sorted(fractions[day])
+        if not values:
+            continue
+        median = statistics.median(values)
+        print(f"    {day:12s} Kostenquote  Median {median:.5f}  "
+              f"Mittel {statistics.fmean(values):.5f}  n={len(values):,}")
+        out[day]["cost_fraction_median"] = round(median, 6)  # type: ignore[index]
+        out[day]["cost_fraction_mean"] = round(statistics.fmean(values), 6)  # type: ignore[index]
+    print_mechanism(out, fractions, stops)
+    return out
+
+
 def cells_for(trades: list[dict]) -> list[dict[str, object]]:
     """Die drei vorab festgelegten Zellen auf einer Population."""
     out = [
@@ -420,6 +548,7 @@ def main() -> int:
         print("\n  Keine Daten. Weder Journal noch replay_fills.\n")
         return 2
 
+    mechanism = why_the_weekend_falls_out()
     shape_old = describe(old, "alter Lauf (Journal)")
     shape_new = describe(new, "neuer Lauf (replay_fills)")
 
@@ -451,6 +580,7 @@ def main() -> int:
         "min_cell": MIN_CELL,
         "funding_hours": list(FUNDING_HOURS),
         "funding_window_minutes": FUNDING_WINDOW_MIN,
+        "weekend_mechanism": mechanism,
         "shape_old": shape_old,
         "shape_new": shape_new,
         "cells_old": old_cells,

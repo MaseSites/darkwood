@@ -141,7 +141,7 @@ der Unterschied wäre grösser als die Zelle, die er prüfen soll.
 
 ---
 
-## 3. Ein Nebenbefund, der keine Zelle brauchte
+## 3. Der Mechanismus: wodurch das Wochenende herausfaellt
 
 **Das System meidet das Wochenende längst.**
 
@@ -151,15 +151,51 @@ der Unterschied wäre grösser als die Zelle, die er prüfen soll.
 | alter Lauf, 4 Märkte, 2.734 Trades | **18,9 %** |
 | neuer Lauf, BTCUSDT, 263 Trades | **13,3 %** |
 
-Niemand hat das konfiguriert. Es fällt aus den Filtern heraus — am
-wahrscheinlichsten aus den Volumen- und Kostenbedingungen, denn dünnere Bücher
-heben die Kostenquote, und das Kostentor ist mit 44,8 % der Ablehnungen das
-meistbenutzte im System.
+Niemand hat das konfiguriert. **Und der Mechanismus ist exakt bestimmbar**,
+ohne eine neue Messung — nur durch eine Gruppierung des Signalspeichers nach
+Wochentag. 47.918 Replay-Zeilen unter der laufenden Signatur, Kostendeckel
+0,08:
+
+| | n | genommen | Kosten-Ablehnung | Chance/Risiko-Ablehnung |
+|---|---|---|---|---|
+| **Werktag** | 34.684 | 16,9 % | 46,3 % | 36,8 % |
+| **Wochenende** | 13.234 | **11,2 %** | **51,9 %** | 36,8 % |
+
+Die Setups **feuern proportional**: 27,6 % der Signale fallen aufs Wochenende,
+bei 28,6 % Kalenderanteil. Das Chance-Risiko-Tor greift an beiden Tagen
+**identisch** mit 36,8 %. Der ganze Unterschied steckt im Kostentor.
+
+| | Kostenquote (Median) | Stopweite (Median) |
+|---|---|---|
+| Werktag | 0,06727 | 0,82683 % |
+| Wochenende | **0,08920** | **0,59877 %** |
+
+**Der Deckel steht bei 0,08.** Der Wochenend-Median liegt darüber, der
+Werktags-Median darunter. Das ist der gesamte Mechanismus.
+
+Und die Ursache dahinter ist eine Identität, keine Auslegung: über alle 47.918
+Zeilen ist `cost_fraction × stop_fraction` konstant **0,00105000** — die
+Rundenkostenrate. Eine höhere Kostenquote bedeutet also zwingend einen
+**engeren Stop**. Gemessen: die Wochenend-Stopweite ist das **0,724-fache** der
+Werktags-Weite.
+
+Die Kette, ganz:
+
+1. Geringere Wochenend-Volatilität zieht strukturbasierte Stops zusammen —
+   0,599 % statt 0,827 % des Einstiegs.
+2. Die Rundengebühr ist fest, 0,105 % des Notionals.
+3. Also steigt die Gebühr als Anteil der Stopweite von 6,7 % auf 8,9 %.
+4. Der Deckel liegt bei 8 % — der Wochenend-Median überschreitet ihn.
+5. Die Annahmequote fällt von 16,9 % auf 11,2 %.
+
+**Das Wochenende wird nicht gemieden, weil es gefährlich ist, sondern weil es
+teuer ist relativ zur verfügbaren Bewegung.** Das ist dieselbe Achse, an der
+das ganze System hängt: die Bewegung gegen die Maut.
 
 Das ist der Teil, in dem die Intuition des Nutzers recht hat, nur anders als
 gemeint: die Frage war „warum tradest du am Wochenende so viel", und die
-Antwort ist, dass das System dort **unterproportional** handelt, und zwar ohne
-dass es ihm jemand gesagt hat.
+Antwort ist, dass das System dort **unterproportional** handelt — ohne dass es
+ihm jemand gesagt hat, und aus einem Grund, den man benennen kann.
 
 ---
 
