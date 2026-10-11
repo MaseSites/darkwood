@@ -59,6 +59,11 @@ from traidingbrain.strategies.guide import GuidePool
 DOCS = sorted([*(ROOT / "audit").glob("*.md"), *(ROOT / "docs").glob("*.md")])
 JOURNAL = ROOT / "data" / "journal.sqlite"
 
+#: Wie weit Kontobuch und Journal auseinanderliegen duerfen. Ein Rappen,
+#: weil die Rundung im Journal auf vier Dezimalstellen geht und zwei Konten
+#: sich um 0,0001 unterscheiden.
+BOOK_TOLERANCE = 0.01
+
 
 @dataclass(frozen=True)
 class Fact:
@@ -110,6 +115,80 @@ def _decision_closure() -> int:
     return len(decision_closure())
 
 
+def _contaminated_live_signals() -> object:
+    """Genommene Live-Signale, die die Replay-Gebuehr abgelehnt haette.
+
+    **Warum diese Pruefung existiert.** `EVIDENZ_UND_RISIKO_AUDIT.md`, 3.3
+    behauptet: „Die Vorwaerts-Elf sind davon nicht verunreinigt -- kein
+    Live-Trade wurde genommen, den die Replay-Gebuehr abgelehnt haette."
+
+    Das war wahr, als es geschrieben wurde, und ist am 11.10.2026 um 16:00
+    UTC falsch geworden: `XRPUSDT-1791734400000` steht bei einer Kostenquote
+    von 0,077440, und auf die Replay-Basis skaliert (Faktor 1,05, weil die
+    Quote exakt linear in der Rundenrate ist) sind das 0,081312 gegen einen
+    Deckel von 0,08. Das Signal ist zu einem Trade geworden: -1,0756 R.
+
+    Kein Fehler des Audits -- eine Behauptung mit Verfallsdatum, die niemand
+    neu geprueft hat. Genau dafuer gibt es diese Datei, und die Behauptung
+    stand nicht darin. Jetzt steht sie drin, mit dem heute gemessenen Wert
+    als `fixed`, damit jede Veraenderung in beide Richtungen auffaellt.
+    """
+    signals = ROOT / "data" / "signals.sqlite"
+    if not signals.exists():
+        return None
+    conn = sqlite3.connect(f"file:{signals}?mode=ro", uri=True)
+    try:
+        return conn.execute(
+            "SELECT COUNT(*) FROM signals WHERE source='live' AND action='genommen' "
+            "AND cost_fraction IS NOT NULL AND cost_fraction * 1.05 > 0.08"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def _books_that_disagree() -> object:
+    """Konten, deren Journal-Summe nicht zum Kontobuch passt.
+
+    **Warum diese Pruefung existiert.** Am 11.10.2026 fiel auf, dass das
+    Journal fuer BTCUSDT auf 936,1945 summiert, das Kontobuch aber 991,2427
+    sagt. Die Luecke ist auf vier Dezimalstellen das Nettoergebnis einer
+    einzigen Zeile, `live-BTCUSDT-1790928000000`: qty 0,06 gegen qty 0,006
+    beim naechsten BTC-Trade, 49,84 USDT Risiko auf ein 1.000-USDT-Konto
+    (4,98 % gegen einen Deckel von 3 %), und das Tally des Kontos zaehlt
+    `opened: 1, closed: 1`. Ein Trade aus einer zerstoerten Kontogeneration.
+
+    Elf Konten stimmten auf den Rappen, eines nicht -- und nichts hat das
+    gemeldet, bis jemand die Summe gegen das Buch hielt. Die Folge war, dass
+    jede Aussage ueber „die 24 Live-Trades" eine Generation mitzaehlte, die
+    nicht dazugehoert, inklusive der Zielrechnung und einer Zahl des Audits,
+    die dadurch um Faktor 5 zu klein war.
+
+    Erwartet ist deshalb **1**, nicht 0: so viele weiss das Projekt heute.
+    Eine zweite Abweichung ist ein neuer Befund und muss auffallen.
+    """
+    paper = ROOT / "data" / "paper.sqlite"
+    if not (paper.exists() and JOURNAL.exists()):
+        return None
+    book = sqlite3.connect(f"file:{paper}?mode=ro", uri=True)
+    ledger = sqlite3.connect(f"file:{JOURNAL}?mode=ro", uri=True)
+    try:
+        start = load_config(ROOT / "config").engine.simulation.initial_equity
+        sums = {
+            symbol: float(total)
+            for symbol, total in ledger.execute(
+                "SELECT symbol, SUM(net_pnl) FROM trades WHERE source='live' GROUP BY 1"
+            )
+        }
+        off = 0
+        for symbol, equity in book.execute("SELECT symbol, equity FROM accounts"):
+            if abs(float(equity) - (start + sums.get(symbol, 0.0))) > BOOK_TOLERANCE:
+                off += 1
+        return off
+    finally:
+        book.close()
+        ledger.close()
+
+
 def _comparisons() -> object:
     path = ROOT / "audit" / "EXPERIMENTS_NEXT.yaml"
     if not path.exists():
@@ -154,6 +233,16 @@ FACTS: tuple[Fact, ...] = (
         "total_comparisons",
         "die Mächtigkeitsrechnungen korrigieren auf diese Zahl",
         _comparisons, 55, fixed=False,
+    ),
+    Fact(
+        "verunreinigte Live-Signale",
+        "AUDIT 3.3 sagte 0; seit 11.10. 16:00 UTC ist es 1 (XRPUSDT)",
+        _contaminated_live_signals, 1, fixed=True,
+    ),
+    Fact(
+        "Konten, deren Buch nicht stimmt",
+        "BTCUSDT traegt einen Trade aus einer zerstoerten Generation",
+        _books_that_disagree, 1, fixed=True,
     ),
 )
 
