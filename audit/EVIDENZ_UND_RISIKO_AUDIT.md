@@ -340,3 +340,62 @@ wirkungslose ist, ist kein Argument für sie.
 **genommenen** Trades tun. Eine blockierte Order gibt ihren Platz frei, und
 ein echter Neulauf nähme danach andere Trades — dieselbe Einschränkung wie bei
 jeder nachträglichen Filterrechnung hier.
+
+---
+
+## 7. Korrektur zum Termin, 11.10.2026 — die Rate ist höher als angenommen
+
+Reproduktion: die Rechnung unten braucht nur die Trade-Zahl aus dem Journal
+und die Trade-Zahlen aus Abschnitt 2.
+
+Abschnitt 2 rechnet mit **1,9 Trades/Tag**. Diese Zahl stammt aus einer frühen
+Messung über vier Märkte. Nachgezählt über alle 21 geschlossenen Live-Trades:
+
+| Fenster | Trades | je Tag |
+|---|---|---|
+| gesamt (8,2 Tage) | 21 | **2,56** |
+| letzte 4 Tage | 11 | 2,75 |
+| letzte 2 Tage | 4 | 2,00 |
+
+Mit der gemessenen Rate statt der angenommenen:
+
+| nötig für | Trades | Tage | fertig am |
+|---|---|---|---|
+| 80 % Mächtigkeit, R-Metrik | 45 | 9 | **20.10.2026** |
+| 80 %, Trefferquote | 50 | 11 | 22.10.2026 |
+| 90 %, R-Metrik | 55 | 13 | 24.10.2026 |
+| 90 %, Trefferquote | 62 | 16 | 27.10.2026 |
+| **mit Replikationstor, 80 %** | 100 | 31 | **10.11.2026** |
+| mit Replikationstor, 90 % | 128 | 42 | 21.11.2026 |
+
+**Damit ist eine Aussage von gestern zu korrigieren.** Ich hatte geschrieben,
+die Antwort falle „Ende November bis Mitte Dezember" und damit **nach** dem
+Stichtag. Das galt für 1,9 Trades/Tag. Bei der gemessenen Rate gilt:
+
+> Der Nachweis in **einem** Fenster ist bis zum 30.10. zu haben — bis dahin
+> stehen rund 70 Trades gegen 45 bis 62 nötige. **Nur das Replikationstor**
+> reicht darüber hinaus, auf den 10. bis 21.11.
+
+Das ändert nichts am Befund, dass die bisherige Evidenz keinen Vorteil zeigt
+(+0,17 R konsequent geschnitten). Es ändert, wann die Frage entschieden ist.
+
+### Zwei Einschränkungen, die dazugehören
+
+**Die Rate ist nicht stabil.** 2,00 über die letzten zwei Tage gegen 2,75 über
+die letzten vier. Bei 2,00 landet der Einzelfenster-Nachweis am 23.10. und das
+Replikationstor am 20.11. — die Schlussfolgerung hält über diese Spanne, die
+genauen Daten nicht.
+
+**Die Haltedauern sind nach unten verzerrt.** Unter den 21 *geschlossenen*
+Trades steht der Median bei 4,1 h und das Maximum bei 54 h. Gleichzeitig sind
+vier Positionen **offen**, zwei davon seit 94,6 h (LINK) und 66,6 h (BNB).
+Die langen Trades sind noch nicht geschlossen und fehlen deshalb in jeder
+Statistik über geschlossene Trades — ein Überlebenseffekt in der eigenen
+Stichprobe. Dass H4-Setups unter den geschlossenen die *kürzeste* mittlere
+Haltedauer zeigen (4,5 h gegen 9,8 h bei M15), ist genau dieser Effekt und
+nicht eine Eigenschaft der Zeitebene: `strategies/guide.py` sagt ausdrücklich,
+ein H4-Setup setze seinen Stop an H4-Struktur und **„the trade runs for days"**.
+
+*Kein Fehler also, sondern Bauart* — aber eine, die die Belegung aller vier
+Plätze über Tage erklärt und damit auch die 21 Stunden ohne einen einzigen
+Abschluss am 10./11.10.
