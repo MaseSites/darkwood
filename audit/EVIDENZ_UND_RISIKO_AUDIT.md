@@ -399,3 +399,100 @@ ein H4-Setup setze seinen Stop an H4-Struktur und **„the trade runs for days"*
 *Kein Fehler also, sondern Bauart* — aber eine, die die Belegung aller vier
 Plätze über Tage erklärt und damit auch die 21 Stunden ohne einen einzigen
 Abschluss am 10./11.10.
+
+---
+
+## 8. Warum die Gewinne kamen und wieder gingen — und eine Korrektur an mir selbst
+
+Severin, 11.10.: *„Schau, was du wirklich bei den gewonnenen Trades richtig
+gemacht hast und setze das auch jetzt wieder um."* Die Frage ist richtig
+gestellt und hat eine gemessene Antwort.
+
+### Die Reihenfolge ist kein Nachlassen, sondern drei Blöcke
+
+Nach Abschluss sortiert: `L W L L L L  W W W W W W W W  L L L L L L L`
+
+| Block | BTC über die Haltefenster | short | R je Trade |
+|---|---|---|---|
+| 1 (Trades 1–6) | +0,19 % | 3/6 | −0,637 |
+| **2 (acht Gewinne)** | **−1,67 %** | 7/8 | **+1,881** |
+| **3 (sieben Verluste)** | **+0,98 %** | 6/7 | **−1,037** |
+
+Das System war in Block 2 **und** Block 3 zu rund 90 % short. In Block 2 fiel
+der Markt, in Block 3 stieg er. **Die Entscheidungen haben sich nicht
+verändert — der Markt hat sich verändert.**
+
+### Gerechnet statt beschrieben
+
+Marktbewegung je Trade, mit dem Vorzeichen der Seite versehen und durch die
+Stop-Weite geteilt, gegen das Ergebnis:
+
+| | |
+|---|---|
+| Korrelation | **+0,810** |
+| erklärte Varianz | **66 %** |
+| Hebel auf die Marktrichtung (`b`) | **+1,491** ± 0,247 |
+| Rest daneben (`a`) | **−0,2007 R** |
+
+Zwei Drittel des Ergebnisses sind Marktrichtung. Was daneben übrig bleibt, ist
+**negativ**. Das bestätigt E8 (dort `b` = 1,788 auf 14 Trades) auf allen 21.
+
+**Die Antwort auf die Frage lautet damit: an den Gewinnern wurde nichts
+gemacht, das sich wiederholen liesse.** Sie waren Shorts in einer fallenden
+Woche. Dieselben Shorts in einer steigenden Woche sind die Verluste.
+
+### Und das Gefühl, die Verluste seien doppelt so gross, täuscht
+
+| | |
+|---|---|
+| Gewinner | **+1,828 R** (+17,46 USDT) |
+| Verlierer | **−1,040 R** (−13,16 USDT) |
+| Verhältnis | ein Gewinner ist **1,76×** ein Verlierer |
+| Summe | +157,14 gegen −157,89 → **netto −0,76 USDT** |
+
+Nicht die Grösse schmerzt, sondern die **Reihenfolge**: sieben Verluste
+hintereinander.
+
+### KORREKTUR: die Bremse, die ich vorgeschlagen habe, hätte Geld gekostet
+
+Abschnitt 6 nennt für die Portfolio-Lesart *„4 von 21 geblockt (3× max_open_
+positions, 4× Cooldown)"* und ich habe daraus geschlossen, die Portfolio-Lesart
+hätte die Verlustserie gebremst. **Das war falsch, und der Fehler ist mein
+eigener aufgeschriebener:** ich habe die geblockten Trades *gezählt*, ohne
+nachzusehen, **welche**.
+
+Portfolio-Cooldown, 3 Verluste in Folge, 24 h Pause, gegen die echten Trades:
+
+| geblockt | | |
+|---|---|---|
+| 04.10. 20:02 | DOGEUSDT | **+22,54 USDT** |
+| 05.10. 13:00 | LINKUSDT | **+14,61 USDT** |
+| 09.10. 13:00 | AVAXUSDT | −10,26 USDT |
+| 10.10. 09:00 | DOTUSDT | −10,66 USDT |
+
+| | |
+|---|---|
+| ohne Bremse | **−0,76 USDT** über 21 Trades |
+| **mit Bremse** | **−16,97 USDT** über 17 Trades |
+
+Die Bremse blockt definitionsgemäss, was *nach* einer Verlustserie kommt — und
+hier war die Erholung nach der ersten Serie der grösste Gewinn des ganzen
+Laufs. *„Eine Prozentzahl ohne ihre Auszahlung ist kein Ergebnis"* steht als
+Lektion in diesem Projekt, und ich bin ihr trotzdem aufgesessen.
+
+**Die Empfehlung aus Abschnitt 6 ist damit zurückgezogen.** Die Portfolio-
+Lesart ist nicht belegt besser; sie ist an dieser Stichprobe belegt
+schlechter. Mit n = 4 geblockten Trades belegt das natürlich auch nichts in
+die andere Richtung — ausser, dass meine Begründung keine war.
+
+### Was daraus folgt, und was ausdrücklich nicht
+
+**Nicht folgt:** dass man das Muster der Gewinner nachbauen soll. Die Gewinner
+auszuwählen und ihre Eigenschaften zur Regel zu machen, ist die Methode, mit
+der dieses Projekt sich schon mehrfach selbst einen Vorteil vorgerechnet hat.
+
+**Folgt:** das System ist ein 1,5-fach gehebelter Richtungswette ohne
+gemessene Fähigkeit, die Richtung zu wählen — 35 Merkmale ordnen die nächsten
+fünf bis zehn Stunden mit Korrelation 0,004. Eine Wette ohne Grundlage wird
+durch keine Filterung besser. Was sie entscheidet, ist allein, ob die nächsten
+Wochen fallen oder steigen.
