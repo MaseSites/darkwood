@@ -90,10 +90,6 @@ rechnen.
 
 **Phase D — Ehrlich berichten.** Auch und gerade, wenn nichts übrig bleibt.
 
-## Protokoll
-
-*(wird fortgeschrieben)*
-
 ---
 
 ## Protokoll
@@ -155,3 +151,34 @@ Vorwärtslauf gegen eine Grundlinie, die es nicht mehr gibt.
 `scripts/run_backtest.py --strategy guide-all` tut genau das und schreibt
 weder ins Journal noch in den Signalspeicher — geprüft, bevor er gestartet
 wurde, und das Journal ist zusätzlich gesichert.
+
+### Vorab festgelegt: woran der Neulauf zu erkennen ist
+
+Der Replay wird unter `guide-all` neu gerechnet, und `guide-all` heisst
+geprüft *„der konfigurierte Pool"* und nicht *„alle Setups"*:
+`GuidePool.for_config` filtert auf `enabled_setups(config)`, also
+`['A', 'B', 'E', 'F', 'G']`.
+
+**Das schreibe ich vor dem Lauf auf, damit ich hinterher nicht gegen das
+Ergebnis prüfe:**
+
+| Erwartung | woran erkennbar |
+|---|---|
+| Setup **C verschwindet** | 0 Trades mit `setup_key = C` |
+| Setup **E erscheint** | > 0 Trades mit `setup_key = E`; der Signalspeicher zeigt 445 genommene E-Signale, also sollten es einige hundert sein |
+| A, B, G bleiben **ähnlich** | Trade-Zahl je Setup innerhalb ±10 % des alten Laufs |
+| Laufzeit | > 15 min je Markt, gemessen (der erste Versuch lief in ein `timeout`) |
+
+**Bricht die dritte Zeile, ist der Neulauf nicht vergleichbar** — dann hat
+sich zwischen den beiden Läufen mehr geändert als die Setup-Liste, und die
+Differenz misst nicht, was sie messen soll. Das wäre selbst ein Befund und
+kein Grund, die Zahl trotzdem zu nehmen.
+
+**Was der Neulauf nicht leisten kann:** er sagt, was die *heutige*
+Konfiguration über 2022–2026 getan hätte. Er sagt nichts darüber, ob die
+Auswahl dieser Konfiguration — C aus, E dran — an denselben Daten getroffen
+wurde, die ihn jetzt bewerten. Sie wurde es (C wurde am 04.10. nach einer
+Messung an eben diesem Replay abgeschaltet). Der neue Replay ist damit
+**keine unabhängige Stichprobe für die Frage „ist diese Konfiguration gut"**,
+sondern nur eine ehrliche Grundlinie für den Vergleich mit dem Vorwärtslauf.
+Das ist ein Unterschied, der leicht verlorengeht.
