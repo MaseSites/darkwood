@@ -253,6 +253,41 @@ class SimBroker:
     def is_flat(self) -> bool:
         return self.position is None and self.pending is None
 
+    @property
+    def funding_settled_ts(self) -> int:
+        """The settlement time of the last rate the cursor consumed.
+
+        Exposed because it is the one piece of funding state a restart cannot
+        recompute. `funding_paid` is a sum, and a sum cannot say *which* rates
+        are in it -- so without this number a restored broker cannot tell
+        "already booked" from "still owed", and no ordering of the restore
+        steps can be correct.
+        """
+        return self._funding_settled_ts
+
+    def resume_funding(self, settled_ts: int) -> None:
+        """Place the cursor from a settlement time restored from disk.
+
+        The same placement `refresh_funding` makes, handed to the restore path
+        so the position can be attached *before* anything is charged. That
+        order matters: `_charge_funding` only credits a position that was
+        already open when the rate settled, so charging while the position is
+        still detached consumes the rate and books nothing -- which is exactly
+        the defect this method exists to fix.
+        """
+        self._funding_settled_ts = settled_ts
+        self._funding_cursor = sum(1 for rate in self.funding if rate.ts <= settled_ts)
+
+    def settle_funding(self, ts: int) -> None:
+        """Charge what is owed up to `ts`, with a position attached.
+
+        Unlike `skip_to` this does not demand a flat broker, which is the
+        whole point on the restore path. Everything else is identical: the
+        cursor only moves forward, and `_charge_funding` still skips any rate
+        that settled before the position opened.
+        """
+        self._charge_funding(ts)
+
     def mark(self, ts: int, price: float) -> None:
         """Record equity including open profit, for the drawdown curve.
 
@@ -611,9 +646,7 @@ class SimBroker:
         whether the top-up actually brought anything.
         """
         self.funding = sorted(rates, key=lambda f: f.ts)
-        self._funding_cursor = sum(
-            1 for rate in self.funding if rate.ts <= self._funding_settled_ts
-        )
+        self.resume_funding(self._funding_settled_ts)
         return len(self.funding) - self._funding_cursor
 
     def _charge_funding(self, ts: int) -> None:

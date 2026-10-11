@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     pending         TEXT,
     position        TEXT,
     reason          TEXT,
-    tally           TEXT
+    tally           TEXT,
+    funding_settled_ts INTEGER
 );
 """
 
@@ -54,7 +55,11 @@ CREATE TABLE IF NOT EXISTS accounts (
 #: leaves an existing table exactly as it was -- so a file written by an earlier
 #: version keeps its old shape and every read of a new column fails. Three
 #: accounts had already been running when `tally` was added.
-_ADDED_COLUMNS = {"tally": "TEXT"}
+#: `funding_settled_ts` joined on 11.10.2026 while three accounts held open
+#: positions, which is precisely the case this mechanism exists for. It is
+#: nullable on purpose -- see `restore_into`, where NULL and 0 mean very
+#: different things and coercing one to the other invents income.
+_ADDED_COLUMNS = {"tally": "TEXT", "funding_settled_ts": "INTEGER"}
 
 
 @dataclass
@@ -172,27 +177,65 @@ class PaperState:
     position: OpenPosition | None = None
     reason: TradeReason | None = None
     tally: Tally = field(default_factory=Tally)
+    #: Welche Funding-Rate der Broker zuletzt verbraucht hat.
+    #:
+    #: `None` heisst "aus einer Zeile, die diese Spalte noch nicht hatte", und
+    #: das ist nicht dasselbe wie 0. Siehe `restore_into`.
+    funding_settled_ts: int | None = None
 
     def capture_from(self, broker: SimBroker, *, reason: TradeReason | None) -> None:
         self.equity = broker.equity
         self.pending = broker.pending
         self.position = broker.position
         self.reason = reason
+        self.funding_settled_ts = broker.funding_settled_ts
 
     def restore_into(self, broker: SimBroker) -> None:
         """Put a saved account back into a fresh broker.
 
-        The funding cursor is advanced to the last settled minute, so a trade
-        resumed after a gap is not charged twice for settlements it already
-        paid. That advance has to happen while the broker is still flat, which
-        is why it comes before the position is attached.
+        **Die Reihenfolge war absichtlich und trotzdem falsch.** Vorher rief
+        diese Methode `broker.skip_to(last_minute_ts)`, *bevor* die Position
+        angehängt wurde, und begründete das damit, dass ein nach einer Lücke
+        fortgesetzter Trade nicht zweimal belastet werden darf. Die Begründung
+        stimmt. Die Folge war die andere Hälfte des Problems:
+        `_charge_funding` schreibt nur einer *offenen* Position zu, also
+        verbrauchte der Vorlauf jede Rate mit `position=None` und verbuchte
+        nichts. Belegt an `live-LINKUSDT-1791303300000`, einem Short über die
+        Abrechnung am 07.10. 00:00 mit Rate +0,0001: +0,070938 USDT nicht
+        eingenommen, also +0,00703 R bei einem Risikobudget von 10,0881.
+
+        Beides gleichzeitig geht nur mit einem **persistierten Cursor**.
+        `funding_paid` ist eine Summe und kann nicht sagen, *welche* Raten
+        darin stecken; `funding_settled_ts` kann es. Darum jetzt: Position
+        anhängen, Cursor aus der Platte setzen, dann abrechnen.
+
+        **Und der gefährliche Teil ist die Migration.** Eine Zeile, die vor
+        dieser Spalte geschrieben wurde, liefert `None`. Würde man das zu 0
+        machen und den Cursor bei 0 setzen, während die Position schon hängt,
+        berechnete `_charge_funding` jede Rate seit Positionseröffnung ein
+        zweites Mal -- auf der offenen LINKUSDT-Position sind das 13
+        Abrechnungen und +0,0062 R erfundenes Einkommen, bei *jedem*
+        Neustart. Für `None` wird deshalb genau der Wert hergeleitet, den das
+        alte `skip_to(last_minute_ts)` hinterlassen hätte. Altzeilen
+        verhalten sich damit exakt wie bisher, und die Korrektur wirkt nur
+        nach vorn.
         """
+        if not broker.is_flat:
+            raise RuntimeError(
+                "restore_into called on a broker that already holds an order or "
+                "position; that would overwrite it silently"
+            )
         broker.ledger.equity = self.equity
         broker.ledger.peak_equity = max(self.equity, broker.ledger.peak_equity)
-        if self.last_minute_ts:
-            broker.skip_to(self.last_minute_ts)
         broker.pending = self.pending
         broker.position = self.position
+        if self.last_minute_ts:
+            settled = self.funding_settled_ts
+            if settled is None:
+                consumed = [r.ts for r in broker.funding if r.ts <= self.last_minute_ts]
+                settled = max(consumed) if consumed else 0
+            broker.resume_funding(settled)
+            broker.settle_funding(self.last_minute_ts)
 
 
 class PaperStateStore:
@@ -218,14 +261,15 @@ class PaperStateStore:
         with closing(self._connect()) as conn:
             conn.execute(
                 "INSERT INTO accounts (symbol, equity, last_minute_ts, last_decided_ts, "
-                "last_price, opened_ts, pending, position, reason, tally) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "last_price, opened_ts, pending, position, reason, tally, funding_settled_ts) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(symbol) DO UPDATE SET equity=excluded.equity, "
                 "last_minute_ts=excluded.last_minute_ts, "
                 "last_decided_ts=excluded.last_decided_ts, "
                 "last_price=excluded.last_price, opened_ts=excluded.opened_ts, "
                 "pending=excluded.pending, position=excluded.position, "
-                "reason=excluded.reason, tally=excluded.tally",
+                "reason=excluded.reason, tally=excluded.tally, "
+                "funding_settled_ts=excluded.funding_settled_ts",
                 (
                     state.symbol,
                     state.equity,
@@ -237,6 +281,7 @@ class PaperStateStore:
                     _dump(state.position),
                     _dump_reason(state.reason),
                     json.dumps(asdict(state.tally)),
+                    state.funding_settled_ts,
                 ),
             )
             conn.commit()
@@ -245,7 +290,8 @@ class PaperStateStore:
         with closing(self._connect()) as conn:
             row = conn.execute(
                 "SELECT equity, last_minute_ts, last_decided_ts, last_price, opened_ts, "
-                "pending, position, reason, tally FROM accounts WHERE symbol = ?",
+                "pending, position, reason, tally, funding_settled_ts "
+                "FROM accounts WHERE symbol = ?",
                 (symbol,),
             ).fetchone()
         if row is None:
@@ -261,6 +307,9 @@ class PaperStateStore:
             position=_load_position(row[6]),
             reason=_load_reason(row[7]),
             tally=_load_tally(row[8]),
+            # Bewusst NICHT zu 0 gemacht: None heisst 'Zeile ohne diese
+            # Spalte' und wird in `restore_into` hergeleitet.
+            funding_settled_ts=None if row[9] is None else int(row[9]),
         )
 
     def symbols(self) -> list[str]:
