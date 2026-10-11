@@ -68,7 +68,7 @@ import argparse
 import json
 import sys
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -80,7 +80,9 @@ from traidingbrain.config.settings import load_config
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
-from traidingbrain.journal.version import code_version, decision_version
+from traidingbrain.journal.build import entries_from
+from traidingbrain.journal.record import Source
+from traidingbrain.journal.version import code_version, decision_version, run_signature
 from traidingbrain.sim.engine import BacktestEngine
 from traidingbrain.strategies.guide import GuidePool
 
@@ -119,6 +121,7 @@ def run_one(symbol: str, *, config: object, store: ParquetStore,
         return None
 
     analysis = MultiFrameAnalysis(frames, config.engine)
+    funding = funding_store.read(symbol)
     analysed = time.perf_counter() - started
     engine = BacktestEngine(
         symbol,
@@ -126,18 +129,52 @@ def run_one(symbol: str, *, config: object, store: ParquetStore,
         minute_frame=minutes,
         spec=SymbolSpec(symbol=symbol, **DEFAULT_SPEC),
         config=config,
-        funding=funding_store.read(symbol),
+        funding=funding,
         history=None,
     )
     pool = GuidePool.for_config(config)
     result = engine.run(pool, max_bars=max_bars)
+    journal = entries_from(
+        analysis,
+        result.fills,
+        symbol=symbol,
+        strategy=pool.name,
+        source=Source.REPLAY,
+        signal=config.engine.timeframes.signal,
+    )
+    # Die Herkunft JE EINTRAG, nicht nur je Datei.
+    #
+    # `entries_from` laesst die drei Felder leer, weil es den Lauf nicht
+    # kennt. Wer die zwoelf Journal-Listen zu einer zusammenwirft -- also das
+    # Naheliegende tut -- haette dann Eintraege ohne Konfiguration und ohne
+    # Commit. Genau dieser Zustand hat den alten 4-Markt-Lauf unvergleichbar
+    # gemacht: seine Kadenz war nur aus der Minutenverteilung der Einstiege
+    # zu erschliessen.
+    stamp, commit = decision_version(), code_version()
+    signature = run_signature(config, max_bars=max_bars)
+    journal = [
+        replace(entry, run_signature=signature, decision_version=stamp, code_version=commit)
+        for entry in journal
+    ]
 
     return {
         "symbol": symbol,
         "strategy": pool.name,
         "setups": [s.key for s in pool.setups],
-        "decision_version": decision_version(),
-        "code_version": code_version(),
+        "decision_version": stamp,
+        "code_version": commit,
+        "run_signature": signature,
+        # Die Kadenz ausgeschrieben, nicht nur in der Signatur versteckt.
+        #
+        # Der alte 4-Markt-Lauf im Journal traegt keine Signatur, und seine
+        # Kadenz liess sich nur aus der Minutenverteilung der Einstiege
+        # erschliessen: 500 von 542 M15-Trades auf :00, nur ZWEI auf
+        # 15/30/45. Er lief also auf H1-Kadenz, der heutige Lauf auf M15 --
+        # ein groesserer Unterschied als die Setup-Liste, und nichts in den
+        # Daten sagte es. Eine Eigenschaft, die man nur aus der Verteilung
+        # erschliesst, ist keine aufgezeichnete Eigenschaft.
+        "signal_timeframe": config.engine.timeframes.signal.value,
+        "execution_timeframe": config.engine.timeframes.execution.value,
         "finished_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "analysis_seconds": round(analysed, 1),
         "seconds": round(time.perf_counter() - started, 1),
@@ -149,7 +186,26 @@ def run_one(symbol: str, *, config: object, store: ParquetStore,
         "window_note": result.window_note,
         "max_bars": max_bars,
         "summary": result.summary(),
+        "funding_settlements": len(funding) if funding is not None else 0,
+        # Die rohe Population. Vollstaendig, immer.
         "fills": [fill_record(f) for f in result.fills],
+        # Und dieselben Trades mit ihrer Begruendung: Rating, Regime,
+        # Faktorfamilien, Post-Mortem mit `bars_held` und `stopped_by_wick`.
+        #
+        # Das ist die Anreicherung, die das Journal fuer den alten Lauf hatte
+        # und die den fruehen Fassungen dieses Skripts fehlte. E10 brauchte
+        # `stopped_by_wick`, E11 brauchte das Regime -- Felder, die in einer
+        # Datei mit nur den Fills nicht stehen. Ein Lauf, der sechs Stunden
+        # kostet, soll jede Frage beantworten koennen, die der alte beantworten
+        # konnte, und nicht nur die, die beim Schreiben gerade anstand.
+        "journal": [json.loads(entry.to_json()) for entry in journal],
+        # Beide Zahlen, weil `entries_from` einen Fill ueberspringt, dessen
+        # Entscheidungsbalken oder Score sich nicht rekonstruieren laesst. Die
+        # Luecke stillschweigend zu tragen waere genau die Sorte Verlust, die
+        # dieses Skript dreimal umgebaut hat.
+        "fills_count": len(result.fills),
+        "journal_count": len(journal),
+        "enrichment_gap": len(result.fills) - len(journal),
     }
 
 
@@ -230,7 +286,9 @@ def main() -> int:
             print("keine Daten", flush=True)
             continue
         target.write_text(json.dumps(result, indent=1), encoding="utf-8")
-        print(f"{len(result['fills']):,} Trades in {result['seconds']:.0f}s", flush=True)
+        gap = result["enrichment_gap"]
+        note = f", {gap} ohne Begruendung" if gap else ""
+        print(f"{result['fills_count']:,} Trades{note} in {result['seconds']:.0f}s", flush=True)
         done += 1
 
     print(f"\n  {done}/{len(symbols)} Maerkte fertig.", flush=True)
