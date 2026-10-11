@@ -1252,7 +1252,7 @@ experiments:
       linke Rand beider Gruppen (Anteil unter -1R, schlimmster Einzelverlust,
       5%-Quantil). Ein besserer Mittelwert bei schwererem Rand ist KEIN
       positives Ergebnis.
-    status: angelegt
+    status: suchseite_gemessen_replikation_offen
     angelegt: 2026-10-11
     declared_before_reading: true
     confound_E12_3: >-
@@ -1295,6 +1295,52 @@ experiments:
       kann also bestenfalls eine Teilpopulation benennen, die fuer sich
       positiv ist -- und muss dann gegen das messen, was das System heute
       schon nimmt, nicht gegen alle Signale.
+    result:
+      stand: 2026-10-11
+      bericht: audit/E12_DIE_UHR.md
+      skript: scripts/study_the_clock.py
+      daten: data/study_the_clock.json
+      suchseite: "alter 4-Markt-Lauf, 2734 Trades, BRUTTO-R, Niveau 99.918 %"
+      E12_1_wochenende: >-
+        Sa/So n=516 -0.0956 R, unter -1R 60.3 %, schlimmster -3.778, q05
+        -1.0395. Mo-Fr n=2218 -0.0207 R, unter -1R 55.9 %, schlimmster
+        -2.461, q05 -1.0381. Differenz -0.0749 R [-0.3247, +0.1919] -- Null
+        ENTHALTEN. Richtung stimmt mit Intuition und Literatur, Mittelwert
+        UND Rand schlechter, 4.62-faches der Verlusterwartung. Nicht belegt:
+        Intervall 0.5166 R breit bei 516 Faellen.
+      E12_2_funding: >-
+        <=60 min nach Abrechnung n=611 -0.0555 R, unter -1R 52.2 %,
+        schlimmster -1.998. Sonst n=2123 -0.0289 R, unter -1R 58.0 %,
+        schlimmster -3.778. Differenz -0.0266 R [-0.2529, +0.2107] -- Null
+        ENTHALTEN. Der Rand ist in der Funding-Gruppe BESSER; ohne die
+        Randpflicht haette die Zelle wie ein schwacher Negativbefund gelesen.
+      E12_3_minute: >-
+        NICHT ENTSCHEIDBAR. Nur M15-Population: :00 n=500 -0.0141 R,
+        :15/:30/:45 n=42 -0.1283 R. 42 liegt unter der vorab festgelegten
+        Mindestbesetzung von 100. Nicht mit der gemischten Population
+        gerettet -- das waere der ausgeschlossene Confound.
+      replikation: >-
+        OFFEN. Der 12-Markt-Lauf hatte zum Messzeitpunkt einen Markt fertig.
+        Drei Zellen sind auf der neuen Seite nur wegen fehlender Besetzung
+        nicht entscheidbar. Das ist kein Negativbefund, und das Skript
+        unterscheidet die beiden Faelle selbst.
+      nebenbefund: >-
+        Das System nimmt 18.9 % seiner Trades am Wochenende (alter Lauf),
+        13.3 % auf BTCUSDT im neuen Lauf, wo der Kalender 28.6 % hergaebe. Es
+        meidet das Wochenende bereits, ohne dass es konfiguriert ist --
+        vermutlich ueber das Kostentor, das 44.8 % aller Ablehnungen stellt.
+        Pruefbar als Gruppierung des Signalspeichers nach Wochentag, ohne
+        neue Messung.
+      was_nicht_gilt: >-
+        Das Wochenende weglassen hebt den Mittelwert von -0.0348 auf -0.0207
+        R, also um 0.0141 R, und bleibt negativ. Ein Zeitfilter aendert nur,
+        welche Trades existieren; ein Hebel, der bloss die Trade-Zahl
+        aendert, kann das Vorzeichen nicht drehen.
+      offene_frage_aus_der_messung: >-
+        Von 542 M15-Trades oeffnen 500 auf :00, also 92.25 %. Ein M15-Setup
+        kann auf jeder Viertelstunde feuern. Das ist keine Uhr-Frage, sondern
+        eine an SEARCH_ORDER und _just_closed, und sie war vorher nicht
+        gestellt.
 
 
 rejection_rules:
