@@ -43,7 +43,7 @@ meta:
   # Die Zahl, auf die korrigiert wird. Summe der `comparisons` aller Arme unten
   # plus die bereits gelesenen Zellen der Vorgaenger-Suche, soweit dieselbe
   # Frage betroffen ist.
-  total_comparisons: 55
+  total_comparisons: 58
   correction: >-
     Bonferroni auf 55 Vergleiche, also Schwelle 0.05/55 = 0.00091 und ein
     99.909%-Intervall. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
@@ -1203,3 +1203,34 @@ amendments:
     note: >-
       Angelegt VOR der ersten Ausfuehrung von scripts/study_beta_alpha.py. Es
       existiert zu diesem Zeitpunkt keine Zahl zu diesem Arm.
+
+  - date: 2026-10-11
+    by: "Claude, zwanzigstuendige Arbeitsphase"
+    change: "Neuer Arm E11 angelegt, drei Zellen. total_comparisons 55 -> 58."
+    reason: >-
+      Die Literatursuche vom 11.10. hat in acht Ansatzfamilien keinen einzigen
+      Kandidaten gefunden, der die gegnerische Pruefung ueberlebt. Sie hat aber
+      genau einen Test empfohlen, der mit vorhandenen Daten eine ganze Familie
+      schliesst: die PRAEMISSE des Volatilitaets-Overlays. Moreira/Muir
+      funktioniert nur, wenn die erwartete Rendite NICHT mit der Volatilitaet
+      steigt. Das ist auf der bereits genommenen Trade-Population pruefbar --
+      keine neuen Daten, kein neues Instrument, nur eine Gruppierungsvariable.
+      Angemeldet als eigener Arm und nicht als Nebenauswertung von E1 oder E3,
+      weil er eine andere Frage stellt als beide.
+    declared_before_reading: true
+    note: >-
+      Angelegt VOR der ersten Ausfuehrung von scripts/study_vol_premise.py. Es
+      existiert zu diesem Zeitpunkt keine Zahl zu diesem Arm.
+
+      Drei Zellen, je ein Terzil der Volatilitaet bei Entry, gemessen an der
+      BRUTTO-Erwartung je Trade. Vorab festgelegte Lesart:
+
+        flach  -> das Overlay kauft Tail-Kontrolle, keinen Ertrag. Familie zu.
+        STEIGT -> das Overlay ist aktiv schaedlich. Familie zu, Negativbefund.
+        FAELLT -> und nur dann lohnt ein Overlay-Backtest.
+
+      Und die Erwartungshaltung steht mit dabei, damit sie hinterher nicht
+      nachgebessert wird: selbst der dritte Ausgang hebt den Sharpe und duennt
+      den Rand, verwandelt aber eine negative Brutto-Erwartung nicht in eine
+      positive. Bei -0.0906 R Entry-Erwartung und -0.20 R Vorwaerts-Residuum
+      neben dem Markt gibt es nichts zu skalieren.

@@ -268,3 +268,57 @@ er ist die **einzige**, die überhaupt noch etwas belegen kann, weil er Daten
 erzeugt, auf denen noch nicht gesucht wurde.
 
 Das ist zugleich die unabhängige Begründung dafür, ihn nicht anzufassen.
+
+---
+
+## Phase C: der eine Test, den die Literatur empfohlen hat
+
+Reproduktion:
+
+```bash
+python scripts/study_vol_premise.py
+```
+
+Angemeldet als **E11** in `audit/EXPERIMENTS_NEXT.yaml` vor dem ersten Lauf,
+`total_comparisons` 55 → 58, Niveau 99,9138 %.
+
+Die Suche hat keinen Kandidaten geliefert, aber einen Test: die **Prämisse**
+des Volatilitäts-Overlays. Sie ist die einzige Grösse, die dieses Projekt
+noch nicht gezogen hat und die das Vorzeichen theoretisch drehen *könnte* —
+Hebel, Positionsgrösse und Trade-Zahl sind alle vorzeichenneutral, ein
+volatilitäts-**konditionales** Overlay ist es nicht.
+
+Vola-Zustand: realisierte Tagesvolatilität über die 30 Tage **vor** dem
+Einstieg, annualisiert. Bewusst nicht `stop_distance_pct` aus dem Journal, die
+schon dasteht — der Stop wird *vom Setup* gesetzt, und ein H4-Setup setzt ihn
+breiter als ein M15-Setup am selben Tag. Die Stop-Weite vermischt Volatilität
+mit Setup-Wahl, und genau diese Vermischung hätte das gesuchte Ergebnis
+erzeugt.
+
+| Terzil | n | brutto | korrigiertes Intervall | netto | Vola |
+|---|---|---|---|---|---|
+| niedrigste | 911 | **+0,0259 R** | [−0,1266; +0,1885] | −0,0314 R | 15–54 % |
+| mittlere | 911 | −0,0676 R | [−0,2081; +0,0839] | −0,1233 R | 54–80 % |
+| höchste | 912 | −0,0629 R | [−0,2110; +0,1005] | −0,1172 R | 80–357 % |
+
+Die Punktschätzung **fällt** mit der Volatilität (−0,0887 R vom niedrigsten
+zum höchsten Terzil), und das wäre der einzige Ausgang, der ein Overlay
+rechtfertigt. **Aber zwei überlappende Intervalle zu vergleichen ist kein
+Test.** Die Differenz bekommt ihr eigenes:
+
+> **[−0,3044; +0,1251] — über die Null.**
+
+**Damit ist keiner der drei vorab festgelegten Ausgänge belegt**: weder flach,
+noch steigend, noch fallend. Die Prämisse ist auf diesen Daten **nicht
+entscheidbar**, und ein Overlay-Backtest wäre nicht begründet.
+
+Die Familie ist damit **nicht geschlossen, sondern unentschieden** — und der
+Unterschied gehört benannt. *„Nichts gefunden"* und *„nicht messbar"* sind
+nicht dasselbe, und dieses Projekt hat die beiden schon einmal verwechselt.
+
+*Ein Detail, das auffällt und ausdrücklich nichts belegt:* das Terzil mit der
+niedrigsten Volatilität ist die **einzige** Zelle mit positiver
+Brutto-Erwartung, und auch netto die am wenigsten schlechte (−0,03 gegen
+−0,12). Mit einem Intervall von ±0,16 R um +0,03 ist das Rauschen, und es als
+Hinweis zu behandeln wäre genau die Auswahl nach dem Ergebnis, gegen die die
+Vorab-Anmeldung steht.
