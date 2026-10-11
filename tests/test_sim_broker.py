@@ -257,6 +257,72 @@ def test_liquidation_costs_the_margin_and_nothing_more() -> None:
     assert broker.equity == pytest.approx(9_980.0)
 
 
+def test_one_minute_that_reaches_both_resolves_at_the_stop() -> None:
+    """Der Fall, den die Reihenfolge jahrelang falsch verbucht hat.
+
+    `risk/leverage.py` setzt den Hebel so, dass die Liquidation mindestens
+    2,5 Stop-Weiten *hinter* dem Stop liegt. Ein Balken, der die Liquidation
+    beruehrt, hat den Stop also auf dem Weg dorthin ueberquert -- und in der
+    Wirklichkeit haette der Stop zuerst ausgefuehrt.
+
+    Der Broker prueft die Liquidation trotzdem unbedingt zuerst, und genau ein
+    Trade der 2'734 Replay-Trades ist so verbucht worden: SOLUSDT, short, Stop
+    10,07, Hebel 9x, abgeleitete Liquidation 10,8288 -- geschlossen bei 10,8321
+    als Liquidation, mit **-3,8849 R gegen ein Budget von 1 R**. Der
+    schlechteste Trade der ganzen Population war ein Artefakt der Reihenfolge,
+    und jedes Randmass trug ihn mit.
+
+    Die bestehenden Tests haben das nicht gefangen: der eine setzt den Stop
+    *hinter* die Liquidation, der andere laesst den Balken die Liquidation gar
+    nicht erreichen. Keiner beruehrt beide in derselben Minute.
+    """
+    spec = free_spec()
+    broker = SimBroker(spec, config())
+    broker.submit(long_entry(stop=90.0, leverage=3.0))
+    minutes(broker, [(100.0, 101.0, 99.0)])
+
+    position = broker.position
+    assert position is not None
+    assert position.liq_price < position.stop, "Vorbedingung: Liquidation liegt hinter dem Stop"
+
+    # Eine Minute, die oberhalb des Stops EROEFFNET und beide Marken durchlaeuft.
+    low = position.liq_price - 1.0
+    fills = minutes(broker, [(95.0, 95.0, low)], start=EPOCH + 5 * MINUTE)
+    fill = next(f for f in fills if f is not None)
+
+    assert fill.reason is ExitReason.STOP, (
+        "der Preis ist durch den Stop gelaufen, bevor er die Liquidation erreichte -- "
+        "dann haette der Stop ausgefuehrt"
+    )
+    assert fill.state is not TradeState.CLOSED_LIQUIDATED
+
+
+def test_a_minute_that_opens_past_liquidation_is_a_liquidation() -> None:
+    """Die Ausnahme, die bleibt: ein Sprung ueber beide Marken hinweg.
+
+    Eroeffnet die Minute schon jenseits der Liquidation, konnte auch der Stop
+    nicht zu seinem Preis ausfuehren. Ohne diesen Zweig waere die Korrektur
+    oben in die andere Richtung falsch -- sie wuerde eine echte Liquidation als
+    Stop verbuchen und den Simulator wieder optimistisch machen.
+    """
+    spec = free_spec()
+    broker = SimBroker(spec, config())
+    broker.submit(long_entry(stop=90.0, leverage=3.0))
+    minutes(broker, [(100.0, 101.0, 99.0)])
+
+    position = broker.position
+    assert position is not None
+
+    opened_below = position.liq_price - 2.0
+    fills = minutes(
+        broker, [(opened_below, opened_below, opened_below - 1.0)], start=EPOCH + 5 * MINUTE
+    )
+    fill = next(f for f in fills if f is not None)
+
+    assert fill.reason is ExitReason.LIQUIDATION
+    assert fill.state is TradeState.CLOSED_LIQUIDATED
+
+
 def test_a_properly_levered_trade_reaches_its_stop_first() -> None:
     """The point of deriving leverage from the stop: liquidation never arrives first."""
     spec = free_spec()

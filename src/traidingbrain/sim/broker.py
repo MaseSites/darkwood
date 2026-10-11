@@ -393,12 +393,37 @@ class SimBroker:
         if position is None:
             return None
 
-        if _touched(position.side, high, low, position.liq_price, adverse=True):
-            price = self._gap_aware(open_, position.liq_price, position.side, adverse=True)
-            return self._close(position, price, ts, ExitReason.LIQUIDATION)
-
         stop_hit = _touched(position.side, high, low, position.stop, adverse=True)
         target_hit = _touched(position.side, high, low, position.target, adverse=False)
+
+        # Liquidation zuerst zu pruefen war falsch, und zwar auf eine Art, die
+        # nur im Rand auffaellt. `risk/leverage.py` setzt den Hebel so, dass die
+        # Liquidation mindestens 2,5 Stop-Weiten HINTER dem Stop liegt -- ein
+        # Balken, der sie beruehrt, hat den Stop also auf dem Weg dorthin
+        # ueberquert, und in der Wirklichkeit haette der Stop zuerst ausgefuehrt.
+        #
+        # Gemessen: genau ein Trade der 2'734 Replay-Trades wurde so verbucht
+        # (SOLUSDT-1672552800000, short, Stop 10,07, Hebel 9x, abgeleitete
+        # Liquidation 10,8288, verbucht bei 10,8321 als `liquidation`) und kam
+        # mit **-3,8849 R** gegen ein Budget von 1 R heraus. Der schlechteste
+        # Trade der ganzen Population war damit ein Artefakt der Reihenfolge,
+        # und jedes Randmass -- schlechtester Trade, 5-%-Quantil -- trug ihn mit.
+        #
+        # Die Ausnahme, die bleibt: ein Sprung ueber beide Marken hinweg. Wenn
+        # die Minute schon jenseits der Liquidation EROEFFNET, konnte auch der
+        # Stop nicht zu seinem Preis ausfuehren, und dann ist die Liquidation
+        # die richtige Antwort.
+        liq_hit = _touched(position.side, high, low, position.liq_price, adverse=True)
+        if liq_hit:
+            moving_down = position.side is Side.LONG
+            gapped_past_liq = (
+                open_ <= position.liq_price if moving_down else open_ >= position.liq_price
+            )
+            if gapped_past_liq or not stop_hit:
+                price = self._gap_aware(
+                    open_, position.liq_price, position.side, adverse=True
+                )
+                return self._close(position, price, ts, ExitReason.LIQUIDATION)
 
         if stop_hit and ((target_hit and self.config.pessimistic_intrabar) or not target_hit):
             price = self._gap_aware(open_, position.stop, position.side, adverse=True)
