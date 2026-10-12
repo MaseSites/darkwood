@@ -33,6 +33,7 @@ from traidingbrain.data.backfill import Backfiller
 from traidingbrain.data.exchange import MarketData
 from traidingbrain.data.funding import FundingStore, backfill_funding
 from traidingbrain.data.store import ParquetStore
+from traidingbrain.data.validate import DataQualityError
 from traidingbrain.domain.enums import Timeframe
 
 
@@ -90,6 +91,46 @@ def resolve_symbols(args: argparse.Namespace, *, config: object,
     return chosen
 
 
+def pull_markets(backfiller: Backfiller, symbols: list[str], args: argparse.Namespace,
+                 progress: object) -> tuple[bool, list[str]]:
+    """Jeden Markt holen, und einen Ausfall ueberleben.
+
+    Gibt zurueck, ob der Speicher etwas Falsches haelt, und welche Maerkte
+    nicht vollstaendig sind.
+    """
+    fatal = False
+    # Ein Markt darf den Lauf nicht killen.
+    #
+    # Am 12.10.2026 starb ein Lauf ueber 71 Maerkte beim 32. an einem
+    # DataQualityError: KNCUSDT H1 hat genau EINE Kerze, deren Schlusskurs
+    # ueber ihrem Hoch liegt (2023-11-10 15:00 UTC, open 0.8131, high 0.8239,
+    # low 0.8113, close 0.8251 -- der Schluss 0.145 % ueber dem Hoch, so von
+    # der Boerse ausgeliefert, eine in 44.000 geprueften Stundenkerzen). Die
+    # Pruefung hat recht und darf nicht abgeschwaecht werden -- aber 45
+    # unberuehrte Maerkte dafuer liegenzulassen ist auch falsch. Dieselbe
+    # Lehre wie beim Replay-Runner.
+    #
+    # Der Ausfall wird gesammelt, am Ende genannt, und der Exitcode bleibt
+    # ungleich Null: "weitergelaufen" heisst nicht "in Ordnung".
+    broken: list[str] = []
+    for symbol in symbols:
+        print(f"\n{symbol}")
+        try:
+            for result in backfiller.run_many(
+                symbol, args.tfs, args.since, args.until, progress=progress
+            ):
+                print(f"\r  {result.summary()}")
+                if result.report.is_fatal:
+                    fatal = True
+        except DataQualityError as problem:
+            print(f"\r  ABGELEHNT: {problem}", flush=True)
+            broken.append(f"{symbol}: {problem}")
+        except Exception as problem:  # ein Markt faellt aus, der Lauf nicht
+            print(f"\r  FEHLER {type(problem).__name__}: {problem}", flush=True)
+            broken.append(f"{symbol}: {type(problem).__name__}: {problem}")
+    return fatal, broken
+
+
 def main(argv: list[str] | None = None) -> int:
     config = load_config()
     parser = argparse.ArgumentParser(
@@ -135,15 +176,7 @@ def main(argv: list[str] | None = None) -> int:
         when = datetime.fromtimestamp(newest_ts / 1000, tz=UTC).strftime("%Y-%m-%d %H:%M")
         print(f"\r  {symbol} {timeframe.value:<4} {bars:>8,} bars  ->  {when}", end="", flush=True)
 
-    fatal = False
-    for symbol in symbols:
-        print(f"\n{symbol}")
-        for result in backfiller.run_many(
-            symbol, args.tfs, args.since, args.until, progress=progress
-        ):
-            print(f"\r  {result.summary()}")
-            if result.report.is_fatal:
-                fatal = True
+    fatal, broken = pull_markets(backfiller, symbols, args, progress)
 
     if args.funding:
         funding_store = FundingStore(config.engine.paths.funding_dir)
@@ -163,8 +196,18 @@ def main(argv: list[str] | None = None) -> int:
                 if report.is_fatal:
                     fatal = True
 
+    if broken:
+        print(f"\n{len(broken)} von {len(symbols)} Maerkten nicht vollstaendig:",
+              file=sys.stderr)
+        for line in broken:
+            print(f"  {line}", file=sys.stderr)
+        print("Der Rest liegt. Ein erneuter Lauf nimmt die fehlenden wieder auf.",
+              file=sys.stderr)
+
     if fatal:
         print("\nFAILED: the store holds data that is wrong in a way we caused.", file=sys.stderr)
+        return 1
+    if broken:
         return 1
     print("\nDone.")
     return 0
