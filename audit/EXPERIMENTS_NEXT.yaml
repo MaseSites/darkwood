@@ -1252,7 +1252,7 @@ experiments:
       linke Rand beider Gruppen (Anteil unter -1R, schlimmster Einzelverlust,
       5%-Quantil). Ein besserer Mittelwert bei schwererem Rand ist KEIN
       positives Ergebnis.
-    status: suchseite_gemessen_replikation_offen
+    status: erledigt_kein_befund
     angelegt: 2026-10-11
     declared_before_reading: true
     confound_E12_3: >-
@@ -1325,10 +1325,36 @@ experiments:
         Mindestbesetzung von 100 waere daraus eine Entdeckung aus zwei
         Beobachtungen geworden.
       replikation: >-
-        OFFEN. Der 12-Markt-Lauf hatte zum Messzeitpunkt einen Markt fertig.
-        Drei Zellen sind auf der neuen Seite nur wegen fehlender Besetzung
-        nicht entscheidbar. Das ist kein Negativbefund, und das Skript
-        unterscheidet die beiden Faelle selbst.
+        VERWEIGERT, Stand 12.10.2026, und zwar vom Kadenz-Waechter des
+        Skripts: der alte Lauf entscheidet stuendlich, der neue alle
+        fuenfzehn Minuten. Zwei Laeufe mit verschiedener Kadenz sind keine
+        Replikation.
+
+        Was sich trotzdem sagen laesst, je Zelle:
+
+        E12.1 Wochenende: neu Sa/So -0.0319 R (n=1488) gegen Mo-Fr +0.0270 R
+        (n=5847), Differenz -0.0589 R [-0.2373, +0.1241], Null ENTHALTEN. Das
+        Verhaeltnis der Differenzen ist 0.79x und laege damit IM Tor 0.5-2.0.
+        Der Effekt hat zwei Konfigurationsaenderungen ueberlebt (Kadenz und
+        Setup-Liste), was fuer sich bemerkenswert ist -- aber ein Verhaeltnis,
+        das zufaellig im Fenster liegt, ersetzt keine gueltige Replikation.
+        Als RICHTUNGSBEFUND das Konsistenteste, was E12 hergegeben hat.
+        Wochenendanteil neu 20.3 % gegen 28.6 % Kalender, also weiter
+        unterproportional.
+
+        E12.2 Funding-Stunde: Verhaeltnis 0.29x, ausserhalb des Tors, neue
+        Differenz -0.0077 R [-0.1646, +0.1497]. Zweimal nichts. GESCHLOSSEN.
+
+        E12.3 Viertelstundenmarke: auf dem neuen Lauf ERSTMALS messbar, weil
+        die M15-Kadenz die Besetzung liefert -- :00 n=649 bei +0.0429 R gegen
+        15/30/45 n=2821 bei -0.0109 R, 147 Limit-Fills ausgeschlossen.
+        Differenz +0.0537 R [-0.1871, +0.2953], Null ENTHALTEN, Rand belegt.
+        Der Viertelstunden-Effekt aus Kim/Hansen zeigt sich in unseren Trades
+        NICHT als Gruppenunterschied. Sauberes Nein bei richtiger Besetzung,
+        nicht mehr "zu klein". Schliesst die Papier-Mechanik nicht aus, die
+        Orderfluss-Imbalance braucht und damit ein Trade-Tape.
+
+        Bericht: audit/DER_NEULAUF_7335.md, Abschnitt 3.
       mechanismus_gemessen: >-
         Das System nimmt 18.9 % seiner Trades am Wochenende, wo der Kalender
         28.6 % hergaebe, und der Mechanismus ist exakt bestimmt -- ohne neue
