@@ -84,6 +84,27 @@ Trade, bei optimistischen +0,20 R:
 
 $$44 \times 30{,}06 \times 0{,}20 = +264{,}50 \text{ USDT} \;\rightarrow\; \mathbf{12.287\ USDT}$$
 
+## 5a. Nachtrag 12.10.: die Schranke ist jetzt gemessen
+
+Die Rechnung oben stellte die nötigen +6,75 R gegen eine Vorwärtsstichprobe
+von 23 Trades, deren Intervall 2,7 R breit war. Das war die beste verfügbare
+Zahl und eine schwache.
+
+Der Replay-Neulauf ist am 12.10. durchgelaufen: **7.335 Trades** über zwölf
+Märkte und vier Jahre, unter der laufenden Konfiguration.
+
+| | |
+|---|---|
+| Mittel | −0,0129 R |
+| korrigiertes Intervall | **[−0,0868; +0,0594]** |
+| Breite | 0,1462 R |
+
+**Die Obergrenze ist +0,0594 R. Nötig sind +6,75 R. Faktor 114.**
+
+Das ist nicht mehr „die Stichprobe ist zu klein, um es zu sagen". Es ist eine
+Schranke, und das Ziel liegt zwei Grössenordnungen darüber. Details in
+`audit/DER_NEULAUF_7335.md`.
+
 ## 6. Das Urteil
 
 **Das Ziel 15.000 bis zum 30.10. ist nicht erreichbar** — nicht bei einer
