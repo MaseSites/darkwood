@@ -85,13 +85,19 @@ einen harten Deckel von 3 %.**
 
 Nicht löschen. Der Eintrag ist eine wahre Aufzeichnung eines Trades, der
 stattgefunden hat. Was fehlt, ist die Zugehörigkeit: `run_signature`,
-`decision_version` und `code_version` sind **leer** — bei 20 von 24
-Live-Zeilen für `decision_version`, bei 18 von 24 für `run_signature`.
+`decision_version` und `code_version` sind bei ihm **leer**, wie bei allen
+Zeilen bis zum 09.10. — 18 von 25 ohne Signatur, 20 von 25 ohne
+Entscheidungsstempel.
 
 `journal/record.py` begründet diese Felder selbst damit, dass eine
 Eigenschaft, die man nur durch Git-Archäologie findet, keine aufgezeichnete
 Eigenschaft ist. Hier ist der Fall eingetreten, für den sie gedacht waren,
 und sie waren leer.
+
+**Nachgemessen am 12.10.:** `_record` stempelt heute alle drei, in zwei
+Wellen eingeführt, und die Lücke ist damit historisch und schliesst sich
+selbst. Was folgt, ist kein Rückfüllen, sondern ein Filter — siehe
+Abschnitt 2.4.
 
 ---
 
@@ -166,19 +172,64 @@ Verlust gleichzeitig `last_loss_ts()` setzt, greift der Halt sofort.
 > es zwei. Das Argument hält, die Zahl nicht — und es ist dieselbe Sorte
 > Fehler, gegen die der ganze Bericht geschrieben ist.
 
+### 2.4 Nachtrag vom 12.10.: der erste Schritt war falsch benannt
+
+Die erste Fassung dieses Abschnitts verlangte, „erst die Herkunftsfelder zu
+füllen". **Das geht nicht, und es muss auch nicht.** Nachgemessen:
+
+`live/paper.py:_record` stempelt `run_signature`, `decision_version` und
+`code_version` **bereits** — eingeführt in zwei Wellen, und die Wellen sind
+in den Daten sichtbar:
+
+| | run_signature | decision_version |
+|---|---|---|
+| ab 10.10. 13:01 | ja | **ja** |
+| 09.10. 23:48 – 10.10. 04:52 | ja | nein |
+| bis 09.10. 11:32 | nein | nein |
+| **von 25 Zeilen** | **7** | **5** |
+
+Die Lücke ist also **historisch und schliesst sich selbst**. Rückwirkend
+füllen wäre Erfindung: welche Konfiguration einen Trade vom 02.10. erzeugt
+hat, lässt sich nur aus der Git-Historie erschliessen, und genau das nennt
+`journal/record.py` keine aufgezeichnete Eigenschaft.
+
+**Der richtige erste Schritt ist deshalb ein Filter, keine Rückfüllung.** Eine
+Bremse darf nur Zeilen lesen, die sie zuordnen kann — also die der laufenden
+Signatur. Und das ändert die Lage:
+
+| gelesene Historie | n | Konten mit Verlustserie ≥ 2 |
+|---|---|---|
+| alle Zeilen | 25 | AVAXUSDT, BTCUSDT |
+| **nur laufende Signatur** | **7** | **keine** |
+
+**Die Gegenstimme „gefährlich" hing an einer Historie, die die Bremse nicht
+lesen darf.** Gefiltert ist kein Konto scharf — der Eingriff wäre auf dem
+Datenstand tatsächlich kostenlos, und zwar aus dem richtigen Grund statt aus
+der rückwärts gerichteten „0 von 21"-Zählung.
+
+Das entkräftet den Einwand nicht, es **präzisiert** ihn: ungefiltert zu lesen
+war das Problem, nicht das Bremsen.
+
 ### Was daraus folgt
 
-**Der Eingriff findet nicht statt.** Was stattdessen zu tun ist, in dieser
-Reihenfolge:
+**Der Eingriff findet weiter nicht ad hoc statt**, aber der Weg ist jetzt
+konkret, in dieser Reihenfolge:
 
-1. **Erst die Herkunftsfelder füllen** (Abschnitt 1), sonst ist jede Historie,
-   die eine Bremse liest, über Generationen gemischt.
-2. **Dann `starting_equity_today` korrigieren**, sonst können die
-   Verlustdeckel am Börsentor nicht auslösen, egal was die Historie sagt.
-3. **Dann alle drei Baustellen gemeinsam**, nicht eine.
+1. **Die Bremse filtert auf die laufende `run_signature`.** Sieben Zeilen sind
+   dünn, aber zuordenbar; 25 sind drei Konfigurationsepochen plus ein Trade
+   aus einer zerstörten Kontogeneration. Eine dünne richtige Historie schlägt
+   eine dicke falsche.
+2. **`starting_equity_today` korrigieren**, an beiden übrigen Stellen. Sonst
+   können die Verlustdeckel am Börsentor nicht auslösen, egal was die
+   Historie sagt — `risk/limits.py:147-149` beschreibt den Fehler in einem
+   Kommentar.
+3. **Dann alle drei Baustellen gemeinsam**, nicht eine. Eine Bremse auf dem
+   Papierpfad scharf zu machen und am Börsentor tot zu lassen, ist die
+   schlechtere von zwei Welten: sie kostet Trades, wo kein Geld liegt.
 4. Und die Umstellung gehört in den Entscheidungsstempel, mit angepasstem
-   `verify_claims.py` — eine Zuverlässigkeitskorrektur ist eine
-   Strategieänderung.
+   `verify_claims.py` — `decision_closure()` wächst von 56 auf 57, und die
+   Zahl steht an vier Stellen im Text. Eine Zuverlässigkeitskorrektur ist
+   eine Strategieänderung.
 
 ---
 
