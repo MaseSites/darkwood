@@ -77,6 +77,29 @@ leverage:
   allow_user_increase: false
 
 limits:
+  # Gilt fuer EIN Boersenkonto, das mehrere Symbole gleichzeitig halten kann.
+  # Dieses Konto existiert auf genau einem Pfad: scripts/run_live.py gibt die
+  # offenen Positionen an RiskLimits.check, und execution/order.py liefert
+  # dort jede Position, die das Konto haelt. Dort ist die Grenze scharf.
+  #
+  # **Im Papierhandel ist sie wirkungslos, und das ist kein Defekt.** Der
+  # Papierlauf fuehrt zwoelf getrennte Konten mit je einem SimBroker, und ein
+  # SimBroker hat strukturell einen Platz (sim/broker.py, live/paper.py:
+  # `is_flat` ist Vorbedingung jeder Eroeffnung). Der kleinste erlaubte Wert
+  # ist 1 (settings.py, `Field(ge=1)`), also kann KEIN Wert dieser
+  # Einstellung das Papierverhalten aendern.
+  #
+  # Das Audit vom 10.10.2026 hat das als "toten Konfigurationstext" gelesen
+  # und Loeschen erwogen. Loeschen waere eine echte Sicherheitsregression:
+  # die Einstellung ist auf dem einzigen Pfad, der Geld beruehrt, aktiv.
+  #
+  # Was sie NICHT ist: eine Aussage ueber die Summe der zwoelf Papierkonten.
+  # Dort waere die faktische Grenze zwoelf, und gemessener Hoechststand ist
+  # fuenf gleichzeitig (08.10.2026 20:02 UTC). Eine Portfoliogrenze wurde
+  # geprueft und verworfen -- sie poolt Konten, die live/paper.py absichtlich
+  # getrennt haelt, damit der Vorwaertslauf mit den Backtests vergleichbar
+  # bleibt, und sie vergaebe den Platz nach Listenposition statt nach
+  # Signalqualitaet. Siehe audit/RISIKO_AUDIT_NACHPRUEFUNG.md, Abschnitt 5.
   max_open_positions: 2
   max_positions_per_symbol: 1
   max_daily_loss_pct: 0.05
