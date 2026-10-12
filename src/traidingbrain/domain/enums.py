@@ -256,3 +256,24 @@ class Rule(StrEnum):
     SIZE = "groesse"
     COSTS = "kosten"
     LIQUIDATION = "liquidation"
+
+#: Welcher Endzustand zu welchem Ausstiegsgrund gehoert.
+#:
+#: Hier und nicht im Broker, weil es zwei Leser gibt: der Simulator baut damit
+#: seinen `Fill`, und `journal/history.py` baut damit einen `ClosedTrade` aus
+#: einem Journaleintrag, damit die Risikobremsen eine Historie bekommen. Zwei
+#: Kopien derselben Abbildung wuerden auseinanderlaufen, und die Stelle, an
+#: der das auffaellt, waere eine Bremse, die den falschen Zustand zaehlt.
+#:
+#: INVALIDATION fuehrt bewusst auf CLOSED_MANUAL: eine Invalidierung ist ein
+#: Schliessen auf Ansage, kein eigener Endzustand -- und ein neuer Endzustand
+#: waere eine Schemaaenderung, die jedes alte Journal unlesbar macht.
+STATE_OF_EXIT: dict[ExitReason, TradeState] = {
+    ExitReason.STOP: TradeState.CLOSED_STOP,
+    ExitReason.TARGET: TradeState.CLOSED_TARGET,
+    ExitReason.LIQUIDATION: TradeState.CLOSED_LIQUIDATED,
+    ExitReason.MANUAL: TradeState.CLOSED_MANUAL,
+    ExitReason.INVALIDATION: TradeState.CLOSED_MANUAL,
+    ExitReason.TIME: TradeState.CLOSED_TIME,
+}
+

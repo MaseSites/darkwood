@@ -1,0 +1,212 @@
+"""Welche Historie eine Risikobremse lesen darf, und welche nicht.
+
+**Warum das eigene Tests braucht.** Drei der sechs Sicherungen lesen
+`AccountState.recent_trades`, und bis zum 12.10.2026 übergab jede Stelle,
+die einen `AccountState` baute, dort `[]`. `journal/history.py` ist der
+Produzent, der gefehlt hat — und seine wichtigste Eigenschaft ist nicht das
+Umwandeln, sondern das **Weglassen**.
+
+Gemessen über die 25 geschlossenen Live-Trades:
+
+    gelesene Historie            Konten mit Verlustserie >= 2
+    alle 25 Zeilen               AVAXUSDT, BTCUSDT
+    nur laufende Signatur (7)    keine
+
+Die 25 Zeilen sind drei Konfigurationsepochen plus einen Trade aus einer
+zerstörten Kontogeneration. Eine Bremse, die das zusammenzählt, zählt eine
+Verlustserie, die so nie stattgefunden hat — und löst dann aus, oder löst
+nicht aus, auf Grundlage von Zeilen, die nicht zum laufenden System gehören.
+Die Tests hier halten genau das fest.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from traidingbrain.domain.enums import STATE_OF_EXIT, ExitReason, Side, TradeState
+from traidingbrain.journal.history import as_closed_trade, closed_trades
+from traidingbrain.journal.record import JournalEntry, PostMortem, Source, TradeReason
+from traidingbrain.journal.store import JournalStore
+
+SIG = "1000.0|['A', 'B']|0.08|M15|refused-v1"
+OTHER = "1000.0|['A', 'B', 'C']|0.15|H1|refused-v1"
+HOUR = 3_600_000
+
+
+def reason(**overrides: object) -> TradeReason:
+    base: dict[str, object] = {
+        "setup_key": "A",
+        "setup_name": "Momentum-Breakout",
+        "setup_source": "V08",
+        "setup_timeframe": "H1",
+        "side": "long",
+        "entry": 100.0,
+        "stop": 98.0,
+        "target": 104.0,
+        "reward_risk": 2.0,
+        "stop_distance_pct": 2.0,
+        "rating": 71,
+        "rating_band": "gemischt",
+        "clarity": 0.4,
+        "agreement": 0.8,
+        "consensus": 0.7,
+        "coverage": 0.7,
+        "score_bullish": 1.2,
+        "score_bearish": 0.3,
+        "score_direction": "aufwärts",
+        "conflict": 0.4,
+        "breadth": 6,
+        "readings": 190,
+        "regime": "trend_up",
+        "signal_timeframe": "M15",
+    }
+    base.update(overrides)
+    return TradeReason(**base, families=[])  # type: ignore[arg-type]
+
+
+def entry(trade_id: str = "live-BTCUSDT-1000", **overrides: object) -> JournalEntry:
+    base: dict[str, object] = {
+        "trade_id": trade_id,
+        "source": Source.LIVE,
+        "symbol": "BTCUSDT",
+        "strategy": "guide-all",
+        "opened_ts": 0,
+        "closed_ts": 5 * HOUR,
+        "exit_reason": ExitReason.STOP,
+        "entry_price": 100.0,
+        "exit_price": 98.0,
+        "qty": 1.0,
+        "leverage": 5.0,
+        "risk_amount": 100.0,
+        "gross_pnl": -100.0,
+        "fees": 1.0,
+        "funding": 0.0,
+        "net_pnl": -101.0,
+        "r_multiple": -1.01,
+        "reason": reason(),
+        "post_mortem": PostMortem(5, 0.0, 1.0, 0.0, False, True, "Sofort gegen uns."),
+        "run_signature": SIG,
+    }
+    base.update(overrides)
+    return JournalEntry(**base)  # type: ignore[arg-type]
+
+
+@pytest.fixture
+def store(tmp_path: Path) -> JournalStore:
+    return JournalStore(tmp_path / "journal.sqlite")
+
+
+# --------------------------------------------------------------------------- #
+# Der Filter ist der Zweck
+# --------------------------------------------------------------------------- #
+
+
+def test_only_rows_of_the_asked_signature_come_back(store: JournalStore) -> None:
+    store.record([
+        entry("live-BTCUSDT-1", run_signature=SIG),
+        entry("live-BTCUSDT-2", run_signature=OTHER),
+        entry("live-BTCUSDT-3", run_signature=SIG),
+    ])
+    got = closed_trades(store, signature=SIG)
+
+    assert [t.proposal_id for t in got] == ["live-BTCUSDT-1", "live-BTCUSDT-3"]
+
+
+def test_a_row_without_a_signature_is_dropped(store: JournalStore) -> None:
+    """Das ist der Waisen-Fall, und er ist der Grund fuer dieses Modul.
+
+    `live-BTCUSDT-1790928000000` traegt keine Signatur, hat die zehnfache
+    Groesse des naechsten BTC-Trades und 4,98 % Risiko gegen einen Deckel von
+    3 %. Rueckwirkend eine Signatur zu erfinden waere schlimmer als ihn
+    weglassen.
+    """
+    store.record([
+        entry("live-BTCUSDT-alt", run_signature=""),
+        entry("live-BTCUSDT-neu", run_signature=SIG),
+    ])
+    got = closed_trades(store, signature=SIG)
+
+    assert [t.proposal_id for t in got] == ["live-BTCUSDT-neu"]
+
+
+def test_an_empty_signature_reads_nothing(store: JournalStore) -> None:
+    """"Ich kenne meine Konfiguration nicht" ist kein Grund, alles zu lesen."""
+    store.record([entry("live-BTCUSDT-1", run_signature=SIG)])
+
+    assert closed_trades(store, signature="") == []
+
+
+def test_the_symbol_filter_separates_the_accounts(store: JournalStore) -> None:
+    store.record([
+        entry("live-BTCUSDT-1", symbol="BTCUSDT"),
+        entry("live-ETHUSDT-1", symbol="ETHUSDT"),
+    ])
+
+    assert len(closed_trades(store, signature=SIG)) == 2
+    assert [t.symbol for t in closed_trades(store, signature=SIG, symbol="ETHUSDT")] == ["ETHUSDT"]
+
+
+def test_replay_rows_do_not_leak_into_the_live_history(store: JournalStore) -> None:
+    """Sonst zaehlt eine Bremse 7.335 Replay-Trades als Verlustserie."""
+    store.record([
+        entry("live-BTCUSDT-1", source=Source.LIVE),
+        entry("BTCUSDT-9", source=Source.REPLAY),
+    ])
+
+    assert [t.proposal_id for t in closed_trades(store, signature=SIG)] == ["live-BTCUSDT-1"]
+
+
+# --------------------------------------------------------------------------- #
+# Die Umwandlung
+# --------------------------------------------------------------------------- #
+
+
+def test_the_fields_a_breaker_reads_survive_unchanged() -> None:
+    """`net_pnl` und `closed_ts` sind die beiden, die die Bremsen anfassen."""
+    trade = as_closed_trade(entry(net_pnl=-42.5, closed_ts=7 * HOUR))
+
+    assert trade is not None
+    assert trade.net_pnl == pytest.approx(-42.5)
+    assert trade.closed_ts == 7 * HOUR
+    assert trade.side is Side.LONG
+    assert trade.state is TradeState.CLOSED_STOP
+
+
+def test_a_short_keeps_its_side() -> None:
+    trade = as_closed_trade(entry(reason=reason(side="short")))
+
+    assert trade is not None
+    assert trade.side is Side.SHORT
+
+
+def test_a_rounded_negative_zero_fee_still_validates() -> None:
+    """`ClosedTrade.fees` ist `ge=0`, und eine gerundete Null kommt als -0.0."""
+    trade = as_closed_trade(entry(fees=-0.0))
+
+    assert trade is not None
+    assert trade.fees == 0.0
+
+
+@pytest.mark.parametrize("field", ["entry_price", "exit_price", "qty"])
+def test_a_degenerate_row_is_dropped_rather_than_forced(field: str) -> None:
+    """Lieber eine Zeile weniger als eine Bremse, die auf Platzhaltern zaehlt."""
+    assert as_closed_trade(entry(**{field: 0.0})) is None
+
+
+def test_every_exit_reason_has_a_state() -> None:
+    """Ohne das faellt ein neuer Ausstiegsgrund STILL aus der Historie.
+
+    `as_closed_trade` benutzt `STATE_OF_EXIT.get(...)` und gibt `None` zurueck,
+    wenn ein Grund fehlt -- also wuerden Trades mit einem neuen Grund einfach
+    verschwinden, statt einen Fehler zu machen. Dieser Test ist die Bremse
+    dagegen.
+    """
+    missing = [r for r in ExitReason if r not in STATE_OF_EXIT]
+
+    assert not missing, f"ohne Endzustand und damit unsichtbar: {missing}"
+    for reason_value, state in STATE_OF_EXIT.items():
+        trade = as_closed_trade(entry(exit_reason=reason_value))
+        assert trade is not None, reason_value
+        assert trade.state is state

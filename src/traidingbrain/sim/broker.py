@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from traidingbrain.config.settings import SimulationConfig
-from traidingbrain.domain.enums import ExitReason, OrderType, Side, TradeState
+from traidingbrain.domain.enums import STATE_OF_EXIT, ExitReason, OrderType, Side, TradeState
 from traidingbrain.domain.market import FundingRate, SymbolSpec
 from traidingbrain.risk.leverage import liquidation_price
 
@@ -560,14 +560,7 @@ class SimBroker:
         exit_fee = price * position.qty * rate
         fees = position.fees_paid + exit_fee
 
-        state = {
-            ExitReason.STOP: TradeState.CLOSED_STOP,
-            ExitReason.TARGET: TradeState.CLOSED_TARGET,
-            ExitReason.LIQUIDATION: TradeState.CLOSED_LIQUIDATED,
-            ExitReason.MANUAL: TradeState.CLOSED_MANUAL,
-            ExitReason.INVALIDATION: TradeState.CLOSED_MANUAL,
-            ExitReason.TIME: TradeState.CLOSED_TIME,
-        }[reason]
+        state = STATE_OF_EXIT[reason]
 
         if reason is ExitReason.LIQUIDATION:
             # Isolated margin: what is lost is the margin, no more and no less.
