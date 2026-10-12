@@ -210,6 +210,60 @@ der rückwärts gerichteten „0 von 21"-Zählung.
 Das entkräftet den Einwand nicht, es **präzisiert** ihn: ungefiltert zu lesen
 war das Problem, nicht das Bremsen.
 
+### 2.5 Nachtrag vom 12.10.: die fehlende Aufzaehlung, nachgeholt
+
+Die Regression-Gegenstimme verwarf den Vorschlag unter anderem damit, dass
+`refused_by=None` auf einer `action=REFUSED`-Zeile von einer bestehenden
+Studie als **genommen** gelesen wird. Das ist richtig und nachgeprueft:
+`scripts/study_meta_label.py:465` entscheidet mit
+`taken = [c for c in confirm if c.refused_by is None]` — nicht am Feld
+`action`.
+
+Ein Limit-Block muss also **beides** setzen. Und bevor dem `Rule`-Enum ein
+sechster Wert hinzugefuegt wird, gehoert aufgezaehlt, wer ihn liest. Das war
+die Luecke, fuer die der Vorschlag „unvollstaendig" bekam; hier ist sie
+geschlossen.
+
+| Leser | was er tut | Wirkung eines neuen Werts |
+|---|---|---|
+| `study_costcap.py:239` | `refused_by == Rule.COSTS` | **unbedenklich** — ein neuer Wert ist einfach nicht COSTS |
+| `study_exits.py:288` | `refused_by in SAFETY_RULES` | **muss ergaenzt werden** |
+| `study_meta_label.py:194` | `refused_by in SAFETY_RULES` | **muss ergaenzt werden** |
+| `study_meta_label.py:465` | `refused_by is None` heisst genommen | **unbedenklich, aber nur** wenn der Block einen Grund setzt |
+| `study_refused.py:242,278,308` | gruppiert nach `refused_by.value` | **unbedenklich** — es erscheint eine neue Gruppe, und das ist richtig |
+| `study_the_clock.py:377` | liest die Spalte, verzweigt nicht | **unbedenklich** |
+| `api/paper.py:88,175` | `refused_by_risk`, ein **Zaehler** | **unbeteiligt** — gleiches Wort, andere Sache |
+| `live/loop.py:75,83,234` | derselbe Zaehler | **unbeteiligt** |
+
+Zwei echte Stellen also, eine Invariante, und zwei Namenskollisionen, die
+beim Greppen wie Treffer aussehen und keine sind.
+
+### 2.6 Und dabei ein eigener Defekt: `SAFETY_RULES` gibt es zweimal
+
+| | Inhalt |
+|---|---|
+| `scripts/study_exits.py:100` | `{"liquidation", "chance_risiko", "kosten"}` |
+| `scripts/study_meta_label.py:109` | `frozenset({"liquidation"})` |
+
+Gleicher Name, derselbe erklaerte Zweck — „Ablehnungsgruende, die eine
+Auswahlregel NICHT ueberstimmen darf" — und **verschiedene Mengen**.
+
+`study_exits` haelt eine Kosten- und eine Chance-Risiko-Ablehnung fuer
+unantastbar, `study_meta_label` nicht. Die beiden Studien beantworten damit
+die Frage „darf ein Modell diese Ablehnung ueberstimmen?" unterschiedlich,
+und nichts gleicht sie ab. Welche der beiden richtig ist, ist eine
+Entscheidung und keine Formsache: die weitere Menge macht das Meta-Modell
+schwaecher, die engere laesst es Trades ueberstimmen, die eine Risikoregel
+abgelehnt hat.
+
+Gefunden, weil vor dem Hinzufuegen eines Enum-Werts die Leser aufgezaehlt
+wurden. Ohne diese Aufzaehlung waere ein sechster Wert in genau eine der
+beiden Mengen gewandert, und welche, haette vom Zufall abgehangen.
+
+Der Satz gehoert an eine Stelle, nicht an zwei. Als eigener Schritt, weil
+ihn zusammenzulegen bedeutet, sich fuer eine der beiden Mengen zu
+entscheiden — und das ist eine Messfrage, keine Aufraeumarbeit.
+
 ### Was daraus folgt
 
 **Der Eingriff findet weiter nicht ad hoc statt**, aber der Weg ist jetzt
