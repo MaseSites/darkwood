@@ -32,6 +32,7 @@ from traidingbrain.analysis.pipeline import MultiFrameAnalysis
 from traidingbrain.analysis.snapshot import SnapshotBuilder
 from traidingbrain.api.app import Services, build_default_services, create_app
 from traidingbrain.brain.fake import FakeBrain
+from traidingbrain.clock import SystemClock
 from traidingbrain.config.settings import load_secrets
 from traidingbrain.data.exchange import MarketData
 from traidingbrain.data.store import ParquetStore
@@ -39,6 +40,9 @@ from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.execution.diagnose import diagnose
 from traidingbrain.execution.intent import IntentLog
 from traidingbrain.execution.order import BybitExecutor, UnsafeConfigurationError
+from traidingbrain.journal.history import closed_trades
+from traidingbrain.journal.store import JournalStore
+from traidingbrain.journal.version import run_signature
 from traidingbrain.proposals.builder import BuildFailure
 from traidingbrain.risk.limits import AccountState
 
@@ -220,13 +224,21 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     services = build_default_services()
-    services.account = AccountState(
+    # Echte Historie statt einer leeren Liste, und eine echte Uhr statt 0.
+    #
+    # Vorher stand hier `recent_trades=[]`, `open_positions=[]` und
+    # `now_ms=0`. Damit lasen die drei Verlustsicherungen nichts, und die
+    # Abkuehlung rechnete ihre verbleibende Zeit gegen den 01.01.1970 --
+    # das Dashboard zeigte also ein Urteil, das nie blockieren konnte.
+    #
+    # `now_ms=0` war dabei der stillste Teil: `cooldown_ends_at` und die
+    # Fensterschnitte in `realised_today` haengen daran, und mit 0 liegt
+    # JEDER Trade ausserhalb jedes Fensters.
+    journal = JournalStore(services.config.engine.paths.data_dir / "journal.sqlite")
+    services.account = AccountState.from_history(
         equity=services.config.engine.simulation.initial_equity,
-        starting_equity_today=services.config.engine.simulation.initial_equity,
-        starting_equity_this_week=services.config.engine.simulation.initial_equity,
-        open_positions=[],
-        recent_trades=[],
-        now_ms=0,
+        history=closed_trades(journal, signature=run_signature(services.config)),
+        now_ms=SystemClock().now_ms(),
     )
 
     if args.execute and not _arm(services):

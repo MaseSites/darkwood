@@ -91,6 +91,54 @@ class AccountState:
     recent_trades: list[ClosedTrade]
     now_ms: int
 
+    @classmethod
+    def from_history(
+        cls,
+        *,
+        equity: float,
+        history: list[ClosedTrade],
+        now_ms: int,
+        open_positions: list[Position] | None = None,
+    ) -> AccountState:
+        """Den Zustand aus der Historie bauen, statt ihn zu raten.
+
+        **Warum das nötig ist.** Die zwei Stellen, die vorher einen
+        `AccountState` bauten, setzten `starting_equity_today = equity`. Der
+        Kommentar bei der Tagesprüfung unten beschreibt genau diesen Fehler:
+        gegen das aktuelle Kapital gemessen schrumpft der Freibetrag mit
+        jedem Verlust mit, und die Grenze wird nie ganz erreicht. Bei 5 %
+        Tagesdeckel und einem Konto, das schon 4 % verloren hat, bleibt der
+        Freibetrag 5 % des *gesunkenen* Standes — die Grenze läuft vor dem
+        Verlust davon.
+
+        Der richtige Startwert ist ableitbar und braucht keinen zweiten
+        Speicher: Kapital **zu Fensterbeginn** ist das heutige Kapital minus
+        dem, was im Fenster realisiert wurde.
+
+        **Die Genauigkeit, ehrlich benannt.** `history` ist bereits gefiltert
+        — nur Trades der laufenden Konfiguration, siehe
+        `journal/history.py`. `equity` enthält dagegen die Wirkung *aller*
+        Trades, auch der nicht zuordenbaren. Liegt ein nicht zuordenbarer
+        Trade im Fenster, ist der Startwert um dessen Ergebnis daneben und
+        der Freibetrag um 5 % davon. Das ist der Preis des Filters, und er
+        ist der richtige: eine Bremse, die unzuordenbare Zeilen mitzählt,
+        zählt Verlustserien, die so nie stattgefunden haben. Beide Seiten der
+        Prüfung lesen dieselbe Liste, also ist der Vergleich in sich
+        konsistent.
+        """
+        day_cutoff = now_ms - DAY_MS
+        week_cutoff = now_ms - 7 * DAY_MS
+        realised_day = sum(t.net_pnl for t in history if t.closed_ts >= day_cutoff)
+        realised_week = sum(t.net_pnl for t in history if t.closed_ts >= week_cutoff)
+        return cls(
+            equity=equity,
+            starting_equity_today=equity - realised_day,
+            starting_equity_this_week=equity - realised_week,
+            open_positions=open_positions or [],
+            recent_trades=history,
+            now_ms=now_ms,
+        )
+
     def realised_today(self) -> float:
         cutoff = self.now_ms - DAY_MS
         return sum(t.net_pnl for t in self.recent_trades if t.closed_ts >= cutoff)

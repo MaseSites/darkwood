@@ -42,6 +42,9 @@ from traidingbrain.execution.order import BybitExecutor, UnsafeConfigurationErro
 from traidingbrain.execution.reconcile import reconcile
 from traidingbrain.execution.watchdog import StopWatchdog
 from traidingbrain.history.engine import HistoryEngine
+from traidingbrain.journal.history import closed_trades
+from traidingbrain.journal.store import JournalStore
+from traidingbrain.journal.version import run_signature
 from traidingbrain.live.loop import LiveLoop, next_close
 from traidingbrain.proposals.builder import ProposalBuilder, describe
 from traidingbrain.proposals.store import ProposalStore
@@ -115,15 +118,40 @@ def main(argv: list[str] | None = None) -> int:
         else SymbolSpec(symbol=args.symbol, **OFFLINE_SPEC)
     )
 
+    # Dieselbe Datei, die papertrade.py als JOURNAL_NAME fuehrt. Die
+    # Konfiguration kennt keinen Journalpfad; er wird im Projekt
+    # herumgereicht, und eine Konfigurationsspalte dafuer waere eine
+    # groessere Aenderung als dieser Defekt.
+    journal = JournalStore(config.engine.paths.data_dir / "journal.sqlite")
+    signature = run_signature(config)
+
     def account() -> AccountState:
+        """Der Kontozustand, mit echter Historie statt einer leeren Liste.
+
+        **Was hier vorher stand, und warum es ein Defekt war.** Die drei
+        Sicherungen `max_daily_loss_pct`, `max_weekly_loss_pct` und
+        `cooldown_after_consecutive_losses` lesen alle `recent_trades`, und
+        hier stand `[]`. Sie konnten in keinem Prozess ausloesen. Dazu
+        `starting_equity_today=args.equity`, also der Freibetrag gegen das
+        AKTUELLE Kapital gemessen -- genau der Fehler, den der Kommentar bei
+        der Tagespruefung in `risk/limits.py` beschreibt.
+
+        **Kontoweit, nicht je Symbol.** `run_live.py` faehrt ein Symbol, aber
+        gegen EIN Boersenkonto, das mehrere halten kann; die Verlustdeckel
+        gelten dem Konto. Deshalb kein `symbol=`-Filter, passend zu
+        `executor.open_positions()`, das ebenfalls alles liefert.
+
+        **Gefiltert auf die laufende Signatur.** Ueber alle Zeilen gelesen
+        zaehlt die Bremse drei Konfigurationsepochen zusammen -- gemessen am
+        12.10.2026 der Unterschied zwischen zwei Konten mit Verlustserie 2
+        und keinem einzigen.
+        """
         now = SystemClock().now_ms()
-        return AccountState(
+        return AccountState.from_history(
             equity=args.equity,
-            starting_equity_today=args.equity,
-            starting_equity_this_week=args.equity,
-            open_positions=executor.open_positions() if executor else [],
-            recent_trades=[],
+            history=closed_trades(journal, signature=signature),
             now_ms=now,
+            open_positions=executor.open_positions() if executor else [],
         )
 
     loop = LiveLoop(
