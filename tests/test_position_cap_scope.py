@@ -6,21 +6,25 @@ Grenze nirgends durchsetzt — gemessener Höchststand fünf gleichzeitig offene
 Positionen über die zwölf Papierkonten. Daraus folgte der Vorschlag, die
 Einstellung entweder portfolioweit zu erzwingen oder sie zu löschen.
 
-**Beides wäre falsch gewesen**, und zwar aus entgegengesetzten Gründen:
+*Löschen* wäre eine Sicherheitsregression gewesen und wäre es weiter: die
+Einstellung ist auf dem Pfad, der Geld berührt, aktiv — `RiskLimits.check`
+bekommt dort die echten offenen Positionen des Börsenkontos.
 
-* *Löschen* ist eine Sicherheitsregression. Die Einstellung ist auf dem
-  einzigen Pfad, der Geld berührt, aktiv — `RiskLimits.check` bekommt dort
-  die echten offenen Positionen des Börsenkontos.
-* *Portfolioweit erzwingen* poolt zwölf Konten, die `live/paper.py`
-  absichtlich getrennt hält, damit der Vorwärtslauf mit den Backtests
-  vergleichbar bleibt — und vergäbe den Platz nach Listenposition statt nach
-  Signalqualität.
+*Portfolioweit erzwingen* wurde damals abgelehnt, weil es zwölf Konten
+poolen würde, die `live/paper.py` absichtlich getrennt hielt.
 
-Die Einstellung ist eine **wahre, durchgesetzte Aussage über ein
-Börsenkonto, das mehrere Symbole halten kann**. Dass sie im Papierhandel
-wirkungslos ist, folgt aus der Struktur: zwölf getrennte Konten mit je einem
-Einplatz-Broker. Ein Kommentar kann das behaupten; dieser Test hält es fest,
-damit die nächste Aufräumaktion nicht wieder bei „tot, also weg" landet.
+**Und am 13.10.2026 ist genau dieses Argument weggefallen.** Die zwölf
+Konten wurden auf Wunsch zu einem zusammengelegt. Damit sind zwölf Symbole
+in einer Kasse genau der Fall, für den die Einstellung geschrieben wurde,
+und sie greift seit demselben Tag portfolioweit — `live/book.py` führt das
+Buch, `tests/test_open_book.py` hält das fest.
+
+Was in dieser Datei bleibt, ist der Teil, der davon unberührt ist: die
+Einstellung ist eine **wahre, durchgesetzte Aussage über ein Börsenkonto,
+das mehrere Symbole halten kann**, und ein einzelner `SimBroker` hat
+strukturell einen Platz. Das Zweite ist der Grund, warum die Einstellung
+*innerhalb* eines Papierkontos nie etwas ändern konnte — nicht mehr und
+nicht weniger.
 """
 
 from __future__ import annotations
@@ -133,7 +137,12 @@ def test_the_shipped_configuration_carries_a_finite_limit() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Warum sie im Papierhandel strukturell wirkungslos ist
+# Warum sie INNERHALB eines Papierkontos strukturell wirkungslos ist
+#
+# Das gilt weiter und ist nicht dasselbe wie "im Papierhandel wirkungslos":
+# seit dem 13.10.2026 greift der Deckel ueber die Summe der Symbole, siehe
+# tests/test_open_book.py. Was er nie konnte und nie koennen wird, ist das
+# Verhalten eines EINZELNEN Brokers aendern.
 # --------------------------------------------------------------------------- #
 
 
@@ -159,13 +168,18 @@ def test_one_broker_holds_at_most_one_position() -> None:
     assert broker.position is not None
 
 
-def test_no_legal_value_of_the_setting_can_change_a_paper_account() -> None:
+def test_no_legal_value_of_the_setting_can_change_a_single_broker() -> None:
     """Der kleinste erlaubte Wert ist 1, und 1 IST die strukturelle Grenze.
 
-    Damit ist bewiesen, was der Kommentar in `config/risk.yaml` behauptet:
-    im Papierhandel ist die Einstellung wirkungslos, und das ist kein Defekt,
-    sondern eine Eigenschaft der Architektur. Ein Wert unter 1 -- der einzige,
-    der etwas aendern wuerde -- ist von der Konfiguration verboten.
+    Also kann keine Obergrenze das Verhalten EINES Brokers aendern; ein Wert
+    unter 1 waere der einzige, der etwas aendern wuerde, und den verbietet
+    die Konfiguration.
+
+    Bis zum 13.10.2026 wurde daraus geschlossen, die Einstellung sei im
+    ganzen Papierhandel wirkungslos. Dieser Schluss war an zwoelf getrennte
+    Konten gebunden und ist mit der geteilten Kasse weggefallen -- ueber die
+    Summe der Symbole greift sie sehr wohl. Der Test selbst behauptet nur
+    noch das, was er zeigt.
     """
     shipped = load_config().risk.limits
     assert shipped.model_copy(update={"max_open_positions": 1}).max_open_positions == 1
@@ -175,13 +189,18 @@ def test_no_legal_value_of_the_setting_can_change_a_paper_account() -> None:
         )
 
 
-def test_the_paper_path_does_not_consult_the_limit_at_all() -> None:
+def test_assess_itself_knows_nothing_about_the_account() -> None:
     """`sim/plan.py:assess` nimmt kein `open_positions` und keine Historie.
 
-    Gepruefter Zustand, nicht Absicht: solange diese Signatur so aussieht,
-    kann der Papierpfad `RiskLimits.check` nicht aufrufen. Aendert sich das,
-    faellt dieser Test und die Entscheidung gehoert neu getroffen -- statt
-    dass eine Grenze unbemerkt anfaengt oder aufhoert zu greifen.
+    Das ist die Arbeitsteilung, und sie ist absichtlich: `assess` urteilt
+    ueber ein Signal, die Kontogrenzen urteilen ueber das Konto. Darum ruft
+    `live/paper.py:_blocked_by_limits` `RiskLimits.check` getrennt auf, NACH
+    `assess`, und nicht aus ihm heraus.
+
+    Der frueherere Name dieses Tests lautete "der Papierpfad fragt die
+    Grenze ueberhaupt nicht", und das war bis zum 13.10.2026 wahr. Es ist
+    jetzt falsch -- aber die Signatur von `assess` ist unveraendert, und
+    genau die haelt dieser Test fest.
     """
     parameters = set(inspect.signature(assess).parameters)
     assert "equity" in parameters

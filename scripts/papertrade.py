@@ -56,6 +56,7 @@ from traidingbrain.storage.singleton import AlreadyRunningError, SingleInstance
 
 #: Damit das Alter eines Fehlschlags in Stunden statt in 300 Minuten steht.
 MINUTES_PER_HOUR = 60.0
+from traidingbrain.live.book import OpenBook
 from traidingbrain.live.paperstate import PaperStateStore
 from traidingbrain.risk.limits import KillSwitch, RiskLimits
 from traidingbrain.sim.broker import _Ledger
@@ -111,6 +112,16 @@ def build_traders(
             rate_limit_ms=config.engine.exchange.rate_limit_ms,
         )
 
+    # Das Buch des gepoolten Kontos. Hier gebaut, weil nur dieser Aufrufer die
+    # Liste aller Haendler kennt -- jeder einzelne kennt nur sich selbst, und
+    # genau daran konnte die Positionsgrenze nicht ausloesen.
+    #
+    # Nur bei geteilter Kasse. Unter `account` sind es zwoelf getrennte Konten,
+    # und dann ist "wie viele Positionen haelt das Konto" eine Frage ueber
+    # eines davon -- die ein Einplatz-Broker strukturell mit 0 oder 1
+    # beantwortet, ohne Buch.
+    book = OpenBook() if shared is not None else None
+
     traders: list[PaperTrader] = []
     for symbol in symbols:
         spec = _spec(source, symbol)
@@ -140,8 +151,17 @@ def build_traders(
                 # jede weitere Eroeffnung stoppt, ohne den Haendler zu toeten.
                 limits=limits,
                 ledger=shared,
+                # Die vierte Grenze, die bis heute auf diesem Pfad nicht
+                # ausloesen konnte: die Zahl gleichzeitig offener Positionen.
+                book=book,
             )
         )
+    if book is not None:
+        for trader in traders:
+            book.attach(trader.symbol, trader.broker, trader.spec)
+        print(f"  Positionsgrenze portfolioweit: Deckel "
+              f"{config.risk.limits.max_open_positions}, "
+              f"{len(book)} Symbole im Buch", flush=True)
     return traders, source
 
 

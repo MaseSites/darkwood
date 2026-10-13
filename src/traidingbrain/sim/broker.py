@@ -195,10 +195,55 @@ class Fill:
 
 @dataclass
 class _Ledger:
+    """Der Kontostand, und was davon schon gebunden ist.
+
+    **Warum `reserved` existiert.** Bis zum 13.10.2026 wurde `equity` an zwei
+    Stellen GELESEN (`submit`, `_try_fill`: passt das Margin?) und an genau
+    einer VERAENDERT (`_close`: `+= net`). Nichts zog beim Eroeffnen etwas ab.
+
+    Bei einer eigenen Kasse je Broker war das richtig und unsichtbar: ein
+    SimBroker hat strukturell einen Platz, und beide Pruefstellen sind nur
+    erreichbar, wenn nichts offen ist -- `reserved` ist dort an jedem
+    Pruefpunkt null, und das Verhalten bleibt Byte fuer Byte dasselbe.
+
+    Mit der geteilten Kasse vom 13.10.2026 ist es ein Fehler. Zwoelf Broker
+    fragen nacheinander "passt mein Margin in die 12.075?", und zwoelf
+    koennen Ja sagen, weil niemand subtrahiert. Gemessen an den Stopweiten
+    der 26 Vorwaertstrades:
+
+        zwoelf gleichzeitig, Median-Stop   je  791  ->   9.496 von 12.076
+        zwoelf gleichzeitig, engster Stop  je 1.733 ->  20.796 von 12.076
+
+    Die untere Zeile ist auf einem echten Boersenkonto ein Margin Call. Ohne
+    diese Spalte war sie hier erlaubt.
+    """
+
     equity: float
     peak_equity: float
+    #: Margin offener Positionen. Gebunden beim Fuellen, frei beim Schliessen.
+    #:
+    #: Schwebende Orders zaehlen NICHT mit. Sie liegen nicht wirklich im
+    #: Orderbuch der Boerse (`fill_on_touch` ist aus, und der ganze
+    #: Ruheorder-Modell-Teil ist an anderer Stelle als zu optimistisch
+    #: dokumentiert), und das Reservieren einer schwebenden Order wuerde ihr
+    #: eigenes Margin beim Fuellen doppelt zaehlen.
+    reserved: float = 0.0
     fills: list[Fill] = field(default_factory=list)
     equity_curve: list[tuple[int, float]] = field(default_factory=list)
+
+    @property
+    def available(self) -> float:
+        """Was noch belegbar ist. Niemals negativ -- das waere eine Rechnung,
+        die sich selbst erlaubt, was sie gerade verboten hat."""
+        return max(0.0, self.equity - self.reserved)
+
+    def reserve(self, margin: float) -> None:
+        self.reserved += margin
+
+    def release(self, margin: float) -> None:
+        # Nie unter null, auch wenn eine wiederhergestellte Position ein
+        # Margin mitbringt, das diese Kasse nie gebunden hat.
+        self.reserved = max(0.0, self.reserved - margin)
 
 
 class SimBroker:
@@ -345,7 +390,10 @@ class SimBroker:
             self.rejected_entries += 1
             return False
 
-        if qty * entry.limit_price / entry.leverage > self.ledger.equity:
+        # Gegen das VERFUEGBARE Kapital, nicht gegen den Kontostand. Bei einer
+        # eigenen Kasse ist das derselbe Wert -- hierher kommt man nur, wenn
+        # nichts offen ist, also ist nichts gebunden.
+        if qty * entry.limit_price / entry.leverage > self.ledger.available:
             self.rejected_entries += 1
             return False
 
@@ -406,7 +454,15 @@ class SimBroker:
 
         notional = pending.qty * price
         margin = notional / pending.leverage
-        if margin > self.ledger.equity:
+        # Die Stelle, an der die geteilte Kasse die Ueberziehung ablehnt.
+        #
+        # Zwoelf Broker fuellen in derselben Minute hintereinander; der
+        # dreizehnte Franken ist nicht da, und ohne diese Pruefung wuerde er
+        # trotzdem ausgegeben. Dass die Reihenfolge innerhalb des Zyklus
+        # entscheidet, WER noch hineinpasst, ist eine echte Eigenschaft eines
+        # gepoolten Kontos und keine, die man wegrechnen kann -- sie wird in
+        # `rejected_entries` gezaehlt und ist damit sichtbar.
+        if margin > self.ledger.available:
             self.pending = None
             self.rejected_entries += 1
             return
@@ -436,6 +492,8 @@ class SimBroker:
             snapshot_hash=pending.snapshot_hash,
             proposal_id=pending.proposal_id,
         )
+        # Jetzt ist das Geld gebunden, und erst jetzt. Freigegeben in `_close`.
+        self.ledger.reserve(margin)
         self.pending = None
 
     def _entry_fill_price(
@@ -600,6 +658,11 @@ class SimBroker:
             net = gross - fees + position.funding_paid
 
         self.ledger.equity += net
+        # Und freigeben, was die Eroeffnung gebunden hat. Bei Liquidation ist
+        # `net` genau `-margin`: die Kasse verliert das Margin und gibt es
+        # gleichzeitig frei, das Verfuegbare bleibt also unveraendert, und das
+        # ist richtig -- das Geld ist weg, nicht gebunden.
+        self.ledger.release(position.margin)
         fill = Fill(
             proposal_id=position.proposal_id,
             snapshot_hash=position.snapshot_hash,

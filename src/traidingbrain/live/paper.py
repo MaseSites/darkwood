@@ -53,6 +53,7 @@ from traidingbrain.journal.record import JournalEntry, Source, TradeReason
 from traidingbrain.journal.signals import Action, SignalRecord, SignalStore
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.journal.version import code_version, decision_version
+from traidingbrain.live.book import OpenBook
 from traidingbrain.live.paperstate import PaperState, PaperStateStore, Tally
 from traidingbrain.risk.limits import AccountState, RiskLimits
 from traidingbrain.sim.broker import Fill, OpenPosition, SimBroker, _Ledger
@@ -207,6 +208,7 @@ class PaperTrader:
         run_signature: str = "",
         limits: RiskLimits | None = None,
         ledger: _Ledger | None = None,
+        book: OpenBook | None = None,
     ) -> None:
         self.symbol = symbol
         self.config = config
@@ -230,6 +232,19 @@ class PaperTrader:
         #: Verlustserie in keinem Prozess ausloesen, obwohl die
         #: Konfiguration sie fuehrt.
         self.limits = limits
+
+        #: Das Buch des gepoolten Kontos, oder None.
+        #:
+        #: Ohne Buch kennt ein Haendler nur sich selbst, und genau daran
+        #: scheiterte die Positionsgrenze: `AccountState.from_history` wurde
+        #: ohne `open_positions` gerufen, `risk/limits.py` setzte eine leere
+        #: Liste ein, und die beiden Zaehlpruefungen rechneten `0 >= 2` und
+        #: `0 >= 1`. Sie konnten nicht ausloesen -- drei der vier
+        #: Kontogrenzen griffen, nicht vier.
+        #:
+        #: Bleibt optional, weil der Golden-Tape und `test_papertrade.py`
+        #: ohne Buch fahren und sich dadurch nicht aendern duerfen.
+        self.book = book
         self.stats = PaperStats()
 
         #: `ledger` gesetzt heisst: geteilte Kasse. Dann bemisst sich jede
@@ -738,11 +753,21 @@ class PaperTrader:
     def _blocked_by_limits(self, now_ms: int) -> str | None:
         """Was die Kontogrenzen zu diesem Augenblick sagen, oder None.
 
-        **Der Geltungsbereich ist das Einzelkonto.** Jeder `PaperTrader` ist
-        ein Konto mit einem Symbol, und die Historie wird mit `symbol=`
-        geholt. Das ist die konservative Lesart und die, die mit den
-        Backtests vergleichbar bleibt; eine Portfoliogrenze wuerde zwoelf
-        Konten poolen, die `live/paper.py` absichtlich getrennt haelt.
+        **Der Geltungsbereich der Verlustgrenzen ist das Einzelsymbol.** Die
+        Historie wird mit `symbol=` geholt, und das bleibt die konservative
+        Lesart: ein Symbol mit drei Verlusten in Folge kuehlt ab, auch wenn
+        die anderen elf gewonnen haben.
+
+        **Der Geltungsbereich der Positionsgrenzen ist das Konto.** Seit dem
+        13.10.2026 ziehen alle zwoelf aus einer Kasse, also ist "wie viele
+        Positionen sind offen" eine Frage ueber das Konto und nicht ueber ein
+        Symbol. Die Antwort kommt aus `self.book`. Ohne Buch stand hier eine
+        leere Liste, und `0 >= 2` konnte nicht ausloesen -- der Defekt, den
+        das Audit vom 13.10.2026 gefunden hat.
+
+        Dass beide Geltungsbereiche verschieden sind, ist Absicht und nicht
+        Nachlaessigkeit: eine Verlustserie ist eine Aussage ueber ein Symbol,
+        ein belegter Platz eine ueber das Konto.
 
         **Die Historie ist auf die laufende Signatur gefiltert.** Ueber alle
         Zeilen gelesen zaehlt die Bremse drei Konfigurationsepochen zusammen
@@ -761,6 +786,7 @@ class PaperTrader:
                 self.journal, signature=self.run_signature, symbol=self.symbol
             ),
             now_ms=now_ms,
+            open_positions=self.book.positions() if self.book is not None else None,
         )
         verdict = self.limits.check(state, symbol=self.symbol)
         return None if verdict.allowed else verdict.reason

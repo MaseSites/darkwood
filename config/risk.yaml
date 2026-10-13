@@ -41,9 +41,42 @@ sizing:
   # heisst zwoelffaches Ergebnis in BEIDE Richtungen. Sieben Verluste in
   # Folge -- die gemessene Serie -- sind damit 7 % Rueckgang statt 0,6 %.
   #
-  # Vorbedingung, erfuellt am 13.10.2026: die vier Kontogrenzen unten
-  # konnten bis dahin in keinem Prozess ausloesen. Bei 10 USDT Risiko war
-  # das belanglos, bei 121 nicht.
+  # **Die Vorbedingung, und was davon am Morgen des 13.10.2026 wirklich
+  # erfuellt war.** Hier stand: "die vier Kontogrenzen unten konnten bis
+  # dahin in keinem Prozess ausloesen", und das war zu drei Vierteln wahr.
+  # Ein Audit am selben Tag hat es nachgerechnet:
+  #
+  #   Kill-Switch          scharf
+  #   Tagesverlust         scharf
+  #   Wochenverlust        scharf
+  #   Abkuehlung           scharf
+  #   Zahl der Positionen  TOT -- live/paper.py rief
+  #                        AccountState.from_history ohne `open_positions`,
+  #                        risk/limits.py setzte eine leere Liste ein, und
+  #                        die Pruefungen rechneten `0 >= 2` und `0 >= 1`.
+  #
+  # Also drei von vier, und die Zahl stand in genau der Datei, die die
+  # Verzwoelffachung begruendet. Behoben am Nachmittag des 13.10.2026:
+  # `live/book.py` fuehrt das Buch des gepoolten Kontos, `papertrade.py`
+  # haengt alle zwoelf Symbole ein, und der Deckel unten greift jetzt.
+  #
+  # **Und ein zweiter Posten, der nicht vorhergesagt war: Margin wurde nicht
+  # reserviert.** `ledger.equity` wurde beim Pruefen gelesen und nur beim
+  # Schliessen veraendert; nichts zog beim Eroeffnen etwas ab. Bei zwoelf
+  # getrennten Kassen unsichtbar und richtig, bei einer geteilten ein
+  # Fehler: zwoelf Broker fragten nacheinander "passt mein Margin in die
+  # 12.075?", und zwoelf konnten Ja sagen. An den gemessenen Stopweiten der
+  # 26 Vorwaertstrades:
+  #
+  #   zwoelf gleichzeitig, Median-Stop   je   791  ->   9.496 von 12.076
+  #   zwoelf gleichzeitig, engster Stop  je 1.733  ->  20.796 von 12.076
+  #
+  # Die untere Zeile ist auf einem echten Boersenkonto ein Margin Call.
+  # `_Ledger.reserved` lehnt sie jetzt ab (`sim/broker.py`), und die
+  # Mutationspruefung reproduziert genau die 20.796, wenn man die
+  # Reservierung wieder entfernt.
+  #
+  # Bei 10 USDT Risiko war beides belanglos, bei 121 nicht.
   #
   # Rueckgaengig: hier `account` eintragen und den Haendler neu starten. Die
   # geteilte Kasse bleibt in `data/paper.sqlite` stehen, und `run_signature`
@@ -119,28 +152,61 @@ leverage:
 
 limits:
   # Gilt fuer EIN Boersenkonto, das mehrere Symbole gleichzeitig halten kann.
-  # Dieses Konto existiert auf genau einem Pfad: scripts/run_live.py gibt die
-  # offenen Positionen an RiskLimits.check, und execution/order.py liefert
-  # dort jede Position, die das Konto haelt. Dort ist die Grenze scharf.
   #
-  # **Im Papierhandel ist sie wirkungslos, und das ist kein Defekt.** Der
-  # Papierlauf fuehrt zwoelf getrennte Konten mit je einem SimBroker, und ein
-  # SimBroker hat strukturell einen Platz (sim/broker.py, live/paper.py:
-  # `is_flat` ist Vorbedingung jeder Eroeffnung). Der kleinste erlaubte Wert
-  # ist 1 (settings.py, `Field(ge=1)`), also kann KEIN Wert dieser
-  # Einstellung das Papierverhalten aendern.
+  # **Seit dem 13.10.2026 ist der Papierhandel genau so ein Konto, und damit
+  # gilt die Grenze auch dort.** Der Text, der hier bis dahin stand, war
+  # richtig, als er geschrieben wurde, und mit der Zusammenlegung der Kassen
+  # am selben Tag falsch geworden. Er sagte zweierlei:
   #
-  # Das Audit vom 10.10.2026 hat das als "toten Konfigurationstext" gelesen
-  # und Loeschen erwogen. Loeschen waere eine echte Sicherheitsregression:
-  # die Einstellung ist auf dem einzigen Pfad, der Geld beruehrt, aktiv.
+  #   "Im Papierhandel ist sie wirkungslos, und das ist kein Defekt" -- weil
+  #   zwoelf getrennte Konten mit je einem Einplatz-Broker keinen Wert dieser
+  #   Einstellung spueren koennen. Stimmte. Gilt nicht mehr.
   #
-  # Was sie NICHT ist: eine Aussage ueber die Summe der zwoelf Papierkonten.
-  # Dort waere die faktische Grenze zwoelf, und gemessener Hoechststand ist
-  # fuenf gleichzeitig (08.10.2026 20:02 UTC). Eine Portfoliogrenze wurde
-  # geprueft und verworfen -- sie poolt Konten, die live/paper.py absichtlich
-  # getrennt haelt, damit der Vorwaertslauf mit den Backtests vergleichbar
-  # bleibt, und sie vergaebe den Platz nach Listenposition statt nach
-  # Signalqualitaet. Siehe audit/RISIKO_AUDIT_NACHPRUEFUNG.md, Abschnitt 5.
+  #   "Eine Portfoliogrenze wurde geprueft und verworfen -- sie poolt Konten,
+  #   die live/paper.py absichtlich getrennt haelt." Diese Trennung gibt es
+  #   seit heute Vormittag nicht mehr; sie wurde auf Wunsch aufgegeben. Das
+  #   Argument ist mit ihr weggefallen.
+  #
+  # Das Audit vom 10.10.2026 hat die Einstellung als "toten
+  # Konfigurationstext" gelesen und Loeschen erwogen. Loeschen waere eine
+  # Sicherheitsregression gewesen und ist es weiter.
+  #
+  # **Was den Deckel ueberhaupt noetig macht.** Die Tagesgrenze unten zaehlt
+  # nur REALISIERTE Verluste. Sie kann nicht greifen, solange die Positionen
+  # offen sind. Was gleichzeitig offenes Risiko begrenzt, ist allein die Zahl
+  # der Plaetze -- ohne Deckel koennen zwoelf Positionen a 1 % gleichzeitig
+  # laufen, also 12 % des Kontos auf einmal, in einem Markt, dessen Beta zu
+  # BTC bei 1.0 gemessen wurde. Mehr als die Wochengrenze, an einem Tag.
+  #
+  # **Die Zahl ist NICHT geaendert worden, und das ist eine Entscheidung.**
+  # Die Arithmetik, die zur Tagesgrenze passt, waere
+  # floor(max_daily_loss_pct / risk_pct) = floor(0.05 / 0.010) = 5. Sie steht
+  # hier als Rechnung und nicht als Wert: 2 ist der Wert, unter dem alles
+  # Bisherige gemessen wurde, und er auf 5 zu heben waere eine Lockerung
+  # einer Schutzregel auf dem Pfad, der echtes Geld beruehrt. Das ist keine
+  # Aenderung, die ein Audit-Nachmittag nebenbei macht.
+  #
+  # **Was der Deckel kostet, gemessen (E13, scripts/study_concurrency.py,
+  # 7.335 Replay-Trades ueber zwoelf Maerkte, Hoechststand 12 gleichzeitig).**
+  # Auswahlregel vorab festgelegt und arithmetisch, nicht nach dem Ergebnis:
+  #
+  #   Deckel  genommen  abgelehnt  Quote   R/Trade   R TOTAL
+  #        2     3.109      4.226  57.6%   +0.0099     +30.9
+  #        5     5.694      1.641  22.4%   -0.0029     -16.8
+  #       12     7.335          0   0.0%   -0.0129     -94.8
+  #
+  # Und sofort die Einschraenkung, damit die Tabelle nicht als Edge gelesen
+  # wird: die Differenz zwischen Deckel 5 und keinem Deckel liegt bei
+  # korrigiertem Niveau (99.923 %, 65 angemeldete Vergleiche) in
+  # [-0.099; +0.125] R und enthaelt die Null. Der Deckel ist NICHT als
+  # Verbesserung der Erwartung belegt. Er ist eine Schutzregel, und nur als
+  # solche wird er gesetzt.
+  #
+  # Der gemessene Hoechststand VOR dem Deckel war fuenf gleichzeitig
+  # (08.10.2026 20:02 UTC, ADA/AVAX/BNB/BTC/DOT) -- der Vorwaertslauf wird
+  # also sichtbar weniger Trades nehmen als bisher. Das ist der Preis und er
+  # steht hier, damit die sinkende Trade-Zahl nicht spaeter als Defekt
+  # gesucht wird.
   max_open_positions: 2
   max_positions_per_symbol: 1
   max_daily_loss_pct: 0.05

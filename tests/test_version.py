@@ -36,7 +36,19 @@ def _stub() -> SimpleNamespace:
             timeframes=SimpleNamespace(signal=SimpleNamespace(value="M15")),
         ),
         risk=SimpleNamespace(
-            limits=SimpleNamespace(max_cost_fraction_of_risk=0.15),
+            limits=SimpleNamespace(
+                max_cost_fraction_of_risk=0.15,
+                # Und seit dem Nachmittag des 13.10. auch der Deckel auf
+                # gleichzeitig offene Positionen. Derselbe Grund: er
+                # entscheidet jetzt, welche Trades ueberhaupt entstehen, und
+                # eine Verhaltensaenderung ohne Spur in der Signatur hat die
+                # Vorwaertsstichprobe schon einmal von 18 auf 11 Trades
+                # schrumpfen lassen.
+                #
+                # Der Wert ist der historische Anker (`_CAP_ANCHOR`), damit
+                # die eingefrorene Zeichenkette unten keinen Zusatz traegt.
+                max_open_positions=2,
+            ),
             # Seit dem 13.10. liest die Signatur auch die
             # Groessenbemessung: `account` heisst "jedes Symbol gegen sein
             # eigenes Konto", `portfolio` heisst "alle gegen einen Topf",

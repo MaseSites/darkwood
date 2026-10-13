@@ -105,6 +105,19 @@ FLOOR_SWEEP_RULES = 2
 #: Ablehnungen identisch, weil die Kostenregel Maut mit riskiertem Betrag
 #: vergleicht und beide mit dem Konto skalieren. Zwei Niveaus waeren derselbe
 #: Hash zweimal.
+#:
+#: **Und daraus folgt eine Blindstelle, die am 13.10.2026 wichtig wurde.**
+#: Weil der Hash gegenueber dem Kapitalniveau invariant ist, kann dieser Test
+#: die Umstellung von `sizing.basis: account` auf `portfolio` NICHT sehen --
+#: die Groesse jedes Trades hat sich verzwoelffacht, 10,06 auf 120,76 USDT
+#: Risiko, und der Hash waere derselbe. Der Test friert die GESTALT der
+#: Entscheidungen ein, nicht ihre GROESSE.
+#:
+#: Das ist Absicht und keine Luecke, solange jemand weiss, wo die Groesse
+#: geprueft wird: `tests/test_shared_ledger.py` (traegt das Margin die
+#: Position?) und `tests/test_sizing_basis.py` (wird die Kasse beim
+#: Umschalten richtig gebildet?). Hier steht es, weil die Invarianz sonst
+#: wie Abdeckung aussieht.
 EQUITY = 1000.0
 
 #: Felder, die NICHT in den Hash gehen, mit Grund.

@@ -172,7 +172,36 @@ def _books_that_disagree() -> object:
     book = sqlite3.connect(f"file:{paper}?mode=ro", uri=True)
     ledger = sqlite3.connect(f"file:{JOURNAL}?mode=ro", uri=True)
     try:
-        start = load_config(ROOT / "config").engine.simulation.initial_equity
+        config = load_config(ROOT / "config")
+        start = config.engine.simulation.initial_equity
+        pooled = config.risk.sizing.basis == "portfolio"
+
+        if pooled:
+            # Eine Kasse, also EIN Abgleich.
+            #
+            # **Und die Formel musste nachgezogen werden.** Unter `portfolio`
+            # haelt jede der zwoelf Kontozeilen den GETEILTEN Stand, nicht
+            # ihren eigenen. Die Zeilenpruefung von vorher verglich dann
+            # 12.075 gegen 1.006 und meldete zwoelf Abweichungen statt
+            # einer -- der Waisen-Trade war darin nicht mehr zu sehen,
+            # sondern nur noch Rauschen aus der falschen Formel. Das hat der
+            # Waechter am 13.10. selbst gemeldet, und er hatte recht: eine
+            # Zahl, die nicht mehr stimmt, ist nicht halb richtig.
+            #
+            # Richtig ist: Startkapital aller Konten plus die Summe ALLER
+            # Live-Trades gegen die geteilte Kasse. Gemessen ergibt das
+            # +55,0481 -- die Waise, auf vier Dezimalstellen. Derselbe
+            # Defekt, eine Pruefung statt zwoelf.
+            row = book.execute("SELECT equity FROM portfolio WHERE id = 1").fetchone()
+            if row is None:
+                return None
+            count = book.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+            total = ledger.execute(
+                "SELECT COALESCE(SUM(net_pnl), 0.0) FROM trades WHERE source='live'"
+            ).fetchone()[0]
+            expected = start * int(count) + float(total)
+            return 1 if abs(float(row[0]) - expected) > BOOK_TOLERANCE else 0
+
         sums = {
             symbol: float(total)
             for symbol, total in ledger.execute(
@@ -216,8 +245,9 @@ FACTS: tuple[Fact, ...] = (
     ),
     Fact(
         "Dateien im Live-Entscheidungspfad",
-        "journal/version.py und DIE_VORWAERTSSTICHPROBE nennen 58; 56 vor dem 13.10.",
-        _decision_closure, 58, fixed=True,
+        "journal/version.py und DIE_VORWAERTSSTICHPROBE nennen 59; 56 am Morgen "
+        "des 13.10., 58 am Mittag, 59 seit live/book.py.",
+        _decision_closure, 59, fixed=True,
     ),
     Fact(
         "aktive Setups",
@@ -232,7 +262,7 @@ FACTS: tuple[Fact, ...] = (
     Fact(
         "total_comparisons",
         "die Mächtigkeitsrechnungen korrigieren auf diese Zahl",
-        _comparisons, 55, fixed=False,
+        _comparisons, 65, fixed=False,
     ),
     Fact(
         "verunreinigte Live-Signale",
@@ -241,7 +271,8 @@ FACTS: tuple[Fact, ...] = (
     ),
     Fact(
         "Konten, deren Buch nicht stimmt",
-        "BTCUSDT traegt einen Trade aus einer zerstoerten Generation",
+        "BTCUSDT traegt einen Trade aus einer zerstoerten Generation; unter "
+        "geteilter Kasse EIN Abgleich statt zwoelf, Luecke +55,0481",
         _books_that_disagree, 1, fixed=True,
     ),
 )

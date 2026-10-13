@@ -51,6 +51,19 @@ UNKNOWN = "unknown"
 
 _GIT_TIMEOUT_S = 5
 
+#: Der Deckelwert, unter dem die vorhandenen Zeilen geschrieben wurden.
+#:
+#: Kein Vorgabewert des Modells -- `LimitsConfig.max_open_positions` hat
+#: keinen, die Zahl muss in der YAML-Datei stehen. Dies ist der historische
+#: Anker: 2 ist der Wert, der galt, als die 12.843 Zeilen im Speicher
+#: entstanden. Weicht die Konfiguration davon ab, bekommt die Signatur einen
+#: Zusatz, und die alten Zeilen verwaisen nicht.
+#:
+#: Das ist eine Aussage ueber die Vergangenheit und keine Politik. Wer den
+#: Deckel fuer richtig oder falsch haelt, aendert `config/risk.yaml`, nicht
+#: diese Zeile.
+_CAP_ANCHOR = 2
+
 
 def run_signature(config: object, *, max_bars: int | None = None, shadow: bool = False) -> str:
     """The configuration a run was made under, as one comparable string.
@@ -81,10 +94,27 @@ def run_signature(config: object, *, max_bars: int | None = None, shadow: bool =
     # Zeilen, die der Speicher unter der alten Signatur haelt, nicht
     # verwaisen. Dieselbe Begruendung wie bei `bars` und `shadow`.
     basis = ("|portfolio" if risk.sizing.basis == "portfolio" else "")
+    # Der Deckel auf gleichzeitig offene Positionen.
+    #
+    # Er gehoert hierher, seit er ueberhaupt ausloesen kann. Bis zum
+    # 13.10.2026 war er im Papierhandel wirkungslos -- zwoelf getrennte Konten
+    # mit je einem Einplatz-Broker spueren keinen Wert dieser Einstellung --
+    # und seit dem Buch des gepoolten Kontos entscheidet er, welche Trades
+    # ueberhaupt entstehen.
+    #
+    # Ohne diese Spur waere es genau der Fehler, der die Vorwaertsstichprobe
+    # schon einmal von 18 auf 11 Trades hat schrumpfen lassen: eine
+    # Konfigurationsaenderung, die das Verhalten aendert und keine Spur
+    # hinterlaesst, sodass die Zugehoerigkeit nur aus der Git-Historie zu
+    # erschliessen ist. `decision_version` faengt das NICHT -- der bewegt sich
+    # bei Codeaenderungen, nicht bei einer Zahl in der YAML-Datei.
+    cap = "" if risk.limits.max_open_positions == _CAP_ANCHOR else (
+        f"|cap{risk.limits.max_open_positions}"
+    )
     return (
         f"{engine.simulation.initial_equity}|{engine.setups.enabled}|"
         f"{risk.limits.max_cost_fraction_of_risk}|{engine.timeframes.signal.value}"
-        f"|{LEDGER_SCHEMA}{basis}{bars}{shade}"
+        f"|{LEDGER_SCHEMA}{basis}{cap}{bars}{shade}"
     )
 
 
@@ -210,7 +240,7 @@ def decision_version() -> str:
       nur ein Bericht geschrieben wurde.
 
     Zu grob und zu fein. Dieser Stempel liegt dazwischen: er hasht den
-    Quelltext der 58 Dateien, die der Live-Entscheidungspfad erreicht, ohne
+    Quelltext der 59 Dateien, die der Live-Entscheidungspfad erreicht, ohne
     Kommentare, Docstrings und Formatierung. Ein Commit, der einen Bericht
     schreibt, bewegt ihn nicht. Ein Commit, der eine Setup-Schwelle ändert,
     bewegt ihn — und `run_signature` hätte das nicht gesehen.

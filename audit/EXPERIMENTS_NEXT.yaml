@@ -43,10 +43,17 @@ meta:
   # Die Zahl, auf die korrigiert wird. Summe der `comparisons` aller Arme unten
   # plus die bereits gelesenen Zellen der Vorgaenger-Suche, soweit dieselbe
   # Frage betroffen ist.
-  total_comparisons: 61
+  total_comparisons: 65
   correction: >-
-    Bonferroni auf 55 Vergleiche, also Schwelle 0.05/55 = 0.00091 und ein
-    99.909%-Intervall. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
+    Bonferroni auf `total_comparisons` Vergleiche. Bei 65: Schwelle
+    0.05/65 = 0.00077 und ein 99.923%-Intervall.
+
+    Der Text nannte bis zum 13.10.2026 die Zahl 55, waehrend darueber 61
+    stand -- stehengeblieben bei 55 -> 58 -> 61. Die Zahl steht jetzt nur
+    noch an EINER Stelle, damit sie nicht wieder auseinanderlaufen kann.
+    Einzelne Studien korrigieren weiterhin auf die Zahl, die zu ihrer Zeit
+    galt (46, 48, 52, 58); das unterkorrigiert die aelteren und ist hier
+    vermerkt statt stillschweigend. Holm und gemeinsame Resampling-Tests (SPA/StepM) sind als
     angemeldete Sensitivitaet erlaubt, nicht als Ersatz. Sie werden zusaetzlich
     berichtet, nicht anstelle.
 
@@ -1405,6 +1412,58 @@ experiments:
         sie als "H1 (erschlossen)" und verweigert jede Replikation ueber zwei
         Kadenzen. Der Runner schreibt die Kadenz ab Commit 6712704 je Datei
         UND je Eintrag.
+  - id: E13
+    title: "Der Deckel auf gleichzeitig offene Positionen, auf EINEM Konto"
+    priority: 1
+    cells: 8
+    comparisons: 4
+    arms:
+      - id: E13.1
+        name: "Deckel 1 bis 12 gegen kein Deckel, Replay-Population aller zwoelf Maerkte"
+    auswahlregel_vorab: >-
+      floor(max_daily_loss_pct / risk_pct je Trade) = floor(0.05 / 0.010) = 5.
+
+      ARITHMETISCH und ausdruecklich NICHT nach dem R-Ergebnis. Begruendung:
+      die Tagesgrenze zaehlt nur REALISIERTE Verluste und kann nicht greifen,
+      bevor die Positionen geschlossen sind. Was gleichzeitig offenes Risiko
+      begrenzt, ist allein die Zahl der Plaetze, und die passende Zahl ist
+      die, bei der ein vollstaendig schiefgelaufener Tag genau die
+      Tagesgrenze erreicht.
+
+      Wer den Deckel nach seinem R-Ergebnis waehlt, hat einen Parameter auf
+      seine eigene beste Zelle gefittet. Die Zahlen werden berichtet, weil
+      ein Deckel einen Preis hat und der Preis sichtbar gehoert -- nicht,
+      weil er entscheidet.
+    acceptance: >-
+      KEINE. Dieser Arm trifft keine Edge-Behauptung und hat darum kein
+      Abnahmekriterium. Er misst, was eine Schutzregel kostet. Die vier
+      gezaehlten Vergleiche sind trotzdem angemeldet und erhoehen
+      `total_comparisons`: lieber eine Korrektur bezahlen, die vielleicht
+      nicht geschuldet ist, als ein Register fuehren, in dem Messungen
+      verschwinden, weil sie "nur beschreibend" waren. Der Fehler geht in
+      die konservative Richtung -- alle kuenftigen Intervalle werden
+      geringfuegig breiter.
+    status: offen
+    angelegt: 2026-10-13
+    declared_before_reading: true
+    warum_heute: >-
+      Bis zum 13.10.2026 fuehrte der Papierhandel zwoelf getrennte Konten,
+      und `max_open_positions` galt dort fuer nichts: ein SimBroker hat
+      strukturell einen Platz, also konnte KEIN Wert der Einstellung das
+      Verhalten aendern. Seit der Umstellung auf eine Kasse sind zwoelf
+      Symbole in einem Konto genau der Fall, fuer den die Einstellung
+      geschrieben wurde -- und damit steht die Zahl erstmals zur
+      Entscheidung.
+    grenze_der_messung: >-
+      Gegenrechnung erster Ordnung: Ereignisse in Zeitreihenfolge, eine
+      Eroeffnung wird abgelehnt, wenn schon `cap` Positionen offen sind.
+      Geprueft wird an der FUELLZEIT, der echte Pruefpunkt ist die
+      Vorschlagszeit; und eine abgelehnte Eroeffnung veraendert in
+      Wirklichkeit auch die spaeteren Belegungen, was nur ein vollstaendiger
+      Neulauf abbildet. Richtung des Fehlers bekannt: die Ablehnungsquote
+      faellt eher zu niedrig aus als zu hoch.
+
+
 
 
 rejection_rules:
@@ -1425,6 +1484,27 @@ order:
 # Jede Aenderung nach dem ersten gelesenen Ergebnis kommt hierhin, mit Datum
 # und Grund. Leer zu sein ist der gute Zustand.
 amendments:
+
+  - date: 2026-10-13
+    by: "Claude, zwanzigstuendige Arbeitsphase"
+    declared_before_reading: true
+    change: "Neuer Arm E13 angelegt, acht Zellen, vier gezaehlte Vergleiche. total_comparisons 61 -> 65."
+    reason: >-
+      Die Umstellung auf EINE Kasse hat eine Einstellung scharf gemacht, die
+      vorher fuer nichts galt. `max_open_positions: 2` war im Papierhandel
+      wirkungslos, weil zwoelf getrennte Konten mit je einem Einplatz-Broker
+      keinen Wert dieser Einstellung spueren konnten. Mit zwoelf Symbolen in
+      einem Konto ist es genau der Fall, fuer den die Einstellung geschrieben
+      wurde -- und der Deckel bestimmt jetzt, wie viel Risiko gleichzeitig
+      offen sein darf.
+
+      Angemeldet, obwohl der Arm keine Edge-Behauptung aufstellt. Ein
+      Register, in dem Messungen fehlen, weil sie "nur beschreibend" waren,
+      ist kein Register. Die Auswahlregel ist arithmetisch und steht im Arm;
+      das R-Ergebnis entscheidet ausdruecklich nicht.
+    note: >-
+      Angelegt VOR der ersten Ausfuehrung von scripts/study_concurrency.py. Es
+      existiert zu diesem Zeitpunkt keine Zahl zu diesem Arm.
   - date: 2026-10-08
     by: "Claude, autonome Arbeitsphase"
     change: "Neuer Arm E8 angelegt. total_comparisons 46 -> 48."

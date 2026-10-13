@@ -242,6 +242,16 @@ class PaperState:
             broker.ledger.peak_equity = max(self.equity, broker.ledger.peak_equity)
         broker.pending = self.pending
         broker.position = self.position
+        # Das Margin einer wiederhergestellten Position ist gebunden.
+        #
+        # Ohne diese Zeile waere der Fehler vom 13.10.2026 bei JEDEM Neustart
+        # zurueck: zwoelf Positionen haengen wieder an der geteilten Kasse,
+        # `reserved` steht auf null, und die naechste Eroeffnung prueft gegen
+        # den vollen Pool. Ein Defekt, der sich bei jedem Neustart selbst
+        # wiederherstellt, ist schlimmer als einer, der bleibt -- er sieht
+        # repariert aus.
+        if self.position is not None:
+            broker.ledger.reserve(self.position.margin)
         if self.last_minute_ts:
             settled = self.funding_settled_ts
             if settled is None:
@@ -346,6 +356,14 @@ class PaperStateStore:
         return (float(row[0]), float(row[1])) if row else None
 
     def save_portfolio(self, equity: float, peak_equity: float) -> None:
+        """Nur Kontostand und Hoechststand. `reserved` gehoert NICHT hierher.
+
+        Das gebundene Margin ist eine Funktion der offenen Positionen, und die
+        stehen je Symbol in `accounts`. `restore_into` bindet es beim Anhaengen
+        neu. Haette diese Tabelle eine eigene `reserved`-Spalte, waere dieselbe
+        Groesse zweimal gespeichert -- einmal als Summe, einmal in den
+        Positionen -- und ein Neustart wuerde sie addieren.
+        """
         with closing(self._connect()) as conn:
             conn.execute(
                 "INSERT INTO portfolio (id, equity, peak_equity) VALUES (1, ?, ?) "

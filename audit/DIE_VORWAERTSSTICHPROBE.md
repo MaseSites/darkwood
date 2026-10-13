@@ -199,7 +199,7 @@ hatte. Nachgesehen, was sie am Code tun:
 
 ### Die echte Grenze trägt einen Buchhaltungstitel
 
-Der Import-Abschluss von `live/paper.py` umfasst **58 Dateien** (Am 13.10.2026 von 56 auf 58 gewachsen: `risk/limits.py` und `journal/history.py` sind dazugekommen, als die Kontogrenzen auf diesem Pfad zum ersten Mal wirklich gelesen wurden.). Seit dem
+Der Import-Abschluss von `live/paper.py` umfasst **59 Dateien** (Am 13.10.2026 von 56 auf 58 gewachsen: `risk/limits.py` und `journal/history.py` sind dazugekommen, als die Kontogrenzen auf diesem Pfad zum ersten Mal wirklich gelesen wurden. Am Nachmittag desselben Tages auf 59: `live/book.py`, das Buch des gepoolten Kontos, ohne das die vierte Grenze -- die Zahl offener Positionen -- nicht ausloesen konnte.). Seit dem
 Konfigurationsschnitt berühren ihn **19 Commits** — nicht zwei. Von hinten
 durchgelesen, bis der erste auftaucht, der verändert, *welche Trades
 entstehen*:
@@ -340,7 +340,7 @@ vorhandenen Stempel haben die falsche Körnung.**
   Bericht bewegt ihn, und ein Schnitt je Bericht ist kein Schnitt.
 
 Neu, dazwischen: **`decision_version()`** in `journal/version.py`. Er hasht den
-Quelltext der **58 Dateien**, die der Live-Entscheidungspfad erreicht — ohne
+Quelltext der **59 Dateien**, die der Live-Entscheidungspfad erreicht — ohne
 Kommentare, Docstrings und Formatierung, über `ast.unparse` normalisiert. Der
 Abschluss wird **berechnet, nicht gepflegt**: eine Liste von Hand wäre am Tag
 ihres Schreibens richtig und danach nie wieder, und genau das ist der Fehler,
