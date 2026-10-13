@@ -97,7 +97,16 @@ from traidingbrain.reporting.intervals import block_bootstrap
 #: Kostenanteil haengt an der Haltedauer. Das waere aber eine andere
 #: EINSTIEGS-Menge und wuerde die Paarung zerstoeren, auf der dieser Test
 #: beruht. Es ist eine eigene Frage, nicht ein Nachbessern dieser.
-SAFETY_RULES = {"liquidation", "chance_risiko", "kosten"}
+#
+# `grenzen` ist am 13.10.2026 dazugekommen: eine Kontogrenze (Tagesverlust,
+# Abkuehlung, Zahl offener Positionen) ist kein Urteil ueber das Signal,
+# sondern ueber den Kontostand. Eine Auswahlregel darf sie nicht
+# ueberstimmen -- an einem anderen Tag waere dasselbe Signal durchgegangen.
+#
+# Die beiden Mengen in diesem Projekt sind UNEINIG ueber `kosten` und
+# `chance_risiko` (siehe audit/RISIKO_AUDIT_NACHPRUEFUNG.md 2.6). Dieser
+# Eintrag entscheidet das nicht, er kommt in beide.
+SAFETY_RULES = {"liquidation", "chance_risiko", "kosten", "grenzen"}
 
 #: Bisheriger Horizont, wie E1 ihn benutzt. Deckel fuer E3.1 und E3.3.
 HORIZON_HOURS = 48

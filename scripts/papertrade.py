@@ -57,6 +57,7 @@ from traidingbrain.storage.singleton import AlreadyRunningError, SingleInstance
 #: Damit das Alter eines Fehlschlags in Stunden statt in 300 Minuten steht.
 MINUTES_PER_HOUR = 60.0
 from traidingbrain.live.paperstate import PaperStateStore
+from traidingbrain.risk.limits import KillSwitch, RiskLimits
 
 JOURNAL_NAME = "journal.sqlite"
 
@@ -89,6 +90,8 @@ def build_traders(
     store = ParquetStore(config.engine.paths.parquet_dir)
     states = PaperStateStore(state_path(config))
     journal = JournalStore(config.engine.paths.data_dir / JOURNAL_NAME)
+    kill_switch = KillSwitch(config.engine.paths.data_dir / "KILL_SWITCH")
+    limits = RiskLimits(config.risk.limits, kill_switch)
     funding_store = FundingStore(config.engine.paths.funding_dir)
     clock = SystemClock()
     # Derselbe Speicher und dieselbe Signatur wie im Replay, damit eine
@@ -124,6 +127,16 @@ def build_traders(
                 # ablehnt -- bis zum 08.10.2026 gab es davon keine Zeile.
                 signals=signal_store,
                 run_signature=signature,
+                # Die Kontogrenzen, die bis zum 13.10.2026 auf diesem Pfad
+                # nicht existierten: Tagesverlust, Wochenverlust, Abkuehlung
+                # nach einer Verlustserie, Zahl offener Positionen. Die
+                # Konfiguration fuehrt alle vier, und `RiskLimits.check`
+                # wurde hier nie aufgerufen.
+                #
+                # Der Kill-Switch kommt mit, und er ist der wichtigste Teil:
+                # eine Datei, die ein anderer Prozess anlegen kann und die
+                # jede weitere Eroeffnung stoppt, ohne den Haendler zu toeten.
+                limits=limits,
             )
         )
     return traders, source

@@ -208,7 +208,7 @@ class JournalEntry:
     #: Ein Stempel ueber die BEDEUTUNG des entscheidenden Codes -- die Koernung,
     #: die zwischen den beiden oberen liegt.
     #:
-    #: `journal/version.py:decision_version()` hasht den Quelltext der 56
+    #: `journal/version.py:decision_version()` hasht den Quelltext der 58
     #: Dateien, die der Live-Entscheidungspfad erreicht, ohne Kommentare,
     #: Docstrings und Formatierung. Damit beantwortet GENAU EIN Feld die Frage,
     #: fuer die am 09.10.2026 neunzehn Diffs gelesen werden mussten: ein

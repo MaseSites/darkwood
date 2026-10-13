@@ -43,16 +43,18 @@ from traidingbrain.config.settings import AppConfig
 from traidingbrain.data.frames import bars_to_frame
 from traidingbrain.data.grid import timeframe_ms
 from traidingbrain.data.store import ParquetStore
-from traidingbrain.domain.enums import ExitReason, Timeframe
+from traidingbrain.domain.enums import ExitReason, Rule, Timeframe
 from traidingbrain.domain.market import FundingRate, SymbolSpec
 from traidingbrain.domain.protocols import Clock, DataSource
 from traidingbrain.journal.build import reason_at
+from traidingbrain.journal.history import closed_trades
 from traidingbrain.journal.postmortem import examine
 from traidingbrain.journal.record import JournalEntry, Source, TradeReason
 from traidingbrain.journal.signals import Action, SignalRecord, SignalStore
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.journal.version import code_version, decision_version
 from traidingbrain.live.paperstate import PaperState, PaperStateStore, Tally
+from traidingbrain.risk.limits import AccountState, RiskLimits
 from traidingbrain.sim.broker import Fill, OpenPosition, SimBroker
 from traidingbrain.sim.engine import AnalysisStrategy
 from traidingbrain.sim.plan import Assessment, TradeIntent, assess, setup_label
@@ -203,6 +205,7 @@ class PaperTrader:
         strategy: AnalysisStrategy | None = None,
         signals: SignalStore | None = None,
         run_signature: str = "",
+        limits: RiskLimits | None = None,
     ) -> None:
         self.symbol = symbol
         self.config = config
@@ -217,6 +220,15 @@ class PaperTrader:
         # Ohne Speicher wird nichts aufgezeichnet und nichts bricht.
         self.signals = signals
         self.run_signature = run_signature
+        #: Die Kontogrenzen, oder None.
+        #:
+        #: Optional, damit Tests und der Golden-Tape ohne sie laufen -- aber
+        #: `scripts/papertrade.py` uebergibt sie. Bis zum 13.10.2026 rief
+        #: dieser Pfad `RiskLimits.check` ueberhaupt nicht auf, also konnten
+        #: Tagesverlust, Wochenverlust und die Abkuehlung nach einer
+        #: Verlustserie in keinem Prozess ausloesen, obwohl die
+        #: Konfiguration sie fuehrt.
+        self.limits = limits
         self.stats = PaperStats()
 
         self.broker = SimBroker(spec, config.engine.simulation, funding)
@@ -608,8 +620,15 @@ class PaperTrader:
             expires_ts=created + self.config.engine.simulation.entry_expiry_bars * signal_ms,
         )
         entry = verdict.entry
-        self._record_signal(intent, verdict, decided_ts=created)
-        if entry is None or not self.broker.submit(entry):
+        # Die Kontogrenzen, erst wenn das Signal selbst durchgekommen ist.
+        #
+        # Reihenfolge mit Absicht: hat `assess` schon abgelehnt, ist DAS der
+        # Grund, und ihn mit einem Kontogrund zu ueberschreiben wuerde die
+        # Ablehnungsstatistik verfaelschen. Erst ein Signal, das es durch
+        # alle fuenf Signalregeln geschafft hat, kann am Konto scheitern.
+        blocked = self._blocked_by_limits(created) if entry is not None else None
+        self._record_signal(intent, verdict, decided_ts=created, blocked_by=blocked)
+        if blocked is not None or entry is None or not self.broker.submit(entry):
             self.stats.tally.refused_by_risk += 1
             return
 
@@ -711,8 +730,43 @@ class PaperTrader:
         self.journal.record([entry])
         return entry
 
+    def _blocked_by_limits(self, now_ms: int) -> str | None:
+        """Was die Kontogrenzen zu diesem Augenblick sagen, oder None.
+
+        **Der Geltungsbereich ist das Einzelkonto.** Jeder `PaperTrader` ist
+        ein Konto mit einem Symbol, und die Historie wird mit `symbol=`
+        geholt. Das ist die konservative Lesart und die, die mit den
+        Backtests vergleichbar bleibt; eine Portfoliogrenze wuerde zwoelf
+        Konten poolen, die `live/paper.py` absichtlich getrennt haelt.
+
+        **Die Historie ist auf die laufende Signatur gefiltert.** Ueber alle
+        Zeilen gelesen zaehlt die Bremse drei Konfigurationsepochen zusammen
+        -- gemessen am 12.10.2026 der Unterschied zwischen zwei Konten mit
+        Verlustserie 2 und keinem einzigen. Siehe `journal/history.py`.
+
+        Gibt den Grund als Text zurueck, nicht nur ein Ja/Nein, damit er in
+        die `detail`-Spalte des Signalspeichers kann. Eine blockierte Zeile,
+        die nicht sagt WELCHE Grenze griff, ist spaeter nicht auswertbar.
+        """
+        if self.limits is None:
+            return None
+        state = AccountState.from_history(
+            equity=self.broker.equity,
+            history=closed_trades(
+                self.journal, signature=self.run_signature, symbol=self.symbol
+            ),
+            now_ms=now_ms,
+        )
+        verdict = self.limits.check(state, symbol=self.symbol)
+        return None if verdict.allowed else verdict.reason
+
     def _record_signal(
-        self, intent: TradeIntent, verdict: Assessment, *, decided_ts: int
+        self,
+        intent: TradeIntent,
+        verdict: Assessment,
+        *,
+        decided_ts: int,
+        blocked_by: str | None = None,
     ) -> None:
         """Jedes erwogene Signal aufschreiben, genommen wie abgelehnt.
 
@@ -735,9 +789,18 @@ class PaperTrader:
                     decided_ts=decided_ts,
                     symbol=self.symbol,
                     source=Source.LIVE,
-                    action=Action.TAKEN if verdict.entry is not None else Action.REFUSED,
-                    refused_by=verdict.refused_by,
-                    detail=verdict.detail,
+                    action=(
+                        Action.TAKEN
+                        if verdict.entry is not None and blocked_by is None
+                        else Action.REFUSED
+                    ),
+                    # Bei einer Kontogrenze MUSS ein Grund stehen:
+                    # `scripts/study_meta_label.py` entscheidet "genommen" mit
+                    # `refused_by is None` und nicht am Feld `action`, also
+                    # waere eine abgelehnte Zeile ohne Grund dort eine
+                    # genommene.
+                    refused_by=Rule.LIMITS if blocked_by else verdict.refused_by,
+                    detail=blocked_by or verdict.detail,
                     setup_key=setup_label(intent),
                     setup_timeframe="",
                     signal_timeframe=self.config.engine.timeframes.signal.value,

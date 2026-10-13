@@ -240,12 +240,12 @@ class ExitReason(StrEnum):
 class Rule(StrEnum):
     """Which risk rule refused a signal.
 
-    Five members because `sim/plan.py` has five refusal branches, and the whole
-    point of naming them is that "refused" is not one population. A signal
-    turned down for a reward-to-risk of 1.4 and one turned down because the
-    venue will not place a position that small are different claims about
-    different trades, and lumping them cost the project the ability to ask
-    whether either rule earns its place.
+    The first five correspond one-to-one to the refusal branches in
+    `sim/plan.py`, and the whole point of naming them is that "refused" is not
+    one population. A signal turned down for a reward-to-risk of 1.4 and one
+    turned down because the venue will not place a position that small are
+    different claims about different trades, and lumping them cost the project
+    the ability to ask whether either rule earns its place.
 
     Here rather than next to the rules themselves so the signal ledger can name
     them without `journal/` having to import `sim/`.
@@ -256,6 +256,26 @@ class Rule(StrEnum):
     SIZE = "groesse"
     COSTS = "kosten"
     LIQUIDATION = "liquidation"
+
+    LIMITS = "grenzen"
+    """Eine Kontogrenze hat abgelehnt, nicht eine Eigenschaft des Signals.
+
+    **Der sechste Wert, und er gehoert nicht zu `sim/plan.py`.** Die anderen
+    fuenf beurteilen den Trade: sein Chance-Risiko, seine Groesse, seine
+    Kosten. Dieser beurteilt das *Konto* -- Tagesverlust, Wochenverlust,
+    Abkuehlung nach einer Verlustserie, Zahl offener Positionen. Dasselbe
+    Signal waere an einem anderen Tag durchgegangen.
+
+    Darum ein eigener Name und keine Einordnung bei den fuenf: eine Studie,
+    die fragt "verdient die Kostenregel ihren Platz", darf Zeilen nicht
+    mitzaehlen, die aus einem Grund abgelehnt wurden, der mit dem Signal
+    nichts zu tun hat.
+
+    Und er muss gesetzt werden, wo er greift. `scripts/study_meta_label.py`
+    entscheidet "genommen" mit `refused_by is None` und nicht am Feld
+    `action` -- eine abgelehnte Zeile ohne Grund wird dort als genommen
+    gelesen.
+    """
 
 #: Welcher Endzustand zu welchem Ausstiegsgrund gehoert.
 #:

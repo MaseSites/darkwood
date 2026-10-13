@@ -216,8 +216,8 @@ FACTS: tuple[Fact, ...] = (
     ),
     Fact(
         "Dateien im Live-Entscheidungspfad",
-        "journal/version.py und DIE_VORWAERTSSTICHPROBE nennen 56",
-        _decision_closure, 56, fixed=True,
+        "journal/version.py und DIE_VORWAERTSSTICHPROBE nennen 58; 56 vor dem 13.10.",
+        _decision_closure, 58, fixed=True,
     ),
     Fact(
         "aktive Setups",

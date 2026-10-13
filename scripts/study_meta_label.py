@@ -106,7 +106,16 @@ KEEP_SHARE = 0.30
 TOTAL_COMPARISONS = 46
 
 #: Ablehnungsgruende, die eine Auswahlregel NICHT ueberstimmen darf.
-SAFETY_RULES = frozenset({"liquidation"})
+#
+# `grenzen` ist am 13.10.2026 dazugekommen: eine Kontogrenze (Tagesverlust,
+# Abkuehlung, Zahl offener Positionen) ist kein Urteil ueber das Signal,
+# sondern ueber den Kontostand. Eine Auswahlregel darf sie nicht
+# ueberstimmen -- an einem anderen Tag waere dasselbe Signal durchgegangen.
+#
+# Die beiden Mengen in diesem Projekt sind UNEINIG ueber `kosten` und
+# `chance_risiko` (siehe audit/RISIKO_AUDIT_NACHPRUEFUNG.md 2.6). Dieser
+# Eintrag entscheidet das nicht, er kommt in beide.
+SAFETY_RULES = frozenset({"liquidation", "grenzen"})
 
 SEED = 20261007
 
