@@ -326,6 +326,31 @@ class RiskTier(_Frozen):
 
 
 class SizingConfig(_Frozen):
+    #: Wessen Kapital die Positionsgroesse bemisst.
+    #:
+    #: `account` -- jedes Symbol bemisst sich an seinem eigenen Konto. Das war
+    #: bis zum 13.10.2026 das einzige Verhalten, und es ist ein Messgeruest:
+    #: `live/paper.py` erklaert, dass die Backtests jedes Symbol gegen
+    #: dasselbe Startkapital groessen, damit ein Vorwaertslauf vergleichbar
+    #: bleibt.
+    #:
+    #: `portfolio` -- die Groesse bemisst sich am Kapital ALLER Konten
+    #: zusammen, so wie ein echtes Boersenkonto, das mehrere Maerkte haelt.
+    #:
+    #: **Warum das ueberhaupt ein Schalter ist.** Unter `account` riskiert
+    #: ein Trade 1 % von einem Zwoelftel des Kapitals, also 0,083 % des
+    #: Ganzen. Das ist nicht als Risikoentscheidung gewaehlt worden, es
+    #: faellt aus der Kontostruktur. Gemessen am 13.10.2026: 10,06 USDT je
+    #: Trade statt 120,76, und die 26 bereinigten Vorwaertstrades haetten
+    #: +906,73 statt +75,56 USDT ergeben.
+    #:
+    #: Der Schalter steht in der Konfiguration und nicht im Code, weil
+    #: `run_signature` ihn traegt: Trades vor und nach der Umstellung sind
+    #: sonst unter einem Schluessel vermischt, und genau das hat die
+    #: Vorwaertsstichprobe schon einmal von 18 auf 11 Trades schrumpfen
+    #: lassen.
+    basis: str = Field(default="account", pattern="^(account|portfolio)$")
+
     min_confidence: float = Field(ge=0, le=100)
     tiers: list[RiskTier]
     uncalibrated_cap_risk_pct: float = Field(gt=0, le=0.05)

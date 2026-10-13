@@ -47,6 +47,12 @@ CREATE TABLE IF NOT EXISTS accounts (
     tally           TEXT,
     funding_settled_ts INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS portfolio (
+    id          INTEGER PRIMARY KEY CHECK (id = 1),
+    equity      REAL NOT NULL,
+    peak_equity REAL NOT NULL
+);
 """
 
 #: Columns added after the table first shipped.
@@ -225,8 +231,15 @@ class PaperState:
                 "restore_into called on a broker that already holds an order or "
                 "position; that would overwrite it silently"
             )
-        broker.ledger.equity = self.equity
-        broker.ledger.peak_equity = max(self.equity, broker.ledger.peak_equity)
+        # Nur in die EIGENE Kasse schreiben.
+        #
+        # Bei geteilter Kasse wuerden hier zwoelf Broker hintereinander
+        # dieselbe Zahl setzen, und bei einem Absturz mitten im Zyklus zwoelf
+        # VERSCHIEDENE -- der letzte gewinnt, still. Wer die geteilte Kasse
+        # faehrt, stellt sie einmal her, bevor die Broker gebaut werden.
+        if broker.owns_ledger:
+            broker.ledger.equity = self.equity
+            broker.ledger.peak_equity = max(self.equity, broker.ledger.peak_equity)
         broker.pending = self.pending
         broker.position = self.position
         if self.last_minute_ts:
@@ -311,6 +324,42 @@ class PaperStateStore:
             # Spalte' und wird in `restore_into` hergeleitet.
             funding_settled_ts=None if row[9] is None else int(row[9]),
         )
+
+    def load_portfolio(self) -> tuple[float, float] | None:
+        """Die geteilte Kasse, oder None wenn es noch keine gibt.
+
+        **Warum eine eigene Tabelle und nicht die Kontozeilen.** Beim
+        Umschalten von `account` auf `portfolio` halten die zwoelf Zeilen je
+        ~1.006 USDT; danach halten sie je den geteilten Stand von ~12.075.
+        Dieselbe Spalte waere also einmal "ein Zwoelftel" und einmal "das
+        Ganze", und welche Lesart gilt, stuende nirgends. Das ist ein
+        Faktor-12-Fehler, der wie eine Zahl aussieht.
+
+        Fehlt die Zeile, ist es der erste Lauf unter `portfolio`, und der
+        Aufrufer bildet die Summe der Konten. Danach steht sie hier und wird
+        gelesen.
+        """
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                "SELECT equity, peak_equity FROM portfolio WHERE id = 1"
+            ).fetchone()
+        return (float(row[0]), float(row[1])) if row else None
+
+    def save_portfolio(self, equity: float, peak_equity: float) -> None:
+        with closing(self._connect()) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (id, equity, peak_equity) VALUES (1, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET equity=excluded.equity, "
+                "peak_equity=excluded.peak_equity",
+                (equity, peak_equity),
+            )
+            conn.commit()
+
+    def equity_sum(self) -> float:
+        """Die Summe der Einzelkonten -- der Startwert beim Umschalten."""
+        with closing(self._connect()) as conn:
+            row = conn.execute("SELECT COALESCE(SUM(equity), 0.0) FROM accounts").fetchone()
+        return float(row[0])
 
     def symbols(self) -> list[str]:
         with closing(self._connect()) as conn:

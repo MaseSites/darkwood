@@ -58,6 +58,7 @@ from traidingbrain.storage.singleton import AlreadyRunningError, SingleInstance
 MINUTES_PER_HOUR = 60.0
 from traidingbrain.live.paperstate import PaperStateStore
 from traidingbrain.risk.limits import KillSwitch, RiskLimits
+from traidingbrain.sim.broker import _Ledger
 
 JOURNAL_NAME = "journal.sqlite"
 
@@ -92,6 +93,7 @@ def build_traders(
     journal = JournalStore(config.engine.paths.data_dir / JOURNAL_NAME)
     kill_switch = KillSwitch(config.engine.paths.data_dir / "KILL_SWITCH")
     limits = RiskLimits(config.risk.limits, kill_switch)
+    shared = shared_ledger(config, states)
     funding_store = FundingStore(config.engine.paths.funding_dir)
     clock = SystemClock()
     # Derselbe Speicher und dieselbe Signatur wie im Replay, damit eine
@@ -137,6 +139,7 @@ def build_traders(
                 # eine Datei, die ein anderer Prozess anlegen kann und die
                 # jede weitere Eroeffnung stoppt, ohne den Haendler zu toeten.
                 limits=limits,
+                ledger=shared,
             )
         )
     return traders, source
@@ -156,6 +159,40 @@ def _spec(source: MarketData | None, symbol: str) -> SymbolSpec:
     except Exception as exc:
         print(f"  {symbol}: Spezifikation nicht abrufbar ({exc}), Standardwerte", file=sys.stderr)
         return SymbolSpec(symbol=symbol, **DEFAULT_SPEC)
+
+
+def shared_ledger(config: object, states: PaperStateStore) -> _Ledger | None:
+    """Die gemeinsame Kasse, oder None bei Groessenbemessung je Konto.
+
+    **Was der Schalter entscheidet.** Unter `account` fuehrt jedes Symbol
+    seine eigenen 1.000 USDT, und 1 % Risiko je Trade sind 0,083 % des
+    Gesamtkapitals. Unter `portfolio` ziehen alle zwoelf aus einem Topf, so
+    wie ein echtes Boersenkonto, das mehrere Maerkte haelt -- 1 % sind dann
+    1 %.
+
+    **Die Umschaltung ist der heikle Teil.** Beim ersten Lauf unter
+    `portfolio` gibt es noch keine Portfoliozeile, und die zwoelf
+    Kontozeilen halten je ein Zwoelftel. Dann ist der Startwert ihre SUMME.
+    Danach steht der geteilte Stand in seiner eigenen Zeile und wird
+    gelesen. Ohne diese Trennung waere dieselbe Spalte einmal "ein Zwoelftel"
+    und einmal "das Ganze" -- ein Faktor-12-Fehler, der wie eine Zahl
+    aussieht.
+
+    Gibt None zurueck, wenn die Konfiguration `account` sagt. Dann baut jeder
+    Broker seine eigene Kasse, und nichts aendert sich gegenueber vorher.
+    """
+    if config.risk.sizing.basis != "portfolio":  # type: ignore[attr-defined]
+        return None
+    saved = states.load_portfolio()
+    if saved is None:
+        start = states.equity_sum() or config.engine.simulation.initial_equity  # type: ignore[attr-defined]
+        print(f"  Groessenbemessung portfolio: Kasse aus der Summe der Konten, "
+              f"{start:,.2f} USDT", flush=True)
+        return _Ledger(equity=start, peak_equity=start)
+    equity, peak = saved
+    print(f"  Groessenbemessung portfolio: Kasse wiederhergestellt, "
+          f"{equity:,.2f} USDT (Hoechststand {peak:,.2f})", flush=True)
+    return _Ledger(equity=equity, peak_equity=peak)
 
 
 def top_up_funding(source: MarketData | None, traders: list[PaperTrader]) -> None:

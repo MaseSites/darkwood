@@ -179,12 +179,44 @@ def main(argv: list[str] | None = None) -> int:
     fatal, broken = pull_markets(backfiller, symbols, args, progress)
 
     if args.funding:
+        # Auch hier je Markt, und das war gestern vergessen.
+        #
+        # Die OHLCV-Schleife darueber ueberlebt seit dem 12.10. einen
+        # schlechten Markt. Diese Schleife nicht -- und sie hat den naechsten
+        # Lauf gekillt, einen Block weiter unten:
+        # fetch_funding_rate_history(BCHUSDT) failed after 4 attempts. Ein
+        # Netzfehler auf einem von 71 Maerkten, und 43 unberuehrte blieben
+        # liegen. Eine Lehre, die man eine Schleife weiter nicht anwendet,
+        # ist nicht gelernt.
+        #
+        # UND DIE REIHENFOLGE KOSTET. Am 13.10.2026 sind in einem Lauf ueber
+        # 71 Maerkte ALLE 71 Funding-Abrufe gescheitert, waehrend die
+        # OHLCV-Abrufe desselben Laufs durchliefen. Kein Datenproblem: beide
+        # Endpunkte antworteten Minuten spaeter direkt mit Daten. Es ist das
+        # Anfragebudget -- diese Schleife laeuft NACH allen Kursabrufen, und
+        # dann ist es aufgebraucht.
+        #
+        # Als eigener Lauf mit `--tfs W1`, also fast ohne Kursarbeit, gingen
+        # 71 von 71 durch, null Ausfaelle, und damit liegen Funding-Daten
+        # fuer alle 83 Maerkte. Wer viele Maerkte neu holt, holt Funding
+        # besser in einem zweiten Lauf. Dass der Fehler nach 'vier Versuche
+        # gescheitert' aussieht und nicht nach 'zu viele Anfragen', ist der
+        # Grund, warum das hier steht.
         funding_store = FundingStore(config.engine.paths.funding_dir)
         print("\nFunding rates:")
         for symbol in symbols:
-            pulled = backfill_funding(source, funding_store, symbol, args.since, args.until)
+            try:
+                pulled = backfill_funding(
+                    source, funding_store, symbol, args.since, args.until
+                )
+            except Exception as problem:
+                print(f"  {symbol}: Funding nicht abrufbar "
+                      f"({type(problem).__name__}: {problem})", flush=True)
+                broken.append(f"{symbol}: Funding {type(problem).__name__}")
+                continue
             print(
-                f"  {symbol}: +{len(pulled)} settlements, {len(funding_store.read(symbol))} stored"
+                f"  {symbol}: +{len(pulled)} settlements, "
+                f"{len(funding_store.read(symbol))} stored"
             )
 
     if args.verify:

@@ -55,7 +55,7 @@ from traidingbrain.journal.store import JournalStore
 from traidingbrain.journal.version import code_version, decision_version
 from traidingbrain.live.paperstate import PaperState, PaperStateStore, Tally
 from traidingbrain.risk.limits import AccountState, RiskLimits
-from traidingbrain.sim.broker import Fill, OpenPosition, SimBroker
+from traidingbrain.sim.broker import Fill, OpenPosition, SimBroker, _Ledger
 from traidingbrain.sim.engine import AnalysisStrategy
 from traidingbrain.sim.plan import Assessment, TradeIntent, assess, setup_label
 from traidingbrain.strategies.guide import GuidePool
@@ -206,6 +206,7 @@ class PaperTrader:
         signals: SignalStore | None = None,
         run_signature: str = "",
         limits: RiskLimits | None = None,
+        ledger: _Ledger | None = None,
     ) -> None:
         self.symbol = symbol
         self.config = config
@@ -231,7 +232,11 @@ class PaperTrader:
         self.limits = limits
         self.stats = PaperStats()
 
-        self.broker = SimBroker(spec, config.engine.simulation, funding)
+        #: `ledger` gesetzt heisst: geteilte Kasse. Dann bemisst sich jede
+        #: Position am Kapital ALLER Konten, nicht am eigenen Zwoelftel --
+        #: und das Margin zieht aus demselben Topf, ohne den sechs von 26
+        #: Vorwaertstrades an `submit` scheitern wuerden.
+        self.broker = SimBroker(spec, config.engine.simulation, funding, ledger=ledger)
         self.state = state.load(symbol) or PaperState(
             symbol=symbol, equity=config.engine.simulation.initial_equity
         )
@@ -850,6 +855,14 @@ class PaperTrader:
         self.state.capture_from(self.broker, reason=self._reason)
         self.state.tally = self.stats.tally
         self.state_store.save(self.state)
+        if not self.broker.owns_ledger:
+            # Die geteilte Kasse in ihre eigene Zeile, nicht in die zwoelf
+            # Kontozeilen. Jeder Haendler schreibt dieselbe Zahl, also ist
+            # Mehrfachschreiben harmlos -- und beim Neustart gibt es genau
+            # eine Quelle statt zwoelf, die auseinanderlaufen koennten.
+            self.state_store.save_portfolio(
+                self.broker.ledger.equity, self.broker.ledger.peak_equity
+            )
 
     # -- reading ------------------------------------------------------------ #
 

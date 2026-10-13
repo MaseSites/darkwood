@@ -35,7 +35,17 @@ def _stub() -> SimpleNamespace:
             setups=SimpleNamespace(enabled=["A", "B"]),
             timeframes=SimpleNamespace(signal=SimpleNamespace(value="M15")),
         ),
-        risk=SimpleNamespace(limits=SimpleNamespace(max_cost_fraction_of_risk=0.15)),
+        risk=SimpleNamespace(
+            limits=SimpleNamespace(max_cost_fraction_of_risk=0.15),
+            # Seit dem 13.10. liest die Signatur auch die
+            # Groessenbemessung: `account` heisst "jedes Symbol gegen sein
+            # eigenes Konto", `portfolio` heisst "alle gegen einen Topf",
+            # und das ist der Unterschied zwischen 10 und 121 USDT Risiko
+            # je Trade. Der Stub traegt sie, statt dass die Funktion
+            # tolerant wird -- eine still erzeugte alte Signatur waere
+            # genau der Fehler, den dieser Test verhindern soll.
+            sizing=SimpleNamespace(basis="account"),
+        ),
     )
 
 

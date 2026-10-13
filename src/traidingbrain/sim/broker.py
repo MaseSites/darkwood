@@ -215,6 +215,7 @@ class SimBroker:
         spec: SymbolSpec,
         config: SimulationConfig,
         funding: list[FundingRate] | None = None,
+        ledger: _Ledger | None = None,
     ) -> None:
         self.spec = spec
         self.config = config
@@ -229,7 +230,33 @@ class SimBroker:
         #: "already settled" are different questions.
         self._funding_settled_ts = 0
 
-        self.ledger = _Ledger(equity=config.initial_equity, peak_equity=config.initial_equity)
+        #: Die Kasse. Eigene oder geteilte.
+        #:
+        #: **Warum sie teilbar ist.** Der Papierhandel faehrt zwoelf Broker,
+        #: einen je Symbol, jeder mit eigener Kasse von 1.000 USDT. Dadurch
+        #: bemisst sich jede Position an einem Zwoelftel des Kapitals: 1 %
+        #: Risiko je Trade sind 0,083 % des Ganzen. Das ist nicht als
+        #: Risikoentscheidung gewaehlt, es faellt aus der Struktur.
+        #:
+        #: Die Groesse einfach zu verzwoelffachen genuegt nicht, und das ist
+        #: gemessen: bei 1 % des Gesamtkapitals braucht die Position im
+        #: schlimmsten Fall 1.733 USDT Margin, und ein Einzelkonto hat 1.006.
+        #: Sechs von 26 Vorwaertstrades wuerden an `submit` scheitern -- und
+        #: zwar die mit den ENGSTEN Stops, also die Population mit den
+        #: besseren Bruttozahlen. Eine Auswahl aus einer Verrohrungsgrenze.
+        #:
+        #: Mit geteilter Kasse scheitert keiner von 26. Darum teilbar statt
+        #: groesser.
+        self.ledger = ledger if ledger is not None else _Ledger(
+            equity=config.initial_equity, peak_equity=config.initial_equity
+        )
+        #: Ob diese Kasse diesem Broker allein gehoert.
+        #:
+        #: `paperstate.restore_into` setzt die Kontostaende beim Neustart
+        #: zurueck. Bei geteilter Kasse wuerden das zwoelf Broker
+        #: hintereinander mit zwoelf Zahlen tun, und der letzte gewinnt --
+        #: still. Darum fragt der Wiederherstellungspfad hier nach.
+        self.owns_ledger = ledger is None
         self.pending: PendingEntry | None = None
         self.position: OpenPosition | None = None
         self.rejected_entries = 0

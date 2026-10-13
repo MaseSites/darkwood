@@ -204,7 +204,22 @@ def test_every_rule_is_reachable_and_each_signal_gets_exactly_one(config: AppCon
         Rule.COSTS: (intent(entry=100.0, stop=99.5, target=100.75), None),
         Rule.LIQUIDATION: (intent(entry=100.0, stop=70.0, target=145.0), None),
     }
-    assert set(cases) == set(Rule), "a rule exists that no test drives"
+    # `Rule.LIMITS` gehoert absichtlich NICHT hierher.
+    #
+    # Die fuenf oben sind Urteile ueber den TRADE und entstehen in
+    # `sim/plan.py:assess`. `LIMITS` ist ein Urteil ueber das KONTO --
+    # Tagesverlust, Wochenverlust, Abkuehlung, Zahl offener Positionen -- und
+    # entsteht in `live/paper.py:_blocked_by_limits`. Dasselbe Signal waere
+    # an einem anderen Tag durchgegangen, und `assess` kann es nicht
+    # erzeugen.
+    #
+    # Getrieben wird es von `tests/test_paper_limits.py`. Die Teilung hier
+    # ist also keine Ausnahme, sondern die Grenze: `assess` partitioniert
+    # fuenf Gruende, und der sechste liegt ausserhalb.
+    assert set(cases) == set(Rule) - {Rule.LIMITS}, (
+        "ein assess-Grund existiert, den kein Test anfaehrt -- oder LIMITS ist "
+        "in assess gewandert, was die Partition oben kaputt macht"
+    )
     for rule, (case, spec) in cases.items():
         result = verdict(case, config, spec=spec)
         assert result.refused_by is rule, f"{rule} was not the verdict"

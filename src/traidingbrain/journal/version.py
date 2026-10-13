@@ -77,10 +77,14 @@ def run_signature(config: object, *, max_bars: int | None = None, shadow: bool =
     risk = config.risk  # type: ignore[attr-defined]
     bars = f"|{max_bars}bars" if max_bars else ""
     shade = "|shadow" if shadow else ""
+    # Nur angehaengt, wenn er vom Vorgabewert abweicht, damit die 12.843
+    # Zeilen, die der Speicher unter der alten Signatur haelt, nicht
+    # verwaisen. Dieselbe Begruendung wie bei `bars` und `shadow`.
+    basis = ("|portfolio" if risk.sizing.basis == "portfolio" else "")
     return (
         f"{engine.simulation.initial_equity}|{engine.setups.enabled}|"
         f"{risk.limits.max_cost_fraction_of_risk}|{engine.timeframes.signal.value}"
-        f"|{LEDGER_SCHEMA}{bars}{shade}"
+        f"|{LEDGER_SCHEMA}{basis}{bars}{shade}"
     )
 
 
