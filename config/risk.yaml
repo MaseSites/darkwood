@@ -10,6 +10,47 @@
 # the loss cannot.
 
 sizing:
+  # Wessen Kapital die Positionsgroesse bemisst: `account` oder `portfolio`.
+  #
+  # Umgestellt am 13.10.2026 auf `portfolio`, auf Wunsch des Nutzers und mit
+  # einer Messung dahinter.
+  #
+  # **Was vorher war.** Der Papierhandel fuehrt zwoelf Konten a 1.000 USDT,
+  # eines je Symbol. Unter `account` bemisst sich jede Position am eigenen
+  # Konto, also riskiert ein Trade 1 % von einem Zwoelftel des Kapitals:
+  # 10,06 USDT, das sind 0,0833 % des Ganzen. Das war keine
+  # Risikoentscheidung, es fiel aus der Kontostruktur -- die zwoelf Konten
+  # sind ein Messgeruest, damit jedes Symbol gegen dasselbe Startkapital
+  # groesst wie die Backtests (`live/paper.py`, Kopf).
+  #
+  # **Was jetzt gilt.** Unter `portfolio` ziehen alle zwoelf aus einer Kasse,
+  # so wie ein echtes Boersenkonto, das mehrere Maerkte haelt. 1 % Risiko
+  # sind dann 120,76 USDT statt 10,06.
+  #
+  # **Warum nicht einfach die Groesse verzwoelffachen.** Gemessen ueber die
+  # 26 bereinigten Vorwaertstrades: bei 1 % des Gesamtkapitals braucht die
+  # Position im schlimmsten Fall 1.733 USDT Margin, und ein Einzelkonto hat
+  # 1.006. Sechs von 26 waeren an `submit` gescheitert -- und zwar die mit
+  # den ENGSTEN Stops, also die Population mit den besseren Bruttozahlen.
+  # Eine Auswahl, die aus einer Verrohrungsgrenze kommt statt aus einer
+  # Entscheidung. Mit geteilter Kasse scheitert keiner von 26.
+  #
+  # **Was die Umstellung NICHT ist.** Sie schafft keinen Vorteil, sie
+  # skaliert. Die Erwartung je Trade liegt nach 7.335 Replay-Trades in
+  # [-0,0868; +0,0594] R, und R ist groessenunabhaengig: zwoelffache Groesse
+  # heisst zwoelffaches Ergebnis in BEIDE Richtungen. Sieben Verluste in
+  # Folge -- die gemessene Serie -- sind damit 7 % Rueckgang statt 0,6 %.
+  #
+  # Vorbedingung, erfuellt am 13.10.2026: die vier Kontogrenzen unten
+  # konnten bis dahin in keinem Prozess ausloesen. Bei 10 USDT Risiko war
+  # das belanglos, bei 121 nicht.
+  #
+  # Rueckgaengig: hier `account` eintragen und den Haendler neu starten. Die
+  # geteilte Kasse bleibt in `data/paper.sqlite` stehen, und `run_signature`
+  # unterscheidet die beiden Epochen -- Trades vor und nach heute sind also
+  # trennbar.
+  basis: portfolio
+
   # Fraction of equity lost if the stop is hit, by confidence band.
   # Below min_confidence there is no trade at all.
   min_confidence: 60

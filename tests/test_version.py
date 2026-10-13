@@ -63,16 +63,40 @@ def test_the_signature_format_is_frozen() -> None:
 
 
 def test_the_real_config_fills_every_field_in_order() -> None:
-    """The named fields, in the named order, and no others."""
+    """The named fields, in the named order, and no others.
+
+    **Die fuenf Pflichtfelder bleiben fuenf.** Was dahinter kommt, sind
+    Suffixe, die nur bei Abweichung vom Vorgabewert erscheinen -- `400bars`,
+    `shadow`, und seit dem 13.10. `portfolio` fuer die Groessenbemessung.
+    Dadurch bleibt die Signatur eines Vorgabelaufs byte-identisch zu der, auf
+    die der Speicher seine 12.843 Zeilen geschluesselt hat.
+
+    Der Test prueft deshalb den KOPF auf fuenf Felder in fester Reihenfolge
+    und das Suffix separat. Eine harte `len(parts) == 5` waere beim ersten
+    Suffix gefallen und haette wie eine verschobene Reihenfolge ausgesehen --
+    also genau wie der Fehler, den sie fangen soll.
+    """
     config = load_config()
     parts = run_signature(config).split("|")
 
-    assert len(parts) == 5, "a field was added or removed; every collected row is now orphaned"
+    assert len(parts) >= 5, "a field was removed; every collected row is now orphaned"
     assert parts[0] == str(config.engine.simulation.initial_equity)
     assert parts[1] == str(config.engine.setups.enabled)
     assert parts[2] == str(config.risk.limits.max_cost_fraction_of_risk)
     assert parts[3] == config.engine.timeframes.signal.value
     assert parts[4] == LEDGER_SCHEMA
+
+    extra = parts[5:]
+    allowed = {"portfolio"}
+    assert set(extra) <= allowed, (
+        f"unbekanntes Suffix in der Signatur: {sorted(set(extra) - allowed)}. "
+        "Ein Suffix, das niemand kennt, macht die Zugehoerigkeit der Zeilen "
+        "unlesbar."
+    )
+    if config.risk.sizing.basis == "portfolio":
+        assert extra == ["portfolio"], "die Groessenbemessung fehlt in der Signatur"
+    else:
+        assert extra == [], "ein Vorgabelauf darf kein Suffix tragen"
 
 
 def test_a_truncated_run_gets_its_own_signature() -> None:

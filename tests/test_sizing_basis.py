@@ -69,7 +69,18 @@ def test_account_basis_hands_out_no_shared_ledger(tmp_path: Path, base: AppConfi
     Einzelkonto, und der Vorwaertslauf bleibt mit allem vergleichbar, was
     bisher gemessen wurde.
     """
-    assert base.risk.sizing.basis == "account", "die Vorgabe muss account sein"
+    # Der VORGABEWERT des Feldes, nicht der ausgelieferte Wert.
+    #
+    # Die erste Fassung prueefte `base.risk.sizing.basis == "account"` und
+    # fiel, als die Konfiguration am 13.10. auf `portfolio` umgestellt wurde
+    # -- sie verwechselte "was das Modell vorgibt" mit "was heute
+    # eingetragen ist". Das Erste ist eine Eigenschaft des Codes und gehoert
+    # in einen Test; das Zweite ist eine Entscheidung und darf sich aendern.
+    default = type(base.risk.sizing).model_fields["basis"].default
+    assert default == "account", (
+        "der Vorgabewert muss account bleiben: wer die Konfiguration nicht "
+        "anfasst, soll die alte Groessenbemessung und die alte Signatur haben"
+    )
     assert shared_ledger(with_basis(base, "account"), twelve_accounts(tmp_path)) is None
 
 
