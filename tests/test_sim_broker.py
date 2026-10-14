@@ -464,6 +464,150 @@ def test_quantities_round_down_to_the_venue_step(
 
 
 # --------------------------------------------------------------------------- #
+# Which way slippage points
+#
+# Found on 14.10.2026 by a test about something else. `_slipped` carried the
+# EXIT geometry to the entry call site, so a long market entry filled a full
+# slippage below the market -- better than the market, on the side that pays
+# to get in. It had never fired, because `sim/plan.py:307` sets
+# `OrderType.LIMIT` without exception; these two tests exist so that stays
+# true if anyone turns market entries on.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("side", "limit", "stop", "target"),
+    [(Side.LONG, 100.0, 90.0, 120.0), (Side.SHORT, 100.0, 110.0, 80.0)],
+)
+def test_a_market_entry_slips_against_us(
+    side: Side, limit: float, stop: float, target: float
+) -> None:
+    """Both sides, because one formula has to serve both and it did not."""
+    broker = SimBroker(free_spec(), config(slippage_bps=100.0))
+    broker.submit(
+        long_entry(
+            side=side, order_type=OrderType.MARKET,
+            limit_price=limit, stop=stop, target=target,
+        )
+    )
+
+    minutes(broker, [(100.0, 100.0, 100.0)])
+
+    assert broker.position is not None
+    entry = broker.position.entry_price
+    if side is Side.LONG:
+        assert entry == pytest.approx(101.0), "ein Long zahlt MEHR, nicht weniger"
+    else:
+        assert entry == pytest.approx(99.0), "ein Short bekommt WENIGER, nicht mehr"
+
+
+# --------------------------------------------------------------------------- #
+# Pulling the target in (E15)
+#
+# `long_entry` risks 10 on one unit from 100, so one R is ten points and the
+# shipped target of 120 sits at +2 R. That makes the arithmetic readable: a cap
+# at 1.0 R must land on 110, and a cap at 3.0 R must change nothing.
+# --------------------------------------------------------------------------- #
+
+
+def test_the_cap_pulls_a_distant_target_in() -> None:
+    broker = SimBroker(free_spec(), config(target_cap_r=1.0))
+    broker.submit(long_entry())
+
+    minutes(broker, [(100.0, 100.0, 100.0)])
+
+    assert broker.position is not None
+    assert broker.position.target == pytest.approx(110.0)
+
+
+def test_the_cap_never_pushes_a_near_target_out() -> None:
+    """The control, and the property that makes the result readable.
+
+    A cap can only pull a target IN. Without this, a "cap" that also moved
+    close targets further would be a different policy wearing the same name,
+    and every difference E15 measures would have two possible sources.
+    """
+    broker = SimBroker(free_spec(), config(target_cap_r=3.0))
+    broker.submit(long_entry())
+
+    minutes(broker, [(100.0, 100.0, 100.0)])
+
+    assert broker.position is not None
+    assert broker.position.target == pytest.approx(120.0), (
+        "der Deckel bei 3 R liegt bei 130 und das Ziel bei 120 -- es bleibt"
+    )
+
+
+def test_a_short_is_capped_downwards() -> None:
+    """The sign flip, which is where a cap like this is usually wrong.
+
+    A short from 100 with ten points of risk reaches +1 R at 90, not at 110.
+    Taking the long formula for both would move the target to the losing side
+    and the position would close instantly at a loss, every time.
+    """
+    broker = SimBroker(free_spec(), config(target_cap_r=1.0))
+    broker.submit(long_entry(side=Side.SHORT, limit_price=100.0, stop=110.0, target=80.0))
+
+    minutes(broker, [(100.0, 100.0, 100.0)])
+
+    assert broker.position is not None
+    assert broker.position.target == pytest.approx(90.0)
+
+
+def test_the_cap_is_off_unless_it_is_configured() -> None:
+    broker = SimBroker(free_spec(), config())
+    broker.submit(long_entry())
+
+    minutes(broker, [(100.0, 100.0, 100.0)])
+
+    assert broker.position is not None
+    assert broker.position.target == pytest.approx(120.0)
+
+
+def test_a_capped_target_pays_out_at_the_cap() -> None:
+    """Not just placed there -- actually closed there, for the capped R.
+
+    A test that only reads `position.target` would pass even if the exit logic
+    ignored the field. This one runs the trade to its end.
+    """
+    broker = SimBroker(free_spec(), config(target_cap_r=1.0))
+    broker.submit(long_entry())
+    minutes(broker, [(100.0, 100.0, 100.0)])
+
+    minutes(broker, [(100.0, 111.0, 100.0)], start=EPOCH + MINUTE)
+
+    assert broker.position is None
+    fill = broker.fills[-1]
+    assert fill.reason is ExitReason.TARGET
+    assert fill.exit_price == pytest.approx(110.0)
+    assert fill.r_multiple == pytest.approx(1.0), (
+        "ein Deckel bei 1.0 R muss 1.0 R auszahlen, nicht die 2.0 des "
+        "Strukturziels"
+    )
+
+
+def test_the_cap_measures_from_the_fill_not_the_intended_price() -> None:
+    """A slipped entry must not put the cap a few points off, and silently.
+
+    The risk per unit is `risk_amount / qty`, which does not know where the
+    fill happened. Anchoring the cap on the order's limit price would therefore
+    drift on every market entry, in the direction of the slippage.
+    """
+    broker = SimBroker(
+        make_symbol_spec(taker_fee=0.0, maker_fee=0.0),
+        config(target_cap_r=1.0, slippage_bps=100.0),
+    )
+    broker.submit(long_entry(order_type=OrderType.MARKET))
+
+    minutes(broker, [(100.0, 100.0, 100.0)])
+
+    assert broker.position is not None
+    entry = broker.position.entry_price
+    assert entry > 100.0, "ohne Slippage prueft dieser Test nichts"
+    assert broker.position.target == pytest.approx(entry + 10.0)
+
+
+# --------------------------------------------------------------------------- #
 # Moving the stop to the entry
 # --------------------------------------------------------------------------- #
 

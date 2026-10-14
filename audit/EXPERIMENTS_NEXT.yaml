@@ -43,10 +43,15 @@ meta:
   # Die Zahl, auf die korrigiert wird. Summe der `comparisons` aller Arme unten
   # plus die bereits gelesenen Zellen der Vorgaenger-Suche, soweit dieselbe
   # Frage betroffen ist.
-  total_comparisons: 67
+  total_comparisons: 70
   correction: >-
-    Bonferroni auf `total_comparisons` Vergleiche. Bei 65: Schwelle
-    0.05/67 = 0.00075 und ein 99.925%-Intervall.
+    Bonferroni auf `total_comparisons` Vergleiche: Schwelle 0.05/n,
+    Intervall 100*(1 - 0.05/n) %. Bei 70 also 0.000714 und 99.9286 %.
+
+    Hier stand bis zum 14.10.2026 eine Beispielrechnung, die zwei
+    verschiedene Zahlen nannte -- "Bei 65: Schwelle 0.05/67" -- also genau
+    die Drift, die der Absatz darunter beklagt, und zwar im Satz, der sie
+    beklagt. Jetzt steht die Formel statt einer Zahl.
 
     Der Text nannte bis zum 13.10.2026 die Zahl 55, waehrend darueber 61
     stand -- stehengeblieben bei 55 -> 58 -> 61. Die Zahl steht jetzt nur
@@ -1577,6 +1582,128 @@ experiments:
       Niveau ueber null Trades.
 
       Zu diesem Zeitpunkt existiert keine Zahl zu E14.1 oder E14.2.
+
+  - id: E15
+    title: "Die ZIELENTFERNUNG -- liegt das Ziel jenseits des Umkehrpunkts?"
+    priority: 1
+    cells: 3
+    comparisons: 3
+    arms:
+      - id: E15.1
+        name: "Zieldeckel bei 1.0 R (Ausstieg, nicht Ablehnung)"
+      - id: E15.2
+        name: "Zieldeckel bei 1.5 R"
+      - id: E15.3
+        name: "Zieldeckel bei 2.0 R"
+    was_ich_VORHER_schon_gesehen_habe: >-
+      Wie bei E14 ist dieser Arm NICHT blind angelegt, und das zu verschweigen
+      waere unredlich. Er entstand aus einer beschreibenden Auswertung der
+      post_mortem-Felder, 2.734 Replay-Trades, am 14.10.2026 VOR der
+      Anmeldung:
+
+        Ziel geplant, Median        +1.905 R   Mittel +2.147 R
+        beste Lage, Median          +1.073 R   Mittel +1.496 R
+        Ergebnis, Median            -1.028 R   Mittel -0.091 R
+
+        beste Lage >= geplantes Ziel:   34.6 %
+        Ziel NIE erreicht, auch nicht kurz:  67.8 %
+
+        **Korrigiert, noch am selben Tag.** Zuerst stand hier 65.4 %, und
+        die Zahl war an einem gemischten Nenner gerechnet: `examine()`
+        bekommt `entry=fill.entry_price` und `stop=reason.stop`, also das
+        Fill-Risiko, waehrend `reward_risk` das PLAN-Risiko benutzt. Bei
+        85.7 % der Trades sind die beiden identisch; bei den uebrigen nicht,
+        und 65 Trades wechseln dadurch die Seite. Konsistent gerechnet sind
+        es 67.8 % statt 65.4 % -- die Richtung des Befunds wird dadurch
+        staerker, nicht schwaecher, aber eine Zahl aus zwei Nennern ist
+        keine Zahl.
+        Abstand Ziel minus beste Lage, Median:  +0.837 R
+
+        Schwelle   erreicht   danach im Minus   mittleres R
+             0.5     67.8 %           52.6 %        +0.3496
+             1.0     51.8 %           38.0 %        +0.7743
+             1.5     41.6 %           23.0 %        +1.2121
+             2.0     25.4 %           19.7 %        +1.4946
+             2.5     14.9 %           22.4 %        +1.6186
+             3.0      9.5 %           26.8 %        +1.7007
+
+        Ausgaenge: target 31.9 % (+1.8433 R), stop 68.0 % (-0.9980 R)
+
+      **Und diese Tabelle hat mir schon gesagt, welche Schwelle gut
+      aussieht.** Eine naive Rechnung -- Trefferquote an der Schwelle mal
+      Schwelle minus Rest mal 1 R -- ergibt bei 1.0 und 1.5 ein positives
+      Vorzeichen und bei 2.0 ein negatives. Darum ist das Raster hier
+      ABSICHTLICH so gelegt, dass es nicht die beste Zelle auswaehlt: alle
+      drei werden gelaufen, alle drei zaehlen als Vergleich, und 2.0 liegt
+      dicht am heutigen Median von 1.905 und ist damit beinahe eine
+      Kontrolle. Waehlte ich nur 1.0 und 1.5, waere das Auswahl auf
+      denselben Daten, aus denen die Vermutung stammt.
+
+      Was die Tabelle NICHT ist: ein Ergebnis. Dieselbe Einschraenkung wie
+      bei E14, und hier sogar staerker -- ein naeheres Ziel beendet Trades
+      frueher, gibt den Platz frueher frei, und die danach entstehenden
+      Trades sind ANDERE. Das kann nur der Motor abbilden.
+    acceptance: >-
+      Beide Tore, wie fuer jeden Arm. Korrigiertes Intervall ohne Null auf
+      der Differenz zur heutigen Regel, Niveau 1 - 0.05/70, UND Replikation
+      0.5-2.0x zwischen der frueheren und der spaeteren Haelfte.
+
+      Primaerkennzahl NETTO-R je Trade, ungepaart -- derselbe Grund wie bei
+      E14: die Mengen unterscheiden sich, weil die Belegung sich
+      unterscheidet.
+
+      Der Rand, vorab festgelegt: Anteil unter -1R, schlimmster
+      Einzelverlust, 5%-Quantil, Anteil der Ausstiege am Ziel, und die
+      mittlere Haltedauer. Die letzte steht dabei, weil ein naeheres Ziel
+      die Haltedauer verkuerzt und damit den Durchsatz erhoeht -- das ist
+      ein ERWUENSCHTER Nebeneffekt und darf trotzdem nicht als Teil des
+      Ergebnisses gelesen werden.
+    warum_ueberhaupt: >-
+      E3 hat die Ausgaenge geprueft -- Basis, 24h-Zeitausstieg,
+      2.0-ATR-Trailing -- und die ENTFERNUNG des Ziels nie variiert. Das
+      Ziel lag immer dort, wo die Struktur es hinlegte, und niemand hat
+      gemessen, ob dieser Ort erreichbar ist.
+
+      Die Beschreibung oben sagt: in 67.8 % der Faelle nicht. Das ist eine
+      andere Aussage als "der Ausstieg gibt es zurueck" (E14). Dort geht es
+      um einen Trade, der vorn lag und zurueckkam; hier um einen, der nie
+      dort war, wo er hin sollte.
+    die_falle_die_dabei_auffiel: >-
+      WICHTIG fuer jeden, der das laufen laesst. `min_reward_risk: 1.5`
+      lehnt jeden Vorschlag mit einem Chance-Risiko unter 1.5 ab
+      (`sim/plan.py:164`). Haette der Zieldeckel im VORSCHLAG gegriffen,
+      haette E15.1 (1.0 R) damit **jeden Trade abgelehnt** -- null Trades,
+      und die naheliegende "Reparatur" waere gewesen, eine Schutzregel
+      aufzuweichen, um ein Ergebnis zu bekommen.
+
+      Darum greift der Deckel im SIMULATOR, wie `breakeven_at_r`: die
+      Einstiegspopulation bleibt fest, die Ablehnungsregeln bleiben
+      unberuehrt, und gemessen wird allein der Ausstieg. Das ist auch die
+      sauberere Messung -- der andere Entwurf haette zwei Effekte
+      vermischt, weniger genommene Trades und frueheren Ausstieg.
+    gegenargument_das_vorher_steht: >-
+      Ein naeheres Ziel verschiebt die Auszahlung nach unten und die
+      Trefferquote nach oben. Das Produkt entscheidet, und die gemessene
+      Auszahlung ist 1:1.802 -- ein Ziel, das die Gewinner halbiert, muss
+      die Trefferquote mehr als verdoppeln, um dasselbe zu leisten. Die
+      Tabelle oben legt nahe, dass das bei 1.0 und 1.5 gelingt; sie zaehlt
+      aber nur die eine Seite, weil sie die Trades beschreibt, die unter
+      dem WEITEN Ziel entstanden sind.
+
+      Dazu die Lehre aus [[hit-rate-is-a-misleading-target]]: zwei
+      Messungen in diesem Projekt haben Populationen mit HOEHERER
+      Trefferquote gefunden, die weniger verdienen. Eine steigende
+      Trefferquote ist hier also ausdruecklich kein Zwischenerfolg.
+    status: angemeldet_nicht_gelaufen
+    angelegt: 2026-10-14
+    declared_before_reading: true
+    note: >-
+      Angemeldet VOR jeder Zeile Code fuer den Zieldeckel und vor jedem
+      Lauf. Es existiert zu diesem Zeitpunkt keine Zahl zu E15.1, E15.2
+      oder E15.3 -- die Tabelle oben beschreibt die heutige Regel.
+
+      Der Lauf wartet, bis E14 die Maschine freigibt; beides sind volle
+      Motorlaeufe ueber 12 Maerkte.
 
 
 

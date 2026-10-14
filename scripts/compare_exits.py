@@ -79,10 +79,18 @@ from traidingbrain.sim.engine import load_engine
 from traidingbrain.strategies.guide import GuidePool
 
 #: Angemeldete Vergleiche im Versuchsregister, Stand 14.10.2026. Dieselbe Zahl
-#: wie in `audit/EXPERIMENTS_NEXT.yaml:46`; sie steht hier als Literal, weil
-#: ein Skript, das sein eigenes Niveau aus einer Datei liest, die es auch
+#: wie in `audit/EXPERIMENTS_NEXT.yaml`; sie steht hier als Literal, weil ein
+#: Skript, das sein eigenes Niveau aus einer Datei liest, die es auch
 #: schreiben koennte, kein Niveau hat.
-TOTAL_COMPARISONS = 67
+#:
+#: **Von 67 auf 70 waehrend des laufenden E14-Laufs.** E15 wurde eine
+#: Viertelstunde nach dem Start angemeldet, und das Register sagt, jede
+#: Studie korrigiere auf die Zahl, die zu ihrer Zeit galt. Hier ist die
+#: strengere Zahl aber gratis: das Niveau geht erst in die AUSWERTUNG ein,
+#: nicht in die Motorlaeufe, und die liegen im Zwischenspeicher. Also 70,
+#: und `--only-report` rechnet den Bericht damit neu. Ein engeres Niveau
+#: kann kein falsches Positiv erzeugen -- die andere Richtung koennte es.
+TOTAL_COMPARISONS = 70
 
 #: Die Replikationsschranken, wie fuer jeden Arm in diesem Projekt.
 REPLICATION = (0.5, 2.0)
@@ -125,11 +133,34 @@ class Trade:
         return self.stop_moved and self.reason == ExitReason.STOP.value
 
 
-def run(symbol: str, breakeven: float | None) -> list[Trade]:
-    """Jeder Trade eines Marktes unter einer Ausstiegsregel."""
+def run(symbol: str, overrides: dict[str, float]) -> list[Trade]:
+    """Jeder Trade eines Marktes unter einer Ausstiegsregel.
+
+    `overrides` sind Felder von `engine.simulation`, und der Feldname wird
+    gegen das Modell geprueft, BEVOR kopiert wird.
+
+    **Warum das nicht selbstverstaendlich ist.** `model_copy(update=...)`
+    validiert nicht. Ein Tippfehler legt das Attribut einfach an: der Arm
+    laeuft dann mit der Vorgabe, also als zweite Kopie der Basis, und das
+    Ergebnis ist eine Spalte, die der Basis gleicht. Das liest sich als
+    "kein Effekt" und ist in Wirklichkeit "nicht gemessen" -- nach 18
+    Stunden Rechenzeit, und ohne eine einzige Fehlermeldung.
+
+    Ein `assert` waere hier auch falsch: `python -O` entfernt es, und der
+    Schutz verschwindet genau dann, wenn jemand den Lauf schneller machen
+    will.
+    """
     config = load_config()
-    if breakeven is not None:
-        simulation = config.engine.simulation.model_copy(update={"breakeven_at_r": breakeven})
+    if overrides:
+        known = type(config.engine.simulation).model_fields
+        unknown = [field for field in overrides if field not in known]
+        if unknown:
+            raise SystemExit(
+                f"Unbekannte Simulationsfelder: {unknown}. Bekannt sind "
+                f"{sorted(known)}. Ein stillschweigend ignorierter Schalter "
+                "waere ein Arm, der die Basis wiederholt."
+            )
+        simulation = config.engine.simulation.model_copy(update=overrides)
         engine_config = config.engine.model_copy(update={"simulation": simulation})
         config = config.model_copy(update={"engine": engine_config})
 
@@ -313,6 +344,13 @@ def main() -> int:
         default=[1.0, 0.5],
         help="move the stop to entry at these R multiples",
     )
+    parser.add_argument(
+        "--target-cap",
+        type=float,
+        nargs="*",
+        default=[],
+        help="E15: Ziel auf hoechstens so viele R hereinziehen",
+    )
     parser.add_argument("--symbol", action="append")
     parser.add_argument(
         "--cache", type=Path, default=CACHE,
@@ -325,8 +363,14 @@ def main() -> int:
     args = parser.parse_args()
 
     symbols = args.symbol or list(load_config().engine.symbols.active)
-    rules: list[tuple[str, float | None]] = [("ohne (original)", None)]
-    rules += [(f"Einstand bei {at:g} R", at) for at in args.at]
+    # Die Basis zuerst, und ihr Name ist eingefroren: der Zwischenspeicher
+    # schluesselt auf das Etikett, und ein umbenannter Arm waere ein neuer
+    # Arm mit 18 Stunden Rechenzeit.
+    rules: list[tuple[str, dict[str, float]]] = [("ohne (original)", {})]
+    rules += [(f"Einstand bei {at:g} R", {"breakeven_at_r": at}) for at in args.at]
+    rules += [
+        (f"Ziel gedeckelt bei {cap:g} R", {"target_cap_r": cap}) for cap in args.target_cap
+    ]
     order = [label for label, _ in rules]
 
     done = load_cache(args.cache)
@@ -356,13 +400,13 @@ def main() -> int:
         print(f"{len(symbols)} Märkte x {len(rules)} Regeln", flush=True)
         if done:
             print(f"  {len(done)} Paare schon im Zwischenspeicher", flush=True)
-        for label, at in rules:
+        for label, knobs in rules:
             for symbol in symbols:
                 key = (label, symbol)
                 if key in done:
                     results[label].extend(done[key])
                     continue
-                trades = run(symbol, at)
+                trades = run(symbol, knobs)
                 append_cache(args.cache, label, symbol, trades)
                 results[label].extend(trades)
                 print(f"  {label:22s} {symbol:10s} {len(trades):4d} Trades", flush=True)

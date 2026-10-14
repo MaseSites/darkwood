@@ -499,7 +499,7 @@ class SimBroker:
             qty=pending.qty,
             leverage=pending.leverage,
             stop=pending.stop,
-            target=pending.target,
+            target=self._capped_target(pending, price),
             liq_price=liquidation_price(
                 pending.side, price, pending.leverage, self.spec.maintenance_margin_rate
             ),
@@ -507,6 +507,35 @@ class SimBroker:
             margin=margin,
             setup=pending.setup,
             timeframe=pending.timeframe,
+            # Das GEPLANTE Risiko, nicht das wirkliche -- und das ist ein
+            # bekanntes Loch, gemessen am 14.10.2026 und absichtlich offen.
+            #
+            # `qty` wurde auf `risk_amount / |geplanter Einstieg - Stop|`
+            # bemessen. Fuellt die Order besser als ihr Limit (die Minute
+            # oeffnete schon jenseits des Levels), aendert sich der Abstand
+            # zum Stop, die Menge aber nicht. Ein Short, der nach oben
+            # wegspringt, fuellt weiter vom Stop entfernt und riskiert dann
+            # MEHR Geld als `risk_pct` erlaubt.
+            #
+            # Gemessen ueber 2.734 Replay-Trades:
+            #
+            #   genau wie geplant      2.343 (85.7 %)
+            #   weniger als geplant      376 (13.8 %)
+            #   MEHR als geplant          15 ( 0.55 %), Faktor bis 4.14x
+            #
+            # Keiner dieser 15 ist hart ausgestoppt worden -- schlimmster
+            # Einzelverlust darunter -0.850 R, waehrend der schlimmste Verlust
+            # ueberhaupt (-3.885 R) die eine Liquidation ist. Das Loch ist
+            # also latent und hat nie zugeschlagen.
+            #
+            # **Warum es offen bleibt.** Die Reparatur -- Menge am Fillpreis
+            # neu rechnen -- aendert jede Positionsgroesse und damit jedes
+            # Ergebnis. Sie verschiebt die Basis, gegen die E14 und E15
+            # gerade gemessen werden, und eine Basis mitten im Lauf zu
+            # verschieben macht beide Arme unlesbar. `r_multiple` bleibt
+            # dabei ehrlich: es teilt durch `risk_amount`, ein Trade mit
+            # vierfachem Risiko meldet seinen Stop also als -4 R und nicht
+            # als -1 R.
             risk_amount=pending.risk_amount,
             fees_paid=notional * fee_rate,
             snapshot_hash=pending.snapshot_hash,
@@ -516,12 +545,35 @@ class SimBroker:
         self.ledger.reserve(margin)
         self.pending = None
 
+    def _capped_target(self, pending: PendingEntry, entry: float) -> float:
+        """The structural target, or `target_cap_r` risks away -- whichever is nearer.
+
+        A cap, not a replacement. A setup whose target already sits inside the
+        cap keeps it, so turning the cap on can only ever pull a target IN. That
+        matters for reading the result: every difference comes from trades whose
+        target was further than the cap, and never from one that was moved out.
+
+        Measured from the FILL, not from the order's limit price. The fill is
+        where the risk is actually anchored -- `risk_price` divides the risked
+        amount by the quantity, and the same quantity bought a point better or
+        worse shifts the whole scale. Using the intended price would put the
+        cap a few basis points off on every slipped entry, and silently.
+        """
+        if self.config.target_cap_r is None or pending.qty <= 0:
+            return pending.target
+        reach = self.config.target_cap_r * (pending.risk_amount / pending.qty)
+        capped = entry + pending.side.sign * reach
+        # `min` for a long, `max` for a short -- the near one either way.
+        return min(pending.target, capped) if pending.side is Side.LONG else max(
+            pending.target, capped
+        )
+
     def _entry_fill_price(
         self, pending: PendingEntry, open_: float, high: float, low: float
     ) -> float | None:
         """Where a limit order would have filled in this minute, if at all."""
         if pending.order_type is OrderType.MARKET:
-            return self._slipped(open_, pending.side, adverse=True)
+            return self._slipped(open_, pending.side, exiting=False)
 
         limit = pending.limit_price
         if pending.side is Side.LONG:
@@ -599,7 +651,7 @@ class SimBroker:
             # A time exit is a market order at whatever is there, and `on_minute`
             # is given no close, so the open of this minute is the only price
             # that exists -- which is also the price the labeller uses.
-            price = self._slipped(open_, position.side, adverse=True)
+            price = self._slipped(open_, position.side, exiting=True)
             return self._close(position, price, ts, ExitReason.TIME)
 
         return None
@@ -636,12 +688,36 @@ class SimBroker:
         moving_down = (side is Side.LONG) == adverse
         gapped = open_ < level if moving_down else open_ > level
         price = open_ if gapped else level
-        return self._slipped(price, side, adverse=adverse) if adverse else price
+        # `_gap_aware` ist ausstiegsseitig -- sein `adverse` heisst "die
+        # verlierende Seite", also der Stop und nicht das Ziel. Ein Ziel ist
+        # eine ruhende Limit-Order und rutscht nicht.
+        return self._slipped(price, side, exiting=True) if adverse else price
 
-    def _slipped(self, price: float, side: Side, *, adverse: bool) -> float:
-        """Apply slippage against us. Only ever against us."""
+    def _slipped(self, price: float, side: Side, *, exiting: bool) -> float:
+        """Apply slippage against us. Only ever against us.
+
+        **`exiting`, because the direction of "worse" flips between the two.**
+        A long pays MORE to get in and receives LESS to get out; a short is the
+        mirror. One flag cannot mean both, and until 14.10.2026 this parameter
+        was called `adverse` and carried the exit geometry to all three call
+        sites -- including the entry one, where it produced a fill a full
+        slippage BETTER than the market for every long.
+
+        It had never fired: `sim/plan.py:307` sets `OrderType.LIMIT` without
+        exception, so no market entry exists in any measurement, and the limit
+        path never slips at all. It is fixed because a latent sign error that
+        flatters results is a trap, not because a number moves. No number
+        moves -- the golden test says so.
+
+        All four cases, which is the only way to read this line:
+
+            long  exiting   lower is worse   (selling cheaper)
+            long  entering  higher is worse  (buying dearer)
+            short exiting   higher is worse  (buying back dearer)
+            short entering  lower is worse   (selling cheaper)
+        """
         amount = price * self.config.slippage_bps * BPS
-        worse_is_lower = (side is Side.LONG) == adverse
+        worse_is_lower = (side is Side.LONG) == exiting
         return price - amount if worse_is_lower else price + amount
 
     def _close(self, position: OpenPosition, price: float, ts: int, reason: ExitReason) -> Fill:

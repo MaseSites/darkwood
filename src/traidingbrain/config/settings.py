@@ -199,6 +199,35 @@ class SimulationConfig(_Frozen):
     instead of inside it is a second answer to the same question, and the first
     attempt at this missed liquidations, gaps and V08's runner at once."""
 
+    target_cap_r: float | None = Field(default=None, gt=0)
+    """Pull the take profit in to at most this many multiples of the risk.
+
+    Off by default, same reasoning as `breakeven_at_r`: it changes what gets
+    traded, so turning it on is a challenger arm, not a correction.
+
+    **Why it lives here and not in the proposal.** `min_reward_risk` is 1.5 and
+    `sim/plan.py` refuses anything below it. A cap applied where the proposal is
+    built would therefore have refused *every* trade at a cap of 1.0 R -- zero
+    trades, and the obvious "fix" would have been to weaken a protection rule
+    in order to get a result. Capping here keeps the entry population fixed and
+    varies only the exit, which is also the cleaner measurement: the other
+    design would have mixed two effects, fewer trades taken and earlier exits.
+
+    Registered as E15 on 14.10.2026. The reason it is worth measuring is a
+    description nobody had summed: over 2,734 replay trades the planned target
+    sits at a median +1.905 R while the median best position reached is
+    +1.073 R, so **67.8 % of trades never touch their target, not even
+    briefly**. E3 varied the exit RULE three ways and never varied the
+    target's DISTANCE.
+
+    That 67.8 % is a corrected figure and the correction is instructive. The
+    first pass read 65.4 % because it compared two numbers built on different
+    risk denominators: `max_favourable_r` comes from `examine()`, which is
+    handed `entry=fill.entry_price` and `stop=reason.stop`, while
+    `reward_risk` is plan over plan. They agree for 85.7 % of trades -- a
+    limit order usually fills at its limit -- and for the rest they do not, so
+    65 trades sat on the wrong side of the comparison."""
+
     max_hold_hours: float | None = Field(default=None, gt=0)
     """Close a position that has been held this long, on that ground alone.
 
