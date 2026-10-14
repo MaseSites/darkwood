@@ -73,7 +73,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import numpy as np
 
-from traidingbrain.config.settings import load_config
+from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import ExitReason
@@ -137,11 +137,22 @@ class Trade:
         return self.stop_moved and self.reason == ExitReason.STOP.value
 
 
-def run(symbol: str, overrides: dict[str, float]) -> list[Trade]:
-    """Jeder Trade eines Marktes unter einer Ausstiegsregel.
+def run(symbol: str, overrides: dict[str, object]) -> list[Trade]:
+    """Jeder Trade eines Marktes unter einer Ausstiegsregel oder einem Pool.
 
-    `overrides` sind Felder von `engine.simulation`, und der Feldname wird
-    gegen das Modell geprueft, BEVOR kopiert wird.
+    `overrides` sind Felder von `engine.simulation` ODER `engine.setups`,
+    geschrieben als `"simulation.breakeven_at_r"` bzw. `"setups.enabled"`.
+    Der Feldname wird gegen das Modell geprueft, BEVOR kopiert wird.
+
+    **Warum der Pool hier mit hineingehoert und nicht in ein zweites Skript.**
+    `GuidePool.for_config` liest `engine.setups.enabled`. Ein Setup
+    abzuschalten ist damit dieselbe Art Eingriff wie eine Ausstiegsregel zu
+    aendern: ein Feld in der Konfiguration, ein voller Motorlauf, dieselben
+    zwei Tore. `scripts/study_drop_setup.py` hat C entschieden und kann das
+    nicht mehr leisten -- es laeuft ueber vier fest verdrahtete Maerkte,
+    seine Basis enthaelt das abgeschaltete C, sein Intervall ist der
+    iid-Bootstrap auf 95 %, und es speichert keine Zeitstempel, also ist die
+    Replikation aus seinen Teilergebnissen nicht rechenbar.
 
     **Warum das nicht selbstverstaendlich ist.** `model_copy(update=...)`
     validiert nicht. Ein Tippfehler legt das Attribut einfach an: der Arm
@@ -156,17 +167,7 @@ def run(symbol: str, overrides: dict[str, float]) -> list[Trade]:
     """
     config = load_config()
     if overrides:
-        known = type(config.engine.simulation).model_fields
-        unknown = [field for field in overrides if field not in known]
-        if unknown:
-            raise SystemExit(
-                f"Unbekannte Simulationsfelder: {unknown}. Bekannt sind "
-                f"{sorted(known)}. Ein stillschweigend ignorierter Schalter "
-                "waere ein Arm, der die Basis wiederholt."
-            )
-        simulation = config.engine.simulation.model_copy(update=overrides)
-        engine_config = config.engine.model_copy(update={"simulation": simulation})
-        config = config.model_copy(update={"engine": engine_config})
+        config = _applied(config, overrides)
 
     store = ParquetStore(config.engine.paths.parquet_dir)
     frames = {tf: store.read(symbol, tf) for tf in config.engine.timeframes.context}
@@ -193,6 +194,42 @@ def run(symbol: str, overrides: dict[str, float]) -> list[Trade]:
         )
         for fill in result.fills
     ]
+
+
+def _applied(config: AppConfig, overrides: dict[str, object]) -> AppConfig:
+    """`engine.<block>.<feld>` setzen, mit Pruefung des Feldnamens.
+
+    `model_copy(update=...)` validiert nicht: ein Tippfehler legt das Attribut
+    einfach an, der Arm laeuft mit der Vorgabe, und das Ergebnis ist eine
+    zweite Kopie der Basis. Das liest sich als "kein Effekt" und ist "nicht
+    gemessen" -- nach Stunden Rechenzeit und ohne eine Fehlermeldung. Ein
+    `assert` waere hier falsch, weil `python -O` ihn entfernt, also genau
+    dann, wenn jemand den Lauf schneller machen will.
+    """
+    blocks: dict[str, dict[str, object]] = {}
+    for path, value in overrides.items():
+        block, _, field = path.partition(".")
+        if not field:
+            raise SystemExit(
+                f"Ueberschreibung {path!r} ohne Block. Erwartet wird "
+                "'simulation.<feld>' oder 'setups.<feld>'."
+            )
+        current = getattr(config.engine, block, None)
+        if current is None or not hasattr(type(current), "model_fields"):
+            raise SystemExit(f"engine.{block} gibt es nicht.")
+        if field not in type(current).model_fields:
+            raise SystemExit(
+                f"engine.{block}.{field} gibt es nicht. Bekannt sind "
+                f"{sorted(type(current).model_fields)}."
+            )
+        blocks.setdefault(block, {})[field] = value
+
+    engine = config.engine
+    for block, fields in blocks.items():
+        engine = engine.model_copy(
+            update={block: getattr(engine, block).model_copy(update=fields)}
+        )
+    return config.model_copy(update={"engine": engine})
 
 
 # --------------------------------------------------------------------------- #
@@ -349,6 +386,13 @@ def main() -> int:
         help="move the stop to entry at these R multiples",
     )
     parser.add_argument(
+        "--drop",
+        action="append",
+        default=[],
+        metavar="SETUP",
+        help="E16: dieses Setup aus der ausgelieferten Liste entfernen",
+    )
+    parser.add_argument(
         "--target-cap",
         type=float,
         nargs="*",
@@ -370,10 +414,34 @@ def main() -> int:
     # Die Basis zuerst, und ihr Name ist eingefroren: der Zwischenspeicher
     # schluesselt auf das Etikett, und ein umbenannter Arm waere ein neuer
     # Arm mit 18 Stunden Rechenzeit.
-    rules: list[tuple[str, dict[str, float]]] = [("ohne (original)", {})]
-    rules += [(f"Einstand bei {at:g} R", {"breakeven_at_r": at}) for at in args.at]
+    rules: list[tuple[str, dict[str, object]]] = [("ohne (original)", {})]
+
+    # Die Reihenfolge ist Terminplanung, nicht Auswahl.
+    #
+    # Jeder Arm kostet einen vollen Motorlauf je Markt, und die Basis teilen
+    # sie alle -- sie wird einmal gerechnet und aus dem Zwischenspeicher
+    # wiederverwendet. Welcher Arm zuerst FERTIG ist, entscheidet also die
+    # Reihenfolge hier, und die Schwellen stehen unabhaengig davon fest.
+    #
+    # `--drop` kommt zuerst, weil E16 der besser belegte Arm ist: beide Tore
+    # sind auf den eigenen Trades von Setup F schon erfuellt, waehrend E14
+    # und E15 ein unbekanntes Vorzeichen haben.
+    shipped = list(load_config().engine.setups.enabled)
+    for key in args.drop:
+        if key not in shipped:
+            raise SystemExit(
+                f"Setup {key} steht nicht in der ausgelieferten Liste "
+                f"{shipped} -- es ist schon aus, da ist nichts zu entfernen."
+            )
+        kept = [s for s in shipped if s != key]
+        rules.append((f"ohne Setup {key}", {"setups.enabled": kept}))
+
     rules += [
-        (f"Ziel gedeckelt bei {cap:g} R", {"target_cap_r": cap}) for cap in args.target_cap
+        (f"Einstand bei {at:g} R", {"simulation.breakeven_at_r": at}) for at in args.at
+    ]
+    rules += [
+        (f"Ziel gedeckelt bei {cap:g} R", {"simulation.target_cap_r": cap})
+        for cap in args.target_cap
     ]
     order = [label for label, _ in rules]
 
