@@ -262,7 +262,7 @@ FACTS: tuple[Fact, ...] = (
     Fact(
         "total_comparisons",
         "die Mächtigkeitsrechnungen korrigieren auf diese Zahl",
-        _comparisons, 65, fixed=False,
+        _comparisons, 67, fixed=False,
     ),
     Fact(
         "verunreinigte Live-Signale",

@@ -43,10 +43,10 @@ meta:
   # Die Zahl, auf die korrigiert wird. Summe der `comparisons` aller Arme unten
   # plus die bereits gelesenen Zellen der Vorgaenger-Suche, soweit dieselbe
   # Frage betroffen ist.
-  total_comparisons: 65
+  total_comparisons: 67
   correction: >-
     Bonferroni auf `total_comparisons` Vergleiche. Bei 65: Schwelle
-    0.05/65 = 0.00077 und ein 99.923%-Intervall.
+    0.05/67 = 0.00075 und ein 99.925%-Intervall.
 
     Der Text nannte bis zum 13.10.2026 die Zahl 55, waehrend darueber 61
     stand -- stehengeblieben bei 55 -> 58 -> 61. Die Zahl steht jetzt nur
@@ -1462,6 +1462,93 @@ experiments:
       Wirklichkeit auch die spaeteren Belegungen, was nur ein vollstaendiger
       Neulauf abbildet. Richtung des Fehlers bekannt: die Ablehnungsquote
       faellt eher zu niedrig aus als zu hoch.
+  - id: E14
+    title: "Stop auf Einstand -- die einzige Ausstiegsregel, die nie gemessen wurde"
+    priority: 1
+    cells: 2
+    comparisons: 2
+    arms:
+      - id: E14.1
+        name: "Stop auf Einstand, sobald der Trade +1.0 R vorn lag"
+      - id: E14.2
+        name: "Stop auf Einstand, sobald der Trade +0.5 R vorn lag"
+    was_ich_VORHER_schon_gesehen_habe: >-
+      WICHTIG, und es waere unredlich, es zu verschweigen: dieser Arm ist
+      NICHT blind angelegt. Er entstand aus einer Auswertung der
+      post_mortem-Felder des Journals, die ich vor der Anmeldung gemacht
+      habe. Gemessen ueber 2.734 Replay-Trades:
+
+        beste Lage je Trade im Mittel     +1.4964 R
+        Ergebnis je Trade im Mittel       -0.0906 R
+        Rueckgabe                         +1.5871 R
+
+        erreichten je +1.0 R   1.415 (51.8 %), davon endeten 537 im Minus
+        vom Docht gestoppt       966 (35.3 %)
+        nie im Plus              192 (7.0 %)
+
+      Was diese Zahlen NICHT sind: ein Ergebnis fuer diesen Arm. Die beste
+      Lage ist eine Obergrenze, die nur mit Rueckschau erreichbar ist, und
+      JEDES System gibt einen Teil davon zurueck. Sie sagen nur, dass die
+      Frage sich lohnt -- die Einstiege finden Bewegung, und zwar reichlich.
+      Was sie an Auswahl erzeugen, ist mit angemeldet: die beiden
+      Schwellen 1.0 und 0.5 stehen VOR dem Lauf fest und werden nicht
+      nachtraeglich um die Zelle erweitert, die am besten aussieht.
+    acceptance: >-
+      Beide Tore, wie fuer jeden Arm. Korrigiertes Intervall ohne Null auf
+      der Differenz zur heutigen Regel (ohne Einstand-Stop), UND Replikation
+      0.5-2.0x zwischen der frueheren und der spaeteren Haelfte der
+      Stichprobe.
+
+      Primaerkennzahl ist NETTO-R je Trade. Nicht R TOTAL: ein
+      Einstand-Stop beendet Trades frueher und gibt damit den naechsten
+      Einstieg frei, also unterscheiden sich die Trade-ZAHLEN, und
+      `scripts/compare_exits.py` sagt das selbst -- verglichen werden zwei
+      verschiedene Mengen, nicht dieselben Trades mit anderen Ausgaengen.
+      Eine gepaarte Rechnung ist hier also FALSCH.
+
+      Und der Rand, vorab festgelegt, nach der Lehre aus E10: Anteil unter
+      -1R, schlimmster Einzelverlust, 5%-Quantil, sowie der Anteil der
+      Gewinner, die der Einstand-Stop abschneidet. Ein besserer Mittelwert
+      bei schwererem Rand ist KEIN positives Ergebnis. E10 hat genau das
+      geliefert -- besserer Mittelwert, dreifacher schlimmster Verlust --
+      und wurde deshalb verworfen.
+    warum_ueberhaupt: >-
+      Der Simulator kann die Regel seit jeher (`sim/broker.py`,
+      `_maybe_move_to_breakeven`, ausgeloest von
+      `engine.simulation.breakeven_at_r`). Der Wert steht in KEINER
+      Konfigurationsdatei, der Vorgabewert ist None, also ist die Regel
+      aus -- und nirgends steht, dass das eine Entscheidung war.
+
+      E3 hat die Ausgaenge geprueft und die heutige Regel bestaetigt, aber
+      gegen zwei ANDERE Alternativen: festen 24h-Zeitausstieg (-0.0824 R,
+      Richtung negativ) und 2.0-ATR-Trailing (-0.0762 R, zuverlaessig
+      schlechter). Der Einstand-Stop war in E3 nicht dabei.
+    gegenargument_das_vorher_steht: >-
+      Die Regel schneidet nach Konstruktion in beide Richtungen. Sie rettet
+      die Trades, die einen Punkt zurueckgaben, und kratzt die, die vor dem
+      Lauf noch einmal eintauchten. Die ganze Frage ist, welche der beiden
+      Mengen groesser ist, und ein Ergebnis nahe null ist eine echte
+      Antwort und keine missglueckte Messung.
+
+      Die naive Obergrenze aus den Zahlen oben -- 537 gerettete Trades mal
+      rund 1 R, also +0.196 R je Trade -- ist AUSDRUECKLICH keine
+      Vorhersage. Sie zaehlt nur die eine Seite. Die andere Seite ist aus
+      dem Journal nicht lesbar, weil post_mortem die beste und die
+      schlimmste Lage kennt, aber nicht ihre Reihenfolge; dafuer muss der
+      Motor laufen.
+    status: angemeldet_nicht_gelaufen
+    angelegt: 2026-10-14
+    declared_before_reading: true
+    note: >-
+      Angemeldet VOR jedem Lauf von scripts/compare_exits.py. Es existiert
+      zu diesem Zeitpunkt keine Zahl zu diesem Arm -- die oben stehenden
+      sind Journal-Statistik ueber die heutige Regel und nicht ueber die
+      Alternative.
+
+      Der Lauf ist teuer: 12 Maerkte x 3 Regeln, je ein voller Motorlauf,
+      grob 18 Stunden. Er wartet, bis der Backfill die Maschine freigibt.
+
+
 
 
 
@@ -1484,6 +1571,24 @@ order:
 # Jede Aenderung nach dem ersten gelesenen Ergebnis kommt hierhin, mit Datum
 # und Grund. Leer zu sein ist der gute Zustand.
 amendments:
+
+  - date: 2026-10-14
+    by: "Claude, zwanzigstuendige Arbeitsphase"
+    declared_before_reading: true
+    change: "Neuer Arm E14 angelegt, zwei Zellen. total_comparisons 65 -> 67."
+    reason: >-
+      Der Simulator kann einen Einstand-Stop seit jeher; der Wert steht in
+      keiner Konfigurationsdatei, und nirgends steht, dass das Ausschalten
+      eine Entscheidung war. E3 hat die Ausgaenge geprueft, aber gegen
+      Zeitausstieg und ATR-Trailing -- der Einstand-Stop war nicht dabei.
+
+      Ausloeser war eine Journal-Auswertung, die VOR der Anmeldung lief und
+      im Arm vollstaendig offengelegt ist: die beste Lage je Trade betraegt
+      im Mittel +1.4964 R, das Ergebnis -0.0906 R. 51.8 % der Trades
+      erreichen irgendwann +1.0 R, und 537 davon enden trotzdem im Minus.
+      Der Arm ist damit NICHT blind angelegt, und das steht dort so.
+    note: >-
+      Angelegt VOR der ersten Ausfuehrung von scripts/compare_exits.py.
 
   - date: 2026-10-13
     by: "Claude, zwanzigstuendige Arbeitsphase"
