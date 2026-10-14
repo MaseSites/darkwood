@@ -1553,6 +1553,69 @@ experiments:
 
 
 
+# ---------------------------------------------------------------------------
+# Geschlossene DATENfamilien, 14.10.2026
+#
+# Kein Arm, sondern eine Negativliste: welche Daten gesucht, gepruefet und
+# verworfen wurden. Sie steht hier, damit niemand -- auch ich nicht in drei
+# Monaten -- dieselben acht Familien ein zweites Mal durchsucht.
+#
+# Verfahren: acht Agenten suchten je eine Familie (Literatur UND
+# Beschaffbarkeit, Endpunkte selbst gelesen und heruntergeladen), 19
+# Kandidaten kamen heraus, jeder wurde von vier unabhaengigen Linsen
+# angegriffen -- Kosten, Horizont, Beschaffbarkeit, schon-geschlossen.
+# 85 Agenten, 8.5 Mio Token, 1.274 Werkzeugaufrufe.
+#
+# ERGEBNIS: 19 von 19 gefallen. Kein Ueberlebender.
+# ---------------------------------------------------------------------------
+geschlossene_datenfamilien:
+  stand: 2026-10-14
+  bericht: audit/DATENSUCHE_14OKT_LUECKEN.md
+  kandidaten_geprueft: 19
+  ueberlebende: 0
+  familien:
+    orderbook: "Binance bookTicker/bookDepth, Bybit ob500 -- alle drei gefallen (4/4, 4/4, 3/4 Linsen)"
+    trades: "Binance aggTrades, Bybit tick-Tape -- gefallen (2/4, 4/4)"
+    liquidations: "Open Interest, Massen-Positionierung, Hyperliquid-Fill-Log -- alle drei 4/4"
+    basis: "Premium-Index-Klines, OI+Taker-Ratio 5min, Hyperliquid-Stundenpremium -- 4/4, 3/4, 4/4"
+    options: "DVOL/Varianzrisikopraemie, IV-Oberflaeche, Net Buying Pressure -- 4/4, 3/4, 4/4"
+    onchain: "Stablecoin-Mints, Tether-Treasury-Transfers -- beide 4/4"
+    crosssection: "Vesting-/Unlock-Kalender, breites Perp-Panel mit Delistings -- 3/4, 4/4"
+    microstructure: "Binance aggTrades ms, Bybit tick -- 3/4, 4/4"
+  was_das_heisst: >-
+    Bis zu dieser Suche war "uns fehlen nur die richtigen Daten" eine
+    lebende Hypothese. Drei UNABHAENGIGE Suchprogramme haben jetzt dasselbe
+    geliefert: 87 Arme auf den vorhandenen Daten -> null; 32 Agenten ueber
+    24 Literaturansaetze -> null; 19 Datenkandidaten ueber acht Familien ->
+    null. Wenn drei verschiedene Verfahren dieselbe Null zurueckgeben, ist
+    die wahrscheinlichste Erklaerung nicht, dass alle drei schlecht gesucht
+    haben.
+  was_offen_BLEIBT: >-
+    Diese Suche ging ueber DATEN, nicht ueber AUSGAENGE. E14 (Stop auf
+    Einstand) ist am selben Tag angemeldet und nicht gelaufen, und seine
+    Motivation stammt aus einer Zahl, die in keinem der drei Suchprogramme
+    vorkam: die beste Lage je Trade betraegt im Mittel +1.4964 R, das
+    Ergebnis -0.0906 R. Das ist eine Aussage ueber den Ausstieg und keine
+    ueber die Datenlage.
+  zwei_messungen_die_sich_noch_lohnen:
+    - >-
+      Die eigenen Ausfuehrungsberichte: Markout der EIGENEN ruhenden Orders
+      auf einem Kleinstkonto. Kann die gemessene -0.0129 R nur SENKEN, nicht
+      retten -- bei Gebuehr null sind es +0.0151 R, also 2.8 % der
+      benoetigten 0.54 R. Wert liegt in der Falsifikation.
+    - >-
+      Die Adresskohorte: Hyperliquid veroeffentlicht Position und
+      Fill-Historie jeder Adresse. Die Frage ist nicht "habe ICH einen
+      Vorteil", sondern "hat ihn ueberhaupt jemand". Beide Ausgaenge sind
+      entscheidungsreif. Nur vorwaerts sammelbar (userFills haelt 10.000
+      Zeilen je Adresse), also Wochen, nicht Tage.
+  nicht_wiederholen: >-
+    Die acht Familien oben sind durchsucht. Eine neunte Suche auf denselben
+    zwoelf Maerkten ist bei 67 angemeldeten Vergleichen nicht nur wertlos,
+    sie ist schaedlich: jeder weitere Arm senkt die Wahrscheinlichkeit,
+    dass ein kuenftiges Positiv echt ist.
+
+
 rejection_rules:
   - "Ein 95%-Intervall ohne Null bei 46 angesehenen Vergleichen ist kein Ergebnis."
   - "Besser als der Champion (-0.0340 R) ist nicht profitabel."
