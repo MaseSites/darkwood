@@ -202,6 +202,20 @@ def closure_at(src: Path) -> tuple[str, ...]:
     ))
 
 
+def _is_prose(node: ast.stmt) -> bool:
+    """Eine nackte Zeichenketten-Anweisung, also Prosa und nichts sonst.
+
+    In Python hat `Expr(Constant(str))` keine Wirkung. Sie kann darum nur
+    Docstring oder toter Text sein, und beides gehört aus der Bedeutung
+    heraus.
+    """
+    return (
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    )
+
+
 def _meaning(source: str) -> str:
     """Der Quelltext ohne Kommentare, Docstrings und Formatierung.
 
@@ -210,22 +224,39 @@ def _meaning(source: str) -> str:
     der ganze Zweck: dieses Projekt schreibt sehr lange Docstrings, und ein
     Stempel, der sich bei einem umformulierten Absatz bewegt, wäre genauso
     unbrauchbar wie der Commit.
+
+    **Und bis zum 14.10.2026 stimmte genau dieser Satz nicht.** Entfernt wurde
+    nur die ERSTE Anweisung von Modul-, Klassen- und Funktionsrümpfen, also
+    der Docstring im engen Sinn. Dieses Projekt legt seine Prosa aber fast
+    ganz in **Attribut**-Docstrings — die langen Absätze unter einer
+    Feldzuweisung in `record.py`, `settings.py`, `broker.py`. Die sind keine
+    ersten Anweisungen, blieben also stehen, und `ast.unparse` schrieb sie
+    mit. Ein umformulierter Absatz bewegte den Stempel.
+
+    Gemessen, nicht vermutet: am 14.10.2026 sprang der Stempel von
+    2ec5d4ac3738 auf 37955d5c8bb9, und dazwischen lagen ausschliesslich
+    Prosa-Korrekturen. Eine Probe an einer Kopie des Baums trennte die drei
+    Fälle — Funktions-Docstring bewegt nicht, Kommentar bewegt nicht,
+    Attribut-Docstring bewegt.
+
+    Der Test dazu prüfte einen MODUL-Docstring und war darum grün, während
+    der häufigste Fall im Projekt durchfiel.
+
+    **Die Naht, die das hinterlässt.** Jeder Stempel ändert sich durch diese
+    Reparatur ein letztes Mal. Zwei Zeilen über den 14.10.2026 hinweg können
+    denselben Code tragen und verschieden gestempelt sein. Das ist dieselbe
+    Fehlerrichtung, die der Abschluss ohnehin wählt — ein überflüssiger
+    Schnitt kostet Stichprobe, ein fehlender verdirbt sie — und steht hier,
+    statt sich später als Rätsel zu stellen.
     """
     tree = ast.parse(source)
     for node in ast.walk(tree):
-        if not isinstance(
-            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-        ):
+        body = getattr(node, "body", None)
+        if not isinstance(body, list):
             continue
-        body = node.body
-        if (
-            body
-            and isinstance(body[0], ast.Expr)
-            and isinstance(body[0].value, ast.Constant)
-            and isinstance(body[0].value.value, str)
-        ):
-            # Ein Rumpf darf nicht leer werden, sonst ist der Baum ungültig.
-            node.body = body[1:] if len(body) > 1 else [ast.Pass()]
+        kept = [statement for statement in body if not _is_prose(statement)]
+        # Ein Rumpf darf nicht leer werden, sonst ist der Baum ungültig.
+        node.body = kept or [ast.Pass()]
     return ast.unparse(ast.fix_missing_locations(tree))
 
 

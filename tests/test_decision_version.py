@@ -107,6 +107,59 @@ def test_a_docstring_change_does_not_move_the_stamp(tree: Path) -> None:
     )
 
 
+def test_an_attribute_docstring_change_does_not_move_the_stamp(tree: Path) -> None:
+    """Die Prosa-Art, die dieses Projekt tatsächlich schreibt.
+
+    **Dieser Test fehlte, und die Lücke war genau die Lücke im Stempel.** Der
+    Test darüber formuliert einen MODUL-Docstring um; `_meaning` entfernte bis
+    zum 14.10.2026 nur die erste Anweisung eines Rumpfes, also den Docstring
+    im engen Sinn, und war damit grün. Die langen Absätze dieses Projekts
+    stehen aber unter FELDZUWEISUNGEN — in `record.py`, `settings.py`,
+    `broker.py` — und das sind keine ersten Anweisungen. Sie blieben stehen,
+    `ast.unparse` schrieb sie mit, und ein umformulierter Absatz schnitt die
+    Vorwärtsstichprobe.
+
+    Gemessen am 14.10.2026: der Stempel sprang von 2ec5d4ac3738 auf
+    37955d5c8bb9, und dazwischen lagen ausschliesslich Prosa-Korrekturen.
+
+    Der Test zielt bewusst auf eine Datei im Abschluss — bewegt sich der
+    Stempel bei einer Datei ausserhalb nicht, beweist das nichts.
+    """
+    before = version_at(tree)
+    _edit(
+        tree,
+        "traidingbrain.journal.record",
+        '"""How far it ran in our favour before it ended, in units of the risk."""',
+        '"""Derselbe Gedanke, völlig anders aufgeschrieben, und sonst nichts."""',
+    )
+    assert version_at(tree) == before, (
+        "ein umformulierter ATTRIBUT-Docstring hat den Stempel bewegt. Dieses "
+        "Projekt schreibt seine Prosa dort; ein Stempel, der sich daran "
+        "bewegt, schneidet die Stichprobe bei jeder Korrektur eines Absatzes."
+    )
+
+
+def test_a_bare_string_anywhere_is_prose(tree: Path) -> None:
+    """Auch mitten in einem Funktionsrumpf, wo niemand sie erwartet.
+
+    `Expr(Constant(str))` hat in Python keine Wirkung, also kann eine solche
+    Zeile nur Prosa oder toter Text sein — egal, an welcher Stelle sie steht.
+    Eine Regel, die nur die erste Anweisung prüft, ist eine Regel über die
+    POSITION und nicht über die Bedeutung, und das war der Defekt.
+    """
+    before = version_at(tree)
+    path = tree / "traidingbrain/journal/version.py"
+    source = path.read_text(encoding="utf-8")
+    needle = "    tree = ast.parse(source)\n"
+    assert needle in source, "der Test zielt ins Leere"
+    path.write_text(
+        source.replace(needle, needle + '    "Eine nackte Zeichenkette."\n', 1),
+        encoding="utf-8",
+    )
+
+    assert version_at(tree) == before
+
+
 def test_a_comment_change_does_not_move_the_stamp(tree: Path) -> None:
     """Dieselbe Hälfte, für Kommentare."""
     before = version_at(tree)

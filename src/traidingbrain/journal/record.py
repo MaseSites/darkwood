@@ -219,6 +219,25 @@ class JournalEntry:
     #: Bewusst konservativ: der Abschluss enthaelt auch Dateien, deren
     #: Aenderung keine Entscheidung veraendern kann. Ein ueberfluessiger
     #: Schnitt kostet Stichprobe, ein fehlender verdirbt sie.
+    #:
+    #: **EINE NAHT AM 14.10.2026.** Der Stempel hat an diesem Tag einmalig
+    #: seine Rechenart gewechselt, und Zeilen quer darueber sind nicht
+    #: vergleichbar:
+    #:
+    #:   bis dahin   37955d5c8bb9 und alles davor
+    #:   ab dann     3344c7b4c7eb
+    #:
+    #: Grund: `_meaning` entfernte nur die ERSTE Anweisung eines Rumpfes,
+    #: also den Docstring im engen Sinn. Dieses Projekt schreibt seine Prosa
+    #: aber fast ganz in ATTRIBUT-Docstrings -- wie diesem hier -- und die
+    #: sind keine ersten Anweisungen. Sie blieben im Hash, und ein
+    #: umformulierter Absatz schnitt die Vorwaertsstichprobe. Gemessen, nicht
+    #: vermutet: am selben Tag sprang der Stempel von 2ec5d4ac3738 auf
+    #: 37955d5c8bb9, und dazwischen lagen ausschliesslich Prosa-Korrekturen.
+    #:
+    #: Der Test dazu prueft seitdem alle drei Prosa-Arten; er pruefte vorher
+    #: nur einen MODUL-Docstring und war darum gruen, waehrend der haeufigste
+    #: Fall im Projekt durchfiel.
     decision_version: str = ""
 
     @property
