@@ -44,7 +44,7 @@ from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
 from traidingbrain.journal.record import JournalEntry, Source
 from traidingbrain.journal.signals import SignalStore
 from traidingbrain.journal.store import JournalStore
-from traidingbrain.journal.version import run_signature
+from traidingbrain.journal.version import code_version, decision_version, run_signature
 from traidingbrain.live.paper import (
     POLL_SECONDS,
     QUOTE,
@@ -456,6 +456,28 @@ class FailureWatch:
 
 def run(traders: list[PaperTrader], source: MarketData | None, *, cycles: int | None) -> int:
     symbols = [trader.symbol for trader in traders]
+
+    # Den Entscheidungsstempel JETZT einfrieren, nicht beim ersten Schluss.
+    #
+    # `live/paper.py:760` ruft `decision_version()` erst, wenn ein Trade
+    # geschlossen wird, und `lru_cache` friert den Wert dann ein. Die Funktion
+    # liest den Quellbaum von der PLATTE. Ein Händler, der morgens startet und
+    # abends seinen ersten Trade schliesst, stempelt seine Zeile also mit dem
+    # Code, der am ABEND auf der Platte liegt -- und nicht mit dem, den er
+    # ausführt.
+    #
+    # Genau so wäre es am 14.10.2026 passiert: Start um 16:40 unter 1e9c968,
+    # die erste offene Position lief noch, und `sim/broker.py` wurde um 16:56
+    # bearbeitet. Die Zeile hätte `2ec5d4ac3738` getragen, während der Prozess
+    # 1e9c968 ausführte. Das ist die Provenienz-Verfälschung, gegen die der
+    # Stempel überhaupt gebaut wurde -- nur von der anderen Seite.
+    #
+    # Hier gerufen und nicht in `PaperTrader.__init__`, weil der Aufruf
+    # einmal je PROZESS gehört und nicht einmal je Symbol; der Cache macht
+    # zwölf Aufrufe harmlos, aber die Absicht steht so klarer da.
+    stamp = decision_version()
+    print(f"Entscheidungscode {stamp} ({code_version()})")
+
     print(f"Papertrading läuft: {', '.join(symbols)}")
     print(
         f"Kein Konto, keine Börse, kein Geld. Takt {POLL_SECONDS}s, "
