@@ -17,6 +17,13 @@
  */
 
 import { drawChart, candleReadout } from "/static/chart.js";
+import {
+  advancePositionChart,
+  disposeAllPositionCharts,
+  disposePositionChart,
+  livePositionCharts,
+  renderPositionChart,
+} from "/static/position-chart.js";
 
 const HOLD_MS = 1200;
 const POLL_MS = 4000;
@@ -1479,7 +1486,10 @@ function paperAccount(account) {
     <li class="${classes.join(" ")}">
       <div class="paper__sym">
         <span>${escapeHtml(account.symbol)}</span>
-        <span class="paper__equity">${fmt.money(account.equity)}</span>
+        <span class="paper__equity ${
+          account.realised > 0 ? "up" : account.realised < 0 ? "down" : ""
+        }" title="Beitrag dieses Marktes zum Konto, aus ${account.trades} abgeschlossenen Trades"
+          >${signed(account.realised)}</span>
       </div>
       ${body}
       ${stale}
@@ -1642,39 +1652,45 @@ function viewClock(ms) {
 
 /* ------------------------------------------------------------- Konto ----- */
 
-function kontoCard(account) {
+/* Eine Marktkarte zeigt, was dieser Markt BEIGETRAGEN hat.
+ *
+ * Bis zum 14.10.2026 stand hier ein Kontostand je Markt, und seit der
+ * Zusammenlegung war das zwölfmal dieselbe Zahl: jede Karte behauptete, ihr
+ * Markt habe 12'075.56 USDT. Es gibt ein Konto. Ein Markt hat kein Geld, er
+ * hat ein Ergebnis.
+ *
+ * Der Einzahlen-Knopf ist mitgegangen: „500 USDT auf BTCUSDT einzahlen" ist
+ * unter einer Kasse keine Handlung, die es gibt. Eingezahlt wird oben, auf
+ * das Konto.
+ */
+function marketCard(market) {
   const classes = ["konto__card"];
-  if (account.stale) classes.push("konto__card--stale");
-  else if (account.change > 0) classes.push("konto__card--up");
-  else if (account.change < 0) classes.push("konto__card--down");
+  if (market.stale) classes.push("konto__card--stale");
+  else if (market.realised > 0) classes.push("konto__card--up");
+  else if (market.realised < 0) classes.push("konto__card--down");
 
-  const direction = account.change > 0 ? "up" : account.change < 0 ? "down" : "";
-  const open = account.has_position
+  const direction = market.realised > 0 ? "up" : market.realised < 0 ? "down" : "";
+  const open = market.has_position
     ? `<p class="konto__state">Position offen &middot; ${money(
-        account.open_risk
-      )} USDT im Risiko &middot; ${signed(account.unrealised)} USDT unrealisiert</p>`
+        market.open_risk
+      )} USDT im Risiko &middot; ${money(market.margin)} USDT Margin gebunden &middot;
+       ${signed(market.unrealised)} USDT unrealisiert</p>`
     : "";
 
   return `
     <li class="${classes.join(" ")}">
       <div class="konto__sym">
-        <span>${escapeHtml(account.symbol)}</span>
-        <span class="konto__value">${money(account.equity)}</span>
+        <span>${escapeHtml(market.symbol)}</span>
+        <span class="konto__value ${direction}">${signed(market.realised)}</span>
       </div>
       <p class="konto__delta ${direction}">
-        ${signed(account.change)} USDT &middot; ${signed(account.change_pct, 2)} %
-        <span style="color: var(--dimmer)">von ${money(account.start_equity)}</span>
+        aus ${market.trades} abgeschlossenen Trades
       </p>
       ${open}
-      <p class="konto__state">${escapeHtml(account.activity)}</p>
+      <p class="konto__state">${escapeHtml(market.activity)}</p>
       <div class="konto__actions">
-        <input class="konto__amount" type="number" min="1" step="50" value="500"
-               aria-label="Betrag in Franken" data-amount="${escapeHtml(account.symbol)}" />
-        <button class="btn" type="button" data-topup="${escapeHtml(account.symbol)}">
-          Einzahlen
-        </button>
-        <button class="btn" type="button" data-reset="${escapeHtml(account.symbol)}">
-          Zurücksetzen
+        <button class="btn" type="button" data-reset="${escapeHtml(market.symbol)}">
+          Arbeitsstand löschen
         </button>
       </div>
     </li>`;
@@ -1689,23 +1705,39 @@ function renderKonto(portfolio) {
   }
 
   const direction =
-    portfolio.total_change > 0 ? "up" : portfolio.total_change < 0 ? "down" : "";
+    portfolio.change > 0 ? "up" : portfolio.change < 0 ? "down" : "";
   const hit = portfolio.trades
     ? `${Math.round((100 * portfolio.wins) / portfolio.trades)} % Treffer`
     : "noch kein abgeschlossener Trade";
 
+  /* Die Lücke zwischen Kontostand und Summe der Marktbeiträge.
+   *
+   * Steht auf dem Bildschirm und nicht in einem Bericht. Am 14.10.2026 sind
+   * das +55.05 USDT aus einem Trade, der zu keiner Generation gehört — eine
+   * Zahl, die das Konto hält und kein journalisierter Trade erklärt. Eine
+   * Abstimmung, die nur dann sichtbar ist, wenn sie aufgeht, ist keine. */
+  const gap =
+    Math.abs(portfolio.unexplained) >= 0.01
+      ? `<br /><span class="konto__gap">${signed(portfolio.unexplained)} USDT
+           unerklärt &mdash; das Konto hält ein Ergebnis, das kein
+           journalisierter Trade trägt</span>`
+      : "";
+
   host.innerHTML = `
     <div class="total">
-      <span class="total__value">${money(portfolio.total_equity)}</span>
+      <span class="total__value">${money(portfolio.equity)}</span>
       <span class="total__change ${direction}">
-        ${signed(portfolio.total_change)} USDT &middot; ${signed(portfolio.total_change_pct, 2)} %
+        ${signed(portfolio.change)} USDT &middot; ${signed(portfolio.change_pct, 2)} %
       </span>
       <span class="total__meta">
         ${portfolio.trades} Trades vorwärts &middot; ${hit}<br />
-        ${money(portfolio.open_risk)} USDT gerade im Risiko<br />
+        ${money(portfolio.reserved)} USDT Margin gebunden &middot;
+        ${money(portfolio.available)} USDT frei &middot;
+        ${money(portfolio.open_risk)} USDT im Risiko${gap}<br />
         <span style="color: var(--dimmer)">
-          ${portfolio.accounts.length} getrennte Konten à
-          ${money(portfolio.accounts[0]?.start_equity ?? 0)} &mdash; kein gemeinsames Depot<br />
+          <strong>Ein</strong> Konto über ${portfolio.markets.length} Märkte, Einsatz
+          ${money(portfolio.start)} &mdash; jeder Trade zieht aus derselben Kasse,
+          wie bei einem echten Broker-Konto. Höchststand ${money(portfolio.peak)}.<br />
           Alles in <strong>USDT</strong>, nicht in Franken. Das System setzt
           stillschweigend 1&thinsp;USDT = 1&thinsp;CHF; der Kurs lag am
           02.10.2026 bei 0,8293 (FRED&nbsp;DEXSZUS), also sind diese Zahlen
@@ -1713,29 +1745,54 @@ function renderKonto(portfolio) {
           Zielquote ist das egal, für einen Frankenbetrag nicht.
         </span>
       </span>
+      <div class="konto__actions konto__actions--account">
+        <input class="konto__amount" type="number" min="1" step="50" value="500"
+               aria-label="Betrag in USDT" id="topup-amount" />
+        <button class="btn" type="button" id="topup-account">Auf das Konto einzahlen</button>
+        <button class="btn" type="button" id="reset-account">Konto zurücksetzen</button>
+      </div>
     </div>
-    <ul class="konto__grid">${portfolio.accounts.map(kontoCard).join("")}</ul>`;
+    <h3 class="panel__head">Was die Märkte beigetragen haben
+      <span class="panel__hint">kein Markt hat ein eigenes Konto</span></h3>
+    <ul class="konto__grid">${portfolio.markets.map(marketCard).join("")}</ul>`;
 
-  host.querySelectorAll("[data-topup]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const symbol = button.dataset.topup;
-      const field = host.querySelector(`[data-amount="${symbol}"]`);
-      const amount = Number(field?.value ?? 0);
-      if (!(amount > 0)) return;
-      await api(`/api/portfolio/${symbol}/topup`, {
-        method: "POST",
-        body: JSON.stringify({ amount }),
-      });
-      loadKonto();
+  host.querySelector("#topup-account")?.addEventListener("click", async () => {
+    const amount = Number(host.querySelector("#topup-amount")?.value ?? 0);
+    if (!(amount > 0)) return;
+    await api("/api/portfolio/topup", {
+      method: "POST",
+      body: JSON.stringify({ amount }),
     });
+    loadKonto();
+  });
+
+  host.querySelector("#reset-account")?.addEventListener("click", async () => {
+    /* Ein Zurücksetzen wirft einen Kontostand weg, den Trades erzeugt haben,
+     * also fragt es. Das Journal bleibt in jedem Fall unberührt — was
+     * passiert ist, ist passiert. */
+    if (
+      !confirm(
+        "Das ganze Konto auf den Einsatz zurücksetzen?\n\n" +
+          "Alle Märkte vergessen ihren Stand. Die Trades im Journal bleiben."
+      )
+    )
+      return;
+    await api("/api/portfolio/reset", { method: "POST" });
+    loadKonto();
   });
 
   host.querySelectorAll("[data-reset]").forEach((button) => {
     button.addEventListener("click", async () => {
       const symbol = button.dataset.reset;
-      /* A reset throws away a balance that took trades to produce, so it asks.
-       * The journal is untouched either way -- what happened happened. */
-      if (!confirm(`${symbol} auf den Startbetrag zurücksetzen?\n\nDie Trades im Journal bleiben.`))
+      /* Je Markt fällt nur der Arbeitsstand: Zähler, offene Position, letzter
+       * Kurs. Der Kontostand gehört nicht diesem Markt und bleibt. */
+      if (
+        !confirm(
+          `Arbeitsstand von ${symbol} löschen?\n\n` +
+            "Zähler, offene Position und letzter Kurs dieses Marktes. " +
+            "Der Kontostand und das Journal bleiben."
+        )
+      )
         return;
       await api(`/api/portfolio/${symbol}/reset`, { method: "POST" });
       loadKonto();
@@ -1751,12 +1808,28 @@ function renderSettings(settings) {
     return;
   }
 
+  /* Woran sich die Positionsgrösse bemisst.
+   *
+   * Hier stand „Startkapital je Markt 1'000 USDT" und darunter „Risiko je
+   * Trade 1 % — das sind 10.00 USDT". Unter einer geteilten Kasse bemisst
+   * sich die Grösse am Konto, also sind es 120 und nicht 10 — ein Faktor
+   * zwölf in der einzigen Zeile, die einem Leser sagt, wie viel ein Trade
+   * kostet. */
+  const pooled = settings.sizing_basis === "portfolio";
+  const base = pooled ? settings.account_start : settings.initial_equity;
   const rows = [
-    ["Startkapital je Markt", `${money(settings.initial_equity)} USDT`, "bei Zurücksetzen"],
+    pooled
+      ? [
+          "Einsatz des Kontos",
+          `${money(settings.account_start)} USDT`,
+          `ein Konto über alle Märkte, aus ${money(settings.initial_equity)} je Markt gebildet`,
+        ]
+      : ["Startkapital je Markt", `${money(settings.initial_equity)} USDT`, "bei Zurücksetzen"],
     [
       "Risiko je Trade",
       `${(settings.risk_pct_floor * 100).toFixed(2)} %`,
-      `das sind ${money(settings.initial_equity * settings.risk_pct_floor)} USDT`,
+      `am Einsatz gerechnet ${money(base * settings.risk_pct_floor)} USDT` +
+        (pooled ? " — am laufenden Kontostand entsprechend mehr oder weniger" : ""),
     ],
     ["Hebel höchstens", `${settings.max_leverage}×`, "so gewählt, dass die Liquidation hinter dem Stop liegt"],
     ["Mindest-CRV", `${settings.min_reward_risk}`, "Gewinn muss mindestens so viel wie das Risiko sein"],
@@ -2143,93 +2216,87 @@ function openCard(trade) {
     </li>`;
 }
 
-/* Candles as inline SVG. Same reasoning as the curve: the shape is a few dozen
- * rectangles and three lines, and a charting library for that is more code than
- * the code. */
-function candleSvg(chart) {
-  const candles = chart.candles;
-  if (!candles.length) return "";
-  const width = 1000;
-  const height = 300;
-  const pad = { top: 12, right: 74, bottom: 18, left: 8 };
+/* `candleSvg` stand hier und ist am 13.10.2026 entfallen.
+ *
+ * Die Funktion zeichnete 90 Kerzen als statisches SVG und hatte genau einen
+ * Aufrufer: den Chart hinter einem laufenden Trade. Der wird jetzt von
+ * `position-chart.js` gezeichnet, interaktiv, mit Zoom, Fadenkreuz und
+ * Zeitebenen-Umschalter.
+ *
+ * Sie zu behalten waere toter Code mit einer Begruendung, die nicht stimmt --
+ * der Vorschlagschart in `chart.js` hat seinen eigenen Renderer und hat diesen
+ * nie benutzt. Die alte Begruendung ("eine Chartbibliothek dafuer ist mehr
+ * Code als der Code") war fuer ein BILD richtig und fuer etwas, das man
+ * schwenken kann, falsch: dort ist die Bibliothek die kleinere Haelfte.
+ */
 
-  const levels = [chart.entry, chart.stop, chart.target];
-  const low = Math.min(...candles.map((c) => c.low), ...levels);
-  const high = Math.max(...candles.map((c) => c.high), ...levels);
-  const span = high - low || 1;
-
-  const y = (v) => pad.top + ((high - v) / span) * (height - pad.top - pad.bottom);
-  const step = (width - pad.left - pad.right) / candles.length;
-  const body = Math.max(1, step * 0.6);
-
-  const bars = candles
-    .map((c, i) => {
-      const x = pad.left + i * step + step / 2;
-      const up = c.close >= c.open;
-      const top = y(Math.max(c.open, c.close));
-      const bottom = y(Math.min(c.open, c.close));
-      return (
-        `<line x1="${x.toFixed(1)}" y1="${y(c.high).toFixed(1)}" x2="${x.toFixed(1)}" ` +
-        `y2="${y(c.low).toFixed(1)}" class="cndl ${up ? "cndl--up" : "cndl--down"}"/>` +
-        `<rect x="${(x - body / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${body.toFixed(1)}" ` +
-        `height="${Math.max(1, bottom - top).toFixed(1)}" class="cndl ${
-          up ? "cndl--up" : "cndl--down"
-        }"/>`
-      );
-    })
-    .join("");
-
-  const line = (value, cls, label) => {
-    const at = y(value).toFixed(1);
-    return (
-      `<line x1="${pad.left}" y1="${at}" x2="${width - pad.right}" y2="${at}" class="plan ${cls}"/>` +
-      `<text x="${width - pad.right + 6}" y="${(Number(at) + 3).toFixed(1)}" class="plan__label ${cls}">` +
-      `${label} ${fmt.price(value)}</text>`
-    );
-  };
-
-  /* The entry only exists from the moment the trade opened; drawing it across
-   * the whole window would say it was a level before it was a decision. */
-  const openedAt = candles.findIndex((c) => c.ts >= chart.opened_ts);
-  const entryFrom = openedAt < 0 ? pad.left : pad.left + openedAt * step;
-
-  return `
-    <svg class="cndl-chart" viewBox="0 0 ${width} ${height}" role="img"
-         aria-label="${escapeHtml(chart.symbol)} auf ${escapeHtml(chart.timeframe)},
-                     Stop ${fmt.price(chart.stop)}, Ziel ${fmt.price(chart.target)}">
-      ${line(chart.target, "plan--target", "Ziel")}
-      ${line(chart.stop, "plan--stop", "Stop")}
-      <line x1="${entryFrom.toFixed(1)}" y1="${y(chart.entry).toFixed(1)}"
-            x2="${width - pad.right}" y2="${y(chart.entry).toFixed(1)}" class="plan plan--entry"/>
-      <text x="${width - pad.right + 6}" y="${(y(chart.entry) + 3).toFixed(1)}"
-            class="plan__label plan--entry">Entry ${fmt.price(chart.entry)}</text>
-      ${bars}
-    </svg>
-    <p class="figure__note">
-      ${escapeHtml(chart.timeframe)}-Kerzen &middot; ${candles.length} Stück &middot;
-      Einstieg ${viewClock(chart.opened_ts)}
-    </p>`;
-}
-
+/* Der Chart eines laufenden Trades: interaktiv, und nicht mehr hier gebaut.
+ *
+ * Bis zum 13.10.2026 stand hier `host.innerHTML = candleSvg(...)` -- 90
+ * Kerzen als statisches Bild, alle 15 Sekunden komplett neu gezeichnet, ohne
+ * Zoom, ohne Schwenken, ohne Fadenkreuz. Wer hineingezoomt haette, haette
+ * seinen Ausschnitt nach 15 Sekunden verloren; es gab nur nichts, worin man
+ * zoomen konnte.
+ *
+ * Was NICHT mitgewandert ist: der Vorschlagschart in `chart.js`. Der hoert
+ * bei der Entscheidung auf, und das ist dort eine Eigenschaft und kein
+ * Mangel -- eine Bibliothek, die bis zur Gegenwart zeichnet und schwenken
+ * laesst, wuerde sie stillschweigend aufheben.
+ */
 async function loadChart(symbol) {
   const host = document.getElementById(`chart-${symbol}`);
   if (!host) return;
-  host.innerHTML = `<div class="placeholder"><span class="pulse"></span><p>Lese Kerzen&hellip;</p></div>`;
-  try {
-    host.innerHTML = candleSvg(await api(`/api/portfolio/open/${symbol}/chart`));
-  } catch {
-    host.innerHTML = `<p class="konto__state">Chart nicht lesbar.</p>`;
-  }
+  await renderPositionChart(host, symbol, (sym, tf) => {
+    const query = tf ? `?tf=${encodeURIComponent(tf)}` : "";
+    return api(`/api/portfolio/open/${sym}/chart${query}`);
+  });
+}
+
+/* Die Charts ueber ein Neuzeichnen der Liste hinwegretten.
+ *
+ * `renderOpen` setzt `innerHTML` auf dem ganzen Panel, und damit waere jeder
+ * Chart darin weg -- und mit ihm der Zoom, den jemand gerade eingestellt hat.
+ * Genau das war der Grund, warum der alte Chart alle 15 Sekunden bei null
+ * anfing: ein Bild merkt man das nicht an, ein Chart schon.
+ *
+ * Also wird der fertige Chart vorher aus dem Dokument genommen und nachher in
+ * seinen neuen Container gehaengt. Ein verschobener Teilbaum behaelt seine
+ * Zuhoerer und sein Canvas-Bild; neu gebaut wird nur, was es vorher nicht
+ * gab. */
+function parkCharts() {
+  const parked = new Map();
+  document.querySelectorAll(".open-card__chart > .pchart").forEach((node) => {
+    const symbol = node.dataset.symbol;
+    if (!symbol) return;
+    parked.set(symbol, node);
+    node.remove();
+  });
+  return parked;
+}
+
+function adoptCharts(parked) {
+  parked.forEach((node, symbol) => {
+    const host = document.getElementById(`chart-${symbol}`);
+    if (!host) {
+      /* Der Trade ist zu, oder er steht nicht mehr in der Liste. Dann gehoert
+       * der Chart abgeraeumt und nicht in einem losen Knoten weitergefuehrt. */
+      disposePositionChart(symbol);
+      return;
+    }
+    host.replaceChildren(node);
+  });
 }
 
 function renderOpen(trades) {
   const host = document.getElementById("open");
   if (!host) return;
   if (trades === "unavailable") {
+    disposeAllPositionCharts();
     host.innerHTML = `<p class="konto__state">Offene Trades nicht lesbar.</p>`;
     return;
   }
   if (!trades.length) {
+    disposeAllPositionCharts();
     host.innerHTML = `
       <h3 class="panel__head">Läuft gerade
         <span class="panel__hint">nichts offen</span></h3>
@@ -2240,6 +2307,12 @@ function renderOpen(trades) {
 
   const sum = trades.reduce((total, t) => total + t.unrealised, 0);
   const risk = trades.reduce((total, t) => total + t.risk_amount, 0);
+
+  /* Die fertigen Charts aus dem Dokument nehmen, BEVOR `innerHTML` sie
+   * mitreisst, und danach in ihren neuen Container haengen. Ohne das waere
+   * jeder Zoom alle 15 Sekunden weg -- und ein Chart, der seinen Ausschnitt
+   * nicht behaelt, ist nicht lesbar. */
+  const parked = parkCharts();
   host.innerHTML = `
     <h3 class="panel__head">Läuft gerade
       <span class="panel__hint">
@@ -2248,6 +2321,15 @@ function renderOpen(trades) {
       </span>
     </h3>
     <ul class="open-list">${trades.map(openCard).join("")}</ul>`;
+  adoptCharts(parked);
+
+  /* Und Charts von Trades, die es nicht mehr gibt, abraeumen. Ein Chart, den
+   * niemand mehr sehen kann, haelt sonst sein Canvas und seinen
+   * Groessenbeobachter bis zum Neuladen der Seite. */
+  const running = new Set(trades.map((t) => t.symbol));
+  livePositionCharts().forEach((symbol) => {
+    if (!running.has(symbol)) disposePositionChart(symbol);
+  });
 
   host.querySelectorAll("[data-open]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2267,10 +2349,21 @@ function renderOpen(trades) {
     });
   });
 
-  /* A chart left open stays open across the poll, and reloads with it: the
-   * point of opening one is watching it move. */
-  expandedTrades.forEach((symbol) => {
-    if (document.getElementById(`chart-${symbol}`)) loadChart(symbol);
+  /* Ein offener Chart bleibt offen und wird fortgeschrieben.
+   *
+   * Fortgeschrieben, nicht neu geladen: `advancePositionChart` setzt genau
+   * den letzten Balken aus den Zahlen, die dieser Poll ohnehin mitgebracht
+   * hat. Der alte Code rief hier `loadChart` und zeichnete alles neu -- das
+   * waere jetzt ein Abruf von 1.500 Kerzen je Chart und Poll, um zwei Zahlen
+   * zu erfahren, die schon auf dem Tisch liegen.
+   *
+   * `loadChart` nur dann, wenn es noch keinen Chart gibt: beim ersten Poll
+   * nach einem Seitenwechsel zum Beispiel, wo das Panel aufgeklappt ist und
+   * der Chart noch nicht gebaut wurde. */
+  trades.forEach((trade) => {
+    if (!expandedTrades.has(trade.symbol)) return;
+    if (!document.getElementById(`chart-${trade.symbol}`)) return;
+    if (!advancePositionChart(trade.symbol, trade)) loadChart(trade.symbol);
   });
 }
 

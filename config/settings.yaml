@@ -193,10 +193,21 @@ trigger:
 simulation:
   # Starting equity per market, in quote currency (USDT).
   #
+  # **Je Markt, und seit dem 13.10.2026 nur noch als Baustein.** Im Backtest
+  # ist das weiterhin das Startkapital eines Laufs. Im Papierhandel gibt es
+  # seitdem EIN Konto, und sein Einsatz ist dieser Betrag mal Zahl der Maerkte
+  # -- 12 x 1.000 = 12.000 USDT. `scripts/papertrade.py` bildet daraus beim
+  # einmaligen Umschalten die geteilte Kasse, und `api/portfolio.py` leitet
+  # daraus den Einsatz her, gegen den die Veraenderung gemessen wird.
+  #
+  # Hier stand bis zum 14.10.2026 "each of the four markets keeps its own
+  # account, so the paper portfolio is four thousand". Zwei Dinge daran waren
+  # ueberholt: es sind zwoelf Maerkte, und sie halten keine eigenen Konten
+  # mehr.
+  #
   # Severin's own number: a thousand is roughly what he expects to have when he
-  # starts, and each of the four markets keeps its own account, so the paper
-  # portfolio is four thousand. It was ten thousand, which made every figure on
-  # the screen a size he has never held.
+  # starts. It was ten thousand, which made every figure on the screen a size
+  # he has never held.
   #
   # Small enough to matter. At 0.5% risk this is five francs a trade, and the
   # venue refuses anything under fifty USDT of notional -- so a setup with a very

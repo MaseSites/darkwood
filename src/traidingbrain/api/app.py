@@ -44,13 +44,13 @@ from traidingbrain.api.market import (
 )
 from traidingbrain.api.paper import PaperReadout, build_paper_readout
 from traidingbrain.api.portfolio import (
+    CHART_CANDLES,
     Curve,
     Ledger,
     OpenTrade,
     Portfolio,
     PositionChart,
     SettingsView,
-    TopUp,
     TopUpRequest,
     build_curve,
     build_ledger,
@@ -488,7 +488,13 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
 
     @app.get("/api/portfolio", response_model=Portfolio)
     def portfolio() -> Portfolio:
-        """Every paper account side by side, and what the forward trades add up to."""
+        """Das EINE Papierkonto, und was die Maerkte darauf beigetragen haben.
+
+        Hier stand bis zum 14.10.2026 "every paper account side by side".
+        Beides war ueberholt: es gibt ein Konto, und die Nutzlast traegt
+        `markets` statt `accounts`. Ein Leser, der dem alten Satz glaubte,
+        suchte Kontostaende je Markt -- und wer sie fand, summierte sie.
+        """
         return build_portfolio(
             _state_path(services),
             _journal_path(services),
@@ -502,12 +508,27 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
         return build_open(_state_path(services), services.config, now_ms=int(time.time() * 1000))
 
     @app.get("/api/portfolio/open/{symbol}/chart", response_model=PositionChart)
-    def open_chart(symbol: str) -> PositionChart:
-        """The candles behind one running trade, with its stop and target."""
+    def open_chart(
+        symbol: str, tf: str | None = None, candles: int = CHART_CANDLES
+    ) -> PositionChart:
+        """The candles behind one running trade, with its stop and target.
+
+        `tf` switches the timeframe, `candles` how many bars come back. Both
+        default to what the page showed before the interactive chart existed,
+        so an old caller gets the old answer.
+
+        Eine unbekannte Ebene ist 404 und nicht stillschweigend die
+        Vorgabeebene: wer M5 anfragt und M15 bekaeme, wuerde die falschen
+        Kerzen fuer die richtigen halten.
+        """
         _known(services, symbol)
-        chart = build_position_chart(_state_path(services), services.config, symbol)
+        chart = build_position_chart(
+            _state_path(services), services.config, symbol, timeframe=tf, candles=candles
+        )
         if chart is None:
-            raise HTTPException(404, f"{symbol} has no open position")
+            raise HTTPException(
+                404, f"{symbol} has no open position, or no candles on {tf or 'its frame'}"
+            )
         return chart
 
     @app.get("/api/portfolio/ledger", response_model=Ledger)
@@ -529,27 +550,38 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
         """What the engine is configured to do. Read-only on purpose."""
         return build_settings(services.config)
 
-    @app.post("/api/portfolio/{symbol}/topup")
-    def topup(symbol: str, request: TopUpRequest) -> dict[str, Any]:
-        """Add paper money to one account.
+    @app.post("/api/portfolio/topup")
+    def topup(request: TopUpRequest) -> dict[str, Any]:
+        """Papiergeld auf DAS Konto legen.
 
-        Paper only -- there is no code path from here to an exchange. Added to
-        the balance rather than replacing it, so a deposit reads like a deposit.
+        Ohne Symbol, und das ist der Punkt: es gibt ein Konto. Bis zum
+        14.10.2026 lautete der Pfad `/api/portfolio/{symbol}/topup` und legte
+        Geld auf einen Markt -- eine Handlung, die es unter einer geteilten
+        Kasse nicht gibt.
+
+        Papier. Es gibt von hier keinen Pfad zu einer Boerse, und der Betrag
+        wird addiert statt gesetzt.
         """
-        _known(services, symbol)
-        row = top_up(_state_path(services), services.config, TopUp(symbol, request.amount))
-        return {"symbol": symbol, "equity": row.equity}
+        return {"equity": top_up(_state_path(services), services.config, request.amount)}
+
+    @app.post("/api/portfolio/reset")
+    def reset_all() -> dict[str, Any]:
+        """Das ganze Konto von vorn: alle Maerkte vergessen, Kasse auf den Einsatz.
+
+        Das Journal bleibt unberuehrt -- was passiert ist, ist passiert.
+        """
+        return {"equity": reset_account(_state_path(services), services.config)}
 
     @app.post("/api/portfolio/{symbol}/reset")
     def reset(symbol: str) -> dict[str, Any]:
-        """Start one account over at the configured balance.
+        """Den ARBEITSSTAND eines Marktes vergessen, nicht seinen Kontostand.
 
-        The journal is untouched: what happened happened, and a reset is about
-        the account rather than about the record.
+        Unter einer Kasse hat ein Markt keinen Kontostand. Was hier faellt,
+        sind Zaehler, offene Position und letzter Kurs dieses Marktes.
         """
         _known(services, symbol)
-        reset_account(_state_path(services), symbol)
-        return {"symbol": symbol, "equity": services.config.engine.simulation.initial_equity}
+        cleared = reset_account(_state_path(services), services.config, symbol)
+        return {"symbol": symbol, "equity": cleared}
 
     @app.get("/api/market/{symbol}/score", response_model=ScoreRead)
     def score(symbol: str) -> ScoreRead:

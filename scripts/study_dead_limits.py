@@ -17,11 +17,19 @@ schneidet es die Vorwärtsstichprobe. Dieses Skript beziffert, wie teuer der
 Schnitt wäre, statt darüber zu mutmassen.
 
 **Die Mehrdeutigkeit, die dabei auffällt, und sie ist selbst ein Befund.** Die
-Konfiguration sagt nicht, ob die Grenzen **je Konto** oder **über das
-Portfolio** gelten. Der Papierhandel führt zwölf getrennte Händler mit je
-1 000 USDT und einem Positionsplatz; je Konto kann `max_open_positions: 2`
-darum gar nicht binden, über das Portfolio hätte es bei vier gleichzeitig
-offenen Positionen gebunden. Beide Lesarten werden hier gerechnet.
+Konfiguration sagte nicht, ob die Grenzen **je Konto** oder **über das
+Portfolio** gelten. Zur Zeit dieser Messung führte der Papierhandel zwölf
+getrennte Händler mit je 1 000 USDT und einem Positionsplatz; je Konto konnte
+`max_open_positions: 2` darum gar nicht binden, über das Portfolio hätte es
+bei vier gleichzeitig offenen Positionen gebunden. Beide Lesarten werden hier
+gerechnet.
+
+**Nachtrag, 14.10.2026: die Frage ist entschieden, und zwar für das
+Portfolio.** Seit dem 13.10.2026 zieht der Papierhandel aus EINER Kasse, und
+`live/book.py` setzt `max_open_positions` über alle Märkte durch. Die untere
+der beiden Lesarten ist seitdem die wirkliche; die obere beschreibt, wie es
+war. Die Zahlen dieses Skripts bleiben richtig für die Population, über die
+sie gerechnet wurden — geändert hat sich, welche Spalte die Gegenwart ist.
 
 **Was dieses Skript NICHT kann.** Es prüft die *genommenen* Trades gegen die
 Regeln. Eine blockierte Order gibt ihren Platz frei, und ein echter Neulauf
@@ -165,12 +173,13 @@ def main() -> int:
           f"Tag {limits.max_daily_loss_pct:.0%}, Woche {limits.max_weekly_loss_pct:.0%}, "
           f"Cooldown nach {limits.cooldown_after_consecutive_losses} "
           f"({limits.cooldown_hours}h)")
-    print(f"  Konto    : {start_equity:,.0f} USDT je Markt")
+    print(f"  Konto    : {start_equity:,.0f} USDT je Markt "
+          f"(Lage zur Zeit der gemessenen Trades; seit 13.10.2026 EIN Konto)")
 
-    tell("JE KONTO -- so, wie der Papierhandel heute gebaut ist "
+    tell("JE KONTO -- so, wie der Papierhandel bis zum 13.10.2026 gebaut war "
          "(zwoelf Haendler, ein Platz)",
          trades, would_block(trades, config, portfolio=False, start_equity=start_equity))
-    tell("UEBER DAS PORTFOLIO -- so, wie die Konfiguration gelesen werden koennte",
+    tell("UEBER DAS PORTFOLIO -- so, wie es seit dem 13.10.2026 wirklich ist",
          trades, would_block(trades, config, portfolio=True, start_equity=start_equity))
 
     print("\n  Die Konfiguration sagt nicht, welche der beiden Lesarten gilt.")

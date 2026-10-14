@@ -26,9 +26,21 @@ account: nothing here imports `execution`, builds an order, or holds a key, so
 there is no code path from this module to a trading endpoint. The rule that a
 real order needs a held human confirmation is untouched by it.
 
-**Each symbol keeps its own account.** The backtests size every symbol against
-the same starting equity, so a forward run that pooled them would not be
-comparable with anything already measured.
+**Seit dem 13.10.2026: ein Konto, nicht zwölf.** Hier stand bis dahin „each
+symbol keeps its own account", mit der Begründung, ein gepoolter Vorwärtslauf
+wäre mit nichts bisher Gemessenem vergleichbar. Das Argument war richtig und
+ist eingelöst worden: `run_signature` trägt jetzt `|portfolio`, also sind die
+beiden Epochen trennbar, und die Vergleichbarkeit hängt nicht mehr daran,
+dass die Struktur unverändert bleibt.
+
+Was gilt: alle Märkte ziehen aus einer geteilten Kasse (`sim/broker._Ledger`,
+übergeben von `scripts/papertrade.py`), so wie ein echtes Broker-Konto, von
+dem aus man in mehrere Märkte geht. Ein Markt hat keinen eigenen Kontostand;
+er hat offene Positionen und einen Beitrag.
+
+Die zwölf Zeilen in `paper.sqlite` sind seitdem Arbeitsplätze und keine
+Konten. Wer sie summiert, bekommt das Zwölffache — und genau das tat die
+Auswertung bis zum 14.10.2026.
 """
 
 from __future__ import annotations
@@ -780,13 +792,35 @@ class PaperTrader:
         """
         if self.limits is None:
             return None
+        # Zwei Mengen, weil es zwei verschiedene Fragen sind.
+        #
+        # Tages- und Wochengrenze fragen nach dem KONTO, und seit der
+        # Zusammenlegung ist das Konto alle zwoelf Maerkte. Bis zum 14.10.2026
+        # stand hier nur die symbolgefilterte Historie, waehrend `equity` den
+        # ganzen geteilten Stand trug: der Verlust EINES Symbols gegen das
+        # Kapital ALLER zwoelf. Der Tagesdeckel war damit zwoelfmal schwerer
+        # auszuloesen, als er dasteht -- eine Lockerung, die niemand
+        # entschieden hat, sie fiel aus der Umstellung.
+        #
+        # Die Abkuehlung fragt nach einem MARKT. Drei Fehlschlaege
+        # hintereinander auf ADAUSDT heissen, dass dieser Markt gerade nicht
+        # liest, was das System zu lesen glaubt. Ueber zwoelf parallele
+        # Maerkte gezaehlt waere dieselbe Zahl Alltag und hielte den Handel
+        # dauernd an. Das ist eine offene Messfrage und keine, die hier
+        # stillschweigend anders beantwortet wird.
+        account = (
+            closed_trades(self.journal, signature=self.run_signature)
+            if self.book is not None
+            else closed_trades(self.journal, signature=self.run_signature, symbol=self.symbol)
+        )
         state = AccountState.from_history(
             equity=self.broker.equity,
-            history=closed_trades(
-                self.journal, signature=self.run_signature, symbol=self.symbol
-            ),
+            history=account,
             now_ms=now_ms,
             open_positions=self.book.positions() if self.book is not None else None,
+            streak_history=closed_trades(
+                self.journal, signature=self.run_signature, symbol=self.symbol
+            ),
         )
         verdict = self.limits.check(state, symbol=self.symbol)
         return None if verdict.allowed else verdict.reason
@@ -916,10 +950,15 @@ class PaperTrader:
                 f"Hebel {pending.leverage:g}x, Margin {pending.planned_margin:,.2f} {QUOTE}, "
                 f"Risiko {pending.risk_amount:,.2f} {QUOTE}, verfällt {pending.expires_ts}"
             )
-        return (
-            f"{self.symbol}: flach, Kontostand {self.broker.equity:,.2f} CHF"
-            f" -- {self.stats.tally.sentence()}"
-        )
+        # Kein Kontostand je Markt.
+        #
+        # Hier stand "flach, Kontostand 12.075,56 CHF" -- zwoelfmal
+        # untereinander, einmal je Markt, als haette jeder so viel Geld. Bei
+        # geteilter Kasse ist das derselbe Betrag, und ihn zwoelfmal
+        # hinzuschreiben ist genau die Verwechslung, die das Dashboard auf
+        # 144.906,72 gebracht hat. Was dieser Markt gerade tut, steht im Satz
+        # dahinter; was das KONTO hat, sagt eine Zeile fuer alle.
+        return f"{self.symbol}: flach -- {self.stats.tally.sentence()}"
 
     def close_out(self) -> JournalEntry | None:
         """Close an open position at the last price and journal it.

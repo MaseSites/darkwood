@@ -90,6 +90,26 @@ class AccountState:
     open_positions: list[Position]
     recent_trades: list[ClosedTrade]
     now_ms: int
+    streak_trades: list[ClosedTrade] | None = None
+    """Die Trades, aus denen die Verlustserie gezählt wird — wenn das eine
+    andere Menge ist als `recent_trades`.
+
+    **Warum es zwei Mengen gibt.** Die Tages- und Wochengrenzen sind Aussagen
+    über das KONTO: „verliere an einem Tag nicht mehr als 5 % des Kontos".
+    Zähler und Nenner müssen demselben Ding gehören, sonst ist die Grenze
+    nicht die, die dasteht — am 14.10.2026 wurde der Verlust EINES Symbols
+    gegen das Kapital ALLER zwölf gemessen, und der Tagesdeckel war damit
+    zwölfmal schwerer auszulösen als er behauptet.
+
+    Die Abkühlung nach einer Verlustserie ist eine Aussage über ein SETUP auf
+    einem MARKT: drei Fehlschläge hintereinander heissen, dass dieser Markt
+    gerade nicht liest, was das System zu lesen glaubt. Über zwölf parallel
+    laufende Märkte gezählt wäre dieselbe Zahl etwas völlig anderes — bei
+    einer Erwartung um null ist eine Dreierserie über zwölf Märkte Alltag und
+    hielte den Handel dauernd an.
+
+    Ist das Feld None, gelten für beides dieselben Trades. Das ist der Fall
+    für `run_live.py`, wo es ein Konto und eine Historie gibt."""
 
     @classmethod
     def from_history(
@@ -99,6 +119,7 @@ class AccountState:
         history: list[ClosedTrade],
         now_ms: int,
         open_positions: list[Position] | None = None,
+        streak_history: list[ClosedTrade] | None = None,
     ) -> AccountState:
         """Den Zustand aus der Historie bauen, statt ihn zu raten.
 
@@ -137,6 +158,7 @@ class AccountState:
             open_positions=open_positions or [],
             recent_trades=history,
             now_ms=now_ms,
+            streak_trades=streak_history,
         )
 
     def realised_today(self) -> float:
@@ -147,20 +169,25 @@ class AccountState:
         cutoff = self.now_ms - 7 * DAY_MS
         return sum(t.net_pnl for t in self.recent_trades if t.closed_ts >= cutoff)
 
+    @property
+    def streak(self) -> list[ClosedTrade]:
+        """Die Menge, aus der die Serie gezählt wird. Siehe `streak_trades`."""
+        return self.recent_trades if self.streak_trades is None else self.streak_trades
+
     def consecutive_losses(self) -> int:
         """Losses at the end of the sequence, counted backwards.
 
         Backwards on purpose: what matters is the current run, not the total.
         """
         run = 0
-        for trade in sorted(self.recent_trades, key=lambda t: t.closed_ts, reverse=True):
+        for trade in sorted(self.streak, key=lambda t: t.closed_ts, reverse=True):
             if trade.net_pnl >= 0:
                 break
             run += 1
         return run
 
     def last_loss_ts(self) -> int | None:
-        losses = [t.closed_ts for t in self.recent_trades if t.net_pnl < 0]
+        losses = [t.closed_ts for t in self.streak if t.net_pnl < 0]
         return max(losses) if losses else None
 
 

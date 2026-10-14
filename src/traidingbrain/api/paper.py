@@ -63,7 +63,18 @@ class PaperPosition(BaseModel):
 
 class PaperAccount(BaseModel):
     symbol: str
-    equity: float
+    realised: float
+    """Was dieser Markt dem EINEN Konto eingebracht hat, in USDT.
+
+    Hiess bis zum 14.10.2026 `equity` und trug den Kontostand. Das war
+    richtig, solange zwoelf getrennte Konten liefen; seit der Zusammenlegung
+    stand in jeder der zwoelf Zeilen derselbe Gesamtstand, und das Panel
+    zeigte zwoelfmal 12.075,56 USDT nebeneinander, als haette jeder Markt so
+    viel Geld.
+
+    Ein Markt hat kein Geld. Er hat einen Beitrag, und der steht im Journal."""
+
+    trades: int = 0
     last_price: float
     last_minute_ts: int
     stale: bool
@@ -148,6 +159,15 @@ def build_paper_readout(
     states = PaperStateStore(state_path)
     journal = JournalStore(journal_path)
 
+    live_all = journal.all(source=Source.LIVE)
+    realised: dict[str, float] = {}
+    counted: dict[str, int] = {}
+    for entry in live_all:
+        if not entry.closed_ts:
+            continue
+        realised[entry.symbol] = realised.get(entry.symbol, 0.0) + entry.net_pnl
+        counted[entry.symbol] = counted.get(entry.symbol, 0) + 1
+
     wanted = symbols if symbols is not None else states.symbols()
     accounts: list[PaperAccount] = []
     for symbol in wanted:
@@ -159,7 +179,8 @@ def build_paper_readout(
         accounts.append(
             PaperAccount(
                 symbol=symbol,
-                equity=round(saved.equity, 2),
+                realised=round(realised.get(symbol, 0.0), 2),
+                trades=counted.get(symbol, 0),
                 last_price=saved.last_price,
                 last_minute_ts=saved.last_minute_ts,
                 stale=behind > STALE_AFTER_MINUTES,
@@ -176,7 +197,7 @@ def build_paper_readout(
             )
         )
 
-    live = journal.all(source=Source.LIVE)
+    live = live_all
     rs = [entry.r_multiple for entry in live]
     return PaperReadout(
         accounts=accounts,

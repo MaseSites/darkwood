@@ -44,6 +44,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import numpy as np
 
+from traidingbrain.api.portfolio import account_equity
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.journal.record import Source
 from traidingbrain.journal.store import JournalStore
@@ -102,11 +103,15 @@ def main() -> int:
 
     states = PaperStateStore(config.engine.paths.data_dir / "paper.sqlite")
     symbols = list(config.engine.symbols.active)
-    equity = 0.0
-    for symbol in symbols:
-        state = states.load(symbol)
-        if state is not None:
-            equity += state.equity
+    # Der Kontostand aus DER einen Quelle.
+    #
+    # Hier stand bis zum 14.10.2026 eine Schleife, die `state.equity` ueber
+    # alle Maerkte summierte. Das war richtig, solange zwoelf getrennte Konten
+    # liefen. Seit der Zusammenlegung traegt jede der zwoelf Zeilen denselben
+    # geteilten Stand, und die Summe war das Zwoelffache: 144.906,72 statt
+    # 12.075,56 -- in einem Bericht, dessen ganzer Zweck die Frage "wie weit
+    # sind wir vom Ziel" ist.
+    equity, _peak, _pooled = account_equity(states, config)
     start = len(symbols) * config.engine.simulation.initial_equity
     if equity <= 0:
         print("Keine Konten gefunden -- scripts/papertrade.py hat noch nicht gelaufen")
@@ -137,9 +142,24 @@ def main() -> int:
     per_day = len(forward) / span_days
     trades = per_day * days
 
-    risk_chf = (
-        config.engine.simulation.initial_equity * config.risk.sizing.uncalibrated_cap_risk_pct
+    # Was ein Trade riskiert -- am Kapital bemessen, das ihn wirklich traegt.
+    #
+    # Hier stand `initial_equity * cap`, also 1.000 x 1 % = 10 CHF. Das war
+    # das Risiko EINES von zwoelf Konten. Gegen das Gesamtkapital gerechnet
+    # ergab das 0,0828 % statt 1 %, und daraus folgte ein noetiges Ergebnis
+    # von +6,51 R je Trade -- zwoelfmal zu hoch, weil der Nenner das Ganze war
+    # und der Zaehler ein Zwoelftel.
+    #
+    # Unter `basis: portfolio` bemisst sich die Groesse am Kontostand, unter
+    # `account` weiter am Einzelkonto. Beides steht hier, statt dass eine
+    # Zahl fuer beides herhalten muss.
+    cap = config.risk.sizing.uncalibrated_cap_risk_pct
+    sizing_base = (
+        equity
+        if config.risk.sizing.basis == "portfolio"
+        else config.engine.simulation.initial_equity
     )
+    risk_chf = sizing_base * cap
     risk_fraction = risk_chf / equity
     growth = args.target / equity
     needed = (growth ** (1.0 / trades) - 1.0) / risk_fraction

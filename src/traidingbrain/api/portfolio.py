@@ -27,7 +27,6 @@ knob that silently invalidates the evidence is worse than no knob.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
@@ -51,10 +50,23 @@ MAX_LEDGER = 400
 
 #: Candles shown behind an open trade.
 #:
-#: Enough to see the approach, not so many that the plan lines are a smudge at
-#: the right-hand edge. A trade can run for days -- Severin said so explicitly --
-#: so this is a window on the recent past rather than the whole holding period.
-CHART_CANDLES = 90
+#: Raised from 90 on 13.10.2026, and the reason is the whole point of the
+#: change. Ninety was right for a *picture*: enough to see the approach, not
+#: so many that the plan lines smudge at the right-hand edge. It was wrong for
+#: something you can zoom and pan -- there, ninety candles means you reach the
+#: end of the data on the first drag, and the chart feels broken rather than
+#: small.
+#:
+#: 1,500 M15 candles are about sixteen days; 1,500 H4 candles are about eight
+#: months. That is a window a running trade can actually be read in, and it is
+#: roughly 90 KB over the wire, which a local dashboard does not notice.
+CHART_CANDLES = 1_500
+
+#: The most a caller may ask for.
+#:
+#: A ceiling rather than "whatever you like", because `?candles=5000000` on a
+#: local dashboard is not an attack, it is a typo that looks like a hang.
+MAX_CHART_CANDLES = 6_000
 
 
 #: Minutes behind before an account is called stale.
@@ -65,12 +77,27 @@ CHART_CANDLES = 90
 STALE_AFTER_MINUTES = 5
 
 
-class AccountRow(BaseModel):
+class MarketRow(BaseModel):
+    """Was EIN Markt auf dem Konto getan hat — nicht, was er besitzt.
+
+    **Hiess bis zum 14.10.2026 `AccountRow` und trug eine Spalte `equity`.**
+    Das war richtig, solange zwölf getrennte Konten liefen. Seit der
+    Zusammenlegung ist es falsch, und zwar sichtbar falsch: jede der zwölf
+    Zeilen bekam den GANZEN geteilten Kontostand in ihre `equity`-Spalte
+    geschrieben, und `build_portfolio` summierte sie. Das Dashboard meldete
+    144.906,72 USDT statt 12.075,56 und +1.107 % statt +0,63 %.
+
+    Ein Markt hat keinen Kontostand. Er hat einen Beitrag.
+    """
+
     symbol: str
-    equity: float
-    start_equity: float
-    change: float
-    change_pct: float
+    realised: float
+    """Summe der realisierten Ergebnisse dieses Marktes, in USDT.
+
+    Aus dem Journal gelesen und nicht aus der Zustandszeile: die Zeile kennt
+    nur den geteilten Stand, das Journal kennt die Trades."""
+
+    trades: int
     open_risk: float
     """What is at stake in an open position right now, in francs. Zero when
     flat. This is the number a person means by "how much can I lose", and it is
@@ -78,33 +105,70 @@ class AccountRow(BaseModel):
 
     unrealised: float
     has_position: bool
+    margin: float
+    """Wie viel Kapital des EINEN Kontos dieser Markt gerade bindet."""
+
     stale: bool
     behind_minutes: int
     activity: str
 
 
 class Portfolio(BaseModel):
-    """Every paper account, side by side.
+    """EIN Konto, und was die zwölf Märkte darauf tun.
 
-    `total_equity` is a sum and not a portfolio. Each market keeps its own
-    account at the configured starting balance, so that a loss on one cannot
-    change the position size on another -- if they shared, every row would be
-    conditioned on every other row and none of them would be comparable. Twelve
-    accounts of a thousand are twelve experiments on a realistic account, not
-    one account of twelve thousand, and the screen says so beneath the figure.
+    **Die Umstellung, und der Fehler, der sie begleitet hat.** Bis zum
+    13.10.2026 führte der Papierhandel zwölf getrennte Konten à 1.000 USDT.
+    Seitdem gibt es genau eine Kasse — wie bei einem echten Broker-Konto, von
+    dem aus man in mehrere Märkte geht, ohne auf jedem Markt den vollen
+    Betrag zu haben.
+
+    Die zwölf Zeilen in der Tabelle `accounts` sind seither keine Konten
+    mehr, sondern Arbeitsplätze. Sie zu summieren ergibt das Zwölffache, und
+    genau das tat diese Datei bis zum 14.10.2026.
+
+    Darum trägt dieses Modell den Kontostand **einmal** und nicht als Summe.
     """
 
-    accounts: list[AccountRow]
-    total_equity: float
-    total_start: float
-    total_change: float
-    total_change_pct: float
+    equity: float
+    """Der Kontostand. Eine Zahl, aus der `portfolio`-Zeile gelesen."""
+
+    start: float
+    """Was eingezahlt wurde: `initial_equity` mal Zahl der Märkte.
+
+    Hergeleitet und nicht gespeichert, weil die Kasse beim Umschalten aus der
+    Summe der zwölf Konten entstand und jedes davon bei `initial_equity`
+    begann."""
+
+    change: float
+    change_pct: float
+    peak: float
+    """Höchststand, mitgeführt, damit der Rückgang ab dem Höchststand misst
+    und nicht ab dem Neustart."""
+
+    reserved: float
+    """Margin, das offene Positionen gerade binden."""
+
+    available: float
     open_risk: float
+    unexplained: float
+    """`equity - start - Summe der Markt-Beiträge`.
+
+    Sollte null sein. Ist es nicht, hält das Konto ein Ergebnis, das kein
+    journalisierter Trade erklärt — am 14.10.2026 sind das +55,05 USDT aus
+    einem Trade, der zu keiner Generation gehört. Diese Zeile steht hier,
+    damit die Lücke auf dem Bildschirm steht statt in einem Bericht."""
+
+    markets: list[MarketRow]
     trades: int
     wins: int
     mean_r: float
     total_r: float
     running: bool
+    pooled: bool
+    """Ob wirklich eine Kasse läuft (`risk.sizing.basis: portfolio`).
+
+    Steht hier, weil der Unterschied sonst nur am Verhalten zu erkennen wäre
+    und die Oberfläche ihn benennen können muss."""
 
 
 class LedgerRow(BaseModel):
@@ -169,6 +233,8 @@ class SettingsView(BaseModel):
     """What the engine is configured to do. Read-only on purpose."""
 
     initial_equity: float
+    account_start: float
+    sizing_basis: str
     risk_pct_floor: float
     max_leverage: float
     min_reward_risk: float
@@ -178,14 +244,6 @@ class SettingsView(BaseModel):
     signal_timeframe: str
     searched_timeframes: list[str]
     note: str
-
-
-@dataclass(frozen=True)
-class TopUp:
-    """A deposit of paper money, or a fresh start."""
-
-    symbol: str
-    amount: float
 
 
 class TopUpRequest(BaseModel):
@@ -213,6 +271,13 @@ class OpenTrade(BaseModel):
     opened_ts: int
     held_minutes: int
     last_price: float
+    #: Die Minute, zu der `last_price` gilt.
+    #:
+    #: Ergaenzt am 13.10.2026 fuer den interaktiven Chart. Ohne sie koennte
+    #: der Browser den Kurs nur an seine EIGENE Uhr haengen -- und ein
+    #: Haendler, der zwei Minuten hinterherliegt, wuerde dann eine Kerze in
+    #: die Zukunft schreiben, die er noch gar nicht gesehen hat.
+    last_minute_ts: int = 0
     unrealised: float
     risk_amount: float
     r_now: float
@@ -248,6 +313,28 @@ class PositionChart(BaseModel):
     opened_ts: int
     candles: list[Candle]
     note: str = ""
+    #: Welche Zeitebenen fuer diesen Trade abrufbar sind.
+    #:
+    #: Vom Server beantwortet und nicht im Browser geraten: ob eine Ebene
+    #: Daten hat, weiss nur der Speicher. Ein Umschalter, der auf eine leere
+    #: Datei zeigt, ist schlimmer als keiner.
+    timeframes: list[str] = Field(default_factory=list)
+    #: Die Ebene, auf der das Setup gefunden wurde -- nicht zwingend die
+    #: gezeigte, wenn der Aufrufer umgeschaltet hat.
+    setup_timeframe: str = ""
+    #: Der letzte Kurs, den der Haendler gesehen hat, und wann.
+    #:
+    #: Damit der Chart die rechte Kante fortschreiben kann, ohne alle 1.500
+    #: Kerzen erneut zu holen. 0 heisst "noch keiner".
+    last_price: float = 0.0
+    last_minute_ts: int = 0
+    #: Die Liquidation. Gehoert auf einen Chart mit Hebel: Stop ist, wo der
+    #: Plan sagt, der Trade ist falsch -- Liquidation ist, wo die Boerse
+    #: sagt, der Trade ist vorbei.
+    liquidation: float = 0.0
+    leverage: float = 0.0
+    qty: float = 0.0
+    risk_amount: float = 0.0
 
 
 def _candles(frame: pd.DataFrame) -> list[Candle]:
@@ -316,6 +403,7 @@ def build_open(state_path: Path, config: AppConfig, *, now_ms: int) -> list[Open
                 opened_ts=position.opened_ts,
                 held_minutes=int(max(0, (now_ms - position.opened_ts) // 60_000)),
                 last_price=price,
+                last_minute_ts=saved.last_minute_ts or 0,
                 unrealised=round(position.unrealised(price), 2),
                 risk_amount=round(position.risk_amount, 2),
                 r_now=round(r_now, 3),
@@ -337,30 +425,54 @@ def build_open(state_path: Path, config: AppConfig, *, now_ms: int) -> list[Open
     return out
 
 
-def build_position_chart(state_path: Path, config: AppConfig, symbol: str) -> PositionChart | None:
+def build_position_chart(
+    state_path: Path,
+    config: AppConfig,
+    symbol: str,
+    *,
+    timeframe: str | None = None,
+    candles: int = CHART_CANDLES,
+) -> PositionChart | None:
     """The recent candles behind one open trade, on the chart it was found on.
 
     On the setup's own timeframe rather than the decision cadence: a four-hour
-    setup read off fifteen-minute candles is ninety candles of noise around a
-    plan drawn from something else. Falls back to the signal frame when the
-    setup is unknown.
+    setup read off fifteen-minute candles is noise around a plan drawn from
+    something else. Falls back to the signal frame when the setup is unknown.
+
+    `timeframe` overrides that choice, for the switch in the browser. The
+    default is unchanged, so the first view a reader gets is still the frame
+    the decision was made on -- switching is something they do, not something
+    the page does for them.
     """
     saved = PaperStateStore(state_path).load(symbol)
     if saved is None or saved.position is None:
         return None
     position = saved.position
+    store = ParquetStore(config.engine.paths.parquet_dir)
 
-    wanted = config.engine.timeframes.signal
+    setup_frame = config.engine.timeframes.signal
     if saved.reason is not None:
         for candidate in config.engine.timeframes.context:
             if candidate.value == saved.reason.setup_timeframe:
-                wanted = candidate
+                setup_frame = candidate
                 break
 
-    frame = ParquetStore(config.engine.paths.parquet_dir).read(symbol, wanted)
+    wanted = setup_frame
+    if timeframe:
+        for candidate in config.engine.timeframes.context:
+            if candidate.value == timeframe:
+                wanted = candidate
+                break
+        else:
+            # Eine unbekannte Ebene wird nicht stillschweigend zur
+            # Vorgabeebene. Wer M5 anfragt, soll nicht M15 bekommen und
+            # glauben, er sehe M5.
+            return None
+
+    frame = store.read(symbol, wanted)
     if frame.empty:
         return None
-    tail = frame.tail(CHART_CANDLES)
+    tail = frame.tail(max(1, min(candles, MAX_CHART_CANDLES)))
     return PositionChart(
         symbol=symbol,
         timeframe=wanted.value,
@@ -371,19 +483,33 @@ def build_position_chart(state_path: Path, config: AppConfig, symbol: str) -> Po
         target=position.target,
         opened_ts=position.opened_ts,
         candles=_candles(tail),
+        # An den Partitionen geprueft, nicht am Inhalt. `store.read` fuer
+        # jede der fuenf Ebenen hiesse 176.000 M15-Zeilen bei jedem
+        # Chartaufruf lesen, um eine Ja/Nein-Frage zu beantworten.
+        timeframes=[
+            candidate.value
+            for candidate in config.engine.timeframes.context
+            if store.partitions(symbol, candidate)
+        ],
+        setup_timeframe=setup_frame.value,
+        last_price=saved.last_price or 0.0,
+        last_minute_ts=saved.last_minute_ts or 0,
+        liquidation=position.liq_price,
+        leverage=position.leverage,
+        qty=position.qty,
+        risk_amount=position.risk_amount,
     )
 
 
-def _account_row(state: PaperState, *, start: float, now_ms: int) -> AccountRow:
+def _market_row(
+    state: PaperState, *, realised: float, trades: int, now_ms: int
+) -> MarketRow:
     behind = max(0, (now_ms - state.last_minute_ts) // 60_000) if state.last_minute_ts else 0
     position = state.position
-    change = state.equity - start
-    return AccountRow(
+    return MarketRow(
         symbol=state.symbol,
-        equity=round(state.equity, 2),
-        start_equity=round(start, 2),
-        change=round(change, 2),
-        change_pct=round(100.0 * change / start, 3) if start else 0.0,
+        realised=round(realised, 2),
+        trades=trades,
         open_risk=round(position.risk_amount, 2) if position is not None else 0.0,
         unrealised=(
             round(position.unrealised(state.last_price), 2)
@@ -391,48 +517,100 @@ def _account_row(state: PaperState, *, start: float, now_ms: int) -> AccountRow:
             else 0.0
         ),
         has_position=position is not None,
+        margin=round(position.margin, 2) if position is not None else 0.0,
         stale=behind > STALE_AFTER_MINUTES,
         behind_minutes=int(behind),
         activity=state.tally.sentence(),
     )
 
 
+def account_equity(states: PaperStateStore, config: AppConfig) -> tuple[float, float, bool]:
+    """Der Kontostand, der Höchststand, und ob wirklich gepoolt wird.
+
+    **Die eine Stelle, an der diese Frage beantwortet wird.** Vorher stand
+    sie an vier Stellen in drei Varianten, und eine davon summierte zwölf
+    Zeilen, die alle denselben Stand tragen.
+
+    Unter `basis: portfolio` ist die `portfolio`-Zeile die Wahrheit. Fehlt
+    sie, läuft der Handel noch nicht unter der geteilten Kasse und die Summe
+    der Einzelkonten ist der richtige Wert — das ist genau der Startwert, den
+    `papertrade.shared_ledger` beim einmaligen Umschalten bildet.
+    """
+    pooled = config.risk.sizing.basis == "portfolio"
+    saved = states.load_portfolio()
+    if pooled and saved is not None:
+        return saved[0], saved[1], True
+    total = states.equity_sum()
+    return total, total, pooled
+
+
 def build_portfolio(
     state_path: Path, journal_path: Path, config: AppConfig, *, now_ms: int
 ) -> Portfolio:
-    """Every account side by side, plus what the forward trades add up to."""
+    """Ein Konto, und was die Märkte darauf getan haben.
+
+    Der Kontostand kommt aus **einer** Quelle (`account_equity`), die Beiträge
+    der Märkte aus dem **Journal**. Keine Summe über Zustandszeilen — die
+    tragen seit der Zusammenlegung alle denselben Stand, und ihre Summe war
+    der Fehler, den dieses Modell behebt.
+    """
     states = PaperStateStore(state_path)
     journal = JournalStore(journal_path)
-    start = config.engine.simulation.initial_equity
-
-    rows: list[AccountRow] = []
-    for symbol in config.engine.symbols.active:
-        saved = states.load(symbol)
-        if saved is None:
-            # Not yet started is a state worth showing: the account exists in
-            # configuration and simply has no file behind it until the trader
-            # has run once. An empty screen would look like a failure.
-            saved = PaperState(symbol=symbol, equity=start)
-        rows.append(_account_row(saved, start=start, now_ms=now_ms))
+    per_account = config.engine.simulation.initial_equity
+    symbols = list(config.engine.symbols.active)
 
     live = journal.all(source=Source.LIVE)
-    rs = [entry.r_multiple for entry in live]
-    total_equity = sum(row.equity for row in rows)
-    total_start = sum(row.start_equity for row in rows)
+    closed = [entry for entry in live if entry.closed_ts]
+    realised: dict[str, float] = {}
+    counted: dict[str, int] = {}
+    for entry in closed:
+        realised[entry.symbol] = realised.get(entry.symbol, 0.0) + entry.net_pnl
+        counted[entry.symbol] = counted.get(entry.symbol, 0) + 1
+
+    rows: list[MarketRow] = []
+    for symbol in symbols:
+        saved = states.load(symbol)
+        if saved is None:
+            # Noch nicht gestartet ist ein Zustand, der gezeigt gehoert: der
+            # Markt steht in der Konfiguration und hat einfach noch keine
+            # Zeile. Ein leerer Bildschirm saehe aus wie ein Ausfall.
+            saved = PaperState(symbol=symbol, equity=per_account)
+        rows.append(_market_row(
+            saved,
+            realised=realised.get(symbol, 0.0),
+            trades=counted.get(symbol, 0),
+            now_ms=now_ms,
+        ))
+
+    equity, peak, pooled = account_equity(states, config)
+    # Was eingezahlt wurde. Die Kasse entstand aus der Summe der Einzelkonten,
+    # und jedes begann bei `initial_equity` -- also ist der Einsatz das
+    # Produkt und nicht die Zahl aus der Konfiguration allein.
+    start = per_account * len(symbols)
+    change = equity - start
+    # Die Reservierung wird nicht gespeichert, sondern aus den offenen
+    # Positionen hergeleitet -- dieselbe Herleitung wie in
+    # `paperstate.restore_into`, damit es nur eine Definition gibt.
+    reserved = sum(row.margin for row in rows)
     return Portfolio(
-        accounts=rows,
-        total_equity=round(total_equity, 2),
-        total_start=round(total_start, 2),
-        total_change=round(total_equity - total_start, 2),
-        total_change_pct=(
-            round(100.0 * (total_equity - total_start) / total_start, 3) if total_start else 0.0
-        ),
+        equity=round(equity, 2),
+        start=round(start, 2),
+        change=round(change, 2),
+        change_pct=round(100.0 * change / start, 3) if start else 0.0,
+        peak=round(peak, 2),
+        reserved=round(reserved, 2),
+        available=round(max(0.0, equity - reserved), 2),
         open_risk=round(sum(row.open_risk for row in rows), 2),
+        unexplained=round(change - sum(row.realised for row in rows), 2),
+        markets=rows,
         trades=len(live),
         wins=sum(1 for entry in live if entry.won),
-        mean_r=round(sum(rs) / len(rs), 4) if rs else 0.0,
-        total_r=round(sum(rs), 3),
+        mean_r=(
+            round(sum(entry.r_multiple for entry in live) / len(live), 4) if live else 0.0
+        ),
+        total_r=round(sum(entry.r_multiple for entry in live), 3),
         running=any(not row.stale for row in rows),
+        pooled=pooled,
     )
 
 
@@ -537,6 +715,10 @@ def build_settings(config: AppConfig) -> SettingsView:
     floor = min((tier.risk_pct for tier in tiers), default=0.0)
     return SettingsView(
         initial_equity=config.engine.simulation.initial_equity,
+        account_start=(
+            config.engine.simulation.initial_equity * len(config.engine.symbols.active)
+        ),
+        sizing_basis=config.risk.sizing.basis,
         risk_pct_floor=floor,
         max_leverage=config.risk.leverage.max,
         min_reward_risk=config.risk.limits.min_reward_risk,
@@ -555,26 +737,67 @@ def build_settings(config: AppConfig) -> SettingsView:
     )
 
 
-def top_up(state_path: Path, config: AppConfig, request: TopUp) -> AccountRow:
-    """Add paper money to one account, or create it at that balance.
+def top_up(state_path: Path, config: AppConfig, amount: float) -> float:
+    """Papiergeld auf DAS Konto legen. Gibt den neuen Stand zurück.
 
-    Paper only. There is no path from here to an exchange, and the amount is
-    added to the balance rather than replacing it, so a deposit reads like a
-    deposit and the account's history is not rewritten.
+    **Nahm bis zum 14.10.2026 ein Symbol entgegen.** Das war richtig, solange
+    es zwölf Konten gab. Unter einer Kasse ist „500 USDT auf BTCUSDT
+    einzahlen" keine Handlung, die es gibt — es gibt ein Konto, und man zahlt
+    darauf ein.
+
+    Papier. Es gibt von hier keinen Pfad zu einer Börse, und der Betrag wird
+    addiert statt gesetzt, damit eine Einzahlung wie eine Einzahlung liest und
+    die Geschichte des Kontos nicht umgeschrieben wird.
     """
     states = PaperStateStore(state_path)
-    saved = states.load(request.symbol) or PaperState(
-        symbol=request.symbol, equity=config.engine.simulation.initial_equity
-    )
-    saved.equity += request.amount
-    states.save(saved)
-    return _account_row(saved, start=config.engine.simulation.initial_equity, now_ms=0)
+    equity, peak, pooled = account_equity(states, config)
+    after = equity + amount
+    if pooled:
+        # Nur die Portfoliozeile. Die zwölf Zustandszeilen zieht der laufende
+        # Händler beim nächsten Zyklus nach -- sie sind Abschriften, keine
+        # Quelle.
+        states.save_portfolio(after, max(peak, after))
+        return after
+    # Ohne geteilte Kasse gibt es keinen gemeinsamen Topf; dann ist die
+    # Einzahlung gleichmässig auf die bestehenden Konten verteilt, und das
+    # wird gesagt statt stillschweigend auf eines gebucht.
+    symbols = list(config.engine.symbols.active)
+    share = amount / len(symbols) if symbols else 0.0
+    for symbol in symbols:
+        saved = states.load(symbol) or PaperState(
+            symbol=symbol, equity=config.engine.simulation.initial_equity
+        )
+        saved.equity += share
+        states.save(saved)
+    return states.equity_sum()
 
 
-def reset_account(state_path: Path, symbol: str) -> None:
-    """Forget one account so it starts again at the configured balance.
+def reset_account(state_path: Path, config: AppConfig, symbol: str | None = None) -> float:
+    """Das Konto zurücksetzen, oder den Arbeitsstand eines Marktes.
 
-    The journal is untouched: what happened happened, and a reset is about the
-    account rather than about the record.
+    **Zwei Handlungen, und sie waren vorher eine.** Unter zwölf Konten war
+    „BTCUSDT zurücksetzen" beides zugleich: Kontostand zurück auf 1.000 UND
+    Zähler gelöscht. Unter einer Kasse sind es zwei verschiedene Dinge, und
+    sie zu vermengen hiesse, dass ein Klick auf einen Markt das ganze Konto
+    anfasst oder eben nicht — je nach Modus, und ohne dass es jemand sieht.
+
+    Mit `symbol`: nur dieser Markt vergisst seinen Arbeitsstand (Zähler,
+    Position, letzter Kurs). Der Kontostand bleibt.
+
+    Ohne `symbol`: das Konto beginnt von vorn — alle Märkte vergessen, und die
+    Kasse zurück auf den Einsatz.
+
+    Das Journal bleibt in beiden Fällen unberührt: was passiert ist, ist
+    passiert, und ein Zurücksetzen betrifft das Konto und nicht die Akte.
     """
-    PaperStateStore(state_path).forget(symbol)
+    states = PaperStateStore(state_path)
+    if symbol is not None:
+        states.forget(symbol)
+        return account_equity(states, config)[0]
+    symbols = list(config.engine.symbols.active)
+    for each in symbols:
+        states.forget(each)
+    start = config.engine.simulation.initial_equity * len(symbols)
+    if config.risk.sizing.basis == "portfolio":
+        states.save_portfolio(start, start)
+    return start

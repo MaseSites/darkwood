@@ -2898,60 +2898,193 @@ body:not([data-view="markt"]) .status-strip {
   display: none;
 }
 
-/* ------------------------------------------------- candles ---------------- */
+/* ------------------------------------------------- Positionschart --------- */
 
-.cndl-chart {
-  display: block;
-  width: 100%;
-  height: auto;
+/* Der Chart eines laufenden Trades, gezeichnet von `position-chart.js` mit
+ * TradingViews lightweight-charts (mitgeliefert, siehe static/vendor/).
+ *
+ * Hier stand bis zum 13.10.2026 das SVG-Kerzenbild: .cndl, .plan, .plan__label.
+ * Mit dem Renderer ist auch sein Stylesheet entfallen -- es hatte nach dem
+ * Wechsel keinen Selektor mehr im Dokument, und totes CSS ist genauso eine
+ * stehengebliebene Behauptung wie toter Code.
+ *
+ * Die Bibliothek zeichnet auf Canvas und nimmt ihre Farben als Optionen. Was
+ * hier bleibt, ist der RAHMEN darum: Leiste, Zeitebenen-Knoepfe, Ablesefeld,
+ * Fussnote. */
+
+.pchart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
 }
 
-.cndl {
-  stroke-width: 1;
+.pchart__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
 }
 
-.cndl--up {
-  fill: var(--long);
-  stroke: var(--long);
-}
-
-.cndl--down {
-  fill: var(--short);
-  stroke: var(--short);
-}
-
-.plan {
-  stroke-width: 1;
-  stroke-dasharray: 4 4;
-}
-
-.plan--entry {
-  stroke: var(--dim);
-}
-
-.plan--stop {
-  stroke: var(--short);
-}
-
-.plan--target {
-  stroke: var(--long);
-}
-
-.plan__label {
+.pchart__side {
   font-family: var(--mono);
   font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 2px var(--s2);
+  border-radius: var(--radius);
+  border: 1px solid currentcolor;
 }
 
-.plan__label.plan--entry {
-  fill: var(--dim);
+.pchart__side.is-long {
+  color: var(--long);
 }
 
-.plan__label.plan--stop {
-  fill: var(--short);
+.pchart__side.is-short {
+  color: var(--short);
 }
 
-.plan__label.plan--target {
-  fill: var(--long);
+.pchart__tfs {
+  display: flex;
+  gap: 2px;
+}
+
+/* Die Knoepfe sind klein, aber sie sind Knoepfe: Druckzustand, Fokusring,
+ * Stillgelegt-Zustand. Ein Umschalter ohne :active fuehlt sich an, als haette
+ * die Seite den Klick nicht gehoert. */
+.pchart__tf {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+  background: var(--panel-high);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 3px var(--s2);
+  cursor: pointer;
+  transition:
+    color 140ms var(--ease-out),
+    border-color 140ms var(--ease-out),
+    transform 140ms var(--ease-out);
+}
+
+.pchart__tf:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--rule-strong);
+}
+
+.pchart__tf:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.pchart__tf:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+.pchart__tf.is-on {
+  color: var(--ink);
+  background: var(--dim);
+  border-color: var(--dim);
+}
+
+.pchart__tf:disabled {
+  color: var(--dimmer);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* Die Ebene, auf der das Setup gefunden wurde, ist markiert. Sonst ist nach
+ * zwei Klicks nicht mehr zu sehen, von welcher man ausgegangen ist -- und das
+ * ist die einzige, auf der der Plan wirklich gezeichnet wurde. */
+.pchart__tf--home::after {
+  content: "·";
+  margin-left: 3px;
+  color: var(--caution);
+}
+
+.pchart__readout {
+  margin-left: auto;
+  display: flex;
+  gap: var(--s3);
+  font-family: var(--mono);
+  font-size: 11px;
+  min-height: 15px;
+}
+
+.pchart__cell {
+  display: inline-flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.pchart__key {
+  color: var(--dimmer);
+}
+
+.pchart__val {
+  color: var(--text);
+}
+
+.pchart__cell--idle .pchart__val,
+.pchart__cell--time .pchart__val {
+  color: var(--dim);
+}
+
+.pchart__cell.is-long .pchart__val {
+  color: var(--long);
+}
+
+.pchart__cell.is-short .pchart__val {
+  color: var(--short);
+}
+
+.pchart__canvas {
+  width: 100%;
+  height: 360px;
+  /* Der Zeiger sagt, dass man ziehen darf. Die Bibliothek setzt ihn selbst
+     nicht, und ein Chart, der sich schwenken laesst und nicht danach
+     aussieht, wird nicht geschwenkt. */
+  cursor: crosshair;
+}
+
+.pchart__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 11px;
+  color: var(--dimmer);
+}
+
+.pchart__hint {
+  font-family: var(--mono);
+}
+
+@media (max-width: 640px) {
+  .pchart__readout {
+    margin-left: 0;
+    width: 100%;
+    flex-wrap: wrap;
+    gap: var(--s2);
+  }
+
+  .pchart__canvas {
+    height: 280px;
+  }
+
+  .pchart__foot {
+    flex-direction: column;
+    gap: var(--s1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pchart__tf {
+    transition: none;
+  }
+
+  .pchart__tf:active:not(:disabled) {
+    transform: none;
+  }
 }
 
 @media (max-width: 640px) {

@@ -215,6 +215,36 @@ def shared_ledger(config: object, states: PaperStateStore) -> _Ledger | None:
     return _Ledger(equity=equity, peak_equity=peak)
 
 
+def account_line(traders: list[PaperTrader]) -> str:
+    """Der Kontostand -- einmal, nicht je Markt.
+
+    **Warum eine eigene Zeile.** Vorher trug jede Marktzeile ein
+    "Kontostand 12.075,56 CHF", zwoelfmal untereinander. Bei zwoelf getrennten
+    Konten war das die Wahrheit; bei einer geteilten Kasse sieht es aus, als
+    haette jeder Markt so viel Geld, und genau diese Verwechslung hat das
+    Dashboard auf 144.906,72 gebracht.
+
+    Es gibt ein Konto. Also steht es einmal da, mit dem, was gebunden ist und
+    was frei ist -- die Zahl, die entscheidet, ob der naechste Trade ueberhaupt
+    passt.
+    """
+    if not traders:
+        return ""
+    ledger = traders[0].broker.ledger
+    shared = not traders[0].broker.owns_ledger
+    held = sum(1 for trader in traders if trader.broker.position is not None)
+    if not shared:
+        return (
+            f"Konten: {len(traders)} getrennte à {ledger.equity:,.2f} {QUOTE} "
+            f"(Groessenbemessung je Konto)"
+        )
+    return (
+        f"KONTO  {ledger.equity:,.2f} {QUOTE}  |  "
+        f"gebunden {ledger.reserved:,.2f}  |  frei {ledger.available:,.2f}  |  "
+        f"{held} von {len(traders)} Maerkten offen"
+    )
+
+
 def top_up_funding(source: MarketData | None, traders: list[PaperTrader]) -> None:
     """Fetch the funding rates that settled since the last run, and hand them over.
 
@@ -431,6 +461,7 @@ def run(traders: list[PaperTrader], source: MarketData | None, *, cycles: int | 
         f"Kein Konto, keine Börse, kein Geld. Takt {POLL_SECONDS}s, "
         f"Entscheidungen auf {traders[0].config.engine.timeframes.signal.value}-Schluss.\n"
     )
+    print(account_line(traders))
     for trader in traders:
         print(f"  {trader.status()}")
 
@@ -466,6 +497,7 @@ def run(traders: list[PaperTrader], source: MarketData | None, *, cycles: int | 
         print("\nangehalten. Offene Trades bleiben offen und laufen beim nächsten Start weiter.")
 
     print("\n" + "-" * 70)
+    print(account_line(traders))
     for trader in traders:
         print(f"  {trader.status()}")
         print(f"      {trader.stats.summary()}")
@@ -479,7 +511,8 @@ def show_status(traders: list[PaperTrader]) -> int:
     journal = JournalStore(config.engine.paths.data_dir / JOURNAL_NAME)
     live = journal.all(source=Source.LIVE)
 
-    print("Papertrading-Konten\n")
+    print("Papertrading-Konto\n")
+    print(account_line(traders))
     for trader in traders:
         tally = trader.state.tally
         print(f"  {trader.status()}")
@@ -568,10 +601,31 @@ def main() -> int:
     symbols = args.symbol or list(config.engine.symbols.active)
 
     if args.reset:
+        # Die Marktzeilen UND die Kasse.
+        #
+        # Bis zum 14.10.2026 loeschte `--reset` nur die Zeilen in `accounts`
+        # und liess die `portfolio`-Zeile stehen. Das sah nach einem
+        # Zuruecksetzen aus und war keines: die Marktzeilen waren weg, das
+        # Geld stand noch da, und der naechste Start las es wieder ein. Wer
+        # "von vorn" sagte, bekam alte 12.075,56 mit leeren Zaehlern -- die
+        # schlechteste der drei moeglichen Lagen, weil sie wie ein frischer
+        # Anfang aussieht.
         states = PaperStateStore(state_path(config))
+        full = set(symbols) == set(config.engine.symbols.active)
         for symbol in symbols:
             states.forget(symbol)
-        print(f"Konten zurückgesetzt: {', '.join(symbols)}")
+        print(f"Arbeitsstand gelöscht: {', '.join(symbols)}")
+        if full and config.risk.sizing.basis == "portfolio":
+            start = config.engine.simulation.initial_equity * len(symbols)
+            states.save_portfolio(start, start)
+            print(f"Konto zurückgesetzt auf {start:,.2f} {QUOTE}")
+        elif config.risk.sizing.basis == "portfolio":
+            equity, _peak = states.load_portfolio() or (0.0, 0.0)
+            print(
+                f"Konto NICHT angefasst ({equity:,.2f} {QUOTE}) -- es gehört allen "
+                f"Märkten, und zurückgesetzt wurden nur {len(symbols)} davon. "
+                "Für das ganze Konto: ohne --symbol aufrufen."
+            )
         print("Journal-Einträge bleiben -- was passiert ist, ist passiert.")
         return 0
 

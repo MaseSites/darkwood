@@ -434,6 +434,35 @@ Einzelslot-Simulationen.
 Der Eingriff ist also ein **Kommentar und ein Test**, kein Codepfad. Verhalten
 unverändert, die 24 Live-Trades unberührt.
 
+> ### Überholt am 13./14.10.2026 — und zwar genau umgekehrt entschieden
+>
+> Die vier Ablehnungsgründe oben stehen im Präsens und sind es nicht mehr. Der
+> erste trug alle anderen: *„sie poolt Konten, die `live/paper.py:29-32`
+> ausdrücklich getrennt hält"*. **Diese Trennung gibt es nicht mehr.** Sie
+> wurde am 13.10.2026 auf Wunsch des Nutzers aufgegeben — ein Konto über alle
+> Märkte, wie bei einem echten Broker-Konto. Damit ist der Grund weggefallen,
+> und mit ihm die Ablehnung.
+>
+> Was seitdem gilt:
+>
+> * `live/book.py` führt das Buch des gepoolten Kontos, und
+>   `max_open_positions` greift portfolioweit (`live/paper.py`,
+>   `_blocked_by_limits`).
+> * Der Einwand „Platz nach Listenposition statt nach Signalqualität" ist
+>   **nicht** entkräftet. Er ist eine echte Eigenschaft der Umstellung und
+>   steht als solche in `config/risk.yaml` und in `sim/broker.py`, wo die
+>   Reihenfolge innerhalb eines Zyklus entscheidet, wer noch Margin bekommt.
+> * Der Einwand „Replay und Vorwärtslauf laufen auseinander" steht ebenfalls
+>   noch. Eingelöst ist nur die *Trennbarkeit*: `run_signature` trägt
+>   `|portfolio`, also sind die beiden Epochen auseinanderzuhalten.
+> * Der gemessene Höchststand von fünf gleichzeitig offenen Positionen bleibt
+>   die Zahl, gegen die der Deckel von 2 gelesen werden muss. Was er kostet,
+>   ist seit dem 13.10. gemessen: E13, `scripts/study_concurrency.py`.
+>
+> Und der Schlusssatz des Abschnitts — *„Es ist keine Aussage über zwölf
+> getrennte Einzelslot-Simulationen"* — ist seitdem falsch herum: es gibt
+> keine zwölf Simulationen mehr, es gibt ein Konto.
+
 Und die Messung, die das belegt, war schon da: `scripts/study_dead_limits.py`
 (Commit `f3df11d`, 10.10.) zählt unter der Portfolio-Lesart 4 von 24
 blockiert, mit allen vier Grenzen 9 von 24, Mittel +0,0335 → +0,2796 R über
