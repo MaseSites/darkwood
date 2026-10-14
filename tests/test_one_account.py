@@ -43,12 +43,14 @@ from traidingbrain.api.portfolio import (
 from traidingbrain.clock import FixedClock
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.store import ParquetStore
+from traidingbrain.domain.enums import Side
 from traidingbrain.journal.signals import SignalStore
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.live.book import OpenBook
 from traidingbrain.live.paper import PaperTrader
 from traidingbrain.live.paperstate import PaperState, PaperStateStore
 from traidingbrain.risk.limits import RiskLimits
+from traidingbrain.sim.plan import TradeIntent, assess
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 NOW = 1_791_900_000_000
@@ -437,6 +439,76 @@ def test_a_streak_on_the_own_market_still_blocks(
 
     assert blocked is not None
     assert "losses in a row" in blocked
+
+
+# --------------------------------------------------------------------------- #
+# Die Groesse, die der Nutzer verlangt hat
+# --------------------------------------------------------------------------- #
+
+
+def test_a_signal_risks_one_percent_of_the_account(config: AppConfig) -> None:
+    """Der eigentliche Wunsch, als Test: 1 % vom KONTO, nicht vom Zwoelftel.
+
+    "Anstatt nur mit irgendwie 60 gehst du mit 600 in Trade" -- gemessen sind
+    es 805 USDT Margin auf 8.050 Notional, bei 120,75 USDT Risiko.
+
+    Bis zum 13.10.2026 waren es 10,06 USDT, weil jedes Symbol gegen sein
+    eigenes Zwoelftel groesste. Dieser Test bindet die Groesse an den
+    Kontostand, damit die Umstellung nicht still zurueckfallen kann -- zum
+    Beispiel dadurch, dass irgendwer `equity=` wieder aus einer Marktzeile
+    holt statt aus dem Broker.
+    """
+    pool = 12_075.56
+    intent = TradeIntent(
+        side=Side.LONG, entry=100.0, stop=98.5, target=104.5,
+        confidence=70.0, reason="A Momentum-Breakout (V08): Probe",
+    )
+    verdict = assess(
+        intent, None, symbol="BTCUSDT", spec=make_symbol_spec(), config=config,
+        equity=pool, created_ts=NOW, expires_ts=NOW + 8 * 15 * 60_000,
+    )
+
+    assert verdict.refused_by is None, verdict.detail
+    cap = config.risk.sizing.uncalibrated_cap_risk_pct
+    assert verdict.risk_amount == pytest.approx(pool * cap, rel=1e-4), (
+        f"erwartet {pool * cap:,.2f} USDT Risiko (= {cap:.1%} des Kontos), "
+        f"gemessen {verdict.risk_amount:,.2f}"
+    )
+    # Und die Gegenprobe: an einem Zwoelftel waere es ein Zwoelftel.
+    twelfth = assess(
+        intent, None, symbol="BTCUSDT", spec=make_symbol_spec(), config=config,
+        equity=pool / 12, created_ts=NOW, expires_ts=NOW + 8 * 15 * 60_000,
+    )
+    assert verdict.risk_amount == pytest.approx(12 * twelfth.risk_amount, rel=1e-3)
+
+
+def test_the_paper_trader_hands_the_pool_to_the_sizing(tmp_path: Path) -> None:
+    """Und die Verdrahtung: `assess` bekommt `broker.equity`, nicht die Zeile.
+
+    Eine Quelltextregel, weil genau diese Stelle der Unterschied zwischen
+    10 und 121 USDT je Trade ist und in einem Aufruf mit acht Argumenten
+    nicht auffaellt.
+    """
+    source = (PROJECT_ROOT / "src" / "traidingbrain" / "live" / "paper.py").read_text(
+        encoding="utf-8"
+    )
+    tree = ast.parse(source)
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "assess"
+    ]
+    assert calls, "kein assess-Aufruf in live/paper.py gefunden -- Waechter blind"
+    for call in calls:
+        equity = next((k.value for k in call.keywords if k.arg == "equity"), None)
+        assert equity is not None, f"assess ohne equity= in Zeile {call.lineno}"
+        assert ast.unparse(equity) == "self.broker.equity", (
+            f"assess bekommt in Zeile {call.lineno} `{ast.unparse(equity)}` statt "
+            "`self.broker.equity` -- die Groesse haengt dann nicht mehr an der "
+            "geteilten Kasse"
+        )
 
 
 # --------------------------------------------------------------------------- #
