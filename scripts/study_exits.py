@@ -72,6 +72,7 @@ from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
 from traidingbrain.journal.signals import SignalStore
 from traidingbrain.journal.version import run_signature
 from traidingbrain.learn.labels import Minutes, label_signal
+from traidingbrain.learn.overrides import safety_rules
 from traidingbrain.reporting.intervals import block_bootstrap
 
 #: Regeln, deren abgelehnte Signale hier NICHT mitlaufen.
@@ -103,10 +104,11 @@ from traidingbrain.reporting.intervals import block_bootstrap
 # sondern ueber den Kontostand. Eine Auswahlregel darf sie nicht
 # ueberstimmen -- an einem anderen Tag waere dasselbe Signal durchgegangen.
 #
-# Die beiden Mengen in diesem Projekt sind UNEINIG ueber `kosten` und
-# `chance_risiko` (siehe audit/RISIKO_AUDIT_NACHPRUEFUNG.md 2.6). Dieser
-# Eintrag entscheidet das nicht, er kommt in beide.
-SAFETY_RULES = {"liquidation", "chance_risiko", "kosten", "grenzen"}
+# Die Uneinigkeit zwischen den beiden Mengen in diesem Projekt ist am
+# 14.10.2026 aufgeloest: `learn/overrides.py` haelt sie an EINER Stelle, mit
+# zwei benannten Lesarten. Diese Studie nimmt die strenge (die Vorgabe), und
+# das ist dieselbe Menge wie vorher -- die Population aendert sich nicht.
+SAFETY_RULES = safety_rules()
 
 #: Bisheriger Horizont, wie E1 ihn benutzt. Deckel fuer E3.1 und E3.3.
 HORIZON_HOURS = 48

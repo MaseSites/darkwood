@@ -113,6 +113,27 @@ Fehler senken, die unbemerkt bleiben.** Konkret in diesem Fenster:
   (`RISIKO_AUDIT_NACHPRUEFUNG.md` 2.6). Das ist eine Messfrage, keine
   Aufräumarbeit — sie wird gestellt, nicht stillschweigend entschieden.
 
+  **Erledigt am 14.10.2026, und die Frage war keine Messfrage.** Gestellt
+  hat sie sich selbst beantwortet: *welche* Menge richtig ist, lässt sich
+  nicht messen, weil nicht zur Debatte steht, wie der Markt sich verhält,
+  sondern **was ein Ergebnis lizenziert**. `chance_risiko` und `kosten` sind
+  Produktionsregeln in `sim/plan.py`; eine Studie, die sie übergeht, liefert
+  kein Ergebnis, sondern einen Änderungswunsch ohne Nachweis.
+
+  `learn/overrides.py` hält die Menge jetzt an einer Stelle, mit zwei
+  benannten Lesarten: die strenge als Vorgabe, die weite nur ausdrücklich
+  und mit einem Satz im Berichtskopf. Keine Population hat sich verändert —
+  beide Studien lesen genau die Menge, die sie vorher hart stehen hatten,
+  und `tests/test_overrides.py` prüft das gegen zwei nicht abgeleitete
+  Literale. Dazu ein Wächter, der fällt, sobald ein siebter `Rule`-Wert
+  nirgends eingeordnet ist; das war der Weg, auf dem das Doppel entstand.
+
+  Absichtlich in `learn/` und nicht in `domain/enums.py`: die Mengen
+  beschreiben, was eine STUDIE darf, nicht wie der Händler entscheidet.
+  `learn/` liegt ausserhalb des Entscheidungs-Abschlusses, der Stempel
+  bewegt sich also nicht — und ein überflüssiger Schnitt der
+  Vorwärtsstichprobe kostet Stichprobe.
+
 ---
 
 ## C. Recherche — mit firecrawl, aber ehrlich eingeordnet
@@ -166,6 +187,38 @@ Trefferquote ist ein irreführendes Ziel, die Einstiege tragen keinen Vorteil,
 und ein Hebel, der nur die Trade-Zahl ändert, kann das Vorzeichen nicht
 drehen. Was die Trade-Zahl wirklich hebt, ohne eine Regel zu lockern, sind
 mehr **Märkte** — siehe D.
+
+### Nachtrag 14.10.2026: dieser Absatz war unvollständig, und zwar teuer
+
+Er setzt gleich: „mehr Trades" = „lockerere Filter". Es gab aber eine dritte
+Möglichkeit, und sie lag genau an diesem Tag vor: **eine Zahl ohne
+Herleitung, die alles blockierte.**
+
+`max_open_positions` stand auf 2 — nie hergeleitet, nur ausgeliefert. Seit
+die zwölf Konten eine Kasse sind, greift der Deckel portfolioweit. Beide
+Plätze waren von Trades belegt, die **86,6 h** und **170,6 h** liefen, gegen
+einen Median von 9,75 h und einen bisherigen Rekord von 72,7 h. Das System
+konnte **keinen einzigen** neuen Trade eröffnen, über Tage.
+
+Der Deckel steht jetzt auf 5, und das ist keine Lockerung, sondern eine
+Herleitung:
+
+    floor(max_daily_loss_pct / risk_pct) = floor(0.05 / 0.010) = 5
+
+Die Tagesgrenze zählt nur *realisierte* Verluste und kann nicht greifen,
+solange die Positionen offen sind; die Zahl der Plätze ist das Einzige, was
+gleichzeitig offenes Risiko begrenzt. Rückwirkend wirkungslos — der gemessene
+Höchststand war genau fünf, der Deckel hätte keinen bisher genommenen Trade
+abgelehnt. Belegt durch einen Trade, der innerhalb einer Stunde entstand:
+DOTUSDT, Risiko 120,75 USDT = 1,000 % des Kontos, dritter von fünf Plätzen.
+
+**Was weiter gilt, und es ist die wichtigere Hälfte:** mehr Takt senkt die
+Hürde je Trade, erzeugt aber keinen Vorteil. `scripts/goal.py` rechnet das
+jetzt in beide Richtungen — bei 40 Chancen braucht es +0,54 R, bei 385 nur
++0,06 R, und bei der gemessenen Erwartung von −0,0906 R endet derselbe
+höhere Takt bei 8.520 statt 11.642 CHF. Bei höchstem Takt reicht die Spanne
+dieser Stichprobe von 6.788 bis 10.740: **das Ziel liegt aussen, selbst am
+günstigen Rand.** Mehr Takt allein kann es nicht.
 
 ---
 

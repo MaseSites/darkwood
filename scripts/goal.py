@@ -47,6 +47,7 @@ import numpy as np
 from traidingbrain.api.portfolio import account_equity
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.journal.record import Source
+from traidingbrain.journal.replayset import load_replay
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.learn.target import (
     Payout,
@@ -120,7 +121,34 @@ def main() -> int:
 
     journal = JournalStore(config.engine.paths.data_dir / "journal.sqlite")
     forward = sorted(journal.all(source=Source.LIVE), key=lambda e: e.opened_ts)
-    replay = journal.all(source=Source.REPLAY)
+
+    # Die Replay-Menge aus den DATEIEN, nicht aus der Datenbank.
+    #
+    # Die 2.734 Replay-Zeilen der Datenbank decken VIER Maerkte und tragen
+    # bei allen 2.734 eine leere `run_signature`, ein leeres
+    # `decision_version` und ein leeres `code_version`. Welche
+    # Konfiguration sie erzeugt hat, ist aus den Daten nicht zu
+    # beantworten -- und sie stimmen nicht einmal mit den vier
+    # gleichnamigen Maerkten in `data/replay_fills/` ueberein (BTCUSDT:
+    # 495 gegen 263). Es ist ein anderer, aelterer Lauf.
+    #
+    # Das ist NICHT neu: `scripts/eval_replay_rerun.py` beschreibt es seit
+    # dem 11.10.2026, mit derselben Zahl. Neu ist nur, dass dieser Bericht
+    # hier denselben Defekt hatte -- ein Hinweis im Docstring eines
+    # Skripts schuetzt eben nur dieses Skript.
+    #
+    # Der Unterschied ist nicht klein: ueber zwoelf Maerkte ist das
+    # Ergebnis je Trade -0.0129 R statt -0.0906 R und "nie im Plus"
+    # 14.5 % statt 7.0 %. Vier Maerkte als Systemzahl zu zitieren ist
+    # derselbe Fehler, den die alten BTC-Zahlen in SCENARIOS gekostet
+    # haben -- sie setzten den Nullpunkt in Reichweite eines
+    # 3-%-Gebuehrenrabatts, wo vier Maerkte ihn bei 69 % fanden.
+    population = load_replay(config.engine.paths.data_dir)
+    if population is None:
+        print("Keine Replay-Dateien in data/replay_fills -- "
+              "scripts/replay_all_markets.py hat noch nicht gelaufen")
+        return 0
+    replay = population.entries
 
     print(f"\nZiel        {args.target:,.0f} CHF bis {deadline.strftime('%d.%m.%Y')}")
     print(f"Start       {start:,.2f} CHF")
@@ -132,6 +160,7 @@ def main() -> int:
         print(f"\nDie Frist ist am {deadline.strftime('%d.%m.%Y')} abgelaufen.")
         return 0
     print(f"Tage        {days}")
+    print(f"Replay      {population.labelled()}")
 
     if len(forward) < MIN_FORWARD:
         print("\nZu wenige Vorwaerts-Trades, um den Takt zu messen. Rest nicht rechenbar.")
@@ -165,7 +194,7 @@ def main() -> int:
     growth = args.target / equity
     needed = (growth ** (1.0 / trades) - 1.0) / risk_fraction
 
-    planned = [entry.reason.reward_risk for entry in replay]
+    planned = [entry["reason"]["reward_risk"] for entry in replay]
     ceiling = float(np.mean(planned)) if planned else 0.0
 
     print(
@@ -200,12 +229,12 @@ def main() -> int:
         per_day=per_day,
         risk_fraction=risk_fraction,
         holds_h=[
-            (e.closed_ts - e.opened_ts) / 3_600_000
+            (e["closed_ts"] - e["opened_ts"]) / 3_600_000
             for e in replay
-            if e.closed_ts > e.opened_ts
+            if e["closed_ts"] > e["opened_ts"]
         ],
         config=config,
-        sample=[e.r_multiple for e in replay],
+        sample=[e["r_multiple"] for e in replay],
     )
     reachable(equity, args.target, trades, risk_fraction, ceiling)
     required(equity, args.target, trades, config)
@@ -234,13 +263,15 @@ def measured_requirement(
     that includes slot competition and liquidation -- the better number was
     reported once and should not be again.
     """
-    journal = JournalStore(config.engine.paths.data_dir / "journal.sqlite")
-    records = journal.all(source=Source.REPLAY)
+    # Dieselbe identifizierte Quelle wie in `main()`, nicht die Datenbank.
+    # Deren Replay-Zeilen decken vier Maerkte und tragen keine Herkunft.
+    population = load_replay(config.engine.paths.data_dir)
+    records = population.entries if population is not None else []
     if len(records) < MIN_FOR_PAYOUT:
-        print(f"\nZu wenige Journal-Trades ({len(records)}) fuer eine gemessene Auszahlung.")
+        print(f"\nZu wenige Replay-Trades ({len(records)}) fuer eine gemessene Auszahlung.")
         return
 
-    values = np.array([t.r_multiple for t in records], dtype="float64")
+    values = np.array([t["r_multiple"] for t in records], dtype="float64")
     wins = values[values > 0]
     losses = values[values <= 0]
     if wins.size == 0 or losses.size == 0:
@@ -253,7 +284,7 @@ def measured_requirement(
 
     print("\n" + "=" * 78)
     print("Was das Ziel verlangt, mit der GEMESSENEN Auszahlung daneben")
-    print(f"  Auszahlung: {payout.describe()}  ({values.size:,} Journal-Trades)")
+    print(f"  Auszahlung: {payout.describe()}  ({values.size:,} Replay-Trades, 12 Maerkte)")
     print(f"  Trefferquote gemessen: {100 * hit:.2f}%   Erwartung {values.mean():+.4f} R")
     print(f"\n  {'Risiko':>8s} {'noetig R':>10s} {'noetige Treffer':>17s} {'Luecke':>12s}")
 

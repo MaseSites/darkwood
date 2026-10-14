@@ -43,7 +43,7 @@ meta:
   # Die Zahl, auf die korrigiert wird. Summe der `comparisons` aller Arme unten
   # plus die bereits gelesenen Zellen der Vorgaenger-Suche, soweit dieselbe
   # Frage betroffen ist.
-  total_comparisons: 70
+  total_comparisons: 71
   correction: >-
     Bonferroni auf `total_comparisons` Vergleiche: Schwelle 0.05/n,
     Intervall 100*(1 - 0.05/n) %. Bei 70 also 0.000714 und 99.9286 %.
@@ -1704,6 +1704,108 @@ experiments:
 
       Der Lauf wartet, bis E14 die Maschine freigibt; beides sind volle
       Motorlaeufe ueber 12 Maerkte.
+
+  - id: E16
+    title: "Setup F abschalten -- derselbe Fall wie C, nur fuenf Tage unsichtbar"
+    priority: 1
+    cells: 1
+    comparisons: 1
+    arms:
+      - id: E16.1
+        name: "Pool ohne F gegen Pool wie ausgeliefert"
+    was_ich_VORHER_schon_gesehen_habe: >-
+      Dieser Arm ist NICHT blind angelegt, und der Grund, warum er erst jetzt
+      entsteht, ist selbst der Befund.
+
+      `journal/build.py:_setup_for` schrieb Trades dem ersten Setup zu, das
+      auf ihrem Balken feuerte -- aus `TRADEABLE`, also einschliesslich der
+      ABGESCHALTETEN. C steht an Stelle 2 von sechs, vor E, F und G. In
+      `data/replay_fills/` trugen darum 204 von 7.335 Trades (2.8 %) das
+      Etikett "C", obwohl C seit dem 04.10.2026 aus ist, und sie waren E, F
+      und G gestohlen. F stand mit 25 Trades in der Statistik und hatte 68.
+
+      `Fill.setup` trug die Wahrheit die ganze Zeit -- der Pool setzt es beim
+      Feuern. Nach `fills.setup` gerechnet, 7.335 Trades, zwoelf Maerkte,
+      Stand e218664b39c8:
+
+        Setup    n     Mittel   Treffer   R total   korrigiertes Intervall
+        A     3529   -0.0137      41 %     -48.3
+        B     3045   -0.0109      33 %     -33.3
+        E      256   +0.0654      28 %     +16.8   [-0.293, +0.478]
+        F       68   -0.7503       7 %     -51.0   [-1.042, -0.273]  ohne Null
+        G      437   +0.0482      33 %     +21.1   [-0.185, +0.276]
+        alle  7335   -0.0129      37 %     -94.8   [-0.045, +0.019]
+
+      **F traegt 54 % des Gesamtverlusts bei 0.9 % der Trades.** Neun
+      Maerkte, 02.2021 bis 03.2026, nicht in einem Markt konzentriert.
+      5 Gewinner gegen 63 Verlierer, Median -1.037 R, 77.9 % verlieren mehr
+      als ein R. Der beste Einzeltrade (+5.203 R) zieht den Mittelwert nach
+      OBEN -- ohne ihn waere F noch schlechter.
+
+      Beide Tore sind auf F's EIGENEN Trades erfuellt: korrigiertes Intervall
+      ohne Null (Niveau 1 - 0.05/70) und Replikation +0.82x zwischen den
+      Haelften (-0.8265 R frueh, -0.6740 R spaet).
+    acceptance: >-
+      **Und trotzdem ist das nicht der Beschluss.** Die Zahlen oben
+      beschreiben F's eigene Trades. Gefragt ist die Wirkung des
+      ENTFERNENS, und das ist eine andere Groesse: Setups konkurrieren um
+      den Platz, also loescht das Weglassen eines Setups nicht seine Trades,
+      sondern laesst andere feuern. Genau diese Verwechslung warnt
+      `scripts/study_drop_setup.py` in seinem eigenen Docstring ab, und
+      `eval_replay_rerun.py` hat sie einmal begangen.
+
+      Das Instrument ist darum `scripts/study_drop_setup.py` -- zwei echte
+      Pools durch den Motor, "alle" gegen "ohne F", ueber zwoelf Maerkte.
+      Dasselbe Instrument, das C entschieden hat.
+
+      Abnahme: korrigiertes Intervall ohne Null auf der Differenz der
+      Pool-Mittelwerte UND Replikation 0.5-2.0x ueber die Haelften.
+      Primaerkennzahl Netto-R je Trade; R TOTAL wird dazu berichtet, weil
+      ein Setup zu entfernen die Trade-Zahl senkt und beide Richtungen
+      sichtbar bleiben muessen.
+
+      Der Rand vorab: Anteil unter -1R, schlimmster Einzelverlust,
+      5 %-Quantil, und die Trade-Zahl je Pool.
+    schaetzung_die_nicht_das_ergebnis_ist: >-
+      Bei F ist der Platz-Effekt klein, anders als bei C: 68 von 7.335
+      Trades, also werden nur in 68 Faellen Plaetze frei. Die naive Rechnung
+      lautet damit -94.8 + 51.0 = -43.8 R auf 7.267 Trades, also -0.0060 R
+      je Trade statt -0.0129 R -- der Verlust je Trade halbiert sich etwa.
+
+      Das ist eine SCHAETZUNG und ausdruecklich kein Ergebnis. Sie zaehlt
+      die Ersatztrades nicht, die in den freien Plaetzen entstehen, und
+      deren Erwartung ist nicht null.
+    warum_ueberhaupt: >-
+      Dieselbe Begruendung, die C abgeschaltet hat, steht in
+      `strategies/guide.py:enabled_setups`: "mehr als die Haelfte des
+      Verlusts kommt aus einem Setup". Bei F sind es 54 %, und die Zahl war
+      fuenf Tage lang unsichtbar, weil die Zuschreibung 43 seiner 68 Trades
+      woanders verbuchte.
+
+      Und es ist der groesste Hebel, der am 14.10.2026 gefunden wurde, der
+      KEINE Regel lockert: F zu entfernen nimmt Trades weg, verletzt keine
+      Schutzregel und braucht keine neue Datenquelle.
+    gegenargument_das_vorher_steht: >-
+      68 Trades sind wenig. Das korrigierte Intervall haelt trotzdem, weil
+      der Effekt gross ist -- aber ein grosser Effekt auf kleiner Stichprobe
+      ist auch die Form, die ein Zufall annimmt, und die Blocklaenge 4 sagt,
+      dass die Abhaengigkeit hier kurz ist.
+
+      Dazu: F ist in `audit/` nirgends als Verdaechtiger genannt. Dass er
+      jetzt auffaellt, liegt an einer korrigierten Beschriftung und nicht an
+      einer Suche -- das ist die guenstigere Herkunft, aber es bleibt eine
+      Zelle, die aus den Daten aufgetaucht ist. Sie zaehlt als Vergleich.
+    status: angemeldet_nicht_gelaufen
+    angelegt: 2026-10-14
+    declared_before_reading: false
+    note: >-
+      `declared_before_reading` steht auf FALSE, und das ist der ehrliche
+      Wert: die Zelle entstand aus der Betrachtung der korrigierten
+      Setup-Tabelle. Beide Tore sind auf F's eigenen Trades schon erfuellt,
+      bevor der Arm laeuft -- was der Arm messen soll, ist eine andere
+      Groesse (die Wirkung des Entfernens), und DIE ist noch nicht gesehen.
+
+      Der Lauf wartet, bis E14 die Maschine freigibt.
 
 
 

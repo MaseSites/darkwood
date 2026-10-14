@@ -66,23 +66,43 @@ def _setup_for(analysis: MultiFrameAnalysis, index: int, side: Side) -> SetupSig
     have been found on any of them. Looking only at the signal frame left 40%
     of the journal with no setup attributed once the search went
     multi-timeframe -- the trades were fine, the record of why was not.
+
+    **Nur freigegebene Setups, und das war bis zum 14.10.2026 falsch.**
+    `evaluate_all` laeuft ueber `TRADEABLE`, also auch ueber die Setups, die
+    die Konfiguration abgeschaltet hat; `GuidePool.propose_at` laeuft nur ueber
+    die freigegebenen. C steht an Stelle 2 von sechs, vor E, F und G -- ein
+    Trade, den E, F oder G erzeugt hat, bekam deshalb das Etikett "C",
+    sobald C auf demselben Balken mitfeuerte.
+
+    Gemessen in `data/replay_fills/` (7.335 Trades, zwoelf Maerkte, gerechnet
+    unter `enabled: [A, B, E, F, G]`): **204 Trades tragen `setup_key = "C"`**,
+    also 2.8 % der Population, und C war zur Laufzeit aus. Jede Zahl je Setup
+    fuer E, F und G ist damit zu klein und in ihrer Zusammensetzung falsch --
+    E hat 168 Zeilen, F hat 25.
+
+    Der Absatz unten sagte selbst, anders zu raten „would attribute the trade
+    to a setup the engine did not act on". Genau das geschah, nur nicht durch
+    Raten, sondern durch eine Liste, die eine Ebene zu breit war.
     """
     aligned = analysis.aligned_indices(index)
     if aligned is None:
         return None
+    allowed = set(analysis.config.setups.enabled)
     decision = decision_time_ms(analysis.signal.ts_at(index), analysis.signal_timeframe)
     for timeframe in SEARCH_ORDER:
         frame = analysis.analyses.get(timeframe)
         at = aligned.get(timeframe)
         if frame is None or at is None or not _just_closed(analysis, timeframe, decision):
             continue
-        matching = [s for s in evaluate_all(frame, at) if s.side is side]
-        if len(matching) == 1:
-            return matching[0]
+        matching = [
+            s for s in evaluate_all(frame, at)
+            if s.side is side and s.setup in allowed
+        ]
         if matching:
-            # More than one fired here. The pool takes the first, and so does
-            # this -- guessing differently would attribute the trade to a setup
-            # the engine did not act on.
+            # More than one may have fired. The pool takes the first in
+            # TRADEABLE order and so does this -- `evaluate_all` preserves that
+            # order, and picking differently would name a setup the engine
+            # passed over.
             return matching[0]
     return None
 

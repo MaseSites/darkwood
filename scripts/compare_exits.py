@@ -2,10 +2,14 @@
 
     python scripts/compare_exits.py --at 1.0 0.5
 
-The journal says 19% of two thousand trades were at least one R in profit and
-ended as losses, and 35% were stopped by a wick the bar closed back through.
-Only 8% never went our way at all. That points at the exit, and this measures
-whether the obvious fix is one.
+Over 7,335 replay trades across twelve markets, 50.5% reached at least one R
+in profit and 1,025 of those ended as losses; 34.6% were stopped by a wick
+the bar closed back through, and 14.5% never went our way at all. That points
+at the exit, and this measures whether the obvious fix is one.
+
+(Those figures replace a set taken from the journal database's 2,734 replay
+rows -- four markets, no recorded provenance. The twelve-market population
+lives in `data/replay_fills/` and is read through `journal/replayset.py`.)
 
 **The rule runs inside the simulator, not beside it.** An earlier version of
 this replayed the minute bars in a separate script, and its own self-check
@@ -90,7 +94,7 @@ from traidingbrain.strategies.guide import GuidePool
 #: nicht in die Motorlaeufe, und die liegen im Zwischenspeicher. Also 70,
 #: und `--only-report` rechnet den Bericht damit neu. Ein engeres Niveau
 #: kann kein falsches Positiv erzeugen -- die andere Richtung koennte es.
-TOTAL_COMPARISONS = 70
+TOTAL_COMPARISONS = 71
 
 #: Die Replikationsschranken, wie fuer jeden Arm in diesem Projekt.
 REPLICATION = (0.5, 2.0)

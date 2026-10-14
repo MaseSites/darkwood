@@ -79,6 +79,7 @@ from traidingbrain.journal.signals import SignalRecord, SignalStore
 from traidingbrain.journal.version import run_signature
 from traidingbrain.learn.frozen import freeze
 from traidingbrain.learn.labels import Label, Minutes, label_signal
+from traidingbrain.learn.overrides import describe, safety_rules
 from traidingbrain.reporting.intervals import block_bootstrap
 
 HOUR_MS = 3_600_000
@@ -112,10 +113,19 @@ TOTAL_COMPARISONS = 46
 # sondern ueber den Kontostand. Eine Auswahlregel darf sie nicht
 # ueberstimmen -- an einem anderen Tag waere dasselbe Signal durchgegangen.
 #
-# Die beiden Mengen in diesem Projekt sind UNEINIG ueber `kosten` und
-# `chance_risiko` (siehe audit/RISIKO_AUDIT_NACHPRUEFUNG.md 2.6). Dieser
-# Eintrag entscheidet das nicht, er kommt in beide.
-SAFETY_RULES = frozenset({"liquidation", "grenzen"})
+# Seit dem 14.10.2026 steht die Menge an EINER Stelle
+# (`learn/overrides.py`), und diese Studie waehlt die WEITE Lesart
+# AUSDRUECKLICH. Sie betrachtet damit Signale, die der Kostendeckel oder das
+# Mindest-Chance-Risiko abgelehnt hat -- beides Produktionsregeln in
+# `sim/plan.py`. Ein positives Ergebnis hier ist also nicht umsetzbar, ohne
+# eine Schutzregel zu aendern, und braucht dafuer einen eigenen Nachweis.
+#
+# Das Schluesselwort steht da, damit die Entscheidung nicht mehr still ist:
+# vorher unterschieden sich die Populationen der beiden Studien, und der
+# Unterschied war nur aus zwei Quelldateien zu erschliessen. Der Bericht
+# druckt `SAFETY_NOTE` in seinem Kopf.
+SAFETY_RULES = safety_rules(allow_rule_change=True)
+SAFETY_NOTE = describe(allow_rule_change=True)
 
 SEED = 20261007
 
@@ -590,7 +600,13 @@ def main() -> int:
         f"Fenster: trainieren {len(train):,} | entwickeln {len(develop):,} | "
         f"bestaetigen {len(confirm):,}   (Purge {PURGE_MS // HOUR_MS}h zwischen allen)"
     )
-    print(f"Korrigiertes Niveau bei {TOTAL_COMPARISONS} Vergleichen: {100 * corrected:.3f}%\n")
+    print(f"Korrigiertes Niveau bei {TOTAL_COMPARISONS} Vergleichen: {100 * corrected:.3f}%")
+    # Die Population, in einem Satz, im Kopf des Berichts.
+    #
+    # Ohne diese Zeile sahen zwei Studien mit VERSCHIEDENEN Populationen gleich
+    # aus: `study_exits` filtert vier Ablehnungsgruende weg, diese hier zwei,
+    # und der Unterschied war nur aus zwei Quelldateien zu erschliessen.
+    print(f"{SAFETY_NOTE}\n")
 
     if not confirm:
         raise SystemExit("Leeres Bestaetigungsfenster -- mehr Zeit oder mehr Maerkte noetig.")

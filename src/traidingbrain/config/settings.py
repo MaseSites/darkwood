@@ -214,19 +214,27 @@ class SimulationConfig(_Frozen):
     design would have mixed two effects, fewer trades taken and earlier exits.
 
     Registered as E15 on 14.10.2026. The reason it is worth measuring is a
-    description nobody had summed: over 2,734 replay trades the planned target
-    sits at a median +1.905 R while the median best position reached is
-    +1.073 R, so **67.8 % of trades never touch their target, not even
-    briefly**. E3 varied the exit RULE three ways and never varied the
-    target's DISTANCE.
+    description nobody had summed: over **7,335 replay trades across twelve
+    markets** the planned target sits at a median +1.556 R while the median
+    best position reached is +1.020 R, so **62.9 % of trades never touch
+    their target, not even briefly**. E3 varied the exit RULE three ways and
+    never varied the target's DISTANCE.
 
-    That 67.8 % is a corrected figure and the correction is instructive. The
-    first pass read 65.4 % because it compared two numbers built on different
+    That figure was wrong twice before it was right, and both corrections are
+    worth knowing.
+
+    It first read 65.4 % because it compared two numbers built on different
     risk denominators: `max_favourable_r` comes from `examine()`, which is
     handed `entry=fill.entry_price` and `stop=reason.stop`, while
-    `reward_risk` is plan over plan. They agree for 85.7 % of trades -- a
-    limit order usually fills at its limit -- and for the rest they do not, so
-    65 trades sat on the wrong side of the comparison."""
+    `reward_risk` is plan over plan. They agree for most trades -- a limit
+    order usually fills at its limit -- and for the rest they do not.
+
+    Then it read 67.8 %, on the consistent denominator but over the journal
+    database's 2,734 replay rows. Those cover **four** markets and carry no
+    `run_signature`, `decision_version` or `code_version` at all, so the
+    configuration behind them is unanswerable from the data. The identified
+    population is the twelve-market one in `data/replay_fills/`, read through
+    `journal/replayset.py`, and it says 62.9 %."""
 
     max_hold_hours: float | None = Field(default=None, gt=0)
     """Close a position that has been held this long, on that ground alone.

@@ -517,16 +517,23 @@ class SimBroker:
             # wegspringt, fuellt weiter vom Stop entfernt und riskiert dann
             # MEHR Geld als `risk_pct` erlaubt.
             #
-            # Gemessen ueber 2.734 Replay-Trades:
+            # Gemessen ueber 7.335 Replay-Trades, zwoelf Maerkte
+            # (`data/replay_fills/`, Stand e218664b39c8):
             #
-            #   genau wie geplant      2.343 (85.7 %)
-            #   weniger als geplant      376 (13.8 %)
-            #   MEHR als geplant          15 ( 0.55 %), Faktor bis 4.14x
+            #   genau wie geplant      6.823 (93.0 %)
+            #   weniger als geplant      433 ( 5.9 %)
+            #   MEHR als geplant          79 ( 1.08 %), Faktor bis 10.38x
             #
-            # Keiner dieser 15 ist hart ausgestoppt worden -- schlimmster
-            # Einzelverlust darunter -0.850 R, waehrend der schlimmste Verlust
-            # ueberhaupt (-3.885 R) die eine Liquidation ist. Das Loch ist
-            # also latent und hat nie zugeschlagen.
+            # Keiner dieser 79 ist hart ausgestoppt worden -- schlimmster
+            # Einzelverlust darunter -1.117 R, und der schlimmste Verlust
+            # ueberhaupt liegt bei -1.891 R. Das Loch ist also latent und
+            # hat nie zugeschlagen.
+            #
+            # Die erste Fassung dieses Kommentars rechnete ueber die 2.734
+            # Replay-Zeilen der Journal-Datenbank und nannte 0.55 % und
+            # 4.14x. Jene Menge deckt VIER Maerkte und traegt keine
+            # Herkunft; ueber zwoelf ist das Loch doppelt so haeufig und
+            # der schlimmste Faktor zweieinhalbmal so gross.
             #
             # **Warum es offen bleibt.** Die Reparatur -- Menge am Fillpreis
             # neu rechnen -- aendert jede Positionsgroesse und damit jedes

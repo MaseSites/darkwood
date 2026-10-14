@@ -264,6 +264,41 @@ Der Satz gehoert an eine Stelle, nicht an zwei. Als eigener Schritt, weil
 ihn zusammenzulegen bedeutet, sich fuer eine der beiden Mengen zu
 entscheiden — und das ist eine Messfrage, keine Aufraeumarbeit.
 
+#### Erledigt am 14.10.2026 — und die „Messfrage" war keine
+
+`src/traidingbrain/learn/overrides.py` haelt die Menge jetzt an einer Stelle.
+Was sich beim Zusammenlegen zeigte: **welche Menge richtig ist, laesst sich
+nicht messen.** Die Frage ist nicht, wie der Markt sich verhaelt, sondern was
+ein Ergebnis *lizenziert* — und das ist eine Entscheidung ueber die
+Beweisfuehrung.
+
+Entschieden ist deshalb nur das Folgende, und die drei Teile sind wichtiger
+als die Mengen selbst:
+
+1. **Die strenge Lesart ist die Vorgabe**, weil allein ihr Ergebnis ohne
+   Aenderung einer Schutzregel umsetzbar ist. `chance_risiko` und `kosten`
+   sind Produktionsregeln in `sim/plan.py`; ein positives Ergebnis, das sie
+   uebergeht, ist kein Befund, sondern ein Aenderungswunsch ohne Nachweis.
+2. **Die weite Lesart bleibt erlaubt**, muss aber ausdruecklich gewaehlt
+   werden (`safety_rules(allow_rule_change=True)`), und die Studie druckt es
+   in ihren Kopf. Genau das fehlte: zwei Populationen, die still
+   verschieden waren.
+3. **Keine Population hat sich veraendert.** `study_exits` liest dieselben
+   vier Gruende wie vorher, `study_meta_label` dieselben zwei.
+   `tests/test_overrides.py` prueft das gegen zwei Literale, die nicht
+   abgeleitet sind — eine Menge, die genauso gebaut wird wie die gepruefte,
+   stimmt mit jedem Fehler ueberein.
+
+Dazu die Struktur, die beim Aufschreiben erst sichtbar wurde: `liquidation`
+und `grenzen` sind *gar nicht* verhandelbar (Physik und Kontostand — dasselbe
+Signal waere an einem anderen Tag durchgegangen), `chance_risiko` und
+`kosten` sind verhandelbar *gegen eine Regeländerung*, und `zuversicht` und
+`groesse` stehen in keiner der beiden Mengen und standen es auch vorher nicht.
+
+Und der Wächter gegen die Wiederkehr: `test_every_rule_is_accounted_for`
+faellt, sobald ein siebter `Rule`-Wert entsteht, der nirgends eingeordnet
+ist. Das war der Weg, auf dem das Doppel ueberhaupt entstanden ist.
+
 ### Was daraus folgt
 
 **Der Eingriff findet weiter nicht ad hoc statt**, aber der Weg ist jetzt
