@@ -83,8 +83,13 @@ def run_signature(config: object, *, max_bars: int | None = None, shadow: bool =
     "Signale liegen vor" and skipped, and the shadow population would have
     stayed empty while looking collected.
 
-    Both suffixes are appended only when set, so the plain signature stays
-    byte-identical to the one the ledger's 12,843 rows are already keyed by.
+    **Every** suffix is appended only when it differs from the historical
+    anchor, so the plain signature stays byte-identical to the one the ledger's
+    12,843 rows are already keyed by. There are four now -- `portfolio` and
+    `cap{n}` describe the configuration, `{n}bars` and `shadow` describe the
+    run -- and the two run markers come last by convention, which
+    `tests/test_version.py` holds in place. Anything added later goes in front
+    of them.
     """
     engine = config.engine  # type: ignore[attr-defined]
     risk = config.risk  # type: ignore[attr-defined]

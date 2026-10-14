@@ -509,6 +509,32 @@ def test_a_trade_that_gave_it_back_scratches_instead_of_losing() -> None:
     assert fill.reason is ExitReason.STOP
     assert fill.exit_price == pytest.approx(100.0)
     assert fill.r_multiple == pytest.approx(0.0)
+    # Und der Fill sagt, dass es ein nachgezogener Stop war.
+    #
+    # Das ist nicht Kosmetik, sondern die Quelle einer von E14s vier VORAB
+    # angemeldeten Rand-Kennzahlen: der Anteil der scharfgestellten Trades,
+    # den die Regel abschneidet. `ExitReason` kann es nicht sagen -- hier
+    # steht STOP wie bei einem echten Verlust, und eine Zeile wie diese ist
+    # vom echten Verlust nur durch dieses Feld zu unterscheiden.
+    assert fill.stop_moved
+
+
+def test_a_fill_without_the_rule_reports_no_moved_stop() -> None:
+    """Die Gegenprobe, ohne die das Feld nichts beweist.
+
+    Ein Feld, das immer `True` ist, besteht den Test darueber genauso -- und
+    der Anteil, den E14 daraus rechnet, waere dann 100 % und falsch. Dieses
+    Projekt hat vier Messungen bezahlt, die die Apparatur beschrieben statt
+    die Welt.
+    """
+    broker = SimBroker(free_spec(), config())
+    broker.submit(long_entry())
+    minutes(broker, [(100.0, 100.0, 100.0), (100.0, 112.0, 85.0)])
+
+    fill = broker.fills[-1]
+    assert fill.reason is ExitReason.STOP
+    assert fill.r_multiple == pytest.approx(-1.0)
+    assert not fill.stop_moved
 
 
 def test_the_trigger_and_the_stop_in_one_minute_resolve_as_a_stop() -> None:

@@ -169,12 +169,33 @@ def test_the_signature_separates_the_two_bases(base: AppConfig) -> None:
     Signatur hinterliess, und die Zugehoerigkeit war nur noch aus der
     Git-Historie zu erschliessen.
     """
-    account = run_signature(with_basis(base, "account"))
-    portfolio = run_signature(with_basis(base, "portfolio"))
+    account = run_signature(with_basis(base, "account")).split("|")
+    portfolio = run_signature(with_basis(base, "portfolio")).split("|")
 
     assert account != portfolio
-    assert portfolio.endswith("|portfolio")
-    assert not account.endswith("|portfolio"), (
-        "die alte Signatur muss byte-identisch bleiben, sonst verwaisen die "
-        "Zeilen, die der Speicher schon unter ihr haelt"
+
+    # Geprueft wird die ANWESENHEIT des Feldes, nicht seine Position.
+    #
+    # Hier stand bis zum 14.10.2026 `portfolio.endswith("|portfolio")`, und
+    # das war nur so lange wahr, wie `portfolio` das letzte Suffix war. Mit
+    # dem Platzdeckel kam `|cap5` dahinter und der Test fiel -- obwohl die
+    # Eigenschaft, um die es geht, unberuehrt war. Ein Test, der beim
+    # naechsten Suffix wieder faellt, sagt nichts ueber den Marker; er sagt
+    # etwas ueber die Reihenfolge, und die ist hier nicht die Zusicherung.
+    #
+    # `split` statt `in` ist Absicht: so muss der Marker ein ganzes Feld
+    # sein. `"portfolio" in signature` waere auch fuer ein Symbol namens
+    # PORTFOLIOUSDT wahr.
+    assert "portfolio" in portfolio[5:], (
+        f"der Marker fehlt in {portfolio[5:]} -- 10-USDT- und 120-USDT-Trades "
+        "liegen dann unter einem Schluessel"
+    )
+    assert "portfolio" not in account[5:], (
+        "die alte Signatur muss in ihren fuenf Pflichtfeldern byte-identisch "
+        "bleiben, sonst verwaisen die Zeilen, die der Speicher schon unter "
+        "ihr haelt"
+    )
+    assert account[:5] == portfolio[:5], (
+        "der Kopf unterscheidet die beiden Basen nicht -- das tut allein das "
+        "Suffix, und nur deshalb bleiben die gesammelten Zeilen lesbar"
     )

@@ -176,6 +176,26 @@ class Fill:
     risk_amount: float
     setup: str = ""
     timeframe: str = ""
+    stop_moved: bool = False
+    """Ob der Stop bis zum Ausstieg auf den Einstand nachgezogen worden war.
+
+    Hinzugefuegt am 14.10.2026 fuer E14, und zwar weil eine der vier VORAB
+    angemeldeten Rand-Kennzahlen ohne dieses Feld nicht messbar ist: „der
+    Anteil der Gewinner, die der Einstand-Stop abschneidet".
+
+    `ExitReason` kann das nicht leisten -- ein Ausstieg am nachgezogenen Stop
+    ist `STOP` wie jeder andere, und ein zusaetzlicher Enum-Wert waere
+    schlimmer als dieses Feld: `JournalEntry.from_json` ruft `ExitReason(...)`
+    auf die gespeicherte Zeichenkette und wuerde bei alten Journalen brechen.
+
+    Der naheliegende Ersatz waere gewesen, die abgeschnittenen Trades an ihrem
+    R zu ERKENNEN -- sie liegen dicht bei null. Das ist kein Mass, sondern eine
+    Vermutung: ein echter kleiner Verlust sieht genauso aus. Dieses Projekt hat
+    vier Fehler dieser Bauart schon bezahlt.
+
+    Die Regel selbst ist unberuehrt; das Feld beschreibt sie nur. Der
+    Goldene Test sagt, ob das stimmt.
+    """
 
     @property
     def net_pnl(self) -> float:
@@ -681,6 +701,7 @@ class SimBroker:
             risk_amount=position.risk_amount,
             setup=position.setup,
             timeframe=position.timeframe,
+            stop_moved=position.stop_moved,
         )
         self.ledger.fills.append(fill)
         self.position = None
