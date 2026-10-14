@@ -169,6 +169,40 @@ eine Erzählung.
 41 von 83 Märkten liegen. Funding für alle 83. Der Rest wird nachgeholt, und
 danach läuft der Replay über die grössere Menge.
 
+### Stand 14.10.2026, 16:30 UTC — und zwei Voraussetzungen, die leicht fehlen
+
+**59 von 83 Märkten sind vollständig** (alle sechs Ebenen, `data/ohlcv/`), 24
+tragen bisher nur W1. Der Backfill arbeitet alphabetisch und steht bei
+ENJUSDT; was fehlt, ist F bis Z. Der Replay könnte also schon über 59 Märkte
+laufen, fast das Fünffache der heutigen zwölf.
+
+**Erste Voraussetzung: `--force`.** Die zwölf vorhandenen Dateien in
+`data/replay_fills/` tragen `decision_version: e218664b39c8`, der laufende
+Stand ist `d8c7f12104e4`. Ohne `--force` zählt
+`scripts/replay_all_markets.py` sie als „liegt vor" und poolt einen
+gemischten Codestand — es *warnt* („ANDERER CODESTAND"), zählt sie aber als
+fertig, und der Zähler am Ende sagt dann `59/59`, obwohl zwölf davon aus
+einem anderen Stand kommen.
+
+**Zweite Voraussetzung: die Maschine.** Die drei angemeldeten Arme (E16, E14,
+E15) rechnen gerade 7 Regeln × 12 Märkte. 59 Märkte parallel dazu würde beide
+halbieren. Reihenfolge: Arme (E16 zuerst, rund vier Stunden), dann Backfill
+fertig, dann der Replay über alles, was vollständig ist.
+
+Der Befehl, wenn beides erfüllt ist:
+
+```
+python scripts/replay_all_markets.py --symbols <alle vollstaendigen> --force
+```
+
+**Und eine Warnung zur Erwartung.** 59 Märkte sind nicht fünfmal so viel
+Beweis — Krypto bewegt sich als Block, und die Schranke
+[−0,044; +0,019] R aus zwölf Märkten wird sich eher verschieben als
+schrumpfen. Was 59 Märkte wirklich leisten: sie machen Aussagen je **Setup**
+belastbar. Setup F hat über zwölf Märkte 68 Trades; über 59 wären es mehrere
+hundert, und das korrigierte Intervall von E16 hinge nicht mehr an einer
+Stichprobe mit Blocklänge 4.
+
 Das ist unspektakulär und es ist der wirksamste Punkt dieses Plans: die
 Schranke [−0,0868; +0,0594] R stammt von zwölf Märkten. 83 Märkte sind nicht
 sieben Mal so viel Beweis — Krypto bewegt sich als Block —, aber es ist der
