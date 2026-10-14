@@ -178,13 +178,42 @@ limits:
   # laufen, also 12 % des Kontos auf einmal, in einem Markt, dessen Beta zu
   # BTC bei 1.0 gemessen wurde. Mehr als die Wochengrenze, an einem Tag.
   #
-  # **Die Zahl ist NICHT geaendert worden, und das ist eine Entscheidung.**
-  # Die Arithmetik, die zur Tagesgrenze passt, waere
-  # floor(max_daily_loss_pct / risk_pct) = floor(0.05 / 0.010) = 5. Sie steht
-  # hier als Rechnung und nicht als Wert: 2 ist der Wert, unter dem alles
-  # Bisherige gemessen wurde, und er auf 5 zu heben waere eine Lockerung
-  # einer Schutzregel auf dem Pfad, der echtes Geld beruehrt. Das ist keine
-  # Aenderung, die ein Audit-Nachmittag nebenbei macht.
+  # **Am 14.10.2026 von 2 auf 5 gehoben, auf Anweisung des Nutzers
+  # ("traide mehr"), und die Zahl ist hergeleitet und nicht gewaehlt.**
+  #
+  #     floor(max_daily_loss_pct / risk_pct) = floor(0.05 / 0.010) = 5
+  #
+  # Die Begruendung ist die Tagesgrenze selbst: sie zaehlt nur REALISIERTE
+  # Verluste und kann nicht greifen, solange die Positionen offen sind. Was
+  # gleichzeitig offenes Risiko begrenzt, ist allein die Zahl der Plaetze --
+  # und die passende Zahl ist die, bei der ein vollstaendig schiefgelaufener
+  # Tag genau die Tagesgrenze erreicht und nicht mehr. Fuenf Positionen zu
+  # 1 % sind 5 %, also exakt der Tagesdeckel.
+  #
+  # **Was der alte Wert war und was nicht.** 2 war nie gemessen und nie
+  # entschieden; er stand in der ausgelieferten Konfiguration und galt bis
+  # zum 13.10. fuer nichts, weil zwoelf Einplatz-Broker keinen Wert dieser
+  # Einstellung spueren konnten. Seit die Grenze portfolioweit greift, ist
+  # er der bindende Engpass: am 14.10.2026 um 15:50 UTC waren beide Plaetze
+  # von zwei Trades belegt, die 86,6 und 170,6 Stunden liefen -- gegen einen
+  # Median von 9,75 h und einen bisherigen Hoechstwert von 72,7 h. Das
+  # System konnte in diesem Zustand KEINEN einzigen neuen Trade eroeffnen.
+  #
+  # **Was 5 gegen die Vergangenheit bedeutet: nichts.** Der gemessene
+  # Hoechststand gleichzeitig offener Positionen war genau fuenf
+  # (08.10.2026 20:02 UTC, ADA/AVAX/BNB/BTC/DOT). Ein Deckel von 5 haette
+  # also keinen einzigen bisher genommenen Trade abgelehnt. Er ist scharf
+  # fuer die Zukunft und rueckwirkend wirkungslos -- das ist der Grund,
+  # warum er keine stille Strategieaenderung ist.
+  #
+  # **Was er kostet, und zwar in beide Richtungen.** Die Obergrenze des
+  # Durchsatzes steigt von 4,9 auf 12,3 Trades pro Tag (Plaetze geteilt
+  # durch die Median-Haltedauer). Das gleichzeitig offene Risiko steigt von
+  # 2 % auf 5 % des Kontos. Beides ist gewollt und beides steht hier.
+  #
+  # Nicht angetastet: `max_positions_per_symbol: 1`, der Kostendeckel, die
+  # Tages- und Wochengrenze, die Abkuehlung, der Kill-Switch. Gelockert wird
+  # genau eine Zahl, und sie ist die einzige, die ohne Messung dastand.
   #
   # **Was der Deckel kostet, gemessen (E13, scripts/study_concurrency.py,
   # 7.335 Replay-Trades ueber zwoelf Maerkte, Hoechststand 12 gleichzeitig).**
@@ -207,7 +236,7 @@ limits:
   # also sichtbar weniger Trades nehmen als bisher. Das ist der Preis und er
   # steht hier, damit die sinkende Trade-Zahl nicht spaeter als Defekt
   # gesucht wird.
-  max_open_positions: 2
+  max_open_positions: 5
   max_positions_per_symbol: 1
   max_daily_loss_pct: 0.05
   max_weekly_loss_pct: 0.10

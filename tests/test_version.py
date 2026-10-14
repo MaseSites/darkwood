@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 from traidingbrain.config.settings import load_config
 from traidingbrain.journal.version import (
+    CAP_ANCHOR,
     LEDGER_SCHEMA,
     UNKNOWN,
     code_version,
@@ -45,7 +46,7 @@ def _stub() -> SimpleNamespace:
                 # Vorwaertsstichprobe schon einmal von 18 auf 11 Trades
                 # schrumpfen lassen.
                 #
-                # Der Wert ist der historische Anker (`_CAP_ANCHOR`), damit
+                # Der Wert ist der historische Anker (`CAP_ANCHOR`), damit
                 # die eingefrorene Zeichenkette unten keinen Zusatz traegt.
                 max_open_positions=2,
             ),
@@ -99,16 +100,25 @@ def test_the_real_config_fills_every_field_in_order() -> None:
     assert parts[4] == LEDGER_SCHEMA
 
     extra = parts[5:]
-    allowed = {"portfolio"}
-    assert set(extra) <= allowed, (
-        f"unbekanntes Suffix in der Signatur: {sorted(set(extra) - allowed)}. "
-        "Ein Suffix, das niemand kennt, macht die Zugehoerigkeit der Zeilen "
-        "unlesbar."
-    )
+    # Die bekannten Suffixe. Jedes steht fuer eine Konfigurationsabweichung,
+    # die das VERHALTEN aendert und darum die Zeilen trennen muss.
+    #
+    # `cap{n}` kam am 14.10.2026 dazu: der Platzdeckel wurde von 2 auf 5
+    # gehoben, und ohne Spur in der Signatur waere das genau der Fehler, der
+    # die Vorwaertsstichprobe schon einmal von 18 auf 11 Trades schrumpfen
+    # liess -- eine Zahl in einer YAML-Datei, die bestimmt, welche Trades
+    # ueberhaupt entstehen, und die nirgends auftaucht.
+    expected: list[str] = []
     if config.risk.sizing.basis == "portfolio":
-        assert extra == ["portfolio"], "die Groessenbemessung fehlt in der Signatur"
-    else:
-        assert extra == [], "ein Vorgabelauf darf kein Suffix tragen"
+        expected.append("portfolio")
+    if config.risk.limits.max_open_positions != CAP_ANCHOR:
+        expected.append(f"cap{config.risk.limits.max_open_positions}")
+
+    assert extra == expected, (
+        f"Signatur-Suffix {extra} passt nicht zur Konfiguration (erwartet "
+        f"{expected}). Ein Suffix, das niemand kennt, macht die Zugehoerigkeit "
+        "der Zeilen unlesbar -- und ein fehlendes macht sie unsichtbar."
+    )
 
 
 def test_a_truncated_run_gets_its_own_signature() -> None:

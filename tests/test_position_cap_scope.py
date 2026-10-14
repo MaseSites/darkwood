@@ -30,6 +30,7 @@ nicht weniger.
 from __future__ import annotations
 
 import inspect
+import math
 
 import pytest
 from pydantic import ValidationError
@@ -131,9 +132,41 @@ def test_the_limit_allows_the_second_position() -> None:
     assert verdict.allowed, verdict.reason
 
 
-def test_the_shipped_configuration_carries_a_finite_limit() -> None:
-    """Die ausgelieferte Zahl, damit ein stilles Hochsetzen auffaellt."""
-    assert load_config().risk.limits.max_open_positions == 2
+def test_the_shipped_cap_matches_the_rule_it_is_derived_from() -> None:
+    """Der Deckel und die Tagesgrenze duerfen nicht auseinanderlaufen.
+
+    Hier stand bis zum 14.10.2026 `== 2`, also die Zahl selbst. Das faengt
+    ein stilles Hochsetzen, sagt aber nichts darueber, ob die Zahl richtig
+    ist -- und 2 war nie hergeleitet, sondern nur ausgeliefert.
+
+    Seit dem 14.10. ist sie hergeleitet:
+
+        floor(max_daily_loss_pct / risk_pct) = floor(0.05 / 0.010) = 5
+
+    Begruendung: die Tagesgrenze zaehlt nur REALISIERTE Verluste und kann
+    nicht greifen, solange die Positionen offen sind. Die Zahl der Plaetze
+    ist das Einzige, was gleichzeitig offenes Risiko begrenzt, und sie
+    passt genau dann zur Tagesgrenze, wenn ein vollstaendig
+    schiefgelaufener Tag sie genau erreicht.
+
+    Dieser Test bindet die beiden aneinander. Wer kuenftig den Tagesdeckel
+    oder das Risiko je Trade aendert und den Platzdeckel stehen laesst,
+    faellt hier -- und das ist der Fall, in dem die Zahl still falsch wird.
+    """
+    limits = load_config().risk.limits
+    sizing = load_config().risk.sizing
+    derived = math.floor(limits.max_daily_loss_pct / sizing.uncalibrated_cap_risk_pct)
+
+    assert limits.max_open_positions == derived, (
+        f"Platzdeckel {limits.max_open_positions} passt nicht zur Tagesgrenze: "
+        f"{limits.max_daily_loss_pct:.0%} geteilt durch {sizing.uncalibrated_cap_risk_pct:.1%} "
+        f"Risiko je Trade ergibt {derived} Plaetze. Entweder die Herleitung "
+        "stimmt nicht mehr, oder eine der drei Zahlen wurde ohne die anderen "
+        "geaendert."
+    )
+    # Und die Obergrenze bleibt endlich: ohne sie waeren es zwoelf Plaetze
+    # und damit 12 % gleichzeitiges Risiko, mehr als die Wochengrenze.
+    assert limits.max_open_positions < len(load_config().engine.symbols.active)
 
 
 # --------------------------------------------------------------------------- #

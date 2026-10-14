@@ -62,7 +62,7 @@ _GIT_TIMEOUT_S = 5
 #: Das ist eine Aussage ueber die Vergangenheit und keine Politik. Wer den
 #: Deckel fuer richtig oder falsch haelt, aendert `config/risk.yaml`, nicht
 #: diese Zeile.
-_CAP_ANCHOR = 2
+CAP_ANCHOR = 2
 
 
 def run_signature(config: object, *, max_bars: int | None = None, shadow: bool = False) -> str:
@@ -108,7 +108,7 @@ def run_signature(config: object, *, max_bars: int | None = None, shadow: bool =
     # hinterlaesst, sodass die Zugehoerigkeit nur aus der Git-Historie zu
     # erschliessen ist. `decision_version` faengt das NICHT -- der bewegt sich
     # bei Codeaenderungen, nicht bei einer Zahl in der YAML-Datei.
-    cap = "" if risk.limits.max_open_positions == _CAP_ANCHOR else (
+    cap = "" if risk.limits.max_open_positions == CAP_ANCHOR else (
         f"|cap{risk.limits.max_open_positions}"
     )
     return (
