@@ -1536,7 +1536,7 @@ experiments:
       dem Journal nicht lesbar, weil post_mortem die beste und die
       schlimmste Lage kennt, aber nicht ihre Reihenfolge; dafuer muss der
       Motor laufen.
-    status: angemeldet_nicht_gelaufen
+    status: laeuft_seit_14okt_1715
     angelegt: 2026-10-14
     declared_before_reading: true
     note: >-
@@ -1547,6 +1547,36 @@ experiments:
 
       Der Lauf ist teuer: 12 Maerkte x 3 Regeln, je ein voller Motorlauf,
       grob 18 Stunden. Er wartet, bis der Backfill die Maschine freigibt.
+    instrument_vor_dem_lauf: >-
+      14.10.2026, 17:1x UTC, Commit 22d9242 -- GESTARTET. Und davor am
+      Instrument gearbeitet, was hier stehen muss, weil es sonst wie eine
+      Anpassung nach dem Ergebnis aussieht.
+
+      `scripts/compare_exits.py` rechnete Mittelwert und 95%-Standardfehler.
+      Das ist nicht, was oben unter `acceptance` angemeldet ist. Ergaenzt,
+      VOR dem ersten Lauf und mit leerem Zwischenspeicher:
+
+        * beide Tore, Niveau 1 - 0.05/67, auf der DIFFERENZ
+        * `two_group_difference` statt gepaart -- siehe acceptance
+        * Block-Bootstrap statt Standardfehler (zwoelf korrelierte Maerkte)
+        * die vier Rand-Kennzahlen aus `acceptance`
+
+      Eine davon war ohne Codeaenderung NICHT messbar: "der Anteil der
+      Gewinner, die der Einstand-Stop abschneidet". Ein Ausstieg am
+      nachgezogenen Stop ist `ExitReason.STOP` wie jeder andere. Darum
+      `Fill.stop_moved` (sim/broker.py), mit Test und Gegenprobe.
+      Entscheidungsstempel a9f8dbc224e9 -> c35939713c6e, Golden-Test gruen:
+      der Code hat sich bewegt, das Verhalten nicht.
+
+      Das Instrument wurde an zwei erfundenen Stichproben geprueft, deren
+      Antwort vorher feststand -- Vorteil in beiden Haelften (beide Tore
+      auf, 0.86x) und Vorteil nur spaet (Tor 2 zu, 14.14x). Tor 1 allein
+      haette den zweiten Fall durchgelassen. Dieselbe Probe hat einen
+      echten Defekt gefangen: `--only-report` las die Symbolliste aus der
+      Konfiguration statt aus dem Zwischenspeicher und berichtete ein
+      Niveau ueber null Trades.
+
+      Zu diesem Zeitpunkt existiert keine Zahl zu E14.1 oder E14.2.
 
 
 

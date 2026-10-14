@@ -56,6 +56,7 @@ from traidingbrain.learn.target import (
     shortfall_from_variance,
 )
 from traidingbrain.live.paperstate import PaperStateStore
+from traidingbrain.reporting.intervals import block_bootstrap
 
 #: Expectancies worth asking about, as multiples of risk.
 #:
@@ -192,6 +193,20 @@ def main() -> int:
                 f"System nicht\n            erreichbar, und das ist keine Meinung."
             )
 
+    throughput(
+        equity,
+        args.target,
+        days,
+        per_day=per_day,
+        risk_fraction=risk_fraction,
+        holds_h=[
+            (e.closed_ts - e.opened_ts) / 3_600_000
+            for e in replay
+            if e.closed_ts > e.opened_ts
+        ],
+        config=config,
+        sample=[e.r_multiple for e in replay],
+    )
     reachable(equity, args.target, trades, risk_fraction, ceiling)
     required(equity, args.target, trades, config)
     measured_requirement(equity, args.target, trades, config)
@@ -275,6 +290,125 @@ def measured_requirement(
         "  es zu sagen. learn/target.py kann eine Trefferquote nicht mehr ohne\n"
         "  Payout berechnen, und payout_implied_by holt eine verschwiegene Annahme\n"
         "  aus jeder gemeldeten Quote heraus."
+    )
+
+
+def throughput(
+    equity: float,
+    target: float,
+    days: int,
+    *,
+    per_day: float,
+    risk_fraction: float,
+    holds_h: list[float],
+    config: AppConfig,
+    sample: list[float],
+) -> None:
+    """Was ein hoeherer Takt am noetigen R je Trade aendert -- und am Verlust.
+
+    **Der Anlass ist eine Anweisung ("traide mehr") und die Rechnung dahinter
+    ist echt.** Das noetige Ergebnis je Trade faellt mit der Zahl der Trades,
+    und zwar schnell: aus `(1 + f*r)^n = Wachstum` folgt
+    `r = (Wachstum^(1/n) - 1) / f`. Bei 40 Chancen braucht es +0.54 R, bei
+    200 nur noch +0.11 R. Mehr Gelegenheiten sind also nicht bloss ein
+    Wunsch, sie senken die Huerde.
+
+    **Und genau dieselbe Rechnung dreht sich um, wenn der Vorteil negativ
+    ist.** Dann ist ein hoeherer Takt die schnellere Art zu verlieren. Beide
+    Richtungen stehen hier, weil eine Tabelle, die nur die erste zeigt,
+    Werbung ist und keine Messung.
+
+    Die Obergrenze des Taktes ist nicht gewuenscht, sondern abgeleitet:
+    `Plaetze / mittlere Haltedauer`. Mehr geht physikalisch nicht, solange
+    jede Position einen Platz haelt, und die Haltedauer kommt aus dem
+    Journal.
+    """
+    cap = config.risk.limits.max_open_positions
+    if not holds_h or days <= 0:
+        return
+    median_h = float(np.median(holds_h))
+    if median_h <= 0:
+        return
+    ceiling_per_day = cap * 24.0 / median_h
+
+    growth = target / equity
+    print("\n" + "=" * 78)
+    print("Was mehr Trades aendern -- und was nicht")
+    print(
+        f"  Deckel {cap} Plaetze, mittlere Haltedauer {median_h:.1f} h "
+        f"(Replay, n={len(holds_h)})\n"
+        f"  -> hoechstens {ceiling_per_day:.1f} Trades/Tag aus dem DECKEL allein"
+    )
+    print(f"  Gemessener Takt vorwaerts: {per_day:.2f} Trades/Tag")
+    # Warum die Obergrenze keine Prognose ist, und zwar aus zwei Gruenden.
+    #
+    # Erstens begrenzt nicht nur der Deckel: der Signalausloeser feuert so
+    # oft, wie er feuert, und der Kostendeckel lehnt einen Teil davon ab --
+    # bei ETH im laufenden Betrieb 19 von 19. Die Zahl oben sagt, was der
+    # Deckel ZULAESST, nicht was entsteht.
+    #
+    # Zweitens ist die Haltedauer hier die der REPLAY-Trades. Die
+    # Vorwaertstrades hielten laenger (Median rund 9,75 h gegen 5,0 h), was
+    # die Obergrenze halbiert. Beide Zahlen stehen da, statt dass eine fuer
+    # beides herhaelt -- und die Replay-Zahl ist die optimistischere, also
+    # die, die eine Obergrenze nicht beschoenigt.
+    print(
+        "  (Obergrenze = was der Deckel zulaesst, nicht was entsteht: der\n"
+        "   Signalausloeser und der Kostendeckel binden unabhaengig davon.)\n"
+    )
+
+    print(f"  {'Takt/Tag':>9}  {'Chancen':>8}  {'noetig R':>9}   wohin es reicht")
+    for label_per_day in sorted({round(per_day, 2), ceiling_per_day / 2, ceiling_per_day}):
+        chances = label_per_day * days
+        if chances < 1:
+            continue
+        needed = (growth ** (1.0 / chances) - 1.0) / risk_fraction
+        # Wohin der GEMESSENE Vorteil bei diesem Takt fuehrt. Nicht der
+        # gewuenschte: der gemessene ist negativ, und das ist der Punkt.
+        measured = float(np.mean(sample)) if sample else 0.0
+        lands = equity * (1.0 + risk_fraction * measured) ** chances
+        print(
+            f"  {label_per_day:9.2f}  {chances:8.0f}  {needed:+9.2f}   "
+            f"bei gemessenen {measured:+.4f} R -> {lands:9,.0f} CHF"
+        )
+
+    if not sample:
+        return
+    interval = block_bootstrap(sample, level=0.95)
+    if interval is None:
+        return
+    chances = ceiling_per_day * days
+    low = equity * (1.0 + risk_fraction * interval.low) ** chances
+    high = equity * (1.0 + risk_fraction * interval.high) ** chances
+    # Welche Stichprobe, ausdruecklich.
+    #
+    # Das hier sind die REPLAY-Trades unter der laufenden Signatur, nicht
+    # die 7.335 aus der groesseren gepoolten Messung, deren Intervall
+    # [-0.0868, +0.0594] lautet und die Null einschliesst. Zwei
+    # Populationen, zwei Intervalle; ohne diese Beschriftung liest sich die
+    # Zeile als "die Erwartung des Systems", und das ist sie nicht.
+    print(
+        f"\n  Und die Spanne, die DIESE Stichprobe zulaesst "
+        f"({len(sample)} Replay-Trades, 95%, Block {interval.block}):"
+    )
+    print(f"    Erwartung je Trade  {interval}")
+    print(
+        f"    Bei HOECHSTEM Takt ({chances:.0f} Trades) reicht das von "
+        f"{low:,.0f} bis {high:,.0f} CHF."
+    )
+    verdict = (
+        "Das Ziel liegt INNERHALB der Spanne -- mehr Takt kann reichen."
+        if high >= target
+        else (
+            f"Das Ziel liegt AUSSERHALB: selbst am guenstigen Rand fehlen "
+            f"{target - high:,.0f} CHF."
+        )
+    )
+    print(f"    {verdict}")
+    print(
+        "\n  Mehr Trades senken die Huerde je Trade, aber sie erzeugen keinen\n"
+        "  Vorteil. Ist die Erwartung negativ, ist ein hoeherer Takt die\n"
+        "  schnellere Art zu verlieren -- dieselbe Formel, anderes Vorzeichen."
     )
 
 
