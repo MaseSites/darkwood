@@ -128,17 +128,51 @@ VERIFIED = (
 BASELINE = "ohne (original)"
 
 
+def already_cached(cache: Path) -> set[tuple[str, str]]:
+    """Welche (Regel, Markt)-Paare schon drinstehen.
+
+    Gebraucht, damit `seed` nichts doppelt schreibt, OHNE die Datei zu
+    loeschen. Die erste Fassung loeschte sie statt zu lesen, und das hat
+    fuenf fertige Motorlaeufe gekostet -- siehe `seed`.
+    """
+    if not cache.is_file():
+        return set()
+    done: set[tuple[str, str]] = set()
+    for line in cache.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            # Eine halbe Zeile vom harten Beenden. Sie wird ignoriert und
+            # nicht entfernt: `compare_exits.load_cache` ueberliest sie
+            # ebenso, und eine Datei zu reparieren, die noch jemand
+            # schreibt, ist der schlechtere Umgang damit.
+            continue
+        done.add((row.get("rule", ""), row.get("symbol", "")))
+    return done
+
+
 def seed(cache: Path, symbols: list[str], fills_dir: Path) -> int:
     """Den Basislauf aus den Replay-Dateien in den Zwischenspeicher legen.
 
-    Nur fuer geprueft gleiche Maerkte. `stop_moved` ist in der Basis immer
-    falsch -- die Einstand-Regel ist dort aus, der Stop wird nie bewegt --
-    und das Feld existierte in den alten Dateien noch nicht.
+    **Haengt an, loescht nie.** Die erste Fassung rief
+    `cache.unlink(missing_ok=True)` davor, und zwar auch bei `--dry-run`.
+    Zwei Folgen: ein Schalter, der "nichts starten" verspricht, vernichtete
+    Zustand -- und, schlimmer, ein normaler NEUSTART tat dasselbe. Der
+    Zwischenspeicher existiert, damit ein Lauf fortsetzbar ist; ihn beim
+    Start zu loeschen macht genau das unmoeglich. Gekostet hat es fuenf
+    fertige Motorlaeufe, rund 3,3 Stunden.
+
+    Nur fuer geprueft gleiche Maerkte (`VERIFIED`). `stop_moved` ist in der
+    Basis immer falsch -- die Einstand-Regel ist dort aus, der Stop wird
+    nie bewegt -- und das Feld existierte in den alten Dateien noch nicht.
     """
+    done = already_cached(cache)
     written = 0
     with cache.open("a", encoding="utf-8") as handle:
         for symbol in symbols:
-            if symbol not in VERIFIED:
+            if symbol not in VERIFIED or (BASELINE, symbol) in done:
                 continue
             path = fills_dir / f"{symbol}.json"
             if not path.exists():
@@ -214,8 +248,10 @@ def main() -> int:
         if not bucket:
             continue
         cache = data / f"{args.prefix}_{index}.jsonl"
-        cache.unlink(missing_ok=True)
-        seeded = seed(cache, bucket, data / "replay_fills")
+        # NICHT loeschen. Siehe `seed`: genau das hat fuenf fertige
+        # Motorlaeufe gekostet, und bei `--dry-run` sogar ohne Gegenwert.
+        have = len(already_cached(cache))
+        seeded = 0 if args.dry_run else seed(cache, bucket, data / "replay_fills")
 
         command = [str(PYTHON), "-u", str(ROOT / "scripts" / "compare_exits.py"),
                    "--cache", str(cache)]
@@ -226,9 +262,9 @@ def main() -> int:
         for symbol in bucket:
             command += ["--symbol", symbol]
 
-        todo = rules * len(bucket) - seeded
-        print(f"  [{index}] {', '.join(bucket):28s} {todo:3d} Laeufe "
-              f"({seeded} Basis geerbt)")
+        todo = max(0, rules * len(bucket) - max(have, seeded))
+        note = f"{have} schon da" if have else f"{seeded} Basis geerbt"
+        print(f"  [{index}] {', '.join(bucket):28s} {todo:3d} Laeufe ({note})")
         if args.dry_run:
             continue
         log = (data / f"{args.prefix}_{index}.log").open("w", encoding="utf-8")
