@@ -17,14 +17,55 @@ meta:
   created: 2026-10-07
   commit: 9af96c7
   goal:
-    statement: "1'000 CHF -> 20'000 CHF in sechs Monaten, ohne Einzahlungen"
-    window_start: 2026-10-07
-    window_end: 2027-04-07
-    days: 182
-    status: "zu pruefende Hypothese, kein nachgewiesenes Ergebnis"
+    statement: "12'000 -> 15'000 bis zum 30.10.2026, Papierhandel, ohne Einzahlungen"
+    window_start: 2026-10-13
+    window_end: 2026-10-30
+    days: 17
+    status: "nicht erreichbar mit dem gemessenen System -- siehe urteil unten"
+    stand_15okt: "12'075.56 USDT (+0.63 %), es fehlen 2'924 auf 15'000"
     note: >-
-      Forschungstage zaehlen mit. Der Zeitraum beginnt am Tag dieser
-      Registrierung und wird nicht rueckdatiert.
+      Hier stand bis zum 15.10.2026 "1'000 CHF -> 20'000 CHF in sechs
+      Monaten", die Zielmarke vom 07.10. Der laufende Auftrag ist ein
+      anderer, und das Register hat seither gegen die falsche Marke
+      geprueft. Der Unterschied ist nicht der Betrag, sondern die FRIST:
+      17 Tage lassen bei diesem Takt rund 40 bis 60 Trades zu, und das ist
+      der bindende Teil.
+    urteil: >-
+      **Nicht erreichbar, und das ist Zinseszins und keine Meinung.**
+
+      Noetig je Trade, bei 1 % Risiko und 12'075.56 Ausgangsstand:
+
+        bei  38 Chancen (2.52/Tag, gemessener Takt)   +0.58 R
+        bei  61 Chancen (4.09/Tag, Signalrate)        +0.35 R
+        bei 269 Chancen (17.9/Tag, 59 Maerkte)        +0.081 R
+
+      Gemessen ueber 7.335 Replay-Trades, zwoelf Maerkte: **-0.0129 R**,
+      Intervall [-0.044, +0.019].
+
+      Selbst am GUENSTIGEN Rand dieses Intervalls und bei 59 Maerkten
+      landet das Konto bei 12'708 -- es fehlen 2'292. Das Ziel liegt
+      ausserhalb dessen, was die eigene Messung zulaesst, und nicht bloss
+      ueber ihrem Mittelwert.
+
+      Und die Zeit laesst sich nicht kaufen: bei der Signalrate braucht
+      selbst ein aussergewoehnliches System (+0.30 R je Trade, also das
+      Doppelte dessen, was gute Systeme dieser Art berichten) 18 Tage. Die
+      Frist hat 15.
+    was_wahr_sein_muesste: >-
+      Damit es doch gelingt, muesste mindestens eines zutreffen, und keines
+      davon ist belegt:
+
+      * E14, E15 oder E17 liefern einen GROSSEN positiven Effekt auf A und
+        B -- die Setups mit 89.6 % des Volumens. Die drei sind angemeldet,
+        mit vorab festgelegten Toren, und nicht vollstaendig gelaufen. Sie
+        vorauszusetzen waere genau das, was dieses Register verhindert.
+      * Das Risiko je Trade steigt. Bei +0.15 R braeuchte es 3.83 % des
+        Portfolios, also ueber der harten Grenze von 3 %; und der Deckel
+        von 1 % steht, solange `calibration_proven` false ist.
+      * Die Frist verschiebt sich. Bei +0.15 R und 59 Maerkten waere
+        15'000 in rund 8 Tagen erreicht -- aber +0.15 R ist nicht gemessen,
+        sondern die Zeile "ein sehr gutes System" in `scripts/goal.py`.
+    wie_es_nachzurechnen_ist: "python scripts/goal.py"
 
   # Was bereits gemessen ist und NICHT erneut als neue Idee laufen darf.
   prior_search:
