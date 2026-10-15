@@ -35,6 +35,7 @@ decides how many chances remain before a deadline.
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -222,9 +223,66 @@ def main() -> int:
                 f"System nicht\n            erreichbar, und das ist keine Meinung."
             )
 
-    throughput(
+    _reports(
         equity,
         args.target,
+        config=config,
+        replay=replay,
+        days=days,
+        per_day=per_day,
+        trades=trades,
+        risk_fraction=risk_fraction,
+        ceiling=ceiling,
+    )
+    return 0
+
+
+def _signal_rate(replay: list[dict], *, markets: int) -> float:
+    """Wie viele Trades der Signalgeber am Tag ueber ALLE Maerkte hergibt.
+
+    Aus der Replay-Population selbst: Zahl der Trades geteilt durch die
+    beobachteten Markt-Tage, mal die Zahl der Maerkte. Das ist die Rate ohne
+    Deckel -- im Replay haelt jeder Markt seinen eigenen Broker, es gibt also
+    keine Platzkonkurrenz zwischen Maerkten.
+
+    Die Zahl ist eine OBERGRENZE fuer den Live-Takt und keine Prognose: im
+    Betrieb nehmen sich die Maerkte die Plaetze gegenseitig weg, und der
+    gemessene Vorwaertstakt liegt entsprechend darunter.
+    """
+    spans: dict[str, tuple[int, int]] = {}
+    for entry in replay:
+        symbol = entry.get("symbol", "?")
+        ts = entry["opened_ts"]
+        low, high = spans.get(symbol, (ts, ts))
+        spans[symbol] = (min(low, ts), max(high, ts))
+    market_days = sum((high - low) / 86_400_000 for low, high in spans.values())
+    if market_days <= 0 or not replay:
+        return 0.0
+    return len(replay) / market_days * markets
+
+
+def _reports(
+    equity: float,
+    target: float,
+    *,
+    config: AppConfig,
+    replay: list[dict],
+    days: int,
+    per_day: float,
+    trades: float,
+    risk_fraction: float,
+    ceiling: float,
+) -> None:
+    """Die sechs Berichte, in der Reihenfolge, in der sie zusammen Sinn ergeben.
+
+    Herausgeloest, weil `main()` sonst zwei Dinge tut -- den Zustand lesen und
+    sechs Berichte drucken -- und das zweite eine Liste ist, die weiter
+    waechst. Die Alternative waere gewesen, die Laengenregel stillzulegen;
+    das haette die Funktion nicht kuerzer gemacht, nur den Hinweis darauf.
+    """
+    ceiling_per_day = throughput(
+        equity,
+        target,
         days,
         per_day=per_day,
         risk_fraction=risk_fraction,
@@ -233,13 +291,22 @@ def main() -> int:
             for e in replay
             if e["closed_ts"] > e["opened_ts"]
         ],
+        signal_per_day=_signal_rate(replay, markets=len(config.engine.symbols.active)),
+        markets=len(config.engine.symbols.active),
         config=config,
         sample=[e["r_multiple"] for e in replay],
     )
-    reachable(equity, args.target, trades, risk_fraction, ceiling)
-    required(equity, args.target, trades, config)
-    measured_requirement(equity, args.target, trades, config)
-    return 0
+    horizon(
+        equity,
+        target,
+        per_day=per_day,
+        ceiling_per_day=ceiling_per_day or per_day,
+        risk_fraction=risk_fraction,
+        deadline_days=days,
+    )
+    reachable(equity, target, trades, risk_fraction, ceiling)
+    required(equity, target, trades, config)
+    measured_requirement(equity, target, trades, config)
 
 
 def measured_requirement(
@@ -324,6 +391,83 @@ def measured_requirement(
     )
 
 
+def horizon(
+    equity: float,
+    target: float,
+    *,
+    per_day: float,
+    ceiling_per_day: float,
+    risk_fraction: float,
+    deadline_days: int,
+) -> None:
+    """Wann das Ziel bei welchem Vorteil erreicht waere -- in Tagen, nicht als Ja/Nein.
+
+    **Warum diese Tabelle fehlte.** Der Bericht beantwortet "schafft das
+    gemessene System 15.000 bis zum 30.10." (nein) und "was braeuchte es"
+    (+0.54 R je Trade). Die Frage, die danach kommt, stand nirgends: wenn
+    der Vorteil X waere, WANN waere das Ziel da?
+
+    Das ist die ehrlichere Form derselben Rechnung. Eine Frist, die nicht
+    erreichbar ist, bleibt nicht erreichbar, weil man sie wiederholt -- aber
+    ein Datum sagt, was stattdessen moeglich ist.
+
+    Die Zeilen sind dieselben Szenarien wie in `SCENARIOS`, plus die zwei
+    Zahlen, die dieses Projekt wirklich gemessen hat: die Erwartung ueber
+    7.335 Replay-Trades und das beste Setup im Datensatz.
+    """
+    if per_day <= 0 or risk_fraction <= 0 or equity <= 0:
+        return
+    growth = target / equity
+    if growth <= 1:
+        return
+
+    print("\n" + "=" * 78)
+    print("Wann -- nicht ob. Bei welchem Vorteil das Ziel welches Datum braucht")
+    print(f"  Risiko {100 * risk_fraction:.2f}% je Trade, Frist in {deadline_days} Tagen")
+    print(
+        f"  Zwei Takte nebeneinander: {per_day:.2f}/Tag gemessen, "
+        f"{ceiling_per_day:.1f}/Tag was der SIGNALGEBER hergibt\n"
+    )
+
+    rows: list[tuple[str, float]] = [
+        ("gemessen, 12 Maerkte", -0.0129),
+        ("bestes Setup (E), allein", 0.0654),
+        ("ohne Gebuehren", 0.0151),
+        ("ein sehr gutes System", 0.15),
+        ("ein aussergewoehnliches", 0.30),
+    ]
+    slow_head = f"bei {per_day:.1f}/Tag"
+    fast_head = f"bei {ceiling_per_day:.0f}/Tag"
+    print(f"  {'Vorteil je Trade':26s} {'Trades':>8s} {slow_head:>15s} {fast_head:>15s}")
+    for label, edge in rows:
+        step = 1.0 + risk_fraction * edge
+        if step <= 1.0:
+            print(f"  {label:26s} {edge:+.4f} R -- nie, der Vorteil ist nicht positiv")
+            continue
+        trades = math.log(growth) / math.log(step)
+        slow, fast = trades / per_day, trades / ceiling_per_day
+        mark = "  <- vor der Frist" if fast <= deadline_days else ""
+        print(f"  {label:26s} {trades:8.0f} {slow:13.0f} T {fast:13.0f} T{mark}")
+
+    print(
+        "\n  Die beiden Hebel MULTIPLIZIEREN sich, und darum stehen sie\n"
+        "  nebeneinander. Mehr Takt senkt nicht den noetigen Vorteil je\n"
+        "  Trade, sondern verteilt dieselbe Zahl Trades auf weniger Tage.\n"
+        "  Und hier reichen auch beide zusammen nicht. Bei der Signalrate\n"
+        "  braucht selbst ein aussergewoehnliches System 18 Tage, und die\n"
+        "  Frist hat 15. Was sie erreichbar machen wuerde, ist weder ein\n"
+        "  besserer Vorteil noch mehr Takt, sondern mehr MAERKTE -- die\n"
+        "  einzige Groesse, die beide Spalten zugleich hebt, weil sie die\n"
+        "  Zahl der Signale erhoeht statt die Ausbeute je Signal."
+    )
+    print(
+        "\n  Die erste Zeile ist das System, wie es gemessen ist. Die zweite\n"
+        "  waere es, wenn jeder Trade vom besten Setup im Datensatz kaeme --\n"
+        "  dessen Intervall die Null einschliesst, es ist also keine Zusage,\n"
+        "  sondern die Obergrenze dessen, was der Datensatz ueberhaupt zeigt."
+    )
+
+
 def throughput(
     equity: float,
     target: float,
@@ -332,9 +476,11 @@ def throughput(
     per_day: float,
     risk_fraction: float,
     holds_h: list[float],
+    signal_per_day: float,
+    markets: int,
     config: AppConfig,
     sample: list[float],
-) -> None:
+) -> float:
     """Was ein hoeherer Takt am noetigen R je Trade aendert -- und am Verlust.
 
     **Der Anlass ist eine Anweisung ("traide mehr") und die Rechnung dahinter
@@ -356,10 +502,10 @@ def throughput(
     """
     cap = config.risk.limits.max_open_positions
     if not holds_h or days <= 0:
-        return
+        return 0.0
     median_h = float(np.median(holds_h))
     if median_h <= 0:
-        return
+        return 0.0
     ceiling_per_day = cap * 24.0 / median_h
 
     growth = target / equity
@@ -371,6 +517,11 @@ def throughput(
         f"  -> hoechstens {ceiling_per_day:.1f} Trades/Tag aus dem DECKEL allein"
     )
     print(f"  Gemessener Takt vorwaerts: {per_day:.2f} Trades/Tag")
+    if signal_per_day > 0:
+        print(
+            f"  Was der SIGNALGEBER hergibt: {signal_per_day:.2f} Trades/Tag "
+            f"-- das bindet, nicht der Deckel"
+        )
     # Warum die Obergrenze keine Prognose ist, und zwar aus zwei Gruenden.
     #
     # Erstens begrenzt nicht nur der Deckel: der Signalausloeser feuert so
@@ -389,7 +540,10 @@ def throughput(
     )
 
     print(f"  {'Takt/Tag':>9}  {'Chancen':>8}  {'noetig R':>9}   wohin es reicht")
-    for label_per_day in sorted({round(per_day, 2), ceiling_per_day / 2, ceiling_per_day}):
+    takte = {round(per_day, 2), ceiling_per_day}
+    if signal_per_day > 0:
+        takte.add(round(signal_per_day, 2))
+    for label_per_day in sorted(takte):
         chances = label_per_day * days
         if chances < 1:
             continue
@@ -404,10 +558,10 @@ def throughput(
         )
 
     if not sample:
-        return
+        return ceiling_per_day
     interval = block_bootstrap(sample, level=0.95)
     if interval is None:
-        return
+        return ceiling_per_day
     chances = ceiling_per_day * days
     low = equity * (1.0 + risk_fraction * interval.low) ** chances
     high = equity * (1.0 + risk_fraction * interval.high) ** chances
@@ -441,6 +595,33 @@ def throughput(
         "  Vorteil. Ist die Erwartung negativ, ist ein hoeherer Takt die\n"
         "  schnellere Art zu verlieren -- dieselbe Formel, anderes Vorzeichen."
     )
+
+    # Wo mehr Maerkte aufhoeren zu helfen.
+    #
+    # Die Signalrate waechst linear mit der Zahl der Maerkte, der Deckel
+    # nicht. Ab dem Punkt, an dem die Rate den Deckel erreicht, bringt jeder
+    # weitere Markt null zusaetzlichen Durchsatz -- und das ist die Zahl, die
+    # entscheidet, ob der Backfill ueber 83 Maerkte dem Ziel ueberhaupt etwas
+    # nuetzt oder nur Rechenzeit kostet.
+    if signal_per_day > 0 and markets > 0:
+        saturated_at = ceiling_per_day / (signal_per_day / markets)
+        print(
+            f"\n  Saettigung: die Signalrate waechst mit den Maerkten, der Deckel\n"
+            f"  nicht. Bei rund {saturated_at:.0f} Maerkten erreicht sie ihn, und\n"
+            f"  ab da bringt jeder weitere Markt null zusaetzlichen Durchsatz.\n"
+            f"  Heute sind es {markets}. Den Deckel dafuer zu heben ist nicht\n"
+            f"  gratis -- er ist aus der Tagesgrenze hergeleitet."
+        )
+    # Zurueckgegeben statt in einer Modulvariablen abgelegt: `horizon` braucht
+    # dieselbe Zahl, und sie ein zweites Mal aus denselben Daten abzuleiten
+    # hiesse, zwei Rechenwege zu pflegen, die irgendwann auseinanderlaufen --
+    # und dann widersprechen sich zwei Tabellen im selben Bericht.
+    #
+    # Zurueck geht die SIGNALRATE, nicht der Deckel. Der Deckel sagt, was
+    # erlaubt waere; der Signalgeber sagt, was entsteht, und er liegt
+    # viermal darunter. Eine Horizonttabelle mit der Deckelzahl haette
+    # Fristen gezeigt, die kein Signal je fuellen koennte.
+    return signal_per_day or ceiling_per_day
 
 
 def reachable(
