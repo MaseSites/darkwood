@@ -76,3 +76,5 @@ dist/
 # Enthaelt JWT- und WebSocket-Schluessel des lokalen API-Servers. Erzeugt von
 # scripts/freqtrade_setup.py, nie eingecheckt.
 /freqtrade/user_data/config.local.json
+data/arms_*.jsonl
+data/arms_*.log
