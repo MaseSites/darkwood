@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -47,6 +48,75 @@ sys.path.insert(0, str(ROOT / "src"))
 from traidingbrain.config.settings import load_config
 
 PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
+
+#: Was ein Motorprozess an Arbeitsspeicher belegt, gemessen am 15.10.2026 ueber
+#: sechs gleichzeitige Laeufe: 1.210 MB im Mittel. Aufgerundet, weil die
+#: Maerkte mit laengerer Historie darueber liegen.
+MB_PER_PROCESS = 1_400
+
+#: Was fuer das Betriebssystem, den Haendler, das Dashboard und den Backfill
+#: frei bleiben muss. Unterschreitet man das, faengt Windows an auszulagern,
+#: und dann ist JEDER Prozess langsam -- nicht nur der letzte.
+MB_RESERVE = 4_000
+
+
+def capacity() -> tuple[int, str]:
+    """Wie viele Motorprozesse diese Maschine traegt, und warum.
+
+    **Der Anlass ist ein Fehler, der sechs Stunden gekostet hat.** Am
+    15.10.2026 liefen neun Motorprozesse gleichzeitig auf 16 physischen
+    Kernen mit 32 GB. Jeder braucht rund 1,2 GB, und das System fing an
+    auszulagern: 20 GB Auslagerung, 120.000 Seitenfehler je Sekunde. Ab da
+    wurde kein einzelner Lauf mehr fertig -- die letzte fertige Zeile
+    stammte von 02:21, sechs Stunden spaeter war immer noch keine neue da,
+    waehrend ein Lauf vorher 40 Minuten brauchte.
+
+    Das ist nicht "etwas langsamer", sondern ein Umschlagpunkt: solange
+    alles in den Speicher passt, kostet ein weiterer Prozess nichts; sobald
+    es nicht mehr passt, kostet er ALLE.
+
+    Gerechnet wird der kleinere von zwei Werten -- was der Speicher traegt
+    und was die physischen Kerne tragen. Logische Kerne zaehlen hier nicht:
+    der Motor ist eine Schleife ueber Minutenbalken, und zwei
+    Hyperthreads auf einem Kern teilen sich dieselben Rechenwerke.
+    """
+    free_mb = _free_memory_mb()
+    by_memory = max(1, (free_mb - MB_RESERVE) // MB_PER_PROCESS)
+    by_cores = max(1, _physical_cores() - 2)
+    if by_memory <= by_cores:
+        return int(by_memory), (
+            f"Speicher: {free_mb:,} MB frei, {MB_RESERVE:,} MB Reserve, "
+            f"{MB_PER_PROCESS:,} MB je Prozess"
+        )
+    return int(by_cores), f"Kerne: {_physical_cores()} physisch, zwei bleiben frei"
+
+
+def _free_memory_mb() -> int:
+    """Freier Arbeitsspeicher in MB, oder eine vorsichtige Annahme."""
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "[int]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1KB)"],
+            capture_output=True, text=True, timeout=30, check=True,
+        )
+        return int(out.stdout.strip())
+    except (OSError, ValueError, subprocess.SubprocessError):
+        # Vorsichtig nach unten: lieber zu wenige Prozesse als Auslagern.
+        return MB_RESERVE + MB_PER_PROCESS * 2
+
+
+def _physical_cores() -> int:
+    """Physische Kerne, nicht logische. Hyperthreads teilen die Rechenwerke."""
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "(Get-CimInstance Win32_Processor | "
+             "Measure-Object -Property NumberOfCores -Sum).Sum"],
+            capture_output=True, text=True, timeout=30, check=True,
+        )
+        return max(1, int(out.stdout.strip()))
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return max(1, (os.cpu_count() or 2) // 2)
 
 #: Die Maerkte, deren Basislauf Trade fuer Trade gegen `data/replay_fills/`
 #: geprueft wurde. Nur fuer diese wird die Datei uebernommen.
@@ -92,7 +162,14 @@ def seed(cache: Path, symbols: list[str], fills_dir: Path) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ways", type=int, default=6, help="Wie viele Prozesse")
+    parser.add_argument(
+        "--ways", type=int, default=0,
+        help="Wie viele Prozesse; 0 rechnet es aus dem freien Speicher",
+    )
+    parser.add_argument(
+        "--force-ways", action="store_true",
+        help="--ways auch oberhalb der Kapazitaet nehmen",
+    )
     parser.add_argument("--drop", action="append", default=[])
     parser.add_argument("--at", type=float, nargs="*", default=[])
     parser.add_argument("--target-cap", type=float, nargs="*", default=[])
@@ -103,7 +180,24 @@ def main() -> int:
     config = load_config()
     data = config.engine.paths.data_dir
     symbols = list(config.engine.symbols.active)
-    ways = max(1, min(args.ways, len(symbols)))
+
+    # Die Kapazitaet entscheidet, nicht der Wunsch.
+    fits, why = capacity()
+    wanted = args.ways or fits
+    if wanted > fits and not args.force_ways:
+        print(
+            f"{wanted} Prozesse angefragt, die Maschine traegt {fits}.\n"
+            f"  {why}\n"
+            "  Gekappt. Der Grund steht in `capacity()`: ueber dieser Zahl faengt\n"
+            "  Windows an auszulagern, und dann wird KEIN Lauf mehr fertig --\n"
+            "  am 15.10.2026 sechs Stunden lang keiner. Mit --force-ways\n"
+            "  trotzdem."
+        )
+        wanted = fits
+    elif wanted > fits:
+        print(f"WARNUNG: {wanted} Prozesse ueber der Kapazitaet von {fits} ({why}).")
+    ways = max(1, min(wanted, len(symbols)))
+    print(f"Kapazitaet: {fits} Prozesse ({why})")
 
     # Reihum verteilt, nicht in Bloecken: die Maerkte unterscheiden sich stark
     # in der Historienlaenge, und ein Block aus drei langen waere der Prozess,
