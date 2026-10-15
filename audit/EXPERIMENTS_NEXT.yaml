@@ -43,7 +43,7 @@ meta:
   # Die Zahl, auf die korrigiert wird. Summe der `comparisons` aller Arme unten
   # plus die bereits gelesenen Zellen der Vorgaenger-Suche, soweit dieselbe
   # Frage betroffen ist.
-  total_comparisons: 71
+  total_comparisons: 73
   correction: >-
     Bonferroni auf `total_comparisons` Vergleiche: Schwelle 0.05/n,
     Intervall 100*(1 - 0.05/n) %. Bei 70 also 0.000714 und 99.9286 %.
@@ -1806,6 +1806,141 @@ experiments:
       Groesse (die Wirkung des Entfernens), und DIE ist noch nicht gesehen.
 
       Der Lauf wartet, bis E14 die Maschine freigibt.
+
+  - id: E17
+    title: "Die Zeitebene des Setups -- ein geordneter Verlauf, auf 47 ungesehenen Maerkten zu pruefen"
+    priority: 1
+    cells: 2
+    comparisons: 2
+    arms:
+      - id: E17.1
+        name: "Pool nur mit Setups, die auf H4 oder D1 feuern"
+      - id: E17.2
+        name: "Pool ohne M15-Setups (die untere Haelfte weggelassen)"
+    was_ich_VORHER_schon_gesehen_habe: >-
+      Alles unten stammt aus `data/replay_fills/` -- 7.335 Trades, zwoelf
+      Maerkte, Stand e218664b39c8 -- und wurde am 15.10.2026 gesehen, BEVOR
+      dieser Arm angelegt wurde. Es waere unredlich, das zu verschweigen,
+      und es ist der Grund, warum die Bestaetigung ausdruecklich auf
+      anderen Maerkten stattfindet.
+
+      Nach Zeitebene des Setups, alle Trades:
+
+        Ebene     n    BRUTTO R   Gebuehr R    NETTO R
+        D1      252    +0.0587      0.0127    +0.0443
+        H4     1083    +0.0688      0.0227    +0.0429
+        H1     2396    +0.0198      0.0278    -0.0073
+        M15    3604    -0.0073      0.0324    -0.0374
+
+      Der Verlauf ist MONOTON ueber ein geordnetes Merkmal, und er ist
+      nicht bloss die Gebuehr: die Gebuehren spannen 0.0197 R, das Brutto
+      spannt 0.0761 R. Gebuehren erklaeren gut ein Viertel.
+
+      Und er trifft dort, wo das Volumen liegt (A und B, 90 % der Trades):
+
+        Ebene     n    BRUTTO R    NETTO R   Brutto-Intervall (95 %)
+        D1      204    +0.0754    +0.0625    [-0.101, +0.235]
+        H4      915    +0.0946    +0.0688    [+0.019, +0.169]
+        H1     2132    +0.0106    -0.0159    [-0.045, +0.065]
+        M15    3323    -0.0074    -0.0371    [-0.054, +0.039]
+
+      A allein ist ueber alle vier Stufen monoton: +0.1641 / +0.0670 /
+      -0.0198 / -0.0734.
+    beide_tore_fallen_auf_diesen_daten: >-
+      **Und das steht hier, bevor irgendetwas laeuft.** Auf den zwoelf
+      Maerkten erfuellt der Befund KEINES der beiden Tore:
+
+      Tor 1, korrigiertes Niveau 1 - 0.05/71 = 99.9296 %:
+
+        A+B auf H4, brutto        95 %  [+0.019, +0.169]
+                            korrigiert  [-0.033, +0.231]   Null drin
+        Differenz hoch-tief       95 %  [+0.014, +0.166]
+                            korrigiert  [-0.045, +0.223]   Null drin
+
+      Das 95-%-Intervall ohne Null war eine Auswahl unter vier Ebenen. Am
+      korrigierten Niveau bleibt nichts davon.
+
+      Tor 2, Replikation ueber die Haelften (01.2021-01.2024 gegen
+      01.2024-10.2026):
+
+        H4+D1 (hoch)    frueh +0.1001   spaet +0.0833    +0.83x
+        H1+M15 (tief)   frueh -0.0233   spaet +0.0229    -0.98x
+        Differenz       frueh +0.1234   spaet +0.0604    +0.49x   knapp daneben
+
+      Lehrreich ist die Zerlegung: die HOHE Gruppe repliziert ordentlich,
+      die tiefe dreht das Vorzeichen und halbiert dadurch die Differenz.
+      Die Instabilitaet sitzt also nicht in dem Teil, auf den der Arm
+      setzt -- was den Kandidaten nicht rettet, aber sagt, wo man
+      hinsehen muss.
+    acceptance: >-
+      **Bestaetigung auf 47 Maerkten, die nie durch den Motor gelaufen
+      sind.** Das ist der Punkt dieses Arms: die Zahlen oben stammen aus
+      zwoelf oft gelesenen Maerkten, und sie noch einmal dort zu pruefen
+      waere dasselbe Lesen. Der Backfill hat 59 Maerkte vollstaendig
+      gemacht; 47 davon haben keinen einzigen Trade in irgendeiner
+      Auswertung dieses Projekts erzeugt.
+
+      Vorab festgelegt, und zwar als Vorzeichen und nicht als Groesse: auf
+      den 47 Maerkten muss der Brutto-Mittelwert von A+B auf H4+D1 ueber
+      dem von A+B auf H1+M15 liegen, mit korrigiertem Intervall ohne Null
+      auf der Differenz. Dazu Replikation 0.5-2.0x zwischen den Haelften
+      DIESER 47 Maerkte.
+
+      Primaerkennzahl ist BRUTTO-R je Trade, nicht netto. Der Grund steht
+      oben: die Gebuehr haengt mechanisch an der Stopweite und damit an der
+      Zeitebene, also wuerde netto einen Teil des Effekts messen, den man
+      schon kennt. Netto wird daneben berichtet, weil es das ist, was
+      bezahlt wird.
+
+      Der Rand vorab: Anteil unter -1R, schlimmster Einzelverlust,
+      5 %-Quantil, Trade-Zahl je Arm, und die Zahl der Maerkte, in denen
+      die Richtung haelt. Das letzte, weil ein Effekt, der in 5 von 47
+      Maerkten sitzt, etwas anderes ist als einer in 30 von 47.
+    die_einschraenkung_die_vorher_stehen_muss: >-
+      Die 47 Maerkte sind ausserhalb der Stichprobe in den MAERKTEN, nicht
+      in der ZEIT: sie decken denselben Zeitraum. Ein Effekt, der an einer
+      Marktphase haengt statt an der Zeitebene, wuerde dort ebenso
+      erscheinen. Das ist eine echte Schwaeche dieser Pruefung und keine,
+      die sich wegrechnen laesst -- die Zeit-Pruefung ist die
+      Vorwaertsstichprobe, und die braucht Monate.
+
+      Dazu: die 47 sind kleinere und juengere Maerkte als die zwoelf. Dass
+      sie sich anders verhalten, ist moeglich und waere selbst ein Befund,
+      aber es macht ein Scheitern dort mehrdeutig.
+    warum_ueberhaupt: >-
+      Weil es der erste geordnete Verlauf in diesem Projekt ist. Alles
+      bisher Gefundene waren einzelne Zellen -- ein Markt, ein Setup, eine
+      Stunde --, und eine gute Zelle unter vielen ist der Normalfall beim
+      Suchen. Ein monotoner Verlauf ueber vier geordnete Stufen, der im
+      BRUTTO sichtbar bleibt und die Setups mit 90 % des Volumens trifft,
+      ist eine andere Art von Aussage.
+
+      Und er ist handlungsnah: A+B auf H4 liegen netto bei +0.0688 R, und
+      das Ziel braucht bei 59 Maerkten +0.081 R.
+    gegenargument_das_vorher_steht: >-
+      Der naechstliegende Mechanismus ist nicht die Zeitebene, sondern die
+      STOPWEITE. Ein H4-Setup hat einen weiteren Stop, also weniger
+      Gebuehr je R -- das ist gerechnet und erklaert ein Viertel. Was den
+      Rest erklaert, ist unbekannt, und "unbekannter Mechanismus" ist in
+      diesem Projekt bisher immer "Auswahl" gewesen.
+
+      Dazu die naechstliegende Falle: weniger Ebenen heisst weniger
+      Trades. H4+D1 sind 1.119 von 7.335, also 15 %. Bei zwoelf Maerkten
+      waeren das 0.6 Trades am Tag und das Ziel unerreichbar; der Arm ist
+      nur zusammen mit mehr Maerkten sinnvoll, und das steht in seiner
+      Bewertung.
+    status: angemeldet_nicht_gelaufen
+    angelegt: 2026-10-15
+    declared_before_reading: false
+    note: >-
+      `declared_before_reading` ist FALSE und zwar deutlich: der Arm
+      entstand aus der Betrachtung der Tabelle oben. Genau deshalb liegt
+      die Abnahme auf 47 Maerkten, die in keiner Auswertung dieses
+      Projekts vorkommen -- was dort steht, ist noch nicht gesehen.
+
+      Vorbedingung: `scripts/replay_all_markets.py` ueber die 47, mit
+      --force fuer die zwoelf alten. Wartet, bis die Arme E14/E15/E16 die
+      Maschine freigeben.
 
 
 

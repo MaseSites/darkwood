@@ -42,13 +42,19 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
+import sys
 from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from traidingbrain.journal.replayset import (
+    load_replay as load_identified_replay,
+)
+
 JOURNAL = ROOT / "data" / "journal.sqlite"
 
 DAY_MS = 86_400_000
@@ -72,22 +78,67 @@ CONTROL_DRAWS = 2_000
 
 
 def load_replay() -> tuple[np.ndarray, np.ndarray, list[str], list[dict]]:
-    """R-Vielfache, Eröffnungszeit, Markt und der ex-ante-Block je Replay-Trade."""
-    if not JOURNAL.is_file():
-        raise SystemExit(f"Kein Journal unter {JOURNAL}.")
-    with sqlite3.connect(JOURNAL) as conn:
-        rows = list(
-            conn.execute(
-                "SELECT r_multiple, opened_ts, symbol, payload "
-                "FROM trades WHERE source='replay' ORDER BY opened_ts"
-            )
+    """R-Vielfache, Eröffnungszeit, Markt und der ex-ante-Block je Replay-Trade.
+
+    **Aus `data/replay_fills/`, nicht aus der Journal-Datenbank.** Hier stand
+    bis zum 15.10.2026 ein `SELECT ... WHERE source='replay'` auf
+    `data/journal.sqlite`, und das sind 2.734 Trades über **vier** Märkte,
+    alle mit leerer `run_signature`, leerem `decision_version` und leerem
+    `code_version`. Welche Konfiguration sie erzeugt hat, ist aus den Daten
+    nicht zu beantworten; sie stimmen nicht einmal mit denselben vier Märkten
+    in den Dateien überein (BTCUSDT: 495 Zeilen gegen 263). Die Datenbank hält
+    einen älteren Lauf, der korrigierte Runner schreibt Dateien.
+
+    Zwei Folgen, und die zweite wiegt schwerer:
+
+    * Die Suche lief auf einem Viertel der Daten. Es liegen 7.335 Trades über
+      zwölf Märkte vor, mit Herkunft je Datei und je Eintrag.
+    * **`setup_key` ist eines der ex-ante-Merkmale dieser Suche, und es war
+      falsch.** `journal/build.py:_setup_for` schrieb einen Trade dem ersten
+      Setup zu, das auf seinem Balken feuerte — aus ALLEN Setups statt aus
+      den freigegebenen. In den Dateien tragen 204 von 7.335 Trades das
+      Etikett eines Setups, das zur Laufzeit abgeschaltet war. Eine Suche
+      nach einer profitablen Teilmenge mit einem falschen Merkmal sucht in
+      der falschen Richtung.
+
+    `Fill.setup` trägt die Wahrheit — der Pool setzt es beim Feuern — und in
+    jeder Datei stehen `fills` und `journal` index-gleich nebeneinander. Das
+    Setup kommt deshalb aus dem Fill, alles übrige aus dem `reason`-Block.
+    """
+    population = load_identified_replay(ROOT / "data")
+    if population is None:
+        raise SystemExit(
+            "Keine Replay-Dateien in data/replay_fills -- "
+            "scripts/replay_all_markets.py hat noch nicht gelaufen."
         )
-    if not rows:
-        raise SystemExit("Keine Replay-Trades im Journal.")
+    print(f"Population: {population.labelled()}")
+    if population.mixed:
+        raise SystemExit(
+            "Gemischte Codestaende in der Population. Eine Teilmengensuche "
+            "ueber zwei Staende findet Unterschiede zwischen den Staenden."
+        )
+
+    rows: list[tuple[float, int, str, dict]] = []
+    for path in sorted((ROOT / "data" / "replay_fills").glob("*.json")):
+        blob = json.loads(path.read_text(encoding="utf-8"))
+        fills, entries = blob.get("fills", []), blob.get("journal", [])
+        if len(fills) != len(entries):
+            raise SystemExit(
+                f"{path.name}: {len(fills)} Fills gegen {len(entries)} "
+                "Journal-Eintraege -- ohne gleiche Laenge ist die Zuordnung "
+                "von Setup zu Begruendung geraten und nicht gelesen."
+            )
+        for fill, entry in zip(fills, entries, strict=True):
+            reason = dict(entry.get("reason") or {})
+            # Das Setup aus dem FILL, der Rest aus der Begruendung.
+            reason["setup_key"] = fill.get("setup") or reason.get("setup_key", "?")
+            rows.append((fill["r_multiple"], fill["opened_ts"], blob["symbol"], reason))
+
+    rows.sort(key=lambda row: row[1])
     r = np.array([row[0] for row in rows], dtype=float)
     ts = np.array([row[1] for row in rows], dtype=np.int64)
     symbols = [row[2] for row in rows]
-    reasons = [(json.loads(row[3]).get("reason") or {}) if row[3] else {} for row in rows]
+    reasons = [row[3] for row in rows]
     return r, ts, symbols, reasons
 
 

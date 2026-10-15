@@ -94,7 +94,7 @@ from traidingbrain.strategies.guide import GuidePool
 #: nicht in die Motorlaeufe, und die liegen im Zwischenspeicher. Also 70,
 #: und `--only-report` rechnet den Bericht damit neu. Ein engeres Niveau
 #: kann kein falsches Positiv erzeugen -- die andere Richtung koennte es.
-TOTAL_COMPARISONS = 71
+TOTAL_COMPARISONS = 73
 
 #: Die Replikationsschranken, wie fuer jeden Arm in diesem Projekt.
 REPLICATION = (0.5, 2.0)
