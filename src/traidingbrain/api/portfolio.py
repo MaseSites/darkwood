@@ -38,6 +38,7 @@ from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Side
 from traidingbrain.journal.record import JournalEntry, Source
 from traidingbrain.journal.store import JournalStore
+from traidingbrain.journal.version import decision_version, run_signature
 from traidingbrain.live.paperstate import PaperState, PaperStateStore
 from traidingbrain.strategy.setups import TRADEABLE
 
@@ -159,10 +160,32 @@ class Portfolio(BaseModel):
     damit die Lücke auf dem Bildschirm steht statt in einem Bericht."""
 
     markets: list[MarketRow]
+
     trades: int
+    """Abgeschlossene Trades unter der LAUFENDEN Konfiguration.
+
+    **Nicht alle.** Am 16.10.2026 zerfielen die 28 Vorwaertstrades in drei
+    Konfigurationen -- 18 ohne aufgezeichnete Signatur, 9 unter der
+    Vorgaengerin, 1 unter der laufenden -- und der Mittelwert darueber
+    beantwortet keine Frage: unter `portfolio` riskiert ein Trade 120 USDT,
+    unter der Vorgaengerin 10. Die Schlagzeile zeigt deshalb eine
+    Konfiguration, und `trades_all` sagt, wie viele es insgesamt sind."""
+
     wins: int
     mean_r: float
     total_r: float
+
+    trades_all: int
+    """Alle abgeschlossenen Vorwaertstrades, ueber alle Konfigurationen."""
+
+    eras: int
+    """Ueber wie viele (Signatur, Codestand)-Paare sich `trades_all` verteilt.
+
+    Steht hier, damit die Oberflaeche den Unterschied benennen kann. Eins
+    heisst: die Schlagzeile deckt alles ab. Mehr heisst: es gibt aeltere
+    Trades, die nicht mitzaehlen, und das ist eine Aussage und kein
+    Datenverlust."""
+
     running: bool
     pooled: bool
     """Ob wirklich eine Kasse läuft (`risk.sizing.basis: portfolio`).
@@ -560,6 +583,25 @@ def build_portfolio(
     symbols = list(config.engine.symbols.active)
 
     live = journal.all(source=Source.LIVE)
+
+    # Die Teilmenge, die zur LAUFENDEN Konfiguration gehoert.
+    #
+    # Beides muss stimmen: `run_signature` deckt die Konfiguration,
+    # `decision_version` den Code. Eine Zeile ohne das eine oder das andere
+    # faellt heraus, und das ist richtig -- am 16.10.2026 trugen 18 der 28
+    # Vorwaertstrades gar keine Signatur, und sie sind aus den Daten keiner
+    # Konfiguration zuzuordnen.
+    #
+    # Die Markt-Beitraege unten rechnen weiter ueber ALLE Trades: der
+    # Kontostand hat sie alle bezahlt, und eine Tabelle, die nur die
+    # laufende Epoche zeigt, wuerde den Kontostand nicht mehr erklaeren.
+    # Nur die SCHLAGZEILE wird auf eine Konfiguration eingeschraenkt.
+    signature, stamp = run_signature(config), decision_version()
+    current = [
+        entry for entry in live
+        if entry.run_signature == signature and entry.decision_version == stamp
+    ]
+
     closed = [entry for entry in live if entry.closed_ts]
     realised: dict[str, float] = {}
     counted: dict[str, int] = {}
@@ -603,12 +645,16 @@ def build_portfolio(
         open_risk=round(sum(row.open_risk for row in rows), 2),
         unexplained=round(change - sum(row.realised for row in rows), 2),
         markets=rows,
-        trades=len(live),
-        wins=sum(1 for entry in live if entry.won),
+        trades=len(current),
+        wins=sum(1 for entry in current if entry.won),
         mean_r=(
-            round(sum(entry.r_multiple for entry in live) / len(live), 4) if live else 0.0
+            round(sum(entry.r_multiple for entry in current) / len(current), 4)
+            if current
+            else 0.0
         ),
-        total_r=round(sum(entry.r_multiple for entry in live), 3),
+        total_r=round(sum(entry.r_multiple for entry in current), 3),
+        trades_all=len(live),
+        eras=len({(entry.run_signature, entry.decision_version) for entry in live}),
         running=any(not row.stale for row in rows),
         pooled=pooled,
     )

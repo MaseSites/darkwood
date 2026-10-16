@@ -1530,15 +1530,34 @@ function renderPaper(readout) {
 
   /* The headline carries the one number that decides whether any of this is
    * worth anything, and carries it with its sample size. A mean over nine
-   * trades is not an edge and the screen should not let it look like one. */
+   * trades is not an edge and the screen should not let it look like one.
+   *
+   * Seit dem 16.10.2026 zählt es nur die LAUFENDE Konfiguration. Vorher
+   * stand hier "28 Trades vorwärts · Mittel +0.294 R", und diese 28
+   * zerfielen in drei Konfigurationen: 18 ohne aufgezeichnete Signatur
+   * (+0.394 R), 9 unter der Vorgängerin (−0.096 R), 1 unter der laufenden
+   * (+2.003 R). Unter `portfolio` riskiert ein Trade 120 USDT, unter der
+   * Vorgängerin 10 — ein Mittelwert darüber beantwortet keine Frage.
+   *
+   * Die älteren verschwinden trotzdem nicht: sie stehen als "N insgesamt
+   * über M Konfigurationen" daneben, weil "es gibt sie nicht mehr" eine
+   * andere Aussage wäre als "sie zählen hier nicht mit". */
   if (hint) {
+    const rest =
+      readout.trades_all > readout.trades
+        ? ` &middot; ${readout.trades_all} insgesamt über ${readout.eras} Konfigurationen`
+        : "";
     hint.innerHTML = readout.trades
-      ? `${readout.trades} Trades vorwärts &middot; Mittel ${
+      ? `${readout.trades} Trade${
+          readout.trades === 1 ? "" : "s"
+        } unter der laufenden Konfiguration &middot; Mittel ${
           readout.mean_r >= 0 ? "+" : ""
         }${readout.mean_r.toFixed(3)} R${
           readout.trades < 30 ? " (noch zu wenige für eine Aussage)" : ""
-        }`
-      : "Noch kein abgeschlossener Trade — die ersten brauchen Stunden bis Tage";
+        }${rest}`
+      : readout.trades_all
+        ? `Noch kein Trade unter der laufenden Konfiguration — ${readout.trades_all} ältere über ${readout.eras} Konfigurationen zählen nicht mit`
+        : "Noch kein abgeschlossener Trade — die ersten brauchen Stunden bis Tage";
   }
 
   const trades = readout.recent.length

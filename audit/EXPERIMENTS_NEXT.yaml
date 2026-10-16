@@ -1970,6 +1970,51 @@ experiments:
       waeren das 0.6 Trades am Tag und das Ziel unerreichbar; der Arm ist
       nur zusammen mit mehr Maerkten sinnvoll, und das steht in seiner
       Bewertung.
+    korrektur_16okt: >-
+      **Der Verlauf ist bei A, nicht bei A und B.** Angemeldet war er als
+      "monotoner Verlauf ueber ein geordnetes Merkmal, der die Setups mit
+      90 % des Volumens trifft". Je Setup nachgerechnet, Trefferquote
+      brutto:
+
+        Setup     D1      H4      H1     M15    Nullpunkt
+        A      47.4 %  44.1 %  40.8 %  38.7 %   40.2 %   monoton
+        B      16.1 %  35.6 %  32.8 %  33.7 %   33.0 %   KEIN Verlauf
+        E         --   29.8 %  26.2 %  28.7 %   24-26 %  flach
+        G      27.8 %  27.2 %  37.8 %  34.2 %   ~31 %    umgekehrt
+
+      B hat keinen Verlauf, und B ist mit 3.045 Trades fast so gross wie A
+      mit 3.529. Gepoolt sah es monoton aus, weil A's Verlauf stark und
+      B's flach ist -- der Mittelwert zweier Gruppen zeigt die Form der
+      staerkeren.
+
+      Damit faellt die Begruendung weg, die den Arm von einer gewoehnlichen
+      guten Zelle unterschied. Ein monotoner Verlauf in EINEM von fuenf
+      Setups ist eine schwaechere Aussage als einer ueber das Volumen, und
+      er ist naeher an dem, was dieses Projekt schon oft gesehen hat.
+
+      Der Arm bleibt angemeldet, aber mit dieser Begruendung und nicht mit
+      der alten: zu pruefen ist A, und die Abnahme auf den ungesehenen
+      Maerkten muss A getrennt ausweisen. Ein Ergebnis, das nur gepoolt
+      haelt, ist keines.
+    was_die_zerlegung_sonst_zeigt: >-
+      Die Auszahlung ist je Setup fest und ueber die Zeitebenen hinweg
+      praktisch unveraendert -- bei A +1.50 Gewinner gegen -1.01 Verlierer
+      auf allen vier Stufen. Der gesamte Unterschied zwischen den Stufen
+      ist die TREFFERQUOTE; die Gegenprobe
+      `Treffer*Gewinner + (1-Treffer)*Verlierer` geht auf die vierte
+      Stelle auf.
+
+      Das ist ein Grenzfall zu [[hit-rate-is-a-misleading-target]]: die
+      Warnung dort gilt, wenn die Auszahlung mitwandert. Hier wandert sie
+      nicht, weil das geplante Chance-Risiko auf allen Stufen 1.50 ist.
+      Darum IST die Trefferquote hier die ganze Geschichte -- und nur
+      darum.
+
+      Und das Gesamtbild, das dabei entsteht: jedes Setup sitzt innerhalb
+      weniger Prozentpunkte um seinen EIGENEN Nullpunkt, und die Gebuehr
+      schiebt die meisten darunter. Das ist dieselbe Aussage wie
+      [[entries-carry-no-edge]], nur je Setup aufgeloest statt gepoolt.
+
     status: angemeldet_nicht_gelaufen
     angelegt: 2026-10-15
     declared_before_reading: false
