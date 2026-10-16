@@ -236,6 +236,36 @@ limits:
   # also sichtbar weniger Trades nehmen als bisher. Das ist der Preis und er
   # steht hier, damit die sinkende Trade-Zahl nicht spaeter als Defekt
   # gesucht wird.
+  #
+  # NACHTRAG 16.10.2026 -- was der Deckel von 2 gekostet hat, gemessen.
+  #
+  # Die Begruendung oben war eine Beobachtung: zwei Plaetze von Trades mit
+  # 86,6 h und 170,6 h belegt, also kein neuer Trade moeglich. Der
+  # Signalspeicher sagt es genauer. Ueber 153 Live-Signale aus drei
+  # Konfigurationen:
+  #
+  #     kosten           72   47.1 %
+  #     chance_risiko    52   34.0 %
+  #     genommen         17   11.1 %
+  #     grenzen          12    7.8 %
+  #
+  # Die Pruefungen laufen NACHEINANDER: `kosten` und `chance_risiko` in
+  # `sim/plan.py:assess`, die Kontogrenzen erst danach in
+  # `live/paper.py:_blocked_by_limits`. 124 Signale scheitern an der
+  # Wirtschaftlichkeit, 29 erreichen die Grenzenpruefung -- und davon
+  # werden 12 abgelehnt, also 41 %.
+  #
+  # Alle zwoelf tragen denselben Grund, "2 positions already open
+  # (limit 2)", und alle fallen in die fuenf Stunden des 14.10. zwischen
+  # 09:00 und 14:00, bevor der Deckel gehoben wurde. Sieben verschiedene
+  # Maerkte wollten in diesem Fenster hinein. Seit `cap5`: null
+  # Grenzen-Ablehnungen.
+  #
+  # Das praezisiert die Aussage "der Deckel blockierte alles": er
+  # blockierte 41 % der Signale, die die Wirtschaftlichkeitspruefung
+  # ueberstanden hatten. Der Kostendeckel lehnt sechsmal so viele ab --
+  # und der bleibt, weil die von ihm abgelehnte Population gemessen
+  # brutto-negativ ist mit einem Intervall ohne Null.
   max_open_positions: 5
   max_positions_per_symbol: 1
   max_daily_loss_pct: 0.05
