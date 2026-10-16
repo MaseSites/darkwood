@@ -36,9 +36,9 @@ from traidingbrain.api.chart import Candle
 from traidingbrain.config.settings import AppConfig
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Side
+from traidingbrain.journal.era import current_era, era_count
 from traidingbrain.journal.record import JournalEntry, Source
 from traidingbrain.journal.store import JournalStore
-from traidingbrain.journal.version import decision_version, run_signature
 from traidingbrain.live.paperstate import PaperState, PaperStateStore
 from traidingbrain.strategy.setups import TRADEABLE
 
@@ -596,11 +596,7 @@ def build_portfolio(
     # Kontostand hat sie alle bezahlt, und eine Tabelle, die nur die
     # laufende Epoche zeigt, wuerde den Kontostand nicht mehr erklaeren.
     # Nur die SCHLAGZEILE wird auf eine Konfiguration eingeschraenkt.
-    signature, stamp = run_signature(config), decision_version()
-    current = [
-        entry for entry in live
-        if entry.run_signature == signature and entry.decision_version == stamp
-    ]
+    current = current_era(live, config)
 
     closed = [entry for entry in live if entry.closed_ts]
     realised: dict[str, float] = {}
@@ -654,7 +650,7 @@ def build_portfolio(
         ),
         total_r=round(sum(entry.r_multiple for entry in current), 3),
         trades_all=len(live),
-        eras=len({(entry.run_signature, entry.decision_version) for entry in live}),
+        eras=era_count(live),
         running=any(not row.stale for row in rows),
         pooled=pooled,
     )

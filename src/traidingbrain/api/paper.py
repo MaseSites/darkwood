@@ -24,6 +24,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from traidingbrain.config.settings import AppConfig
+from traidingbrain.journal.era import current_era, era_count
 from traidingbrain.journal.record import JournalEntry, Source
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.live.paperstate import PaperStateStore
@@ -119,9 +121,21 @@ class PaperReadout(BaseModel):
 
     accounts: list[PaperAccount]
     trades: int
+    """Abgeschlossene Trades unter der LAUFENDEN Konfiguration.
+
+    **Nicht alle.** Am 16.10.2026 zeigte diese Zahl 28 und der Mittelwert
+    daneben +0.294 R; die 28 zerfielen in drei Konfigurationen, eine davon
+    ganz ohne aufgezeichnete Konfiguration. Siehe `journal/era.py`."""
+
     wins: int
     mean_r: float
     total_net: float
+
+    trades_all: int
+    """Alle abgeschlossenen Vorwaertstrades, ueber alle Konfigurationen."""
+
+    eras: int
+    """Ueber wie viele (Signatur, Codestand)-Paare sich `trades_all` verteilt."""
     recent: list[PaperTrade]
     running: bool
     """Is anything being settled at all? False when every account is stale,
@@ -149,7 +163,12 @@ def _position_view(state: object, last_price: float) -> PaperPosition | None:
 
 
 def build_paper_readout(
-    state_path: Path, journal_path: Path, *, now_ms: int, symbols: list[str] | None = None
+    state_path: Path,
+    journal_path: Path,
+    *,
+    config: AppConfig,
+    now_ms: int,
+    symbols: list[str] | None = None,
 ) -> PaperReadout:
     """Read both files and say what the paper trader is doing.
 
@@ -198,13 +217,25 @@ def build_paper_readout(
         )
 
     live = live_all
-    rs = [entry.r_multiple for entry in live]
+    # Die Schlagzeile zaehlt EINE Konfiguration -- dieselbe Quelle wie
+    # `api/portfolio.py`, damit die beiden nicht auseinanderlaufen. Genau
+    # das ist am 16.10.2026 passiert: `portfolio.py` war repariert, diese
+    # Datei nicht, und das Dashboard zeigte die neue Beschriftung ueber den
+    # alten Zahlen.
+    #
+    # Die LISTE der letzten Trades bleibt ungefiltert: sie zeigt, was
+    # geschehen ist, und ein Trade aus einer aelteren Konfiguration ist
+    # geschehen. Nur die Kennzahlen darueber werden eingeschraenkt.
+    current = current_era(live, config)
+    rs = [entry.r_multiple for entry in current]
     return PaperReadout(
         accounts=accounts,
-        trades=len(live),
-        wins=sum(1 for entry in live if entry.won),
+        trades=len(current),
+        wins=sum(1 for entry in current if entry.won),
         mean_r=round(sum(rs) / len(rs), 4) if rs else 0.0,
-        total_net=round(sum(entry.net_pnl for entry in live), 2),
+        total_net=round(sum(entry.net_pnl for entry in current), 2),
+        trades_all=len(live),
+        eras=era_count(live),
         recent=[_trade_view(entry) for entry in reversed(live[-RECENT:])],
         running=any(not account.stale for account in accounts),
     )

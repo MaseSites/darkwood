@@ -643,9 +643,21 @@ def test_the_screen_is_never_shown_replayed_trades_as_forward_ones(
     faked = dataclasses.replace(closed[0], trade_id="fake-1", source=Source.REPLAY, r_multiple=99.0)
     journal.record([faked])
 
-    readout = build_paper_readout(states.path, journal.path, now_ms=source.now_ms, symbols=[SYMBOL])
+    readout = build_paper_readout(
+        states.path, journal.path, config=load_config(),
+        now_ms=source.now_ms, symbols=[SYMBOL],
+    )
 
-    assert readout.trades == len(journal.all(source=Source.LIVE))
+    # `trades_all` und nicht `trades`: dieser Test fragt nach LIVE gegen
+    # REPLAY, und `trades` zaehlt seit dem 16.10.2026 nur die laufende
+    # Konfiguration (siehe `journal/era.py`). Auf dem gefrorenen Band hier
+    # tragen die Trades keine Signatur, also waeren es dort null -- was ueber
+    # den Replay-Filter nichts aussagt.
+    assert readout.trades_all == len(journal.all(source=Source.LIVE))
+    assert readout.trades <= readout.trades_all, (
+        "die Schlagzeile ist eine Teilmenge der Vorwaertstrades und kann sie "
+        "nicht uebersteigen"
+    )
     assert readout.mean_r < 1.0, "a replayed trade leaked into the forward average"
     assert all(trade.r_multiple != 99.0 for trade in readout.recent)
 
@@ -664,13 +676,15 @@ def test_a_stopped_trader_does_not_look_like_a_working_one(
     advance(trader, source, hours=3)
 
     fresh = build_paper_readout(
-        states.path, journal.path, now_ms=source.now_ms + 60_000, symbols=[SYMBOL]
+        states.path, journal.path, config=load_config(),
+        now_ms=source.now_ms + 60_000, symbols=[SYMBOL],
     )
     assert not fresh.accounts[0].stale
     assert fresh.running
 
     later = build_paper_readout(
-        states.path, journal.path, now_ms=source.now_ms + 6 * 3_600_000, symbols=[SYMBOL]
+        states.path, journal.path, config=load_config(),
+        now_ms=source.now_ms + 6 * 3_600_000, symbols=[SYMBOL],
     )
     assert later.accounts[0].stale
     assert later.accounts[0].behind_minutes >= 300
@@ -695,7 +709,10 @@ def test_an_open_position_reaches_the_screen_with_its_plan(
     if trader.broker.position is None:
         pytest.skip("the order never filled")
 
-    readout = build_paper_readout(states.path, journal.path, now_ms=source.now_ms, symbols=[SYMBOL])
+    readout = build_paper_readout(
+        states.path, journal.path, config=load_config(),
+        now_ms=source.now_ms, symbols=[SYMBOL],
+    )
     account = readout.accounts[0]
 
     assert account.position is not None

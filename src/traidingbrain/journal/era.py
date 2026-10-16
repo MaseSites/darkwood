@@ -1,0 +1,68 @@
+"""Welche Trades zur laufenden Konfiguration gehören — an EINER Stelle.
+
+**Der Anlass ist ein Fehler, der zweimal dasselbe rechnete.** Am 16.10.2026
+zeigte das Dashboard „28 Trades vorwärts · Mittel +0,294 R". Diese 28
+zerfielen in drei Konfigurationen:
+
+    n=18   +0.3938 R   Signatur LEER
+    n= 9   -0.0956 R   ...|0.08|M15|refused-v1
+    n= 1   +2.0029 R   ...refused-v1|portfolio|cap5
+
+Unter `portfolio` riskiert ein Trade 120 USDT, unter der Vorgängerin 10. Ein
+Mittelwert darüber beantwortet keine Frage, und auf dem Bildschirm liest er
+sich als Vorteil des Systems.
+
+Repariert wurde zuerst `api/portfolio.py` — und das Dashboard zeigte weiter
+die alte Zahl, weil seine Schlagzeile aus `api/paper.py` kommt, das dieselbe
+Rechnung ein zweites Mal anstellt. Die neue Beschriftung stand dann über den
+alten Zahlen, was schlimmer ist als beides für sich.
+
+Darum hier, und darum nur hier. Zwei Stellen, die denselben Satz berechnen,
+laufen auseinander; das Projekt hat das bei `SAFETY_RULES` schon einmal
+bezahlt (`learn/overrides.py`).
+
+**Was „dieselbe Konfiguration" heisst, und warum beides nötig ist.**
+`run_signature` deckt die Einstellungen — Startkapital, Setup-Liste,
+Kostendeckel, Signalebene, Grössenbemessung, Platzdeckel. `decision_version`
+deckt den Code des Entscheidungspfades. Eine Änderung an einem von beiden
+kann ändern, welche Trades entstehen, also müssen beide stimmen.
+
+Eine Zeile ohne das eine oder das andere fällt heraus, und das ist richtig:
+18 der 28 Vorwärtstrades trugen gar keine Signatur und sind aus den Daten
+keiner Konfiguration zuzuordnen. Sie verschwinden deshalb nicht — `eras`
+zählt sie mit, damit „es gibt sie nicht mehr" nicht mit „sie zählen hier
+nicht mit" verwechselt wird.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+
+from traidingbrain.config.settings import AppConfig
+from traidingbrain.journal.record import JournalEntry
+from traidingbrain.journal.version import decision_version, run_signature
+
+
+def current_era(
+    entries: Iterable[JournalEntry], config: AppConfig
+) -> list[JournalEntry]:
+    """Die Trades, die unter der laufenden Konfiguration entstanden sind.
+
+    Beides muss stimmen: dieselbe `run_signature` UND derselbe
+    `decision_version`. Siehe das Modul-Docstring für den Grund.
+    """
+    signature, stamp = run_signature(config), decision_version()
+    return [
+        entry
+        for entry in entries
+        if entry.run_signature == signature and entry.decision_version == stamp
+    ]
+
+
+def era_count(entries: Iterable[JournalEntry]) -> int:
+    """Über wie viele (Signatur, Codestand)-Paare sich diese Trades verteilen.
+
+    Eins heisst: die Schlagzeile deckt alles ab. Mehr heisst: es gibt ältere
+    Trades, die nicht mitzählen — eine Aussage, kein Datenverlust.
+    """
+    return len({(entry.run_signature, entry.decision_version) for entry in entries})

@@ -482,6 +482,7 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
         return build_paper_readout(
             services.config.engine.paths.data_dir / "paper.sqlite",
             services.config.engine.paths.data_dir / "journal.sqlite",
+            config=services.config,
             now_ms=int(time.time() * 1000),
             symbols=_followed_symbols(services),
         )
