@@ -153,6 +153,44 @@ def already_cached(cache: Path) -> set[tuple[str, str]]:
     return done
 
 
+def inherit(cache: Path, symbols: list[str], prefix: str) -> int:
+    """Fertige Laeufe aus den GESCHWISTERDATEIEN uebernehmen.
+
+    **Warum das noetig ist, seit die Kapazitaet gerechnet wird.** Die Maerkte
+    werden reihum auf N Prozesse verteilt, und N haengt jetzt am freien
+    Speicher -- heute 4, gestern 6, davor 7. Mit anderem N wandert ein Markt
+    in einen anderen Eimer, liest eine Datei, in der seine Ergebnisse nicht
+    stehen, und rechnet sie neu. Bei 76 Laeufen zu je 40 Minuten ist das die
+    gesamte Arbeit.
+
+    Geschrieben wird weiter in die eigene Datei -- vier Prozesse, die
+    gleichzeitig in eine Datei anhaengen, koennten ihre Zeilen ineinander
+    schieben, und eine halbe JSON-Zeile ist ein verlorener Lauf. Gelesen wird
+    aus allen.
+    """
+    mine = already_cached(cache)
+    wanted = set(symbols)
+    taken = 0
+    with cache.open("a", encoding="utf-8") as handle:
+        for sibling in sorted(cache.parent.glob(f"{prefix}_*.jsonl")):
+            if sibling == cache:
+                continue
+            for line in sibling.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                key = (row.get("rule", ""), row.get("symbol", ""))
+                if key[1] not in wanted or key in mine:
+                    continue
+                handle.write(line + "\n")
+                mine.add(key)
+                taken += 1
+    return taken
+
+
 def seed(cache: Path, symbols: list[str], fills_dir: Path) -> int:
     """Den Basislauf aus den Replay-Dateien in den Zwischenspeicher legen.
 
@@ -192,6 +230,59 @@ def seed(cache: Path, symbols: list[str], fills_dir: Path) -> int:
             }) + "\n")
             written += 1
     return written
+
+
+def launch(
+    index: int,
+    bucket: list[str],
+    *,
+    args: argparse.Namespace,
+    data: Path,
+    rules: int,
+) -> subprocess.Popen | None:
+    """Einen Eimer vorbereiten und starten. `None` bei `--dry-run`.
+
+    Herausgeloest, weil `main()` sonst drei Dinge tut -- Argumente lesen,
+    Kapazitaet bestimmen, und je Eimer erben, saeen, Befehl bauen, starten --
+    und das dritte ist das, was waechst.
+
+    Die Reihenfolge ist Absicht: erst von den Geschwistern erben, dann die
+    Basis aus den Replay-Dateien fuer das, was dann noch fehlt. Umgekehrt
+    schriebe man eine Basiszeile, die nebenan schon als vollstaendiger Lauf
+    liegt.
+    """
+    cache = data / f"{args.prefix}_{index}.jsonl"
+    # NICHT loeschen. Siehe `seed`: genau das hat fuenf fertige Motorlaeufe
+    # gekostet, und bei `--dry-run` sogar ohne Gegenwert.
+    if args.dry_run:
+        taken = seeded = 0
+    else:
+        taken = inherit(cache, bucket, args.prefix)
+        seeded = seed(cache, bucket, data / "replay_fills")
+    have = len(already_cached(cache))
+
+    command = [str(PYTHON), "-u", str(ROOT / "scripts" / "compare_exits.py"),
+               "--cache", str(cache)]
+    for key in args.drop:
+        command += ["--drop", key]
+    command += ["--at", *[f"{v:g}" for v in args.at]]
+    command += ["--target-cap", *[f"{v:g}" for v in args.target_cap]]
+    for symbol in bucket:
+        command += ["--symbol", symbol]
+
+    todo = max(0, rules * len(bucket) - have)
+    teile = []
+    if taken:
+        teile.append(f"{taken} von Geschwistern")
+    if seeded:
+        teile.append(f"{seeded} Basis aus Dateien")
+    note = ", ".join(teile) if teile else f"{have} schon da"
+    print(f"  [{index}] {', '.join(bucket):28s} {todo:3d} Laeufe ({note})")
+
+    if args.dry_run:
+        return None
+    log = (data / f"{args.prefix}_{index}.log").open("w", encoding="utf-8")
+    return subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
 
 
 def main() -> int:
@@ -247,28 +338,9 @@ def main() -> int:
     for index, bucket in enumerate(buckets):
         if not bucket:
             continue
-        cache = data / f"{args.prefix}_{index}.jsonl"
-        # NICHT loeschen. Siehe `seed`: genau das hat fuenf fertige
-        # Motorlaeufe gekostet, und bei `--dry-run` sogar ohne Gegenwert.
-        have = len(already_cached(cache))
-        seeded = 0 if args.dry_run else seed(cache, bucket, data / "replay_fills")
-
-        command = [str(PYTHON), "-u", str(ROOT / "scripts" / "compare_exits.py"),
-                   "--cache", str(cache)]
-        for key in args.drop:
-            command += ["--drop", key]
-        command += ["--at", *[f"{v:g}" for v in args.at]]
-        command += ["--target-cap", *[f"{v:g}" for v in args.target_cap]]
-        for symbol in bucket:
-            command += ["--symbol", symbol]
-
-        todo = max(0, rules * len(bucket) - max(have, seeded))
-        note = f"{have} schon da" if have else f"{seeded} Basis geerbt"
-        print(f"  [{index}] {', '.join(bucket):28s} {todo:3d} Laeufe ({note})")
-        if args.dry_run:
-            continue
-        log = (data / f"{args.prefix}_{index}.log").open("w", encoding="utf-8")
-        started.append(subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT))
+        process = launch(index, bucket, args=args, data=data, rules=rules)
+        if process is not None:
+            started.append(process)
 
     if args.dry_run:
         print("\n--dry-run: nichts gestartet")
