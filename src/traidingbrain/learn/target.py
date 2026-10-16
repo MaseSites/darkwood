@@ -47,6 +47,7 @@ than letting a tidy formula imply otherwise.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -247,3 +248,42 @@ def shortfall_from_variance(
     actual = float(np.exp(steps.sum() * scale))
     constant = float((1.0 + risk * float(r_values.mean())) ** trades)
     return actual, constant
+
+
+def sustainable_rate(*, slots: int, holds_h: Sequence[float]) -> float:
+    """Trades je Tag, die `slots` Plätze bei dieser Haltedauer hergeben.
+
+    **Der MITTELWERT und nicht der Median, und das ist gemessen entschieden.**
+    Die Formel ist Little: `L = λ · W`, wobei `L` die Zahl belegter Plätze und
+    `W` die *mittlere* Verweildauer ist. Hält jede Position einen Platz, ist
+    `slots` die Obergrenze für `L`, also `λ ≤ slots / W`.
+
+    `scripts/goal.py` rechnete hier `np.median`, während sein eigener
+    Docstring und die Beschriftung der Ausgabe beide „mittlere Haltedauer"
+    sagten. Bei dieser Verteilung ist der Unterschied kein Detail: über 7.335
+    Replay-Trades Mittel 33,0 h gegen Median 6,7 h, Faktor 4,9.
+
+    Entschieden hat es der Live-Verlauf. 28 abgeschlossene Trades vom 02.10.
+    bis 15.10.2026, 13,04 Tage, also 2,15 Abschlüsse je Tag; ihre Haltedauer
+    Median 9,8 h, Mittel 19,6 h; der Platzdeckel stand überwiegend auf 2:
+
+        mit dem Mittel:  2 · 24 / 19,6 = 2,45 /Tag   gemessen 2,15
+        mit dem Median:  2 · 24 /  9,8 = 4,90 /Tag   gemessen 2,15
+
+    Der Mittelwert trifft auf 12 %, der Median liegt um 128 % zu hoch.
+
+    **Was das kostet.** Die Obergrenze bei fünf Plätzen fällt von 17,9 auf
+    3,64 Trades/Tag, die Chancen bis zum 30.10. von 269 auf 51, und das
+    nötige Ergebnis je Trade steigt von +0,081 R auf +0,49 R. Mehrere
+    Schlussfolgerungen standen auf der falschen Zahl.
+
+    Das ist eine OBERGRENZE und keine Prognose: der Signalgeber feuert so
+    oft, wie er feuert, und der Kostendeckel lehnt einen Teil davon ab. Was
+    tatsächlich entsteht, ist das Minimum aus beidem.
+    """
+    if not holds_h or slots <= 0:
+        return 0.0
+    mean_h = sum(holds_h) / len(holds_h)
+    if mean_h <= 0:
+        return 0.0
+    return slots * 24.0 / mean_h

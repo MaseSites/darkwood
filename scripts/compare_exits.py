@@ -376,6 +376,86 @@ def report(results: dict[str, list[Trade]], order: list[str]) -> None:
     )
 
 
+#: So viele fehlende Maerkte werden namentlich genannt; der Rest als
+#: Auslassung. Vier passen in eine Zeile.
+NAMED = 4
+
+
+def collect_cached(
+    done: dict[tuple[str, str], list[Trade]],
+    results: dict[str, list[Trade]],
+    order: list[str],
+    cache_name: str,
+) -> list[str]:
+    """Aus dem Speicher die Arme sammeln, die ALLE Maerkte decken.
+
+    Gibt die Reihenfolge zurueck, die der Bericht rechnen darf.
+    """
+    # Die Maerkte kommen aus dem ZWISCHENSPEICHER, nicht aus der
+    # Konfiguration.
+    #
+    # Umgekehrt war es zuerst, und eine Probe mit einem erfundenen Markt
+    # hat es sofort gefangen: liegt im Speicher ein Symbol, das nicht
+    # mehr in `symbols.active` steht, schnitt der Schnitt alles weg und
+    # der Bericht sagte "Niveau 99.925%" ueber null Trades. Genau die
+    # Bauart, die dieses Projekt schon zweimal bezahlt hat -- eine
+    # Auswertung ueber eine leere Menge druckt ein zuversichtliches
+    # Nichts.
+    cached = sorted({symbol for _, symbol in done})
+    print(f"Nur Bericht: {len(done)} Paare, {len(cached)} Märkte aus "
+          f"{cache_name}")
+    # Ein Arm kommt nur herein, wenn er ALLE Maerkte deckt.
+    #
+    # Die alte Pruefung fragte "leer?" und liess damit den Arm durch, der
+    # drei von zwoelf Maerkten hatte. Welche drei, entscheidet die
+    # Rechenzeit -- ein Bericht darueber ist eine Auswahl. Fehlende
+    # Maerkte werden benannt, damit "noch nicht fertig" nicht als
+    # "gemessen" gelesen wird.
+    have: dict[str, set[str]] = {}
+    for label, symbol in done:
+        have.setdefault(label, set()).add(symbol)
+
+    voll, teilweise = [], []
+    for label in order:
+        deckung = have.get(label, set())
+        if deckung >= set(cached):
+            voll.append(label)
+        else:
+            teilweise.append((label, sorted(set(cached) - deckung)))
+
+    for label in voll:
+        for symbol in cached:
+            results[label].extend(done[(label, symbol)])
+
+    for label, fehlt in teilweise:
+        n = len(have.get(label, set()))
+        print(f"  ! {label}: {n}/{len(cached)} Märkte -- NICHT im Bericht "
+              f"(fehlt: {', '.join(fehlt[:NAMED])}"
+              f"{'...' if len(fehlt) > NAMED else ''})")
+
+    # Die Basis darf nicht wechseln.
+    #
+    # `report()` nimmt `order[0]` als Basis und rechnet jede Differenz
+    # dagegen. Faellt die Basis wegen eines fehlenden Marktes heraus,
+    # wuerde der naechste vollstaendige Arm diese Rolle uebernehmen --
+    # dieselbe Beschriftung ueber einer anderen Rechnung. Das ist genau
+    # der Fehler, der am 16.10.2026 die Schlagzeile des Dashboards
+    # falsch machte, nur eine Ebene tiefer.
+    # `rules` beginnt immer mit der Basis, also ist `order` nie leer und
+    # eine Pruefung auf "kein Arm vollstaendig" waere ein toter Zweig:
+    # deckt die Basis alle Maerkte, ist `voll` nicht leer, und deckt sie
+    # sie nicht, bricht die Zeile darunter ab. Ein Zweig, den kein Test
+    # erreichen kann, wird hier nicht geschrieben.
+    if order[0] not in voll:
+        raise SystemExit(
+            f"Die Basis '{order[0]}' deckt nicht alle {len(cached)} Märkte. "
+            f"Ohne sie ist keine Differenz definiert -- der Bericht wird "
+            f"nicht gerechnet."
+        )
+    order = voll
+    return order
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -449,25 +529,7 @@ def main() -> int:
     results: dict[str, list[Trade]] = {label: [] for label in order}
 
     if args.only_report:
-        # Die Maerkte kommen aus dem ZWISCHENSPEICHER, nicht aus der
-        # Konfiguration.
-        #
-        # Umgekehrt war es zuerst, und eine Probe mit einem erfundenen Markt
-        # hat es sofort gefangen: liegt im Speicher ein Symbol, das nicht
-        # mehr in `symbols.active` steht, schnitt der Schnitt alles weg und
-        # der Bericht sagte "Niveau 99.925%" ueber null Trades. Genau die
-        # Bauart, die dieses Projekt schon zweimal bezahlt hat -- eine
-        # Auswertung ueber eine leere Menge druckt ein zuversichtliches
-        # Nichts.
-        cached = sorted({symbol for _, symbol in done})
-        print(f"Nur Bericht: {len(done)} Paare, {len(cached)} Märkte aus "
-              f"{args.cache.name}")
-        for (label, _symbol), trades in done.items():
-            if label in results:
-                results[label].extend(trades)
-        missing = [label for label in order if not results[label]]
-        if missing:
-            print(f"  ! ohne Zeilen im Speicher: {', '.join(missing)}")
+        order = collect_cached(done, results, order, args.cache.name)
     else:
         print(f"{len(symbols)} Märkte x {len(rules)} Regeln", flush=True)
         if done:

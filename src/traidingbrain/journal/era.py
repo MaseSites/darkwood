@@ -2,11 +2,23 @@
 
 **Der Anlass ist ein Fehler, der zweimal dasselbe rechnete.** Am 16.10.2026
 zeigte das Dashboard „28 Trades vorwärts · Mittel +0,294 R". Diese 28
-zerfielen in drei Konfigurationen:
+zerfielen in VIER Konfigurationen — nach beiden Feldern gruppiert, so wie
+`era_count` zählt:
 
-    n=18   +0.3938 R   Signatur LEER
-    n= 9   -0.0956 R   ...|0.08|M15|refused-v1
-    n= 1   +2.0029 R   ...refused-v1|portfolio|cap5
+    n=18   +0.3938 R   Signatur LEER                     Codestand LEER
+    n= 7   +0.1707 R   ...|0.08|M15|refused-v1           3edf58b5250c
+    n= 2   -1.0277 R   ...|0.08|M15|refused-v1           Codestand LEER
+    n= 1   +2.0029 R   ...refused-v1|portfolio|cap5      d8c7f12104e4
+
+Hier stand zuerst „drei Konfigurationen" mit den mittleren neun als EINER
+Zeile (-0.0956 R). Das war nach der Signatur allein gruppiert, und genau
+diese Verkürzung widerlegt dieses Modul: die neun teilen sich in sieben mit
+Codestand und zwei ohne, +0.1707 R gegen -1.0277 R. Eine Beschreibung der
+Epochen, die den Codestand weglässt, kann die Epochen nicht zählen.
+
+Die zwei Zeilen ohne Codestand bei vorhandener Signatur sind die Spur eines
+behobenen Fehlers: der Stempel wurde beim ersten Journalschreiben träge von
+der Platte gelesen und fehlte, wenn das fehlschlug.
 
 Unter `portfolio` riskiert ein Trade 120 USDT, unter der Vorgängerin 10. Ein
 Mittelwert darüber beantwortet keine Frage, und auf dem Bildschirm liest er

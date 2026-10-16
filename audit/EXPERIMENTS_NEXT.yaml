@@ -1836,17 +1836,70 @@ experiments:
       jetzt auffaellt, liegt an einer korrigierten Beschriftung und nicht an
       einer Suche -- das ist die guenstigere Herkunft, aber es bleibt eine
       Zelle, die aus den Daten aufgetaucht ist. Sie zaehlt als Vergleich.
-    status: angemeldet_nicht_gelaufen
+    status: gelaufen_gefallen
     angelegt: 2026-10-14
+    gelaufen: 2026-10-16
     declared_before_reading: false
+    ergebnis: >-
+      **Gefallen. Tor 1 haelt nicht.** Zwoelf Maerkte, zwei echte Pools durch
+      den Motor, Zwischenspeicher `data/arms_alle.jsonl`, Niveau 99.932 %
+      (73 Vergleiche):
+
+        ohne (original)   n=7335   -0.0129 R   [-0.067, +0.040]   -94.78 R
+        ohne Setup F      n=7331   -0.0068 R   [-0.062, +0.047]   -49.88 R
+        Differenz                  +0.0061 R   [-0.070, +0.082]
+        Replikation                +0.86x      (frueh +0.0066, spaet +0.0056)
+
+      Tor 1 (Intervall ohne Null): NEIN. Tor 2 (Replikation 0.5-2.0x): ja.
+      Beide waren vorab verlangt, also wird F NICHT abgeschaltet.
+
+      Rand wie vorab verlangt: Anteil unter -1R 60.3 % gegen 60.2 %,
+      schlimmster Einzelverlust -1.89 R in beiden, 5 %-Quantil -1.08 R in
+      beiden. Der Arm verschlechtert den Rand nicht -- er entscheidet ihn
+      auch nicht.
+    was_die_zahlen_sonst_noch_sagen: >-
+      **Die Vorab-Schaetzung traf.** Sie stand mit -0.0060 R je Trade im
+      Register, bevor der Arm lief; gemessen sind -0.0068 R. Abweichung
+      0.0008 R. Die Arithmetik "F's Verlust abziehen, Trades abziehen" war
+      also richtig, und die Ersatztrades, deren Erwartung die Schaetzung
+      ausdruecklich nicht kannte, haben sie nicht umgeworfen.
+
+      **Die Population aendert sich um 3.6 %, nicht um 0.9 %.** Nach
+      (Eroeffnungszeit, R) verglichen:
+
+        identisch in beiden   7200   98.2 % der Basis
+        nur in der Basis       135   entfallen
+        nur ohne F             131   neu, in freigewordenen Plaetzen
+
+      F hatte 68 Trades, es entfallen aber 135. Das Weglassen verschiebt die
+      Platz-Zeitachse, also aendern sich auch Trades, die nichts mit F zu tun
+      haben. Genau davor warnt der Arm in seiner eigenen Abnahme, und die
+      Groesse ist jetzt gemessen statt behauptet: der Platz-Effekt ist
+      DOPPELT so gross wie die Zahl der F-Trades.
+
+      **R total halbiert sich: -94.78 auf -49.88, also +44.91 R.** Das war
+      vorab als BERICHTETE Nebenkennzahl verlangt und ist keines der beiden
+      Tore. Es waere der bequemste Satz dieses Tages und darum einer, bei dem
+      Vorsicht angebracht ist: +44.91 R verteilt auf 266 geaenderte Trades
+      sind +0.169 R je geaendertem Trade -- aber geprueft wird der Mittelwert
+      ueber 7.331, und dort verduennt sich derselbe Effekt um den Faktor 27.
+      Das Intervall spannt deshalb die Null, und das ist kein Messfehler,
+      sondern die Frage, die das Tor stellt.
+    was_daraus_folgt: >-
+      F bleibt an. Kein Handelsparameter wird angefasst -- der Nachweis, den
+      `config/risk.yaml` verlangt, existiert nicht.
+
+      Die Teststaerke ist der eigentliche Befund und gilt fuer E14, E15 und
+      E17 genauso: jeder dieser Arme aendert einen kleinen Teil der
+      Population und wird am Mittelwert der ganzen gemessen. E18 ist deshalb
+      angelegt -- mit der Kennzahl auf der geaenderten Teilmenge, VORHER
+      erklaert, auf ungesehenen Maerkten.
     note: >-
       `declared_before_reading` steht auf FALSE, und das ist der ehrliche
       Wert: die Zelle entstand aus der Betrachtung der korrigierten
       Setup-Tabelle. Beide Tore sind auf F's eigenen Trades schon erfuellt,
-      bevor der Arm laeuft -- was der Arm messen soll, ist eine andere
-      Groesse (die Wirkung des Entfernens), und DIE ist noch nicht gesehen.
-
-      Der Lauf wartet, bis E14 die Maschine freigibt.
+      bevor der Arm lief -- was der Arm gemessen hat, ist eine andere
+      Groesse (die Wirkung des Entfernens), und die faellt.
 
   - id: E17
     title: "Die Zeitebene des Setups -- ein geordneter Verlauf, auf 47 ungesehenen Maerkten zu pruefen"
@@ -1858,6 +1911,146 @@ experiments:
         name: "Pool nur mit Setups, die auf H4 oder D1 feuern"
       - id: E17.2
         name: "Pool ohne M15-Setups (die untere Haelfte weggelassen)"
+    vorab_arithmetik_16_10_2026: >-
+      **Die Zelle, auf die alles zulaeuft, und ihr Preis.** Gerechnet aus
+      `data/replay_fills/` nach `fills.setup` und `fills.timeframe` -- nur
+      dort stehen Setup und Zeitebene zusammen, und die Laenge ist gegen
+      `journal` geprueft. Zwoelf GESEHENE Maerkte, 7.335 Trades, Stand
+      e218664b39c8. Das ist eine SCHAETZUNG und kein Ergebnis.
+
+      Setup A hat einen geordneten Verlauf ueber alle vier Ebenen, und die
+      Auszahlung ist dabei fest:
+
+        Ebene    n     Treffer  Gewinner Verlierer Schwelle Abstand  Mittel
+        D1     172      47.1 %   +1.487   -1.028    40.9 %  +6.2pp  +0.1565
+        H4     704      44.2 %   +1.478   -1.048    41.5 %  +2.7pp  +0.0682
+        H1    1309      41.0 %   +1.480   -1.054    41.6 %  -0.6pp  -0.0147
+        M15   1344      38.5 %   +1.482   -1.055    41.6 %  -3.0pp  -0.0774
+
+      Die Gewinnschwelle steht je Zelle aus IHRER Auszahlung, nicht aus einer
+      gerundeten Erzaehlung. `p * Gewinner + (1-p) * Verlierer` reproduziert
+      den Mittelwert ueber alle 20 Zellen auf 2.8e-16 R -- die Zerlegung
+      gilt, weil die Auszahlung fest ist, und nur deshalb.
+
+      **Nur A trägt den Verlauf.** B: M15 -0.0122, H1 -0.0148, H4 +0.0910,
+      D1 -0.5042 (31 Trades, 16.1 % Treffer) -- nicht geordnet, D1 ist die
+      schlechteste Zelle. G ist umgekehrt (H1 +0.1845 am besten, D1 -0.1561).
+      E ist grob geordnet, aber D1 hat FUENF Trades.
+
+      Die Kandidaten als Pool:
+
+        Pool                     n     R/Trade   Anteil   Differenz z. Basis
+        Basis (alles)         7335    -0.0129   100.0 %         --
+        nur A auf D1+H4        876    +0.0856    11.9 %     +0.0985
+        A+B auf D1+H4         1112    +0.0701    15.2 %     +0.0830
+        A+B+E+G auf D1+H4     1300    +0.0614    17.7 %     +0.0743
+        alles ohne M15        3718    +0.0121    50.7 %     +0.0250
+
+      **KORREKTUR vom selben Tag: der beste Kandidat liegt NICHT ueber der
+      Ziel-Anforderung.** Hier stand "+0.0856 R gegen +0.081 R, also
+      darueber". Die +0.081 R stammen aus 269 Chancen bis zur Frist, und die
+      269 aus `cap * 24 / MEDIAN(Haltedauer)`. Diese Formel ist falsch:
+      Little verlangt `cap * 24 / MITTEL(Haltedauer)`, und der Live-Verlauf
+      hat es entschieden (2.15 gemessene Abschluesse je Tag gegen 2.45 aus
+      dem Mittel und 4.90 aus dem Median). Siehe `learn/target.py:
+      sustainable_rate`.
+
+      Mit der richtigen Formel: Obergrenze 3.64 statt 17.9 Trades/Tag,
+      51 statt 269 Chancen bis zum 30.10., und das Ziel braucht
+      **+0.42 R je Trade**. "nur A auf D1+H4" steht bei +0.0856 R -- also
+      das Fuenffache zu wenig, nicht knapp darueber.
+
+      Was bestehen bleibt: die Differenz +0.0985 R liegt ueber der
+      Auflosungsgrenze (0.0349 R bei 59 Maerkten), der Arm ist also
+      entscheidbar, anders als E16. Und +0.0856 R waere der erste positive
+      Vorteil dieses Projekts ueberhaupt. Nur reicht er nicht fuer die
+      Frist, und das stand hier zwei Stunden lang anders.
+    was_der_durchsatz_dazu_sagt: >-
+      **Und hier faellt die Frist, nicht die Kante.** Die Wirkung je Trade
+      ist die Haelfte der Rechnung; die andere ist, wie oft der Pool feuert.
+      Gemessen ueber 21.596 Markt-Tage:
+
+        Basis            0.3397 Trades je Markt und Tag
+        nur A auf D1+H4  0.0406 Trades je Markt und Tag
+
+      +3.000 auf 12.000 sind +25 % und damit +25 R bei 1 % Risiko je Trade.
+      Der beste Kandidat braucht dafuer 292 Trades:
+
+        Maerkte  Trades/Tag  bis 30.10 (14 T)  Tage bis +25 R  ankommt
+            12        0.49           7              600       07.06.2028
+            59        2.39          34              122       15.02.2027
+            83        3.37          47               87       10.01.2027
+
+      Der Platzdeckel saettigt bei ~53 Maerkten (17.9 Trades/Tag). Bei 11.9 %
+      Signalanteil bindet aber das ANGEBOT und nicht der Deckel, also
+      skaliert die Rate linear mit den Maerkten und laeuft nicht an. Das ist
+      der Unterschied zu `the-deadline-is-not-reachable`: dort war die Kante
+      zu klein, hier ist sie gross genug und die GELEGENHEITEN fehlen.
+
+      **KORREKTUR: das Datum verschiebt sich, weil der Deckel bindet.** Die
+      Tabelle oben nimmt an, dass das ANGEBOT bindet, und skaliert die Rate
+      linear mit den Maerkten. Das gilt nur, solange die Rate unter der
+      Deckel-Obergrenze bleibt. Fuer den beschraenkten Pool ist die
+      Obergrenze `5 * 24 / 54.4 h = 2.21 Trades/Tag` (mittlere Haltedauer
+      54.4 h, Median 15.5 h -- obere Zeitebenen halten laenger). Das Angebot
+      erreicht sie bei 54 Maerkten, und darueber hinaus aendert sich nichts
+      mehr:
+
+        Maerkte  Angebot  Deckel  es gilt  Tage bis +25 R  ankommt
+            12     0.49    2.21     0.49        599        06.06.2028
+            59     2.39    2.21     2.21        132        25.02.2027
+            83     3.37    2.21     2.21        132        25.02.2027
+
+      **Die Antwort auf "wie machen wir wirklich Geld" ist damit: ein auf D1
+      und H4 beschraenkter A-Pool erreicht 15.000 um den 25.02.2027, und
+      mehr als 54 Maerkte helfen nicht.** Vier Monate nach der Frist, und
+      nur falls E17 auf den 56 ungesehenen Maerkten haelt.
+
+      Der Deckel ist dabei der einzige Hebel, der uebrig bleibt -- aber er
+      ist kleiner, als er aussieht. Zehn Plaetze liessen 4.41 Trades/Tag zu,
+      doch dann bindet wieder das ANGEBOT: 0.0406 * 83 = 3.37/Tag, also 87
+      Tage und der 10.01.2027. Fuenf Wochen gewonnen, nicht vier Monate.
+
+      Hier stand zuerst "das Datum auf etwa den 02.12.2026" -- gerechnet mit
+      4.41/Tag, also mit der Deckel-Obergrenze als Rate. Genau der Fehler,
+      den dieser Abschnitt eine Zeile vorher beschreibt: eine Obergrenze ist
+      keine Rate. Es gilt immer das Minimum aus beidem.
+
+      Und `max_open_positions` folgt aus `floor(0.05/0.010)`, also aus dem
+      Gesamtrisiko-Deckel. Den zu heben ist eine Risikoentscheidung und kein
+      Durchsatzproblem. Sie wird hier NICHT getroffen.
+    was_diese_schaetzung_NICHT_weiss: >-
+      **Sie filtert eine bestehende Trade-Liste, und genau das hat E16 am
+      16.10.2026 widerlegt.** Setups konkurrieren um die fuenf Plaetze. Ein
+      Pool, der M15 und H1 weglaesst, hat deshalb nicht 11.9 % der Trades --
+      er hat mehr, weil Plaetze frei werden und die oberen Ebenen oefter
+      zum Zug kommen. E16 hat die Groesse dieses Effekts gemessen: beim
+      Entfernen EINES Setups mit 68 Trades aenderten sich 135.
+
+      Zwei Folgen, beide in derselben Richtung ungewiss:
+        * 0.0406 Trades je Markt und Tag ist eine UNTERGRENZE. Der Durchsatz
+          wird hoeher sein, das Datum also frueher.
+        * +0.0856 R gilt fuer die Trades, die im unbeschraenkten Pool
+          tatsaechlich entstanden sind. Die hinzukommenden Rand-Trades haben
+          eine unbekannte Erwartung, und sie koennte schlechter sein -- sie
+          entstehen an Stellen, wo vorher ein anderes Setup schneller war.
+
+      Darum laeuft der Arm durch den MOTOR und nicht durch einen Filter. Was
+      hier steht, ist der Rahmen, innerhalb dessen das Ergebnis liegen muss,
+      damit es ueberhaupt plausibel ist -- nicht das Ergebnis.
+    datenstand_16_10_2026: >-
+      **Die Voraussetzung ist erfuellt, der Arm ist nur rechenblockiert.**
+      Alle 56 ungesehenen Maerkte aus `data/unseen_markets.txt` haben
+      Kerzenverzeichnisse unter `data/ohlcv/`, und zwar nicht nur Namen:
+      jeweils 35-36 Parquet-Dateien ueber alle sechs Ebenen
+      (D1/H1/H4/M1/M15/W1), 42-62 MB -- vergleichbar mit BTCUSDT (36 Dateien,
+      69.6 MB). Keiner ist leer. Geprueft wurde die TIEFE und nicht die
+      Existenz, weil "ein Verzeichnis sind keine Kerzen" in diesem Projekt
+      schon einmal einen Arm fuer einen Tag blockiert hat.
+
+      Die zwoelf vorhandenen `replay_fills/`-Dateien tragen den Stempel
+      e218664b39c8 und muessen mit `--force` neu laufen; der laufende Stand
+      ist d8c7f12104e4.
     was_ich_VORHER_schon_gesehen_habe: >-
       Alles unten stammt aus `data/replay_fills/` -- 7.335 Trades, zwoelf
       Maerkte, Stand e218664b39c8 -- und wurde am 15.10.2026 gesehen, BEVOR
@@ -2096,7 +2289,47 @@ geschlossene_datenfamilien:
     dass ein kuenftiges Positiv echt ist.
 
 
+# Was dieser Apparat ueberhaupt auflosen kann -- gemessen am 16.10.2026.
+#
+# E16 lieferte +0.0061 R bei einer Halbbreite von 0.0774 R. Statt daraus
+# "mehr Maerkte" zu folgern, wurde die Rechnung rueckwaerts gemacht: der
+# Blockbootstrap desselben Berichts, auf hypothetische Stichprobengroessen
+# skaliert (Halbbreite ~ 1/sqrt(n)).
+#
+#   Maerkte   Trades    kleinste nachweisbare Wirkung
+#       12      7'335        0.0774 R
+#       59     36'064        0.0349 R
+#       83     50'734        0.0294 R
+#
+# Zwei Folgerungen, und die erste widerlegt eine Vermutung, die hier haette
+# stehen koennen:
+#
+# 1. **Die Bonferroni-Korrektur ist NICHT der Engpass.** Ihr Preis ist
+#    logarithmisch und laengst bezahlt: 1 Vergleich 0.0463 R, 20 Vergleiche
+#    0.0673 R (+45 %), 67 Vergleiche 0.0772 R, 73 Vergleiche 0.0774 R,
+#    74 Vergleiche 0.0777 R. Von 73 auf 74 kostet 0.4 %, von 73 auf 150
+#    kostet 6.6 %. Eine Zelle anzumelden ist billig; die Verteuerung lag
+#    bei den ersten zwanzig. Das Argument "die Korrektur ist zu streng"
+#    ist damit erledigt -- auch ohne Korrektur waere die Halbbreite 0.0463 R
+#    und E16 fiele.
+#
+# 2. **Der Engpass ist die Streuung je Trade.** +0.0061 R aufzuloesen
+#    braeuchte das 160-fache an Trades: 1'175'000 Trades, etwa 1'922
+#    Maerkte. Das ist nicht erreichbar, und kein Arm wird dafuer gerechnet.
+#
+# Der guenstige Teil: **das Ziel liegt ueber der Grenze.** Es braucht
+# +0.081 R je Trade (A+B), und schon zwoelf Maerkte loesen 0.0774 R auf.
+# Der Apparat ist also fuer genau die Wirkungsgroesse ausreichend, die
+# zaehlt, und unzureichend fuer die, die es nicht aendern wuerde.
+#
+# Daraus die Regel unten: Rechenzeit nur fuer Arme, deren plausible Wirkung
+# ueber der Grenze liegt. Nicht weil das Anmelden teuer waere, sondern weil
+# das Ergebnis sonst unentscheidbar herauskommt, egal wie lange gerechnet
+# wird. E14, E15 und E17 bestehen diese Pruefung: der Rueckgabe-Befund
+# (Durchschnittstrade erreicht +1.1840 R, endet bei -0.0129 R) laesst
+# Wirkungen weit ueber 0.0774 R zu.
 rejection_rules:
+  - "Ein Arm, dessen plausible Wirkung unter der Auflosungsgrenze liegt (0.0774 R bei zwoelf Maerkten, 0.0349 R bei 59), wird nicht gerechnet -- das Ergebnis waere unentscheidbar, nicht knapp."
   - "Ein 95%-Intervall ohne Null bei 46 angesehenen Vergleichen ist kein Ergebnis."
   - "Besser als der Champion (-0.0340 R) ist nicht profitabel."
   - "Eine Wiederholung ausserhalb des Bandes 0.5-2.0x faellt. Das Band wird nach Kenntnis eines Kandidatenergebnisses NICHT geaendert."

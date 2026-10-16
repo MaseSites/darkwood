@@ -56,6 +56,7 @@ from traidingbrain.learn.target import (
     required_hit_rate,
     required_mean_r,
     shortfall_from_variance,
+    sustainable_rate,
 )
 from traidingbrain.live.paperstate import PaperStateStore
 from traidingbrain.reporting.intervals import block_bootstrap
@@ -503,24 +504,39 @@ def throughput(
     cap = config.risk.limits.max_open_positions
     if not holds_h or days <= 0:
         return 0.0
-    median_h = float(np.median(holds_h))
-    if median_h <= 0:
+    # `sustainable_rate` und nicht die Formel hier: sie stand hier mit
+    # `np.median`, waehrend der Docstring oben und die Beschriftung
+    # darunter beide "mittlere Haltedauer" sagten. Little verlangt den
+    # Mittelwert, und der Live-Verlauf hat es entschieden -- die
+    # Begruendung mit den Zahlen steht in `learn/target.py`, damit sie
+    # getestet werden kann.
+    ceiling_per_day = sustainable_rate(slots=cap, holds_h=holds_h)
+    if ceiling_per_day <= 0:
         return 0.0
-    ceiling_per_day = cap * 24.0 / median_h
+    mean_h = float(np.mean(holds_h))
 
     growth = target / equity
     print("\n" + "=" * 78)
     print("Was mehr Trades aendern -- und was nicht")
     print(
-        f"  Deckel {cap} Plaetze, mittlere Haltedauer {median_h:.1f} h "
-        f"(Replay, n={len(holds_h)})\n"
+        f"  Deckel {cap} Plaetze, mittlere Haltedauer {mean_h:.1f} h "
+        f"(Median {float(np.median(holds_h)):.1f} h, Replay, n={len(holds_h)})\n"
         f"  -> hoechstens {ceiling_per_day:.1f} Trades/Tag aus dem DECKEL allein"
     )
     print(f"  Gemessener Takt vorwaerts: {per_day:.2f} Trades/Tag")
     if signal_per_day > 0:
+        # Welches der beiden bindet, wird VERGLICHEN und nicht behauptet.
+        #
+        # Hier stand fest "das bindet, nicht der Deckel". Das war unter der
+        # Median-Formel richtig (Obergrenze 17.9 gegen Angebot 4.09) und ist
+        # mit dem Mittelwert falsch: die Obergrenze faellt auf 3.64, also
+        # bindet der DECKEL. Ein Satz, der eine Rangfolge behauptet, statt
+        # sie zu rechnen, haelt eine Korrektur der Zahlen nicht aus.
+        enger = "der DECKEL" if ceiling_per_day < signal_per_day else "der SIGNALGEBER"
         print(
-            f"  Was der SIGNALGEBER hergibt: {signal_per_day:.2f} Trades/Tag "
-            f"-- das bindet, nicht der Deckel"
+            f"  Was der SIGNALGEBER hergibt: {signal_per_day:.2f} Trades/Tag\n"
+            f"  -> es bindet {enger} "
+            f"(Minimum aus {ceiling_per_day:.2f} und {signal_per_day:.2f})"
         )
     # Warum die Obergrenze keine Prognose ist, und zwar aus zwei Gruenden.
     #
@@ -530,10 +546,15 @@ def throughput(
     # Deckel ZULAESST, nicht was entsteht.
     #
     # Zweitens ist die Haltedauer hier die der REPLAY-Trades. Die
-    # Vorwaertstrades hielten laenger (Median rund 9,75 h gegen 5,0 h), was
-    # die Obergrenze halbiert. Beide Zahlen stehen da, statt dass eine fuer
-    # beides herhaelt -- und die Replay-Zahl ist die optimistischere, also
-    # die, die eine Obergrenze nicht beschoenigt.
+    # Vorwaertstrades sind KUERZER, nicht laenger: Mittel 19.6 h gegen 33.0 h
+    # im Replay (n=28 gegen n=7.335). Die Replay-Zahl ist damit die
+    # vorsichtigere Obergrenze, und genau deshalb steht sie hier.
+    #
+    # Hier stand vorher "die Vorwaertstrades hielten laenger (Median rund
+    # 9,75 h gegen 5,0 h)". Beide Zahlen waren Mediane, und die Richtung des
+    # Vergleichs kehrt sich bei den Mittelwerten um -- weil die Replay-
+    # Verteilung den schwereren Schwanz hat (90 %-Quantil bei Setup B auf D1:
+    # 1.831 h).
     print(
         "  (Obergrenze = was der Deckel zulaesst, nicht was entsteht: der\n"
         "   Signalausloeser und der Kostendeckel binden unabhaengig davon.)\n"
