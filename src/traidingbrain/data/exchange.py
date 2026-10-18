@@ -38,7 +38,67 @@ MAX_PAGE = 1000
 #: symbol. Deliberately conservative: overstating it moves the computed
 #: liquidation price closer to entry, which makes the sizing more cautious, not
 #: less.
+#:
+#: **Dies ist die einzige Zahl in `fetch_symbol_spec`, die ersetzt werden darf**,
+#: und zwar weil ihre Fehlerrichtung argumentiert ist. Alles andere hält jetzt
+#: den Lauf an; siehe `UnpublishedSpecError` und
+#: `tests/test_symbol_spec_is_not_invented.py`.
 DEFAULT_MAINTENANCE_MARGIN_RATE = 0.005
+
+#: Ersatz für den Hebeldeckel, den Binance über ccxt **nicht** nennt.
+#:
+#: Gemessen am 18.10.2026: `limits.leverage.max` ist für alle zwölf aktiven
+#: USDⓈ-M-Perpetuals `None`. Binance veröffentlicht die Hebelstufen nur über
+#: `/fapi/v1/leverageBracket`, und das ist ein signierter Endpunkt -- diese
+#: Direktive verbietet das Lesen von Zugangsdaten, also ist die Zahl hier nicht
+#: beschaffbar.
+#:
+#: Die Richtung ist argumentiert, wie bei der Wartungsmarge: 25 liegt **unter**
+#: jedem echten Deckel (Binance BTC 125, ETH 100, Alts 50--75; Bybit BTC 100),
+#: klemmt uns also ein, statt einen unmöglichen Hebel zuzulassen.
+#:
+#: **Und heute entscheidet er nichts.** `risk/leverage.py:99` nimmt
+#: `min(1/puffer, config.max, spec.max_leverage)`, und `config/risk.yaml` setzt
+#: `leverage.max: 10.0`. Damit ist 25 dominiert. Dass das so bleibt, hält
+#: `tests/test_symbol_spec_is_not_invented.py` fest -- wird der
+#: Konfigurationsdeckel über diesen Wert gehoben, fängt der Ersatz an zu
+#: binden, und das soll laut passieren und nicht still.
+DEFAULT_MAX_LEVERAGE = 25.0
+
+
+class UnpublishedSpecError(RuntimeError):
+    """Die Börse hat eine Handelsregel nicht genannt, die hier gebraucht wird.
+
+    Bis zum 18.10.2026 wurde an dieser Stelle ersetzt: eine fehlende Takergebühr
+    wurde 0.00055, eine fehlende Preisstufe 0.01. Beide Zahlen sind **Bybits**
+    Werte, und beide wären auf jeder anderen Börse still falsch gewesen.
+
+    Dass das Ersetzen hier nicht reicht, liegt am Pfad: `fetch_symbol_spec`
+    speist `scripts/run_backtest.py` und `scripts/papertrade.py`. In einer
+    Simulation lehnt niemand eine Order wegen falscher Rundung ab -- ein
+    geratener `price_tick` rundet jeden Preis still falsch, über den ganzen
+    Lauf, und das Ergebnis sieht genauso aus wie ein richtiges.
+    """
+
+
+def _published(
+    value: object, *, field: str, symbol: str, venue_name: str
+) -> float:
+    """Eine Zahl, die die Börse wirklich genannt hat.
+
+    `is None` und nicht `or`: in Python ist `0.0` falsch, und eine Börse mit
+    einer Gebühr von **null** hätte unter `or` Bybits 0.055 % untergeschoben
+    bekommen. Das ist derselbe Defekt in der Gegenrichtung -- er erfindet
+    Kosten, wo keine genannt wurden.
+    """
+    if value is None:
+        raise UnpublishedSpecError(
+            f"{venue_name} nennt {field} für {symbol} nicht. Dieser Wert wird "
+            f"nicht ersetzt: eine geratene Handelsregel ist in der Simulation "
+            f"unsichtbar falsch. Entweder die Marktbeschreibung neu laden oder "
+            f"das Symbol aus dem Universum nehmen."
+        )
+    return float(value)  # type: ignore[arg-type]
 
 _RETRYABLE = (
     ccxt.NetworkError,
@@ -217,6 +277,12 @@ class MarketData:
 
         Hardcoding these is how orders get rejected in production for reasons that
         never showed up in a test.
+
+        **Und bis zum 18.10.2026 tat genau diese Funktion es trotzdem.** Jedes
+        Feld hatte einen `or`-Ausweichwert mit Bybits Zahlen darin. Jetzt hält
+        ein nicht genanntes Feld den Lauf an (`UnpublishedSpecError`); die
+        einzige Ausnahme ist `maintenance_margin_rate`, deren Ersatz die
+        Fehlerrichtung argumentiert.
         """
         self._load_markets()
         market = self.exchange.market(self.venue.symbol(symbol))
@@ -226,15 +292,25 @@ class MarketData:
         cost_limits = limits.get("cost") or {}
         leverage_limits = limits.get("leverage") or {}
 
+        def gemeldet(value: object, field: str) -> float:
+            return _published(
+                value, field=field, symbol=symbol, venue_name=self.venue.name
+            )
+
         return SymbolSpec(
             symbol=symbol,
-            price_tick=float(precision.get("price") or 0.01),
-            qty_step=float(precision.get("amount") or 0.001),
-            min_qty=float(amount_limits.get("min") or 0.001),
-            min_notional=float(cost_limits.get("min") or 0.0),
-            max_leverage=float(leverage_limits.get("max") or 25.0),
-            taker_fee=float(market.get("taker") or 0.00055),
-            maker_fee=float(market.get("maker") or 0.0002),
+            price_tick=gemeldet(precision.get("price"), "price_tick"),
+            qty_step=gemeldet(precision.get("amount"), "qty_step"),
+            min_qty=gemeldet(amount_limits.get("min"), "min_qty"),
+            min_notional=gemeldet(cost_limits.get("min"), "min_notional"),
+            # Der eine Deckel mit begründetem Ersatz -- siehe
+            # `DEFAULT_MAX_LEVERAGE`. Binance nennt ihn nicht, und er ist von
+            # `risk.leverage.max` dominiert.
+            max_leverage=float(
+                leverage_limits.get("max") or DEFAULT_MAX_LEVERAGE
+            ),
+            taker_fee=gemeldet(market.get("taker"), "taker_fee"),
+            maker_fee=gemeldet(market.get("maker"), "maker_fee"),
             maintenance_margin_rate=_maintenance_margin_rate(market),
         )
 
