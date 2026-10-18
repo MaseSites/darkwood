@@ -146,6 +146,11 @@ def switch(tmp_path: Path) -> KillSwitch:
 
 
 def executor(exchange: FakeBybit, log: IntentLog, switch: KillSwitch, **kwargs: Any):
+    # `venue_name` ist seit Phase 2 Pflicht: der Vorgabewert war "bybit" und
+    # die beiden Produktionsaufrufer uebergaben nichts, waehrend sie die
+    # Preisquelle aus der Konfiguration bauten -- also Binance. Hier
+    # ausdruecklich, damit der Test dieselbe Angabe macht wie der Betrieb.
+    kwargs.setdefault("venue_name", "bybit")
     return BybitExecutor("k", "s", log, switch, exchange=exchange, **kwargs)
 
 

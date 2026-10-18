@@ -42,6 +42,7 @@ from traidingbrain.domain.enums import Side
 from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.domain.proposal import ExecutionIntent, Position, TradeProposal
 from traidingbrain.execution.intent import IntentLog, IntentState
+from traidingbrain.execution.venuebinding import EXECUTABLE_VENUES
 from traidingbrain.risk.limits import KillSwitch
 
 #: Clock drift beyond this makes signed requests fail unpredictably.
@@ -88,10 +89,27 @@ class BybitExecutor:
         *,
         testnet: bool = True,
         allow_live: bool = False,
-        venue_name: str = "bybit",
+        venue_name: str,
         rate_limit_ms: int = 120,
         exchange: Any | None = None,
     ) -> None:
+        # `venue_name` hatte den Vorgabewert "bybit", und die beiden
+        # Produktionsaufrufer (run_dashboard.py:144, run_live.py:230) uebergaben
+        # nichts -- waehrend dieselbe Funktion die Preisquelle aus
+        # config.engine.exchange.name baute, also Binance. Eine Vorgabe, die
+        # eine andere Antwort gibt als die Konfiguration, ist kein Vorgabewert,
+        # sondern ein zweiter unsichtbarer Konfigurationsort.
+        if venue_name not in EXECUTABLE_VENUES:
+            raise ValueError(
+                f"Auf {venue_name!r} darf dieser Build nicht ausfuehren. "
+                f"Ausfuehrbar: {sorted(EXECUTABLE_VENUES)}. Der Grund sind die "
+                f"Zugangsdaten: es gibt nur BybitCredentials "
+                f"(config/settings.py:461), eingebunden als Secrets.bybit. Ein "
+                f"Executor fuer eine andere Boerse haette keinen "
+                f"Zugangsdatenpfad -- die Schluessel einer Boerse gingen an "
+                f"eine andere."
+            )
+
         if not testnet and not allow_live:
             # Two independent signals are required to trade real money. A single
             # config value flipped by accident -- or carried over from a copied

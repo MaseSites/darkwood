@@ -243,6 +243,8 @@ def _arm_executor(args, config, secrets, intents, kill_switch):
             intents,
             kill_switch,
             testnet=secrets.bybit.testnet,
+            # Siehe run_dashboard.py: ausdruecklich statt aus einem Vorgabewert.
+            venue_name="bybit",
         )
         print(f"  preflight: {executor.preflight().describe()}")
     except UnsafeConfigurationError as exc:

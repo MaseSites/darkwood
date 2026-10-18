@@ -522,9 +522,14 @@ class DerivativesStore:
                 )
             return self._empty(kind)
 
-        loaded = pq.read_table(legacy).to_pandas()
-        loaded["venue"] = herkunft
-        return loaded[_schema_for(kind).names]
+        geerbt: pd.DataFrame = pq.read_table(legacy).to_pandas()
+        # Die Venue kommt aus dem Manifest, nicht aus der Datei -- Schema v1
+        # hat keine Spalte dafuer. Sie wird im Speicher ergaenzt, damit der
+        # Aufrufer dieselbe Form bekommt wie bei v2; die Datei bleibt
+        # unberuehrt.
+        geerbt["venue"] = herkunft
+        beschnitten: pd.DataFrame = geerbt[_schema_for(kind).names]
+        return beschnitten
 
     # -- Das Manifest ------------------------------------------------------- #
 

@@ -37,9 +37,17 @@ from traidingbrain.config.settings import load_secrets
 from traidingbrain.data.exchange import MarketData
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import SymbolSpec
+from traidingbrain.domain.proposal import Position
 from traidingbrain.execution.diagnose import diagnose
 from traidingbrain.execution.intent import IntentLog
 from traidingbrain.execution.order import BybitExecutor, UnsafeConfigurationError
+from traidingbrain.execution.policy import policy_for
+from traidingbrain.execution.venuebinding import (
+    Environment,
+    IncoherentVenueError,
+    MainnetNotApprovedError,
+    VenueBinding,
+)
 from traidingbrain.journal.history import closed_trades
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.journal.version import run_signature
@@ -130,6 +138,45 @@ def _arm(services: Services) -> bool:
     than the one that was asked for is how someone ends up believing a
     confirmation reached the exchange when it did not.
     """
+    # ERST die Bindung, DANN die Schluessel.
+    #
+    # Reihenfolge mit Absicht: passen die Boersen nicht zusammen, ist das keine
+    # Frage der Zugangsdaten, und eine Meldung ueber fehlende Schluessel wuerde
+    # den eigentlichen Grund verdecken.
+    #
+    # Mit den heutigen Daten BRICHT das hier ab, und das ist der Zweck: alle
+    # Kerzen kommen von Binance (config/settings.yaml), ausfuehrbar ist nur
+    # Bybit (es gibt nur BybitCredentials). Vorher lief genau diese Lage
+    # stillschweigend -- Binance-Kerzen, Binance-Driftpruefung,
+    # Bybit-Instrumentregeln, Bybit-Order. Siehe audit/P0A_LEGACY_FREEZE.md.
+    config = services.config
+    try:
+        binding = VenueBinding.executable(
+            data_venue=config.engine.exchange.name,
+            price_venue=config.engine.exchange.name,
+            # Die Preisprobe gehoert auf das MAINNET, auch wenn die Order ins
+            # Testnet geht: sie soll gegen den Markt pruefen, den es gibt.
+            # Vorher stand hier `testnet=secrets.bybit.testnet` -- die
+            # Ausfuehrungsumgebung einer anderen Boerse.
+            price_environment=Environment.MAINNET,
+            instrument_spec_venue="bybit",
+            execution_venue="bybit",
+            execution_environment=(
+                Environment.TESTNET if load_secrets().bybit.testnet
+                else Environment.MAINNET
+            ),
+            policy=policy_for("bybit", "safety-first"),
+        )
+    except (IncoherentVenueError, MainnetNotApprovedError) as exc:
+        print(f"\n  refusing to arm: {exc}\n", file=sys.stderr)
+        print(
+            "  Das Dashboard laeuft ohne --execute weiter und zeigt Vorschlaege.\n",
+            file=sys.stderr,
+        )
+        return False
+    services.binding = binding
+    print(f"  binding: {binding.fingerprint()}")
+
     secrets = load_secrets()
     if not secrets.bybit.is_configured:
         print(
@@ -139,7 +186,6 @@ def _arm(services: Services) -> bool:
         )
         return False
 
-    config = services.config
     try:
         executor = BybitExecutor(
             secrets.bybit.api_key.get_secret_value(),
@@ -147,6 +193,10 @@ def _arm(services: Services) -> bool:
             IntentLog(config.engine.paths.data_dir / "intents.sqlite"),
             services.kill_switch,
             testnet=secrets.bybit.testnet,
+            # Ausdruecklich, nicht aus einem Vorgabewert. Die Boerse der
+            # Zugangsdaten ist Bybit (Secrets.bybit), also ist sie auch die
+            # Boerse der Ausfuehrung -- und `BybitExecutor` lehnt jede andere ab.
+            venue_name="bybit",
         )
         print(f"  preflight: {executor.preflight().describe()}")
     except UnsafeConfigurationError as exc:
@@ -168,9 +218,15 @@ def _arm(services: Services) -> bool:
     services.executor = executor
     # Read-only and credential-free: the price this checks against must come from
     # the public market, not from the account that is about to trade.
+    # `testnet=False`, weil die Preisprobe gegen den echten Markt gehoert --
+    # dieselbe Begruendung, die run_live.py:92 schon gibt ("Prices come from
+    # mainnet"). Vorher stand hier `secrets.bybit.testnet`, also die
+    # Ausfuehrungsumgebung einer ANDEREN Boerse: mit testnet=true und
+    # venue=binance leitet venue.build auf demo-dapi.binance.com, und die
+    # Driftpruefung verglich gegen Demo-Preise.
     services.prices = MarketData(
-        venue_name=config.engine.exchange.name,
-        testnet=secrets.bybit.testnet,
+        venue_name=binding.price_venue,
+        testnet=binding.price_environment is Environment.TESTNET,
         rate_limit_ms=config.engine.exchange.rate_limit_ms,
     )
     for symbol in config.engine.symbols.active:
@@ -235,11 +291,46 @@ def main(argv: list[str] | None = None) -> int:
     # Fensterschnitte in `realised_today` haengen daran, und mit 0 liegt
     # JEDER Trade ausserhalb jedes Fensters.
     journal = JournalStore(services.config.engine.paths.data_dir / "journal.sqlite")
-    services.account = AccountState.from_history(
-        equity=services.config.engine.simulation.initial_equity,
-        history=closed_trades(journal, signature=run_signature(services.config)),
-        now_ms=SystemClock().now_ms(),
-    )
+
+    def _konto_jetzt() -> AccountState:
+        """Der Kontozustand bei JEDER Pruefung neu -- nicht einmal beim Start.
+
+        Hier stand eine einmalige Zuweisung. Zwei Folgen, beide gemessen in
+        `tests/test_confirm_path_is_a_gate.py`:
+
+        * `open_positions` wurde nicht uebergeben, also war die Liste leer und
+          die beiden Positionspruefungen rechneten `0 >= 5` und `0 >= 1`. Sie
+          konnten nicht ausloesen. Genau der Defekt, den `live/book.py` fuer
+          den Papierhaendler beschreibt und behoben hat.
+        * `now_ms` war der Startzeitpunkt. `realised_today` schneidet mit
+          `cutoff = now_ms - DAY_MS`, also wuchs das "Tagesfenster" zu
+          `[T0-24h, unendlich)` und sammelte jeden spaeteren Verlust ein.
+          Gemessen: ein Verlust zehn Tage nach dem gefrorenen Zeitpunkt zaehlt
+          als "heute". Das irrt auf die sichere Seite, ist aber falsch.
+
+        Offene Positionen kommen vom Executor, wenn scharf geschaltet ist.
+        Unarmiert bleibt die Liste leer -- unbedenklich, weil unarmiert nichts
+        gesendet werden kann, und `_assert_trading_allowed` blockt ohnehin,
+        wenn gar kein Zustand da ist.
+        """
+        offen: list[Position] = []
+        if services.executor is not None:
+            try:
+                offen = list(services.executor.open_positions())
+            except Exception as exc:
+                # Ein Fehler hier darf NICHT als "keine Positionen" gelesen
+                # werden: das waere wieder `0 >= 5`. Stattdessen kein Zustand,
+                # und das Tor blockt.
+                print(f"  offene Positionen nicht abrufbar: {exc}", file=sys.stderr)
+                raise
+        return AccountState.from_history(
+            equity=services.config.engine.simulation.initial_equity,
+            history=closed_trades(journal, signature=run_signature(services.config)),
+            now_ms=SystemClock().now_ms(),
+            open_positions=offen,
+        )
+
+    services.account_provider = _konto_jetzt
 
     if args.execute and not _arm(services):
         return 2

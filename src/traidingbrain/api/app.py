@@ -25,6 +25,7 @@ longer exists.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -67,6 +68,7 @@ from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Timeframe
 from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.domain.proposal import FactorView, ProposalAdjustment, TradeProposal
+from traidingbrain.execution.venuebinding import VenueBinding
 from traidingbrain.journal.record import Source
 from traidingbrain.proposals.builder import BuildFailure, ProposalBuilder, describe
 from traidingbrain.proposals.store import ProposalStore
@@ -149,6 +151,22 @@ class Services:
     executor: Executor | None = None
     account: AccountState | None = None
 
+    account_provider: Callable[[], AccountState] | None = None
+    """Baut den Kontozustand bei JEDER Abfrage neu.
+
+    Hat Vorrang vor `account`. Ein eingefrorener Zustand ist kein
+    Boersenzustand -- siehe `account_state()`.
+    """
+
+    binding: VenueBinding | None = None
+    """Die geprüfte Venue- und Umgebungsbindung dieses Laufs.
+
+    `None`, solange nicht scharf geschaltet ist — ohne Ausführung gibt es
+    keine Bindung zu prüfen. Gesetzt von `run_dashboard.py:_arm()`, und zwar
+    bevor die Zugangsdaten geladen werden: passen die Börsen nicht zusammen,
+    ist das keine Frage der Schlüssel.
+    """
+
     def spec_for(self, symbol: str) -> SymbolSpec:
         """Instrument rules, or a 404 -- for the paths that cannot work without them.
 
@@ -174,6 +192,20 @@ class Services:
         return self.specs.get(symbol)
 
     def account_state(self) -> AccountState:
+        """Der Kontozustand -- zur PRUEFZEIT geholt, nicht beim Start.
+
+        `run_dashboard.py:238` setzte `services.account` einmal beim Start,
+        mit gefrorenem `now_ms` und ohne `open_positions`. Die beiden
+        Positionspruefungen rechneten damit `0 >= 5` und `0 >= 1` und konnten
+        nicht ausloesen; die rollenden Verlustfenster (`limits.py:165`,
+        `cutoff = now_ms - DAY_MS`) wuchsen unbegrenzt.
+
+        `account_provider` hat Vorrang. Das statische Feld bleibt fuer Tests
+        und fuer Pfade, die noch keinen Anbieter setzen -- aber wer einen
+        Anbieter hat, bekommt frische Zahlen.
+        """
+        if self.account_provider is not None:
+            return self.account_provider()
         if self.account is None:
             raise HTTPException(503, "no account state available yet")
         return self.account
@@ -386,7 +418,19 @@ def create_app(services: Services) -> FastAPI:
         trade nobody agreed to.
         """
         proposal = _require(services, proposal_id)
-        drift = _assert_priced_against_now(services, proposal)
+
+        # **Das Tor, nicht die Anzeige.**
+        #
+        # Hier stand nur die Driftpruefung. Tagesverlust, Wochenverlust,
+        # Abkuehlung nach Verlustserie, Platzdeckel und Symboldeckel waren auf
+        # dem Weg vom Vorschlag zur Order KEIN Tor -- `limits.check` lief nur
+        # in `/api/state` fuer die Anzeige (Zeile 315).
+        #
+        # Die Tokenausstellung ist der Moment, in dem das Senden autorisiert
+        # wird, also gehoert der vollstaendige Guard hierher. Und er laeuft
+        # gegen einen Kontozustand, der JETZT entsteht: `account_state()` holt
+        # ihn ueber `account_provider`.
+        drift = _assert_sendable(services, proposal)
 
         issued = services.store.issue_token(
             proposal, services.config.risk.execution.confirmation_token_ttl_seconds
@@ -804,6 +848,55 @@ def _assert_priced_against_now(services: Services, proposal: TradeProposal) -> f
             f"than confirming",
         )
     return drift
+
+
+def _assert_sendable(services: Services, proposal: TradeProposal) -> float | None:
+    """Ein Eingang fuer das ganze Tor. Gibt die gemessene Drift zurueck.
+
+    `None`, wenn kein Preis zu lesen war UND kein Executor scharf ist --
+    unbekannt ist nicht dasselbe wie unveraendert, und `_assert_priced_against_now`
+    unterscheidet die beiden Faelle schon. Der Rueckgabetyp traegt das, statt
+    es zu glaetten.
+
+    Zwei Pruefungen in einer Funktion, weil sie zusammen die Frage
+    beantworten "darf dieser Vorschlag jetzt autorisiert werden": darf das
+    KONTO handeln, und ist der PREIS noch der, gegen den gerechnet wurde. Wer
+    nur eine von beiden aufruft, hat das Tor halb offen -- und genau so war es
+    bisher, nur die Drift.
+    """
+    _assert_trading_allowed(services, proposal)
+    return _assert_priced_against_now(services, proposal)
+
+
+def _assert_trading_allowed(services: Services, proposal: TradeProposal) -> None:
+    """Jede Kontogrenze, gegen einen frisch geholten Zustand.
+
+    Fail-closed in beide Richtungen: eine verletzte Grenze blockt, UND ein
+    fehlender Kontozustand blockt. Ohne Zustand gibt es keine Pruefung, und
+    keine Pruefung darf nicht als "erlaubt" gelesen werden -- das ist derselbe
+    Fehler wie eine leere Positionsliste, die `0 >= 5` rechnet.
+
+    `limits.check` prueft den Kill-Switch als erstes und allein hinreichend
+    (`limits.py:204`), also deckt dieser eine Aufruf auch ihn ab.
+    """
+    # Der Kill-Switch ausdruecklich, nicht ueber `limits`.
+    #
+    # `RiskLimits` prueft ihn nur, wenn er beim Bauen uebergeben wurde
+    # (`limits.py:204`, `self.kill_switch is not None`) -- und in
+    # `run_dashboard.py` wird er es nicht. Dieses Tor darf nicht davon
+    # abhaengen, wie weit oben jemand ein Objekt zusammengesetzt hat.
+    # `confirm()` prueft ihn schon direkt (Zeile 405); ein Token, das unter
+    # gezogenem Schalter ausgestellt wurde, ist eine Autorisierung, die es
+    # nicht geben darf.
+    if services.kill_switch.is_engaged():
+        raise HTTPException(
+            423, f"kill switch engaged: {services.kill_switch.reason()}"
+        )
+
+    account = services.account_state()
+    verdict = services.limits.check(account, symbol=proposal.symbol)
+    if not verdict.allowed:
+        raise HTTPException(423, f"blocked by a risk limit: {verdict.reason}")
 
 
 def _price_drift(services: Services, proposal: TradeProposal) -> float | None:
