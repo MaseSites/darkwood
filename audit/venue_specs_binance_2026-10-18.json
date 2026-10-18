@@ -1,0 +1,141 @@
+{
+ "ccxt_version": "4.5.84",
+ "code_version": "ec20ae6-dirty",
+ "environment": "mainnet",
+ "fetched_utc": "2026-10-18T17:40:45+00:00",
+ "fields": [
+  "price_tick",
+  "qty_step",
+  "min_qty",
+  "min_notional",
+  "max_leverage",
+  "taker_fee",
+  "maker_fee",
+  "maintenance_margin_rate"
+ ],
+ "incomplete": {},
+ "source": "ccxt load_markets + market(symbol), oeffentlich, ohne Zugangsdaten",
+ "specs": {
+  "ADAUSDT": {
+   "maintenance_margin_rate": 0.005,
+   "maker_fee": 0.0002,
+   "max_leverage": 25.0,
+   "min_notional": 5.0,
+   "min_qty": 1.0,
+   "price_tick": 0.0001,
+   "qty_step": 1.0,
+   "taker_fee": 0.0005
+  },
+  "ATOMUSDT": {
+   "maintenance_margin_rate": 0.005,
+   "maker_fee": 0.0002,
+   "max_leverage": 25.0,
+   "min_notional": 5.0,
+   "min_qty": 0.01,
+   "price_tick": 0.001,
+   "qty_step": 0.01,
+   "taker_fee": 0.0005
+  },
+  "AVAXUSDT": {
+   "maintenance_margin_rate": 0.005,
+   "maker_fee": 0.0002,
+   "max_leverage": 25.0,
+   "min_notional": 5.0,
+   "min_qty": 1.0,
+   "price_tick": 0.001,
+   "qty_step": 1.0,
+   "taker_fee": 0.0005
+  },
+  "BNBUSDT": {
+   "maintenance_margin_rate": 0.005,
+   "maker_fee": 0.0002,
+   "max_leverage": 25.0,
+   "min_notional": 5.0,
+   "min_qty": 0.01,
+   "price_tick": 0.01,
+   "qty_step": 0.01,
+   "taker_fee": 0.0005
+  },
+  "BTCUSDT": {
+   "maintenance_margin_rate": 0.005,
+   "maker_fee": 0.0002,
+   "max_leverage": 25.0,
+   "min_notional": 50.0,
+   "min_qty": 0.001,
+   "price_tick": 0.1,
+   "qty_step": 0.001,
+   "taker_fee": 0.0005
+  },
+  "DOGEUSDT": {
+   "maintenance_margin_rate": 0.005,
+   "maker_fee": 0.0002,
+   "max_leverage": 25.0,
+   "min_notional": 5.0,
+   "min_qty": 1.0,
+   "price_tick": 1e-05,
+   "qty_step": 1.0,
+   "taker_fee": 0.0005
+  },
+  "DOTUSDT": {
+   "maintenance_margin_rate": 0.005,
+   "maker_fee": 0.0002,
+   "max_leverage": 25.0,
+   "min_notional": 5.0,
+   "min_qty": 0.1,
+   "price_tick": 0.0001,
+   "qty_step": 0.1,
+   "taker_fee": 0.0005
+  },
+  "ETHUSDT": {
+   "maintenance_margin_rate": 0.005,
+   "maker_fee": 0.0002,
+   "max_leverage": 25.0,
+   "min_notional": 20.0,
+   "min_qty": 0.001,
+   "price_tick": 0.01,
+   "qty_step": 0.001,
+   "taker_fee": 0.0005
+  },
+  "LINKUSDT": {
+   "maintenance_margin_rate": 0.005,
+   "maker_fee": 0.0002,
+   "max_leverage": 25.0,
+   "min_notional": 20.0,
+   "min_qty": 0.01,
+   "price_tick": 0.001,
+   "qty_step": 0.01,
+   "taker_fee": 0.0005
+  },
+  "LTCUSDT": {
+   "maintenance_margin_rate": 0.005,
+   "maker_fee": 0.0002,
+   "max_leverage": 25.0,
+   "min_notional": 20.0,
+   "min_qty": 0.001,
+   "price_tick": 0.01,
+   "qty_step": 0.001,
+   "taker_fee": 0.0005
+  },
+  "SOLUSDT": {
+   "maintenance_margin_rate": 0.005,
+   "maker_fee": 0.0002,
+   "max_leverage": 25.0,
+   "min_notional": 5.0,
+   "min_qty": 0.01,
+   "price_tick": 0.01,
+   "qty_step": 0.01,
+   "taker_fee": 0.0005
+  },
+  "XRPUSDT": {
+   "maintenance_margin_rate": 0.005,
+   "maker_fee": 0.0002,
+   "max_leverage": 25.0,
+   "min_notional": 5.0,
+   "min_qty": 0.1,
+   "price_tick": 0.0001,
+   "qty_step": 0.1,
+   "taker_fee": 0.0005
+  }
+ },
+ "venue": "binance"
+}
