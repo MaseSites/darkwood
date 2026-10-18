@@ -5,6 +5,53 @@
 
 ---
 
+## KORREKTUR vom 18.10.2026, nach unabhängiger Prüfung
+
+**Die erste Fassung dieses Dokuments rechnete mit einer falschen Marke, und der
+Fehler lief durch den ganzen Abend.** Der Prüfer hat ihn gefunden; jede seiner
+Zahlen ist nachgerechnet und bestätigt (`scripts/goal_bar.py`,
+`tests/test_goal_bar.py`).
+
+| | erste Fassung | **richtig** |
+|---|---|---|
+| Marke für 20x über sechs Monate | +0.42 R | **+0.4536 R** über **662** Trades |
+| Woher +0.42 R wirklich kam | — | Faktor **1,25** (12.000→15.000) über **51** Trades = +0.4385 R |
+| Abstand zur oberen Intervallgrenze | „Faktor 5" | **8,35x** (operatives Intervall) |
+| Kandidat A auf D1+H4 | „5x zu klein" | **8,76x** zu klein gegen **+0.7499 R** an seiner eigenen Kadenz |
+
+**Der Fehler im Klartext.** Die 51 Gelegenheiten gehören zum kurzen Fenster bis
+30.10.2026, nicht zum Sechsmonatsziel. Über 182 Tage bei 3,64 Trades/Tag sind es
+**662** Trades. Dass +0.4385 und +0.4536 fast gleich aussehen, war die Falle —
+ihre Ziele unterscheiden sich um Faktor 16. Und +0.42 R über 662 Trades erreicht
+Faktor **16,03**, nicht 20.
+
+**Zwei Folgefehler, beide in der günstigen Richtung.** „Faktor 5" war schon
+gegen die eigene Zahl falsch (7,07). Und `scripts/study_venue_fee.py` trug eine
+**dritte** Marke: +0.3216 R aus 20x / 312 Trades / **3 %** Risiko — wieder ein
+anderes Risiko und eine andere Trade-Zahl.
+
+**Dazu ein vierter Fehler, den erst die Korrekturrechnung zutage brachte:** die
+Intervalle in diesem Dokument stammen aus `sim/metrics.bootstrap_mean`, einem
+i.i.d.-Bootstrap **ohne** Clusterung je Markt und **ohne**
+Bonferroni-Korrektur. Gemessen wächst die Halbbreite von 0.0319 (i.i.d.) auf
+**0.0649** (Bonferroni(73) + Cluster), also auf das Doppelte. Für die
+**gepaarten** Differenzen der Kostenachse ist das unerheblich — die Paarung
+entfernt die Marktkorrelation, und die Intervalle dort sind ±0.001. Für jedes
+**Niveau** über zwölf Märkte ist es relevant, und die korrigierten Grenzen
+stehen unten.
+
+**Keine Schlussfolgerung kippt. Jede wird schlechter**, weil der Fehler das
+System günstiger aussehen liess. Die Kostenachse war Faktor 20 zu klein und ist
+es nun Faktor **28**.
+
+**Was die Formel ausserdem annimmt:** `required_mean_r` setzt voraus, dass jeder
+Trade dasselbe R liefert. Mit der gemessenen Streuung auf den Mittelwert
++0.4536 R verschoben erreicht das zusammengesetzte Wachstum **18,78x** statt
+20,00x. Die Marke ist damit eine **optimistische Untergrenze**, nicht die
+Anforderung.
+
+---
+
 ## Was ich von dir will, und was ausdrücklich nicht
 
 Ich will **keine neuen Ideen für Handelsstrategien** und **keine Literatursuche**.
@@ -40,13 +87,18 @@ dass die Liquidation mindestens 2,5 Stopweiten hinter dem Stop liegt.
 
 **Das Ziel:** 1.000 → 20.000 (Faktor 20) in etwa sechs Monaten.
 
-**Was das erfordert, korrekt gerechnet:** `+0.42 R je Trade`. Diese Zahl ist
+**Was das erfordert, korrekt gerechnet:** `+0.4536 R je Trade` ueber **662**
+Trades (182 Tage x 3,64/Tag). Diese Zahl ist
 schon einmal falsch gewesen und hier ist die Korrektur, weil sie für dein
 Urteil zentral ist: der Durchsatz wurde zuerst mit der **Median**-Haltedauer
 gerechnet und ergab 269 Gelegenheiten und +0.081 R. Little's Law braucht die
 **mittlere** Haltedauer. Korrigiert: Kapazität 3,64 Trades/Tag statt 17,9, also
 **51 Gelegenheiten statt 269**, und der nötige Erwartungswert springt von
-+0.081 R auf **+0.42 R**.
++0.081 R auf **+0.4536 R**.
+
+**Und sie ist ZWEIMAL falsch gewesen.** Die zweite Fassung nannte +0.42 R --
+das ist die Marke fuer Faktor 1,25 bis zum 30.10.2026 ueber 51 Trades, nicht
+fuer 20x ueber sechs Monate. Siehe den Korrekturblock oben.
 
 ---
 
@@ -57,12 +109,13 @@ gepooltes Konto von 1.000 USDT, Kostenmodell und Füllmodell unten beschrieben.
 
 ```
 Erwartungswert   -0.0129 R je Trade
-95%-Intervall    [-0.0868, +0.0594]   (Bootstrap, 20.000 Ziehungen)
+95%-Intervall    [-0.0445, +0.0192]   (i.i.d.-Bootstrap, UNKORRIGIERT)
+operativ        [-0.0754, +0.0544]   (Bonferroni(73) + Cluster je Markt)
 Auflösungsgrenze des Apparats   ±0.0774 R bei 12 Märkten
 ```
 
 Das Intervall enthält die Null. Das System ist **nicht verlässlich negativ** und
-**kein Gewinner**. Die Anforderung (+0.42 R) liegt beim **5-fachen der oberen
+**kein Gewinner**. Die Anforderung (+0.4536 R) liegt beim **8,35-fachen der oberen
 Intervallgrenze** und beim **32-fachen des Mittelwerts in absoluten Zahlen**.
 
 **Die Zerlegung, die das Problem benennt:** der durchschnittliche Trade erreicht
@@ -98,7 +151,7 @@ sind darunter entstanden. Exakt nachgerechnet je Fill, ohne Neulauf:
 
 **Die ganze Kostenachse ist +0.029 R wert.** Eine Börse, die *nichts* kostet,
 bringt +0.0164 R mit einem Intervall, das die Null enthält — gegen eine
-Anforderung von +0.42 R. Faktor **>25**.
+Anforderung von +0.4536 R. Faktor **28**.
 
 Und diese Obergrenze ist **optimistisch**, nicht vorsichtig: bei null Gebühren
 kann die Kostenregel (`max_cost_fraction_of_risk = 0,08`) nie mehr auslösen, die
@@ -207,7 +260,10 @@ nicht**. Der Rückfall ist also kein Ausstiegsproblem.
 ### 3.6 Der einzige positive Kandidat
 
 Setup A auf D1+H4: **+0.0856 R in-sample**, unter realistischer Ausführung
-+0.0728 R. Fünffach zu klein für +0.42 R, und der Pfad kommt erst
++0.0728 R. An SEINER EIGENEN Kadenz (401 Trades) lautet die Marke **+0.7499 R**,
+also ist er **8,76x** zu klein in-sample und **10,30x** unter realistischer
+Ausfuehrung. Weniger Trades heissen eine HOEHERE Marke -- an der Pool-Marke
+gemessen saehe er besser aus, als er ist. Der Pfad kommt erst
 **Februar 2027** an. Noch nicht out-of-sample bestätigt.
 
 ---
@@ -231,7 +287,7 @@ Setup A auf D1+H4: **+0.0856 R in-sample**, unter realistischer Ausführung
   Intervall ohne die Null **UND** Replikation im Faktor 0,5–2,0.
   `total_comparisons = 73`.
 * **Auflösungsgrenze:** ±0.0774 R bei 12 Märkten, ±0.0349 R bei 59,
-  ±0.0294 R bei 83. Die Anforderung (+0.42 R) liegt **weit über** der
+  ±0.0294 R bei 83. Die Anforderung (+0.4536 R) liegt **weit über** der
   Auflösungsgrenze — das Problem ist also **keine Messgenauigkeit**. Mehr Märkte
   helfen nicht.
 * **Forschungshygiene, die eingehalten wird:** Zukunfts-Mutationstest über die
@@ -260,7 +316,7 @@ berücksichtigen sollst:**
    sichtbar, und **welche Grössenordnung** könnte sie plausibel liefern? Ein
    Kandidat, der höchstens 0.01–0.05 R bewegt, löst das Problem nicht — sag das
    dann ausdrücklich.
-3. **Ist die Zielrechnung richtig?** +0.42 R über 51 Gelegenheiten, aus Little's
+3. **Ist die Zielrechnung richtig?** +0.4536 R über 662 Gelegenheiten, aus Little's
    Law mit der mittleren Haltedauer. Prüfe sie nach. Wenn sie falsch ist, ändert
    sich alles.
 4. **Ist der Beta-Befund der eigentliche Befund?** Beta 1,0 auf BTC mit

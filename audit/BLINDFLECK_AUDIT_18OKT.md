@@ -25,11 +25,11 @@ sich rechnen lässt, liegt unter der Anforderung.** Und die einzige mit einer
 unbegrenzten Decke bräuchte eine um ~30 Prozentpunkte höhere Trefferquote, was
 keine Eigenschaft des Messgitters ist.
 
-| Kandidat | Obergrenze | gegen +0.42 R | gegen ±0.077 R |
+| Kandidat | Obergrenze | gegen +0.4536 R | gegen ±0.077 R |
 |---|---|---|---|
 | **Volumen-/Dollar-Balken statt Zeitbalken** | von keiner Arithmetik begrenzt | bräuchte +30 Pp Trefferquote | Punktwert erwartet **innerhalb** der Grenze |
 | Ausstieg sieht die Struktur nie | ~+0.12 R | 3,5× zu kurz | messbar |
-| `max_hold_hours` (bewegt die **Anforderung**) | +0.42 → +0.284 R | nutzbar ~0,14 R Marke | — |
+| `max_hold_hours` (bewegt die **Anforderung**) | +0.4536 → ~+0.31 R | nutzbar ~0,14 R Marke | — |
 | Teilausstieg / Runner (nie implementiert) | +0.028 R | Faktor 15 | **unter** der Grenze |
 | Schiedsregel des Pools | ≤+0.02 R, Vorzeichen eher negativ | Faktor >20 | nicht messbar |
 | `swing_lookback = 3` | +0.011 R | Faktor 38 | **Faktor 7 unter** der Grenze |
@@ -41,7 +41,7 @@ keine Eigenschaft des Messgitters ist.
 ## 1. Der wertvollste Fund: `max_hold_hours` war immer `None`
 
 **Warum er anders ist als alles andere.** Er bewegt nicht den Erwartungswert,
-sondern **die Anforderung**. Die Anforderung von +0.42 R folgt aus Little's Law
+sondern **die Anforderung**. Die Anforderung von +0.4536 R folgt aus Little's Law
 mit der *mittleren* Haltedauer; ein Haltedeckel senkt diese Dauer, erhöht die
 Zahl der Gelegenheiten und senkt damit die nötige Kante je Trade. Der Schalter
 ist implementiert, hat sechs Tests — und stand in **jedem** Lauf auf `None`.
@@ -90,7 +90,7 @@ n=7.335) und die Zahlen des Finders **auf die Dezimale** bestätigt: ≥1,5 R in
 Die harte Obergrenze, die der Finder nicht gezogen hatte: der Mittelwert von
 `max_favourable_r` über die 2.992 Trades, die 1,5 R erreichten, ist **2,201 R**.
 Ein Runner kann nicht mehr erlösen, als der Trade je erreicht hat. Realistisch
-bleiben **+0.028 R** — unter der Auflösungsgrenze. Für +0.42 R müsste das
+bleiben **+0.028 R** — unter der Auflösungsgrenze. Für +0.4536 R müsste das
 laufende Bein im Mittel **+5,76 R** halten.
 
 ---
@@ -104,7 +104,7 @@ Gegenprobe über `src/`, `scripts/` und `EXPERIMENTS_NEXT.yaml` nach
 `renko|heikin|volume bar|dollar bar|imbalance bar|tick bar|range bar` gibt
 **null Treffer**. Die eigene Grundlagennotiz nennt die Alternative wörtlich.
 
-Er ist der einzige Kandidat, den keine Arithmetik unter +0.42 R begrenzt — weil
+Er ist der einzige Kandidat, den keine Arithmetik unter +0.4536 R begrenzt — weil
 er die **Einstiegspopulation austauscht** statt sie umzupreisen oder
 auszuwählen. Und er ist baubar: `data/ohlcv/BTCUSDT/M1/*.parquet` trägt eine
 `volume`-Spalte über sechs Jahresdateien.

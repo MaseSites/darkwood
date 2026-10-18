@@ -2518,3 +2518,97 @@ amendments:
       Tatsachenbehauptung des Nutzers (Krypto-Maerkte seien am Wochenende
       geschlossen) mit einer richtigen Intuition darunter, plus ein Papier,
       dessen Gegenstand genau unsere Einstiegsmarken sind.
+
+  - date: 2026-10-18
+    by: "Claude, nach unabhaengiger Pruefung durch ChatGPT"
+    declared_before_reading: false
+    change: >-
+      SCHLIESSUNG. Die Familie "direktionale Preisstruktur-Setups auf
+      Perpetuals" wird fuer das 20x-Ziel als ERSCHOEPFT geschlossen.
+      total_comparisons unveraendert -- es wird kein Arm hinzugefuegt,
+      sondern keiner mehr geoeffnet.
+    reason: >-
+      Diese Eintragung erfolgt NACH dem Lesen von Ergebnissen und ist darum
+      ausdruecklich keine Vorab-Registrierung. Sie dokumentiert eine
+      Forschungsentscheidung, keine Hypothese.
+
+      ZUERST DIE KORREKTUR MEINES EIGENEN FEHLERS, weil die Schliessung sonst
+      auf einer falschen Zahl stuende. Ich habe den 18.10. mit +0.42 R als
+      Marke fuer das 20x-Sechsmonatsziel gerechnet. Diese Zahl gehoert zu
+      Faktor 1,25 ueber 51 Trades -- dem kurzen Fenster bis 30.10., das in
+      `meta.goal` dieser Datei seit dem 15.10. ausdruecklich als ANDERES Ziel
+      steht. Die Datei wusste es, und ich habe es trotzdem verwechselt.
+
+      Richtig: 182 Tage x 3,64 Trades/Tag = 662 Trades, Marke +0.4536 R
+      (`scripts/goal_bar.py`, festgenagelt in `tests/test_goal_bar.py`).
+      +0.42 R ueber 662 Trades erreicht Faktor 16,03, nicht 20.
+
+      Drei Folgefehler, alle in der guenstigen Richtung: "Faktor 5" zur oberen
+      Intervallgrenze (richtig 8,35x am operativen Intervall); eine dritte
+      Marke von +0.3216 R in study_venue_fee.py aus 312 Trades und 3 % Risiko;
+      und alle Niveau-Intervalle aus einem i.i.d.-Bootstrap OHNE Clusterung je
+      Markt und ohne Bonferroni -- die Halbbreite waechst korrigiert von
+      0.0319 auf 0.0649. Die GEPAARTEN Differenzen der Kostenachse sind davon
+      unberuehrt.
+
+      Keine Schlussfolgerung kippt durch die Korrektur. Jede wird schlechter.
+
+      DIE EVIDENZ FUER DIE SCHLIESSUNG, Stand 18.10.2026:
+
+        Kostenachse geschlossen. Die GANZE Achse ist +0.029 R wert; eine
+        Boerse, die nichts kostet, bringt +0.0164 R mit einem Intervall, das
+        die Null enthaelt. Gegen +0.4536 R ist das Faktor 29. Und die
+        Obergrenze ist optimistisch gerechnet, weil bei null Gebuehren das
+        Kostengate nicht mehr ausloesen kann.
+
+        Instrumentregeln geschlossen. Die echte Spec lehnt 2 von 7.335 Fills
+        ab, -0.0002 R. Die Venue-Verwechslung kostete exakt die
+        Gebuehrendifferenz und sonst nichts.
+
+        Blindfleck-Audit: 11 von 14 Kandidaten sind wirklich ungetestet, und
+        JEDE rechenbare Obergrenze liegt unter der Marke -- sieben darunter,
+        drei davon unter der Messgrenze. Der einzige Kandidat mit offener
+        Decke (Volumen-/Dollar-Balken) braeuchte +30 Prozentpunkte
+        Trefferquote; erwartet wird ein Punktwert INNERHALB +-0.077 R.
+
+        Cash gegen Spot gegen System, zwoelf Maerkte, dasselbe Fenster
+        (`scripts/study_cash_spot_system.py`):
+
+          System, wie gelaufen          0.955x   -2.5 % p.a.   R/Vola -0.19
+          Spot, voll investiert         1.503x   -0.8 % p.a.   R/Vola +0.04
+          Spot auf Systemvolatilitaet   1.251x   +4.8 % p.a.   R/Vola +0.34
+          Spot auf Systemrueckgang      1.441x   +7.5 % p.a.   R/Vola +0.30
+          Cash                          1.000x    0.0 % p.a.
+
+        Das System schlaegt Cash in 4 von 12 Maerkten und risikoangeglichenes
+        Spot in 2 von 12. Es ist also in zwei Dritteln seiner Maerkte
+        schlechter als NICHTS TUN und in fuenf Sechsteln schlechter als
+        passives Beta bei gleichem Risiko. Das ist die praktische Folge des
+        Beta-Befunds (Beta 1,0 zu BTC, Residuum verlaesslich negativ).
+
+      WAS DIE SCHLIESSUNG BEDEUTET:
+
+        Keine weitere Parameter-, Exit-, Gebuehren-, Setup- oder Feature-Suche
+        innerhalb dieser Familie. Kein Echtgeld mit dieser Familie.
+
+        A auf D1+H4 nur noch out-of-sample pruefen, falls das praktisch
+        kostenlos aus ohnehin kommenden Daten entsteht. An SEINER Kadenz (401
+        Trades) lautet die Marke +0.7499 R; der Kandidat liegt mit +0.0856 R
+        in-sample 8,76x darunter und mit +0.0728 R unter realistischer
+        Ausfuehrung 10,30x. Kein 20x-Projekt.
+
+        Die Mess-, Identitaets- und Herkunftsinfrastruktur nur weiterbauen,
+        soweit sie als wiederverwendbarer Pruefstand fuer eine WIRKLICH andere
+        Ertragsmechanik dient.
+
+      WAS DIE SCHLIESSUNG NICHT BEDEUTET: dass Handel unmoeglich ist. Event,
+      Optionskonvexitaet, echtes Relative Value, Market Making,
+      Volatilitaetsrisikopraemie sind andere FAMILIEN. Sie duerfen nicht als
+      weitere Parameter dieser erschoepften Familie ausgegeben werden, und
+      jede von ihnen braucht eine eigene Vorab-Registrierung.
+
+      E2 bleibt offen und registriert (zustandsbehaftete Entscheidung Halten /
+      Schliessen / Drehen / Nicht-Handeln). Es ist tatsaechlich etwas anderes
+      als jeden Signaltrade isoliert zu bewerten. Plausible Groessenordnung
+      nach der Nullgebuehren-Obergrenze: niedrige Hundertstel R, nicht
+      +0.45 R. E2 rechtfertigt keine Rettungsrunde fuer das 20x-Ziel.

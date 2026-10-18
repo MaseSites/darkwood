@@ -15,7 +15,7 @@ Dazu zwei Befunde, die diese Felder sichtbar machen sollen:
   die Venue-Korrektur — und sie liegt zu unseren Gunsten in jeder Zahl.
 * **79 Fills (1,08 %) haben besser als ihr Limit gefüllt** und tragen darum bis
   zum 10,38-fachen des erlaubten Risikos. Bisher waren sie nur durch ein
-  eigenes Skript zählbar. Die Differenz `entry_price − entry_reference_price`
+  eigenes Skript zählbar. Die Differenz `entry_price - entry_reference_price`
   findet sie in jeder Zeile.
 
 Die Regeln selbst sind unberührt; die Felder beschreiben sie nur. Dieselbe
