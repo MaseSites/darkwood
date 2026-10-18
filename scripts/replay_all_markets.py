@@ -85,6 +85,11 @@ from traidingbrain.execution.policy import policy_for
 from traidingbrain.execution.venuebinding import Environment, VenueBinding
 from traidingbrain.journal.build import entries_from
 from traidingbrain.journal.identity import identity_for
+from traidingbrain.journal.provenance import (
+    DecisionRecord,
+    FillProvenance,
+    ProvenanceLedger,
+)
 from traidingbrain.journal.record import Source
 from traidingbrain.journal.version import code_version, decision_version, run_signature
 from traidingbrain.sim.engine import BacktestEngine
@@ -171,6 +176,65 @@ def fill_record(fill: object) -> dict[str, object]:
     return record
 
 
+def decision_of(fill: object, *, symbol: str, identity_stamp: str) -> DecisionRecord:
+    """Die Entscheidung, die zu diesem Fill gehoert -- aus seinen eigenen Feldern.
+
+    Der Entscheidungszeitpunkt steckt in `proposal_id`, das `sim/plan.py:303`
+    als `f"{symbol}-{created_ts}"` baut. Nicht `opened_ts`: das ist der
+    FUELLzeitpunkt, und die beiden weichen in 6,0 % der Faelle ab.
+
+    Einstieg, Stop und Ziel kommen aus den GEPLANTEN Feldern und nicht aus den
+    erreichten. Der Unterschied ist der ganze Zweck: `entry_price` ist, wo
+    gefuellt wurde, `entry_reference_price` ist, wo entschieden wurde.
+    """
+    _, _, schwanz = str(fill.proposal_id).rpartition("-")  # type: ignore[attr-defined]
+    if not schwanz.isdigit():
+        raise ValueError(
+            f"proposal_id {fill.proposal_id!r} traegt keinen Zeitstempel -- "  # type: ignore[attr-defined]
+            f"dann ist der Entscheidungszeitpunkt nicht bekannt, und ein "
+            f"Inhaltshash darueber waere erfunden."
+        )
+    return DecisionRecord(
+        identity_stamp=identity_stamp,
+        symbol=symbol,
+        decided_ts=int(schwanz),
+        side=getattr(fill.side, "value", str(fill.side)),  # type: ignore[attr-defined]
+        entry=float(fill.entry_reference_price),  # type: ignore[attr-defined]
+        stop=float(fill.planned_stop),  # type: ignore[attr-defined]
+        target=float(fill.planned_target),  # type: ignore[attr-defined]
+        setup_key=str(fill.setup).split(" ")[0] or "?",  # type: ignore[attr-defined]
+        setup_source=str(fill.setup),  # type: ignore[attr-defined]
+        signal_timeframe=str(fill.timeframe) or "?",  # type: ignore[attr-defined]
+    )
+
+
+def provenance_of(
+    fill: object, decision_id: str, *, identity: object
+) -> FillProvenance:
+    """Die dreizehn Angaben, so weit der Simulator sie ehrlich liefern kann.
+
+    Jedes `*_actual`-Feld bleibt `None`. Es mit dem modellierten Wert zu fuellen
+    waere die schlimmste Variante -- die Spalte sagte dann „gemessen", wo nichts
+    gemessen wurde, und `slippage` meldete 0.0 statt „unbekannt".
+    """
+    return FillProvenance(
+        decision_id=decision_id,
+        identity_stamp=identity.stamp(),  # type: ignore[attr-defined]
+        venue=identity.instrument_spec_venue,  # type: ignore[attr-defined]
+        policy=identity.policy,  # type: ignore[attr-defined]
+        liquidity_role_modelled=str(fill.entry_role),  # type: ignore[attr-defined]
+        liquidity_role_actual=None,
+        fee_rate=float(fill.entry_fee_rate),  # type: ignore[attr-defined]
+        fee_rate_actual=None,
+        fee_paid=float(fill.fees),  # type: ignore[attr-defined]
+        reference_price=float(fill.entry_reference_price),  # type: ignore[attr-defined]
+        fill_price_modelled=float(fill.entry_price),  # type: ignore[attr-defined]
+        fill_price_actual=None,
+        execution_id=None,
+        order_id=None,
+    )
+
+
 def run_one(symbol: str, *, config: object, store: ParquetStore,
             funding_store: FundingStore, max_bars: int | None = None) -> dict[str, object] | None:
     started = time.perf_counter()
@@ -247,6 +311,19 @@ def run_one(symbol: str, *, config: object, store: ParquetStore,
         for entry in journal
     ]
 
+    # Herkunft je Fill, mit referentieller Integritaet beim SCHREIBEN.
+    #
+    # Die Pruefung sitzt hier und nicht in einem nachtraeglichen Bericht. Ein
+    # nachtraeglicher Bericht findet die Waise, wenn sie schon in drei
+    # Auswertungen steht -- genau so ist der Trade vom 17.10.2026 gelaufen, der
+    # zu keinem Konto gehoerte und dem Kontobuch 55,05 USDT fehlen liess.
+    ledger = ProvenanceLedger()
+    schluessel: dict[int, str] = {}
+    for f in result.fills:
+        key = ledger.register(decision_of(f, symbol=symbol, identity_stamp=identity.stamp()))
+        schluessel[id(f)] = key
+        ledger.record(provenance_of(f, key, identity=identity))
+
     return {
         "symbol": symbol,
         "strategy": pool.name,
@@ -284,8 +361,20 @@ def run_one(symbol: str, *, config: object, store: ParquetStore,
         "max_bars": max_bars,
         "summary": result.summary(),
         "funding_settlements": len(funding) if funding is not None else 0,
-        # Die rohe Population. Vollstaendig, immer.
-        "fills": [fill_record(f) for f in result.fills],
+        # Die rohe Population. Vollstaendig, immer -- und jede Zeile mit
+        # ihrer `decision_id`, deren Existenz `ProvenanceLedger` oben
+        # erzwungen hat.
+        "fills": [
+            {**fill_record(f), "decision_id": schluessel[id(f)]}
+            for f in result.fills
+        ],
+        # Wie viele Entscheidungen gefuellt wurden und wie viele nicht. Die
+        # Ungefuellten sind der NORMALFALL -- von 4.446 Absichten in ADAUSDT
+        # wurden 3.703 von Risikoregeln abgelehnt, und diese Ablehnungen sind
+        # selbst eine Messung. Ein Fill OHNE Entscheidung waere der Defekt,
+        # und den laesst der Speicher nicht entstehen.
+        "decisions_recorded": len(ledger.decisions),
+        "fills_with_provenance": len(ledger.fills),
         # Und dieselben Trades mit ihrer Begruendung: Rating, Regime,
         # Faktorfamilien, Post-Mortem mit `bars_held` und `stopped_by_wick`.
         #

@@ -134,6 +134,57 @@ class OpenPosition:
     setup: str = ""
     timeframe: str = ""
     stop_moved: bool = False
+
+    # -- Herkunft, aufgezeichnet statt hinterher erschlossen ---------------- #
+    #
+    # Dieselbe Bauart und dieselbe Begruendung wie `stop_moved`: das Feld
+    # beschreibt, was die Regel getan hat, und veraendert die Regel nicht.
+    #
+    # Dass das nicht nachtraeglich geht, ist gemessen
+    # (`scripts/audit_provenance_gap.py`): von den dreizehn Herkunftsangaben
+    # sind aus den 7.335 alten Fills neun rekonstruierbar und vier fuer immer
+    # verloren -- unter ihnen der Referenzpreis, weshalb Schlupf fuer die ganze
+    # Legacy-Population nicht messbar ist.
+
+    entry_reference_price: float = 0.0
+    """Das Limit, gegen das entschieden wurde -- nicht der Fillpreis.
+
+    Die Differenz zum Einstiegspreis ist der einzige Weg, die 79 Fills (1,08 %)
+    in den Daten zu FINDEN, die besser als ihr Limit gefuellt haben und darum
+    bis zum 10,38-fachen des erlaubten Risikos tragen. Bisher waren sie nur
+    durch ein eigenes Skript zaehlbar; jetzt stehen sie in jeder Zeile.
+
+    Und auf dem Live-Pfad ist dieselbe Differenz der gemessene Schlupf.
+    """
+
+    planned_stop: float = 0.0
+    planned_target: float = 0.0
+    """Stop und Ziel, wie sie BESCHLOSSEN wurden -- vor jeder Nachziehung.
+
+    `OpenPosition.stop` wird vom Einstand-Stop veraendert und `target` ist
+    bereits das gedeckelte, aus dem Fillpreis gerechnete. Keines der beiden
+    sagt also, was entschieden wurde.
+
+    Beide Felder existieren, weil die Entscheidung sonst nicht rekonstruierbar
+    ist, und das ist gemessen: aus den 7.335 alten Fills ist das GEPLANTE Ziel
+    fuer alle 4.651 Trades verloren, die nicht im Ziel endeten -- bei den 2.684
+    Zielausstiegen steht nur der erreichte Preis. Ohne diese zwei Zahlen kann
+    `DecisionRecord` keinen Inhaltshash bilden, und zwei Entscheidungen, die
+    sich nur im Ziel unterscheiden, bekaemen denselben Schluessel.
+    """
+
+    entry_fee_rate: float = 0.0
+    entry_role: str = ""
+    """`maker` oder `taker`, wie der Simulator es angenommen hat.
+
+    Angenommen und nicht beobachtet, und das ist der Punkt: `_try_fill`
+    berechnet die Makergebuehr fuer jeden Limit-Einstieg, OHNE zu pruefen, ob
+    die Makerrolle je bewiesen wurde (`ExecutionPolicy.maker_role_proven` steht
+    auf `False`). Gemessen ist diese Annahme +0.017 R je Trade wert
+    [+0.017, +0.018] -- zwoelfmal die Venue-Korrektur. Sie steht zu unseren
+    Gunsten in jeder Zahl dieses Projekts, und ohne dieses Feld steht sie
+    nirgends.
+    """
     """True once the breakeven rule has pulled the stop up. Checked so the
     move happens once; without it a later dip would re-arm it and the stop
     would walk back down to the entry it had already left."""
@@ -195,6 +246,39 @@ class Fill:
 
     Die Regel selbst ist unberuehrt; das Feld beschreibt sie nur. Der
     Goldene Test sagt, ob das stimmt.
+    """
+
+    # -- Herkunft je Fill --------------------------------------------------- #
+    #
+    # Die Felder, die `journal/provenance.py` verlangt und die der Simulator
+    # ehrlich liefern kann. Was er NICHT liefern kann -- die tatsaechliche
+    # Liquidity Role, die tatsaechliche Gebuehr, der tatsaechliche Fillpreis,
+    # Execution- und Order-ID -- steht hier ABSICHTLICH nicht. Es in der
+    # Simulation mit dem modellierten Wert zu fuellen waere die schlimmste
+    # Variante: die Spalte sagte dann „gemessen", wo nichts gemessen wurde.
+    # `FillProvenance` traegt sie als `None`, und `slippage` ist darum `None`
+    # und nicht `0.0`.
+
+    entry_reference_price: float = 0.0
+    """Siehe `OpenPosition.entry_reference_price` -- das Limit, nicht der Fill."""
+
+    planned_stop: float = 0.0
+    planned_target: float = 0.0
+    """Siehe `OpenPosition.planned_stop` -- was beschlossen wurde, nicht was gilt."""
+
+    entry_fee_rate: float = 0.0
+    entry_role: str = ""
+
+    exit_fee_rate: float = 0.0
+    exit_role: str = ""
+    """`maker` auf einem Zielausstieg, `taker` sonst.
+
+    Bis zum 18.10.2026 war diese Zuordnung nur aus der Gebuehrenspalte
+    RUECKRECHENBAR, und die Rueckrechnung hat zwei falsche Annahmen von mir
+    aufgedeckt, bevor sie stimmte. Dass sie am Ende exakt auf den
+    Ausstiegsgrund fiel (4.648 stop -> maker/taker, 2.684 target ->
+    maker/maker, 3 manual -> maker/taker), war eine Bestaetigung -- aber eine
+    Bestaetigung, die man nicht braucht, wenn die Zahl aufgeschrieben ist.
     """
 
     @property
@@ -489,9 +573,14 @@ class SimBroker:
 
         # A limit order that was already resting earns the maker fee; a market
         # entry crosses the spread and pays taker.
-        fee_rate = (
-            self.spec.maker_fee if pending.order_type is OrderType.LIMIT else self.spec.taker_fee
-        )
+        #
+        # **Es verdient sie nicht, es bekommt sie zugerechnet.** Hier wird
+        # NICHT geprueft, ob die Makerrolle bewiesen ist -- gemessen ist diese
+        # Annahme +0.017 R je Trade wert. Sie bleibt unveraendert, damit die
+        # laufenden Arme vergleichbar bleiben, aber sie wird jetzt
+        # aufgeschrieben (`entry_role`), statt nur hier zu stehen.
+        ist_maker = pending.order_type is OrderType.LIMIT
+        fee_rate = self.spec.maker_fee if ist_maker else self.spec.taker_fee
 
         self.position = OpenPosition(
             side=pending.side,
@@ -547,6 +636,14 @@ class SimBroker:
             fees_paid=notional * fee_rate,
             snapshot_hash=pending.snapshot_hash,
             proposal_id=pending.proposal_id,
+            # Die Herkunft des Einstiegs. `limit_price` und nicht `price`:
+            # genau ihre Differenz findet die Fills, die besser als ihr Limit
+            # gefuellt haben -- und auf dem Live-Pfad ist sie der Schlupf.
+            entry_reference_price=pending.limit_price,
+            planned_stop=pending.stop,
+            planned_target=pending.target,
+            entry_fee_rate=fee_rate,
+            entry_role="maker" if ist_maker else "taker",
         )
         # Jetzt ist das Geld gebunden, und erst jetzt. Freigegeben in `_close`.
         self.ledger.reserve(margin)
@@ -785,6 +882,16 @@ class SimBroker:
             setup=position.setup,
             timeframe=position.timeframe,
             stop_moved=position.stop_moved,
+            # Die Herkunft, vom Einstieg mitgetragen und am Ausstieg ergaenzt.
+            # Beides modelliert -- der Simulator hat keine beobachtete Rolle,
+            # und ein Feld dafuer gibt es hier bewusst nicht.
+            entry_reference_price=position.entry_reference_price,
+            planned_stop=position.planned_stop,
+            planned_target=position.planned_target,
+            entry_fee_rate=position.entry_fee_rate,
+            entry_role=position.entry_role,
+            exit_fee_rate=rate,
+            exit_role="maker" if maker_exit else "taker",
         )
         self.ledger.fills.append(fill)
         self.position = None
