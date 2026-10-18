@@ -48,6 +48,18 @@ _STAMP = 12
 #: Zeichenkette, und zwei verschiedene Läufe hätten denselben Stempel.
 _SEP = "\x00"
 
+#: Die Felder, bei denen „leer" eine Aussage ist und keine Lücke.
+#:
+#: Jedes andere leere Feld bricht ab. Diese drei nicht, und zwar weil ihre
+#: Leere etwas bedeutet: kein Ausführungspfad (der heutige Zustand -- alle
+#: Kerzen sind Binance, ausführbar ist nur Bybit), und kein Venue-Widerspruch.
+#:
+#: Die Liste ist bewusst kurz und bewusst eine Konstante. Als Prüfung an drei
+#: Stellen im Rumpf wäre sie beim vierten Feld auseinandergelaufen.
+_LEER_ERLAUBT = frozenset(
+    {"execution_venue", "execution_environment", "incoherence_reason"}
+)
+
 
 class IncompleteIdentityError(ValueError):
     """Ein Identitätsfeld ist leer.
@@ -129,6 +141,22 @@ class ExperimentIdentity:
     # -- Portfolio und der alte Schlüssel ---------------------------------- #
 
     portfolio: str
+
+    incoherence_reason: str
+    """Warum dieser Lauf zwei Börsen mischt -- oder leer, wenn er es nicht tut.
+
+    **Leer ist hier ein echter Wert und keine Lücke**, dieselbe Begründung wie
+    bei den beiden Ausführungsfeldern: „dieser Lauf ist kohärent" ist eine
+    Aussage.
+
+    Das Feld steht hier, weil es ohne es nicht in der Ergebnisdatei stünde. Die
+    Identität trägt `policy.fingerprint()`, nicht `binding.fingerprint()` --
+    der Grund, den `VenueBinding.legacy_incoherent` verlangt, wäre also in der
+    Bindung verblieben und beim Serialisieren verschwunden. Genau das ist der
+    Fehler, den diese ganze Phase behandelt: eine Angabe, die es gibt und die
+    nicht in den Daten landet.
+    """
+
     run_signature: str
     """Die Legacy-Signatur, unverändert mitgetragen.
 
@@ -144,12 +172,14 @@ class ExperimentIdentity:
                 # Nur die beiden Ausführungsfelder dürfen fehlen, und zwar
                 # weil „kein Ausführungspfad" ein echter Zustand ist und keine
                 # Lücke. Jedes andere None wäre eine nicht gestellte Frage.
-                if field.name in ("execution_venue", "execution_environment"):
+                if field.name in _LEER_ERLAUBT:
                     continue
                 raise IncompleteIdentityError(
-                    f"{field.name} ist None. Nur execution_venue und "
-                    f"execution_environment duerfen fehlen."
+                    f"{field.name} ist None. Leer sein duerfen nur: "
+                    f"{', '.join(sorted(_LEER_ERLAUBT))}."
                 )
+            if field.name in _LEER_ERLAUBT:
+                continue
             if isinstance(value, str) and not value.strip():
                 raise IncompleteIdentityError(
                     f"{field.name} ist leer. Eine leere Komponente mittelt sich "
@@ -343,5 +373,8 @@ def identity_for(
         strategy_version=strategy_version_of(pool),
         decision_version=decision_version(),
         portfolio=portfolio_of(config),
+        # Der Grund aus der Bindung, damit er in der Ergebnisdatei landet und
+        # nicht in der Bindung verbleibt.
+        incoherence_reason=getattr(binding, "incoherence_reason", ""),
         run_signature=run_signature(config, max_bars=max_bars, shadow=shadow),
     )

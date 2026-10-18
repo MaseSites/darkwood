@@ -130,7 +130,7 @@ class DecisionRecord:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class FillProvenance:
-    """Woher ein Fill kam -- die dreizehn Angaben, die ihn erklärbar machen.
+    """Woher ein Fill kam -- die dreizehn Angaben der Direktive, in 14 Feldern.
 
     Jede modellierte Grösse steht neben ihrer tatsächlichen, und die
     tatsächliche darf fehlen. Das ist der Punkt: in der Simulation gibt es

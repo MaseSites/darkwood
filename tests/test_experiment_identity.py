@@ -27,6 +27,7 @@ from traidingbrain.config.settings import load_config
 from traidingbrain.execution.policy import policy_for
 from traidingbrain.execution.venuebinding import Environment, VenueBinding
 from traidingbrain.journal.identity import (
+    _LEER_ERLAUBT,
     ExperimentIdentity,
     IncompleteIdentityError,
     identity_for,
@@ -55,8 +56,18 @@ ISTZUSTAND = ExperimentIdentity(
     strategy_version="guide-all|A:V08,B:V06,E:V11,F:V12,G:V13",
     decision_version="fdba080e487f",
     portfolio="pooled-1000usdt-cap5",
+    # Der Istzustand mischt zwei Boersen, also traegt er den Grund dafuer.
+    incoherence_reason=(
+        "DEFAULT_SPEC traegt Bybits Instrumentregeln, die Kerzen kommen von "
+        "Binance -- so ist die eingefrorene Population entstanden"
+    ),
     run_signature="1000.0|['A', 'B', 'E', 'F', 'G']|0.08|M15|refused-v1|portfolio|cap5",
 )
+
+#: Ein Ersatzwert je Feldtyp, der garantiert vom Istzustand abweicht.
+#: Die Felder, bei denen leer eine Aussage ist -- aus dem Modul gelesen,
+#: damit der Test nicht eine zweite Vorstellung davon pflegt.
+LEER_ERLAUBT = _LEER_ERLAUBT
 
 #: Ein Ersatzwert je Feldtyp, der garantiert vom Istzustand abweicht.
 ANDERS: dict[str, object] = {
@@ -143,7 +154,7 @@ def test_ein_wert_mit_trennzeichen_wird_abgelehnt() -> None:
     [
         f.name
         for f in dataclasses.fields(ExperimentIdentity)
-        if f.name not in ("execution_venue", "execution_environment")
+        if f.name not in LEER_ERLAUBT
     ],
 )
 def test_ein_leeres_feld_wird_abgelehnt(feldname: str) -> None:
@@ -157,7 +168,7 @@ def test_ein_leeres_feld_wird_abgelehnt(feldname: str) -> None:
     [
         f.name
         for f in dataclasses.fields(ExperimentIdentity)
-        if f.name not in ("execution_venue", "execution_environment")
+        if f.name not in LEER_ERLAUBT
     ],
 )
 def test_ein_none_feld_wird_abgelehnt(feldname: str) -> None:
@@ -296,3 +307,60 @@ def test_der_gebuehrenplan_der_policy_landet_im_feld() -> None:
     assert binance.fee_provenance != bybit.fee_provenance
     assert "0.050" in binance.fee_provenance
     assert "0.055" in bybit.fee_provenance
+
+
+def test_der_grund_fuer_inkohaerenz_landet_in_der_identitaet() -> None:
+    """Das Loch, das beim Durchlesen auffiel.
+
+    Die Identitaet traegt `policy.fingerprint()`, nicht
+    `binding.fingerprint()`. Der Grund, den `legacy_incoherent` verlangt, waere
+    also in der Bindung geblieben und beim Serialisieren verschwunden -- genau
+    der Fehler, den diese Phase behandelt: eine Angabe, die es gibt und die
+    nicht in den Daten landet.
+    """
+    config = load_config()
+    grund = "DEFAULT_SPEC ist Bybit, die Kerzen sind Binance"
+    binding = VenueBinding.legacy_incoherent(
+        data_venue="binance",
+        price_venue="binance",
+        price_environment=Environment.MAINNET,
+        instrument_spec_venue="bybit",
+        policy=policy_for("bybit", "maker-target"),
+        reason=grund,
+    )
+    identity = identity_for(
+        config,
+        binding,
+        GuidePool.for_config(config),
+        data_version="coverage:probe",
+        funding_source="data/funding",
+        analysis_venue="bybit",
+    )
+
+    assert identity.incoherence_reason == grund
+    assert identity.to_dict()["incoherence_reason"] == grund
+    assert not identity.venues_agree()
+
+
+def test_ein_kohaerenter_lauf_traegt_einen_leeren_grund() -> None:
+    """Leer ist hier eine Aussage: dieser Lauf mischt nichts."""
+    config = load_config()
+    binding = VenueBinding.research(
+        data_venue="binance",
+        price_venue="binance",
+        price_environment=Environment.MAINNET,
+        instrument_spec_venue="binance",
+        policy=policy_for("binance", "safety-first"),
+    )
+    identity = identity_for(
+        config,
+        binding,
+        GuidePool.for_config(config),
+        data_version="coverage:probe",
+        funding_source="data/funding",
+        analysis_venue="binance",
+    )
+
+    assert identity.incoherence_reason == ""
+    assert identity.venues_agree()
+    assert identity.stamp()

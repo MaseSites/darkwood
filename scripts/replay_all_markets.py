@@ -77,14 +77,73 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from traidingbrain.analysis.pipeline import MultiFrameAnalysis
 from traidingbrain.config.settings import load_config
+from traidingbrain.data.dataversion import content_version
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.market import DEFAULT_SPEC, SymbolSpec
+from traidingbrain.execution.policy import policy_for
+from traidingbrain.execution.venuebinding import Environment, VenueBinding
 from traidingbrain.journal.build import entries_from
+from traidingbrain.journal.identity import identity_for
 from traidingbrain.journal.record import Source
 from traidingbrain.journal.version import code_version, decision_version, run_signature
 from traidingbrain.sim.engine import BacktestEngine
 from traidingbrain.strategies.guide import GuidePool
+
+#: Von welcher Boerse die Instrumentregeln dieses Laufs stammen.
+#:
+#: **"bybit" und nicht die konfigurierte Boerse, und das ist eine Aussage.**
+#: Dieses Skript baut seine Specs aus `DEFAULT_SPEC` (`domain/market.py:77`),
+#: und die Zahlen darin sind Bybits: taker 0.00055, maker 0.0002. Die Kerzen
+#: kommen von Binance. Hier `config.engine.exchange.name` einzusetzen hiesse,
+#: den Widerspruch in der Aufzeichnung zuzudecken -- also steht er drin, und
+#: `identity.venues_agree()` antwortet mit Nein.
+#:
+#: Am 18.10.2026 gemessen, was das kostet: +0.0014 R je Trade [+0.001, +0.002],
+#: in allen zwoelf Maerkten gleichgerichtet (`scripts/study_venue_fee.py`).
+#: Diese Zeile verschwindet, sobald der Replay seine Specs von der
+#: konfigurierten Boerse holt -- nicht vorher.
+SPEC_VENUE = "bybit"
+
+#: Und dieselbe Lage fuer die Analyse: `analysis/context.py` traegt
+#: `venue="bybit"` hartkodiert, im Widerspruch zur Konfiguration.
+ANALYSIS_VENUE = "bybit"
+
+#: Warum dieser Lauf zwei Boersen mischen DARF.
+#:
+#: `VenueBinding.research()` weist ihn ab, und zu Recht -- das Tor aus Phase 2
+#: hat diesen Widerspruch am 18.10.2026 gefunden, ohne ihn zu kennen. Nur ist
+#: die eingefrorene Population genau so entstanden, und sie muss
+#: reproduzierbar bleiben. `legacy_incoherent` nimmt diesen Grund, schreibt ihn
+#: in den Fingerprint und kann nicht ausfuehren.
+#:
+#: Diese Konstante verschwindet gemeinsam mit `SPEC_VENUE`, sobald der Replay
+#: seine Instrumentregeln von der konfigurierten Boerse holt.
+INCOHERENCE_REASON = (
+    "DEFAULT_SPEC traegt Bybits Instrumentregeln (taker 0.00055), die Kerzen "
+    "kommen von Binance (taker 0.0005) -- so ist die eingefrorene Population "
+    "von 7.335 Fills entstanden. Kosten gemessen am 18.10.2026: +0.0014 R je "
+    "Trade [+0.001, +0.002], siehe scripts/study_venue_fee.py. "
+    "ZWEITE Abweichung: broker.py:493 berechnet die Makergebuehr fuer jeden "
+    "Limit-Einstieg, OHNE maker_role_proven zu pruefen -- der Simulator "
+    "rechnet also als waere die Makerrolle bewiesen, waehrend die Policy sie "
+    "mit False fuehrt. broker.py:747 tut dasselbe fuer Zielausstiege und sagt "
+    "im eigenen Docstring, das sei 'quietly optimistic about every winner'. "
+    "Gemessen kostet diese Annahme +0.017 R je Trade [+0.017, +0.018]"
+)
+
+#: Die Policy, deren Gebuehrenverhalten dieser Lauf wirklich zeigt.
+#:
+#: Aus der Gebuehrenspalte rekonstruiert, nicht gewaehlt: maker ein, maker auf
+#: Zielausstieg, taker auf Stopausstieg -- das ist `maker-target`, und die
+#: Saetze sind Bybits. `safety-first` waere falsch (dessen Ziel ist eine
+#: Market-Order und zahlt taker).
+#:
+#: `maker_role_proven` bleibt dabei False, obwohl der Simulator als bewiesen
+#: rechnet. Das ist Absicht: das Feld wuerde sonst einen Beweis behaupten, den
+#: es nicht gibt. Die Abweichung steht stattdessen ausgeschrieben in
+#: `INCOHERENCE_REASON` und damit im Fingerprint.
+LEGACY_POLICY = "maker-target"
 
 MARKETS = (
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT",
@@ -152,6 +211,37 @@ def run_one(symbol: str, *, config: object, store: ParquetStore,
     # zu erschliessen.
     stamp, commit = decision_version(), code_version()
     signature = run_signature(config, max_bars=max_bars)
+    # Die VOLLSTAENDIGE Herkunft, nicht nur Konfiguration und Commit.
+    #
+    # Der Grund steht in `journal/identity.py`: aus den 7.335 alten Fills ist
+    # nicht entscheidbar, unter welcher Boerse und welchem Gebuehrenplan sie
+    # entstanden -- die Antwort stand nur in einem Kommentar. Und am
+    # 18.10.2026 wurde gemessen, dass der Gebuehrenplan das Ergebnis reliabel
+    # verschiebt: dieselben Fills unter Bybits und Binances Takersatz
+    # unterscheiden sich um +0.0014 R [+0.001, +0.002].
+    #
+    # `content_version` und nicht `coverage_version`: die Rahmen liegen hier
+    # ohnehin im Speicher, und die billige Form ist blind dagegen, dass eine
+    # Quelle ihre eigene Vergangenheit umschreibt.
+    identity = identity_for(
+        config,
+        VenueBinding.legacy_incoherent(
+            data_venue=config.engine.exchange.name,  # type: ignore[attr-defined]
+            price_venue=config.engine.exchange.name,  # type: ignore[attr-defined]
+            price_environment=Environment.MAINNET,
+            instrument_spec_venue=SPEC_VENUE,
+            # Bybits Saetze, weil Bybits Saetze berechnet wurden. Die Policy
+            # nennt hier NICHT die konfigurierte Boerse -- sonst stuende im
+            # Fingerprint 0.0005, und berechnet wurden 0.00055.
+            policy=policy_for(SPEC_VENUE, LEGACY_POLICY),
+            reason=INCOHERENCE_REASON,
+        ),
+        pool,
+        data_version=content_version({**frames, "m1": minutes}),
+        funding_source=str(funding_store.root),
+        analysis_venue=ANALYSIS_VENUE,
+        max_bars=max_bars,
+    )
     journal = [
         replace(entry, run_signature=signature, decision_version=stamp, code_version=commit)
         for entry in journal
@@ -164,6 +254,13 @@ def run_one(symbol: str, *, config: object, store: ParquetStore,
         "decision_version": stamp,
         "code_version": commit,
         "run_signature": signature,
+        # Die siebzehn Herkunftsfelder und ihr Stempel. Der Stempel ist das,
+        # worauf eine spaetere Auswertung filtert; die Felder stehen daneben,
+        # damit die Datei ohne den Code lesbar bleibt, der sie erzeugt hat.
+        "identity_stamp": identity.stamp(),
+        "identity": identity.to_dict(),
+        # Und die eine Frage, die der Istzustand mit Nein beantwortet.
+        "venues_agree": identity.venues_agree(),
         # Die Kadenz ausgeschrieben, nicht nur in der Signatur versteckt.
         #
         # Der alte 4-Markt-Lauf im Journal traegt keine Signatur, und seine
@@ -209,7 +306,7 @@ def run_one(symbol: str, *, config: object, store: ParquetStore,
     }
 
 
-def banner(config: object, *, stamp: str, markets: int) -> None:
+def banner(config: object, *, stamp: str, markets: int, out: Path) -> None:
     """Was dieser Lauf ist, bevor er sechs Stunden rechnet.
 
     Die Setup-Liste steht hier und nicht nur in der Ergebnisdatei, weil der
@@ -223,15 +320,15 @@ def banner(config: object, *, stamp: str, markets: int) -> None:
     print(f"\n  Entscheidungsstempel {stamp}  |  Commit {code_version()}", flush=True)
     print(f"  {len(pool.setups)} Setups wie konfiguriert: "
           f"{', '.join(s.key for s in pool.setups)}", flush=True)
-    print(f"  {markets} Maerkte nach {OUT.relative_to(ROOT)}\n", flush=True)
+    print(f"  {markets} Maerkte nach {out}\n", flush=True)
 
 
-def one_code_version(symbols: list[str]) -> int:
+def one_code_version(symbols: list[str], out: Path = OUT) -> int:
     """Pruefen, ob alle Ergebnisse aus demselben Codestand kommen."""
     stamps = set()
     total = 0
     for symbol in symbols:
-        target = OUT / f"{symbol}.json"
+        target = out / f"{symbol}.json"
         if target.exists():
             payload = json.loads(target.read_text(encoding="utf-8"))
             stamps.add(payload.get("decision_version"))
@@ -251,21 +348,26 @@ def main() -> int:
                         help="Lauf kuerzen -- nur zum Testen, kein Messlauf")
     parser.add_argument("--force", action="store_true",
                         help="auch Maerkte neu rechnen, die schon ein Ergebnis haben")
+    parser.add_argument("--out", type=Path, default=OUT,
+                        help="Zielordner. Vorgabe ist die eingefrorene Population -- "
+                             "fuer einen Probelauf einen anderen angeben, damit die "
+                             "7.335 Legacy-Fills unberuehrt bleiben")
     args = parser.parse_args()
 
     config = load_config()
     store = ParquetStore(config.engine.paths.parquet_dir)
     funding_store = FundingStore(config.engine.paths.funding_dir)
 
-    OUT.mkdir(parents=True, exist_ok=True)
+    out: Path = args.out
+    out.mkdir(parents=True, exist_ok=True)
     symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
     stamp = decision_version()
 
-    banner(config, stamp=stamp, markets=len(symbols))
+    banner(config, stamp=stamp, markets=len(symbols), out=out)
 
     done = 0
     for index, symbol in enumerate(symbols, 1):
-        target = OUT / f"{symbol}.json"
+        target = out / f"{symbol}.json"
         if target.exists() and not args.force:
             previous = json.loads(target.read_text(encoding="utf-8"))
             same = previous.get("decision_version") == stamp
