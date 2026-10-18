@@ -64,6 +64,40 @@ TAIL_BARS = {
     Timeframe.M15: 38_400,
 }
 
+#: Das Ende des Bandes, als Zeitstempel festgenagelt (2025-01-08 05:45 UTC).
+#:
+#: **Warum nicht mehr `tail()` auf die ganze Historie.** Bis zum 18.10.2026
+#: nahm diese Datei das Ende der *lebenden* Kerzenhistorie. Der Papierhändler
+#: schreibt aber weiter, also wanderte das Band alle fünfzehn Minuten, und der
+#: Test tastete nur ein Prozent davon ab. Damit war der Boden unten -- „es muss
+#: mindestens einmal gefeuert haben" -- eine Aussage über den Markt und nicht
+#: über den Code.
+#:
+#: Es ist eingetreten: derselbe Code, dieselbe Konfiguration, ein Lauf grün und
+#: der nächste rot. Gemessen am 18.10.2026 auf dem wandernden Band: **6**
+#: Treffer auf 400 Abtastpunkte. Sechs Treffer sind kein Boden, das ist ein
+#: Zufall mit Vorzeichen.
+#:
+#: Dieses Band ist gewählt, weil es bei derselben Dichte 7 liefert und bei der
+#: dreifachen 16 -- und weil es nicht mehr wandert. Ein flackernder Test in
+#: dieser Suite ist schlimmer als kein Test: er erzieht zum Nachlaufen, bis es
+#: grün ist, und genau das soll dieses Projekt nicht tun.
+BAND_END_TS = 1_736_307_900_000
+
+#: Wie viele Balken abgetastet werden. 1.200 statt 400.
+#:
+#: Gemessen: 400 Punkte ergeben 7 Treffer in 22,5 s, 1.200 Punkte ergeben 16 in
+#: 29,5 s. Die Analyse zu bauen kostet den Grossteil der Zeit und fällt nur
+#: einmal an, also kaufen sieben Sekunden mehr als die doppelte Aussagekraft.
+SAMPLE_POINTS = 1_200
+
+#: Der Boden, mit Abstand zum gemessenen Wert (16).
+#:
+#: Nicht `> 0`: ein Boden bei eins fällt genau dann, wenn er am wenigsten
+#: nützt. Und nicht die exakte 16 -- das wäre ein Golden-Test, und den gibt es
+#: in `tests/test_live_decision_golden.py` schon für diese Frage.
+MIN_HITS = 10
+
 
 def with_enabled(config: AppConfig, keys: list[str]) -> AppConfig:
     setups = config.engine.setups.model_copy(update={"enabled": keys})
@@ -73,35 +107,59 @@ def with_enabled(config: AppConfig, keys: list[str]) -> AppConfig:
 
 @pytest.fixture(scope="module")
 def frames() -> dict[Timeframe, object]:
-    """Echte Kerzen eines Marktes, weil synthetische kaum Setups auslösen."""
+    """Echte Kerzen eines Marktes, auf ein FESTES Band geschnitten.
+
+    Echte, weil synthetische kaum Setups auslösen. Fest, weil das Ende der
+    lebenden Historie wandert -- siehe `BAND_END_TS`.
+
+    Nur ein Ausschnitt und nicht die ganze Historie: die Analyse über alles zu
+    bauen dauert rund 100 Sekunden, und ein Test, der die Suite um zwei Minuten
+    verlängert, wird irgendwann übersprungen -- dann prüft er nichts mehr.
+    """
     store = ParquetStore(PROJECT_CONFIG.engine.paths.parquet_dir)
     loaded = {
         tf: store.read("ETHUSDT", tf) for tf in PROJECT_CONFIG.engine.timeframes.context
     }
     if any(frame.empty for frame in loaded.values()):
         pytest.skip("keine ETHUSDT-Kerzen -- scripts/backfill.py zuerst")
-    # Nur das Ende der Historie.
+
+    band = {
+        tf: frame[frame["ts"] <= BAND_END_TS].tail(TAIL_BARS[tf]).reset_index(drop=True)
+        for tf, frame in loaded.items()
+    }
+    # Fail-closed statt stillschweigend kürzer.
     #
-    # Die ganze Analyse zu bauen dauert rund 100 Sekunden, und ein Test, der
-    # die Suite um zwei Minuten verlaengert, wird irgendwann uebersprungen --
-    # dann prueft er nichts mehr. Der Ausschnitt muss nur gross genug sein,
-    # dass Setups darin feuern, und der Boden unten merkt, wenn nicht.
-    return {tf: frame.tail(TAIL_BARS[tf]).reset_index(drop=True)
-            for tf, frame in loaded.items()}
+    # Ein Band mit der Hälfte der Balken würde einfach seltener feuern, der
+    # Boden unten fiele, und die Meldung zeigte auf das Setup statt auf die
+    # Daten. Hier zu übersprigen sagt, was wirklich fehlt.
+    for tf, frame in band.items():
+        if len(frame) < TAIL_BARS[tf]:
+            pytest.skip(
+                f"ETHUSDT-{tf.value} hat nur {len(frame)} der {TAIL_BARS[tf]} "
+                f"Balken vor {BAND_END_TS} -- Historie zuerst nachladen"
+            )
+    return band
 
 
 def test_only_an_enabled_setup_is_ever_attributed(frames: dict) -> None:
     """Nur `G` freigegeben, also darf nur `G` herauskommen.
 
-    Der Boden steht in der zweiten Zusicherung: ohne einen einzigen Treffer
-    wäre die erste trivial wahr, und das ist genau die Form von grünem Test,
-    die diesen Defekt ein Jahr lang hätte überdauern können.
+    Der Boden steht in der zweiten Zusicherung: ohne Treffer wäre die erste
+    trivial wahr, und das ist genau die Form von grünem Test, die diesen
+    Defekt ein Jahr lang hätte überdauern können.
+
+    **Der Boden war bis zum 18.10.2026 selbst zu dünn.** Er verlangte *einen*
+    Treffer auf einem Band, das alle fünfzehn Minuten wanderte und von dem ein
+    Prozent abgetastet wurde -- gemessen sechs Treffer. Derselbe Code lief
+    einmal grün und einmal rot. Jetzt ist das Band festgenagelt
+    (`BAND_END_TS`), die Dichte verdreifacht und der Boden auf `MIN_HITS`
+    gehoben.
     """
     config = with_enabled(PROJECT_CONFIG, [LAST_KEY])
     analysis = MultiFrameAnalysis(frames, config.engine)
 
     total = len(analysis.signal)
-    step = max(1, total // 400)
+    step = max(1, total // SAMPLE_POINTS)
     found: list[str] = []
     for index in range(total - 1, 0, -step):
         for side in (Side.LONG, Side.SHORT):
@@ -114,9 +172,11 @@ def test_only_an_enabled_setup_is_ever_attributed(frames: dict) -> None:
         f"[{LAST_KEY}] -- ein abgeschaltetes Setup kann keinen Trade erzeugt "
         "haben, also darf es auch keinen tragen"
     )
-    assert found, (
-        "kein einziges Setup hat auf diesem Band gefeuert. Dann sagt die "
-        "Zusicherung darueber nichts, und der Test ist eine Attrappe."
+    assert len(found) >= MIN_HITS, (
+        f"nur {len(found)} Treffer auf diesem Band, erwartet sind mindestens "
+        f"{MIN_HITS} (gemessen am 18.10.2026: 16). Bei zu wenigen Treffern "
+        f"sagt die Zusicherung darueber fast nichts, und der Test wird zur "
+        f"Attrappe. Entweder hat sich {LAST_KEY} geaendert, oder das Band."
     )
 
 
