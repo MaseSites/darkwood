@@ -303,13 +303,23 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path("data/replay_fills"))
     parser.add_argument("--draws", type=int, default=20_000)
-    # Der Masterauftrag: 1.000 -> 20.000 CHF. Die Trade-Zahl ist die, die
-    # `scripts/goal.py` fuer dasselbe Ziel ansetzt, und das Risiko ist der
-    # Deckel aus `config/risk.yaml`. Alle drei sind Argumente, damit die Zahl
-    # nachgerechnet und nicht geglaubt wird.
+    # Der Masterauftrag: 1.000 -> 20.000 CHF.
+    #
+    # **Diese drei Vorgaben waren falsch und sind am 18.10.2026 korrigiert.**
+    # Sie standen auf 312 Trades und 3 % Risiko und ergaben +0.3216 R -- eine
+    # DRITTE Marke neben den beiden, die derselbe Abend sonst benutzt hat. Die
+    # Kadenz kommt aus den Daten (`scripts/goal_bar.py`): 5 Plaetze bei 33,00 h
+    # mittlerer Haltedauer sind 3,64 Trades/Tag, ueber 182 Tage also 662. Und
+    # das Risiko ist 1 %, nicht der 3-%-Deckel -- `risk.sizing` setzt 1 %, und
+    # 3 % ist die absolute Obergrenze, die nur bei kalibrierter Zuversicht
+    # ueberhaupt freigeschaltet wuerde.
+    #
+    # Die Marke lautet damit +0.4536 R. Alle drei bleiben Argumente, damit die
+    # Zahl nachgerechnet und nicht geglaubt wird; `tests/test_goal_bar.py`
+    # nagelt sie fest.
     parser.add_argument("--growth", type=float, default=20.0)
-    parser.add_argument("--trades", type=float, default=312.0)
-    parser.add_argument("--risk", type=float, default=0.03)
+    parser.add_argument("--trades", type=float, default=662.0)
+    parser.add_argument("--risk", type=float, default=0.01)
     args = parser.parse_args(argv)
 
     fills = lade(args.root)
