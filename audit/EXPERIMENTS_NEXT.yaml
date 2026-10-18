@@ -1582,7 +1582,49 @@ experiments:
       dem Journal nicht lesbar, weil post_mortem die beste und die
       schlimmste Lage kennt, aber nicht ihre Reihenfolge; dafuer muss der
       Motor laufen.
-    status: laeuft_seit_14okt_1715
+    status: gelaufen_gefallen
+    gelaufen: 2026-10-18
+    ergebnis: >-
+      **Gefallen, beide Zellen, beide Tore -- und MONOTON in die falsche
+      Richtung.** Zwoelf Maerkte, Zwischenspeicher `data/arms_alle.jsonl`
+      (84 Paare), Niveau 99.932 %:
+
+        Basis              n=7335   -0.0129 R  [-0.067, +0.040]
+        Einstand bei 1 R   n=8414   -0.0147 R  [-0.057, +0.026]
+          Differenz                 -0.0018 R  [-0.069, +0.066]
+          Replikation               -2.56x     (frueh +0.0023, spaet -0.0060)
+        Einstand bei 0.5 R n=9736   -0.0308 R  [-0.063, +0.002]
+          Differenz                 -0.0178 R  [-0.080, +0.045]
+          Replikation               +4.27x     (frueh -0.0068, spaet -0.0289)
+
+      Je frueher der Stop nachgezogen wird, desto schlechter das Ergebnis.
+      Bei 0.5 R ist der Verlust je Trade 2.4-mal so gross wie in der Basis.
+    was_die_regel_tatsaechlich_tut: >-
+      **Sie funktioniert -- und schadet trotzdem.** Die vorab verlangten
+      Rand-Kennzahlen zeigen es:
+
+        Anteil unter -1 R   Basis 60.3 %   bei 1 R 47.5 %   bei 0.5 R 31.5 %
+        Regel feuerte       --             43.9 % von 4166  72.4 % von 6561
+        schlimmster Verlust -1.89 R in allen drei Armen
+        5 %-Quantil         -1.08 / -1.07 / -1.07 R
+
+      Der Einstand-Stop verhindert also genau das, wofuer er gebaut ist: der
+      Anteil der Vollverluste halbiert sich fast. Die geretteten Vollverluste
+      werden von abgeschnittenen Gewinnern mehr als aufgewogen, und die
+      Rechnung dreht sich umso weiter ins Minus, je mehr Trades die Regel
+      erfasst.
+
+      Damit ist der Rueckgabe-Befund (Durchschnittstrade erreicht +1.1840 R
+      und endet bei -0.0129 R) nicht mit einem Stop einzufangen. Er ist keine
+      Nachlaessigkeit im Ausstieg, sondern beschreibt, wie diese Trades
+      verlaufen: sie gehen zuerst ins Plus und kommen zurueck, und wer sie am
+      Einstand abschneidet, nimmt die wenigen, die durchlaufen, mit heraus.
+    note: >-
+      `declared_before_reading` steht auf TRUE und das Ergebnis ist in der
+      vorhergesagten Richtung nicht eingetreten -- die Vorab-Erwartung war,
+      dass ein Einstand-Stop den Rueckgabe-Verlust abfaengt. Er verschaerft
+      ihn. Kein Parameter wird nachtraeglich angepasst; die Zelle ist
+      geschlossen.
     angelegt: 2026-10-14
     declared_before_reading: true
     note: >-
@@ -1735,7 +1777,41 @@ experiments:
       Messungen in diesem Projekt haben Populationen mit HOEHERER
       Trefferquote gefunden, die weniger verdienen. Eine steigende
       Trefferquote ist hier also ausdruecklich kein Zwischenerfolg.
-    status: angemeldet_nicht_gelaufen
+    status: gelaufen_gefallen
+    gelaufen: 2026-10-18
+    ergebnis: >-
+      **Gefallen, alle drei Zellen.** Die beste scheitert nicht am
+      Vorzeichen, sondern an der Replikation:
+
+        Basis                 n=7335   -0.0129 R  [-0.067, +0.040]
+        Ziel gedeckelt 1 R    n=9528   -0.0052 R  [-0.041, +0.029]
+          Differenz                    +0.0077 R  [-0.057, +0.071]
+          Replikation                  +0.06x     (frueh +0.0146, spaet +0.0009)
+        Ziel gedeckelt 1.5 R  n=8175   -0.0168 R  [-0.062, +0.030]
+          Differenz                    -0.0038 R  [-0.075, +0.067]
+          Replikation                  -1.77x
+        Ziel gedeckelt 2 R    n=7566   -0.0075 R  [-0.059, +0.045]
+          Differenz                    +0.0054 R  [-0.069, +0.078]
+          Replikation                  -0.29x
+
+      Der Deckel bei 1 R ist der beste Arm des gesamten Satzes: -0.0052 R
+      gegen -0.0129 R, also +0.0077 R besser als die Basis. Sein Intervall
+      spannt die Null, UND seine Replikation liegt bei 0.06x -- weit
+      ausserhalb des vorab festgelegten Bandes 0.5-2.0x. Der Effekt existiert
+      nur in der ersten Haelfte (+0.0146 R) und ist in der zweiten praktisch
+      verschwunden (+0.0009 R).
+    warum_das_replikationstor_hier_zaehlt: >-
+      Dies ist genau der Fall, fuer den es geschrieben wurde: ein plausibler
+      positiver Punktwert mit einer Zeitabhaengigkeit, die ein einzelnes
+      Intervall nicht zeigt. Haette nur das Intervall entschieden, waere
+      "knapp verfehlt, naeher ansehen" die Folgerung gewesen -- und der
+      naechste Schritt waere gewesen, auf denselben Daten eine Variante zu
+      suchen, die es knapp schafft.
+
+      Das Band wird nicht geaendert, jetzt nicht und nicht nachtraeglich.
+    note: >-
+      Alle drei Zellen waren vorab angemeldet und zaehlen in
+      `total_comparisons`. Kein Handelsparameter wird geaendert.
     angelegt: 2026-10-14
     declared_before_reading: true
     note: >-
