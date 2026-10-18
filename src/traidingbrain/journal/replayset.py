@@ -57,13 +57,16 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 
 @dataclass(frozen=True)
 class ReplaySet:
     """Replay-Trades, und woher sie kommen."""
 
-    entries: list[dict]
+    entries: list[dict[str, Any]]
+    """Die rohen `journal`-Zeilen. `Any`, weil es beliebiges JSON ist."""
+
     markets: tuple[str, ...]
     stamps: tuple[str, ...]
     signatures: tuple[str, ...]
@@ -107,7 +110,7 @@ def load_replay(data_dir: Path) -> ReplaySet | None:
     if not folder.is_dir():
         return None
 
-    entries: list[dict] = []
+    entries: list[dict[str, Any]] = []
     markets: list[str] = []
     stamps: set[str] = set()
     signatures: set[str] = set()

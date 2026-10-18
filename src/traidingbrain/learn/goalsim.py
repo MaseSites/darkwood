@@ -156,7 +156,11 @@ def _draw_sequence(
             collected += index.size
             if collected >= length:
                 break
-    return values[np.concatenate(taken)[:length]]
+    # Benannt statt direkt zurueckgegeben: numpy-Indexierung ist fuer
+    # mypy `Any`, und eine Funktion, die `ndarray` verspricht, soll das
+    # auch pruefbar halten. Zur Laufzeit identisch.
+    gezogen: np.ndarray = values[np.concatenate(taken)[:length]]
+    return gezogen
 
 
 def liquidation_distance(leverage: float) -> float:
