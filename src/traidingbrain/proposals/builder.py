@@ -316,6 +316,21 @@ class ProposalBuilder:
                 f"{risk_pct:.2%} exceeds the proposed {proposal.risk_pct:.2%}",
             )
 
+        # **Derselbe Guard wie in `build()`, Zeile 260.**
+        #
+        # Er fehlte hier. `adjust()` prüfte nur, dass das Risiko nicht steigt
+        # -- also eine Eigenschaft der Änderung, keine des Kontos. Zwischen
+        # Bau und Anpassung kann ein Verlust geschlossen worden sein, der den
+        # Tagesdeckel reisst, oder eine Position kann einen Platz belegt
+        # haben. Das Abnahmekriterium von Stufe 7 verlangt es ausdrücklich:
+        # „Änderung 5x->4x ... läuft erneut durch den Guard."
+        #
+        # `limits.check` prüft den Kill-Switch als erstes und allein
+        # hinreichend (`limits.py:204`), also deckt dieser eine Aufruf beides.
+        verdict = self.limits.check(account, symbol=proposal.symbol)
+        if not verdict.allowed:
+            return BuildFailure("blocked by a risk limit", verdict.reason)
+
         return self._assemble(
             symbol=proposal.symbol,
             side=proposal.side,
