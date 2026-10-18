@@ -262,11 +262,20 @@ class ExecutionPolicy:
         return f"{self.venue}:{self.name}"
 
     def fingerprint(self) -> str:
-        """Was in `run_signature` eingeht.
+        """Das `policy`-Feld der `ExperimentIdentity` (`journal/identity.py`).
+
+        Nicht `run_signature` -- das stand hier bis zum 18.10.2026 und war nie
+        verdrahtet. Die Signatur ist ein Schlüssel über 12.843 vorhandene
+        Zeilen und bleibt unverändert; die Identität ist der Ort, an dem Venue,
+        Policy und Gebührenplan stehen.
 
         Die Gebühren stehen mit drin: zwei Läufe auf derselben Venue mit
-        verschiedenen Gebührenannahmen sind verschiedene Läufe, und genau
-        dieser Unterschied war in der Legacy-Population unsichtbar.
+        verschiedenen Gebührenannahmen sind verschiedene Läufe. **Gemessen am
+        18.10.2026**, wie verschieden: dieselben 7.335 Fills unter Bybits und
+        unter Binances Takersatz unterscheiden sich um +0.0014 R je Trade mit
+        einem Intervall von [+0.001, +0.002] -- reliabel, und in allen zwölf
+        Märkten gleichgerichtet. In der Legacy-Population war dieser
+        Unterschied unsichtbar.
         """
         bewiesen = "proven" if self.maker_role_proven else "unproven"
         return (

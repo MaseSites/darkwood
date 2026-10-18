@@ -137,6 +137,35 @@ class VenueBinding:
     unterscheiden.
     """
 
+    incoherence_reason: str = ""
+    """Der ausgeschriebene Grund, warum dieser Lauf zwei Börsen mischt.
+
+    **Leer heisst: er mischt sie nicht.** Das Kohärenztor bleibt scharf; dieses
+    Feld ist kein Schalter, der es abschaltet, sondern die Pflicht, die
+    Ausnahme zu benennen.
+
+    Der Anlass ist gemessen. Am 18.10.2026 hat `research()` den
+    Legacy-Replay abgewiesen -- zu Recht: er liest Binance-Kerzen und baut
+    seine Instrumentregeln aus `DEFAULT_SPEC`, dessen Zahlen Bybits sind. Das
+    Tor hat damit genau den Widerspruch gefunden, für den es gebaut wurde.
+
+    Nur: die eingefrorene Population IST so entstanden, und sie muss
+    reproduzierbar bleiben. Ein Lauf, der sie nachrechnet, braucht also einen
+    Weg, inkohärent zu sein -- und der Weg muss drei Dinge leisten, damit er
+    keine Aufweichung ist:
+
+    * Er heisst `legacy_incoherent` und nicht `research`, also kann ihn
+      niemand versehentlich treffen.
+    * Er verlangt diesen Grund als Text. Ein Feld, das man füllen muss, wird
+      gelesen; ein `allow=True` wird kopiert.
+    * Er kann **nicht ausführen**. `execution_venue` ist dort immer `None`,
+      und das ist die eigentliche Sicherung: ein inkohärenter Lauf darf
+      messen, niemals senden.
+
+    Der Grund steht im Fingerprint, also sind ein kohärenter und ein
+    inkohärenter Lauf nie derselbe Lauf.
+    """
+
     # -- Konstruktoren ------------------------------------------------------ #
 
     @classmethod
@@ -164,6 +193,53 @@ class VenueBinding:
             execution_venue=None,
             execution_environment=None,
             mainnet_approved=False,
+        )
+
+    @classmethod
+    def legacy_incoherent(
+        cls,
+        *,
+        data_venue: str,
+        price_venue: str,
+        price_environment: Environment,
+        instrument_spec_venue: str,
+        policy: ExecutionPolicy,
+        reason: str,
+    ) -> VenueBinding:
+        """Ein Lauf, der zwei Börsen mischt -- benannt, begründet, ohne Senden.
+
+        Siehe `incoherence_reason` für das Warum. Hier steht nur, was dieser
+        Konstruktor **nicht** kann: ausführen. `execution_venue` ist `None`
+        und ist kein Parameter, also gibt es keinen Aufruf, der das ändert.
+
+        Und er bleibt streng, wo Strenge nichts kostet: eine *kohärente*
+        Bindung durch diesen Weg zu bauen ist ein Fehler, denn dann ist der
+        Grund gegenstandslos und würde als Rauschen in jeden Fingerprint
+        wandern.
+        """
+        if not reason.strip():
+            raise IncoherentVenueError(
+                "legacy_incoherent ohne Grund. Der Grund ist der ganze "
+                "Unterschied zu einer Aufweichung des Tores -- ein Feld, das "
+                "man fuellen muss, wird gelesen."
+            )
+        venues = {data_venue, price_venue, instrument_spec_venue, policy.venue}
+        if len(venues) == 1:
+            raise IncoherentVenueError(
+                f"legacy_incoherent fuer einen KOHAERENTEN Lauf ({venues.pop()!r}). "
+                f"Dann ist der Grund gegenstandslos und verschmutzt jeden "
+                f"Fingerprint. `research()` ist der richtige Weg."
+            )
+        return cls(
+            data_venue=data_venue,
+            price_venue=price_venue,
+            price_environment=price_environment,
+            instrument_spec_venue=instrument_spec_venue,
+            policy=policy,
+            execution_venue=None,
+            execution_environment=None,
+            mainnet_approved=False,
+            incoherence_reason=reason.strip(),
         )
 
     @classmethod
@@ -206,11 +282,32 @@ class VenueBinding:
         verschieden = sorted(set(felder.values()))
         if len(verschieden) > 1:
             zuordnung = ", ".join(f"{k}={v!r}" for k, v in felder.items())
-            raise IncoherentVenueError(
-                f"Ein Lauf, {len(felder)} Boersen-Entscheidungen, aber "
-                f"{len(verschieden)} verschiedene Boersen: {verschieden}. "
-                f"{zuordnung}. Dieser Lauf findet nicht statt."
-            )
+            if not self.incoherence_reason:
+                raise IncoherentVenueError(
+                    f"Ein Lauf, {len(felder)} Boersen-Entscheidungen, aber "
+                    f"{len(verschieden)} verschiedene Boersen: {verschieden}. "
+                    f"{zuordnung}. Dieser Lauf findet nicht statt. "
+                    f"Ein Lauf, der eine Legacy-Population nachrechnet und "
+                    f"darum inkohaerent sein MUSS, nimmt "
+                    f"`VenueBinding.legacy_incoherent(reason=...)` -- der kann "
+                    f"nicht ausfuehren."
+                )
+            # Die benannte Ausnahme. Sie darf messen und niemals senden: ein
+            # inkohaerenter Lauf weiss nicht, welche Instrumentregeln an der
+            # Boerse gelten, an die er sendet.
+            if self.execution_venue is not None:
+                raise IncoherentVenueError(
+                    f"Ein inkohaerenter Lauf darf nicht ausfuehren, auch nicht "
+                    f"mit Grund ({self.incoherence_reason!r}). {zuordnung}. "
+                    f"Er weiss nicht, welche Regeln an der Zielboerse gelten."
+                )
+            for venue in verschieden:
+                if venue not in SUPPORTED:
+                    raise IncoherentVenueError(
+                        f"Venue {venue!r} ist nicht unterstuetzt. Bekannt: "
+                        f"{sorted(SUPPORTED)}."
+                    )
+            return
 
         venue = verschieden[0]
         if venue not in SUPPORTED:
@@ -271,21 +368,32 @@ class VenueBinding:
         return self.execution_venue is not None
 
     def fingerprint(self) -> str:
-        """Was in `run_signature` eingeht.
+        """Diese Bindung als eine lesbare Zeile, fürs Banner und für Tests.
 
-        In der Legacy-Signatur stand die Venue NICHT. Darum ist aus den Daten
-        nicht entscheidbar, ob die 7.335 Trades unter Bybit- oder
-        Binance-Regeln entstanden -- die Antwort steht nur in einem Kommentar
-        in `domain/market.py:70`.
+        **Nicht** der Schlüssel einer gespeicherten Zeile, und das stand hier
+        bis zum 18.10.2026 anders („Was in `run_signature` eingeht"). Es war
+        nie verdrahtet: `run_signature` kennt die Venue nicht, und genau das
+        war der Befund -- aus den Daten ist nicht entscheidbar, ob die 7.335
+        Trades unter Bybit- oder Binance-Regeln entstanden; die Antwort stand
+        nur in einem Kommentar in `domain/market.py:70`.
+
+        Geschlossen wird das von `journal/identity.py`, das die Venues als
+        eigene Felder trägt und feldweise beweist, dass jedes den Stempel
+        bewegt. Diese Methode bleibt, weil eine Bindung in einer Zeile lesbar
+        sein soll -- aber sie trägt keine Identität mehr, und darum darf sie
+        sich auch ändern, ohne etwas zu verwaisen.
         """
         if self.execution_venue is None:
             ausfuehrung = "exec=keine"
         else:
             ausfuehrung = f"exec={self.execution_venue}/{self.execution_environment}"
         freigabe = "approved" if self.mainnet_approved else "unapproved"
+        # Der Grund gehoert hinein, sonst waeren ein kohaerenter und ein
+        # bewusst inkohaerenter Lauf dieselbe Zeile.
+        mischung = f"|incoherent={self.incoherence_reason}" if self.incoherence_reason else ""
         return (
             f"data={self.data_venue}|"
             f"price={self.price_venue}/{self.price_environment}|"
             f"spec={self.instrument_spec_venue}|"
-            f"{ausfuehrung}|{freigabe}|{self.policy.fingerprint()}"
+            f"{ausfuehrung}|{freigabe}|{self.policy.fingerprint()}{mischung}"
         )
