@@ -59,8 +59,39 @@ sources:
     status: in_use
     venue: assumed
     venue_status: unknown
-    coverage: "12 Maerkte, W1/D1/H4/H1/M15/M1; D1 gemeinsam ab 2021-10-15, teils ab 2020-01"
-    rows: "521 Parquet-Dateien, 867 MB gesamter Datenbestand"
+    coverage: >-
+      83 Marktverzeichnisse. 68 mit dem VOLLEN Ebenensatz
+      (W1/D1/H4/H1/M15/M1), 1 mit D1/H4/W1, 14 nur mit W1. Jeder der 68
+      traegt mindestens 1.837 Tage D1 -- es gibt keinen duennen Neuling
+      darunter. Zusammen 354,0 Marktjahre.
+    rows: "2.589 Parquet-Dateien, 3,76 GB"
+    korrektur_18okt2026: >-
+      **Dieser Posten war um Faktor 5 zu klein angegeben**, und das hatte
+      Folgen: hier stand "12 Maerkte, 521 Dateien, 867 MB". Gezaehlt am
+      18.10.2026: 83 Verzeichnisse, 2.589 Dateien, 3.764.234.353 Bytes.
+
+      Der Replay ist nie ueber mehr als ZWOELF Maerkte gelaufen. Die zwoelf
+      aktiven decken 72,2 der 354,0 Marktjahre ab; **281,7 Marktjahre liegen
+      unbenutzt auf der Platte, also Faktor 4,90.** Wer nach der alten Angabe
+      geplant hat, hat gegen ein Fuenftel des Bestands geplant -- und genau
+      das ist passiert: die Auflösungsgrenze des Apparats wurde durchgehend
+      mit zwoelf Maerkten gerechnet.
+
+      Was die 4,90x wirklich wert sind, gerechnet und nicht gehofft: die
+      operative Halbbreite (Bonferroni(73) + Cluster je Markt) faellt von
+      0,0649 auf 0,0293. Damit werden zwei bis drei der elf offenen Achsen
+      aus audit/BLINDFLECK_AUDIT_18OKT.md entscheidbar, die es bei zwoelf
+      Maerkten nicht waren.
+
+      Aber sie machen das vorhandene Ergebnis NICHT verlaesslich negativ:
+      dafuer braeuchte es eine Halbbreite unter 0,0129, also die 25-fache
+      Stichprobe. 4,90x reicht nicht. Mehr Maerkte erhoehen also nicht die
+      Chance, eine Kante zu finden -- sie machen einzelne Achsen messbar.
+
+      Kosten, aus den gespeicherten Laufzeiten: Mittel 4.359 s je Markt
+      (Spanne 1.189 bis 33.707 s). 68 Maerkte in EINEM Prozess sind 82,3 h
+      CPU, die 56 zusaetzlichen 67,8 h. Neun gleichzeitige Prozesse haben
+      hier schon einmal sechs Stunden ohne ein einziges Ergebnis gekostet.
     time_semantics:
       event_time: "Kerzen-Eroeffnungszeit, ms seit Epoche, UTC"
       available_at: "Eroeffnungszeit + ein Intervall (die Kerze muss geschlossen sein)"
