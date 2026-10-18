@@ -57,7 +57,31 @@ def load_context(symbol: str, frame: pd.DataFrame, config: EngineConfig) -> Snap
     found: list[str] = []
     missing: list[str] = []
 
-    store = DerivativesStore(data_root / DERIVATIVES_DIR)
+    # **Hier steht die Vermischung jetzt im Code statt unsichtbar.**
+    #
+    # Die gespeicherten Reihen sind BYBIT (BTCUSDT 2021-10-01 00:00 steht bei
+    # 16419.749; das Binance-Archiv hat 47921.245 fuer dieselbe Stunde, siehe
+    # learn/panel.py:138). Die Kerzen kommen laut config/settings.yaml von
+    # BINANCE. Das ist Positionierung der einen Boerse gegen Kurse der anderen.
+    #
+    # `venue="bybit"` ist darum HARTKODIERT und widerspricht der
+    # Konfiguration -- absichtlich. Master-Direktive 03, Phase 1: "Die
+    # laufende Vorwaertsstichprobe darf durch diese Schutzmassnahme nicht
+    # veraendert werden. Wenn das nicht garantiert werden kann, implementiere
+    # Schutz und Tests isoliert, aktiviere ihn aber noch nicht."
+    #
+    # `venue=config.exchange.name` einzusetzen WAERE die Aktivierung: das
+    # Manifest sagt bybit, der Speicher waere binance, und `read` gaebe eine
+    # leere Reihe zurueck. Die Positionierung verschwaende damit aus dem
+    # Entscheidungspfad -- eine echte Verhaltensaenderung, die andere Trades
+    # erzeugt. Sie gehoert in einen geplanten Epochenwechsel, nicht in eine
+    # Schutzmassnahme.
+    #
+    # `on_foreign="legacy"` statt "raise": bricht nicht ab, liefert leer, und
+    # der Aufrufer unten berichtet das Fehlen in `missing`.
+    store = DerivativesStore(
+        data_root / DERIVATIVES_DIR, venue="bybit", on_foreign="legacy"
+    )
     open_interest = store.read(symbol, "open_interest")
     account_ratio = store.read(symbol, "account_ratio")
 

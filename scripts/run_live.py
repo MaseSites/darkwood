@@ -168,8 +168,18 @@ def main(argv: list[str] | None = None) -> int:
         clock=SystemClock(),
         history=HistoryEngine(config.engine.history),
         positioning=LivePositioning(
+            # Beide mit DERSELBEN Venue, und der Speicher bricht bei
+            # fremden Daten ab statt sie zu ueberschreiben. Vorher holte die
+            # Quelle von der konfigurierten Boerse und der Speicher schrieb in
+            # die Dateien, die `backfill_derivatives.py` mit ccxt.bybit
+            # gefuellt hatte -- `drop_duplicates(keep="last")` liess bei
+            # Ueberlappung die neue Boerse gewinnen.
             DerivativesSource(source.exchange, config.engine.exchange.name),
-            DerivativesStore(config.engine.paths.data_dir / "derivatives"),
+            DerivativesStore(
+                config.engine.paths.data_dir / "derivatives",
+                venue=config.engine.exchange.name,
+                on_foreign="raise",
+            ),
         ),
         account=account,
     )

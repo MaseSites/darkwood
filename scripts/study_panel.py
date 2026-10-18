@@ -343,7 +343,12 @@ def evaluate(panel: object, *, model: str, cost: float, act_share: float = 1.0) 
 def readers() -> tuple[object, object]:
     config = load_config()
     candles = ParquetStore(config.engine.paths.parquet_dir)
-    derivatives = DerivativesStore(config.engine.paths.data_dir / "derivatives")
+    # Nur lesend, und auf dem Erbe: die gespeicherten Reihen sind bybit.
+    derivatives = DerivativesStore(
+        config.engine.paths.data_dir / "derivatives",
+        venue="bybit",
+        on_foreign="raise",
+    )
     external = ExternalStore(config.engine.paths.data_dir / "external")
     funding = FundingStore(config.engine.paths.funding_dir)
     sentiment = SentimentStore(config.engine.paths.data_dir / "sentiment.parquet")

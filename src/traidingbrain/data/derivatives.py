@@ -27,6 +27,8 @@ interest did not change" are opposite claims.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -37,7 +39,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from traidingbrain.data.venue import venue
+from traidingbrain.data.venue import SUPPORTED, venue
 
 #: Bybit returns at most this many rows per request.
 MAX_PAGE = 200
@@ -48,10 +50,39 @@ INTERVALS = {"5min", "15min", "30min", "1h", "4h", "1d"}
 
 _COMPRESSION = "zstd"
 
+#: Version 1 trug keine Venue. Eine Datei, aus ihrem Verzeichnis geloest, war
+#: damit herkunftslos -- und `DerivativesStore.write` mischte zwei Boersen in
+#: eine Datei, weil nichts sie unterscheiden konnte. Siehe
+#: `audit/CHATGPT_BRIEFING_02.md` 5.1.
+_OI_SCHEMA_V1 = pa.schema(
+    [
+        pa.field("ts", pa.int64(), nullable=False),
+        pa.field("open_interest", pa.float64(), nullable=False),
+    ]
+)
+
+_RATIO_SCHEMA_V1 = pa.schema(
+    [
+        pa.field("ts", pa.int64(), nullable=False),
+        pa.field("buy_ratio", pa.float64(), nullable=False),
+        pa.field("sell_ratio", pa.float64(), nullable=False),
+    ]
+)
+
+#: Version 2: die Venue ist Pflichtfeld UND Verzeichnisebene.
+#:
+#: Beides, nicht eines von beiden. Eine Spalte allein schuetzt nicht, solange
+#: weiterhin in denselben physischen Store geschrieben wird -- dann steht die
+#: Herkunft daneben und die Zeilen liegen trotzdem zusammen. Ein getrennter
+#: Pfad allein schuetzt nicht, weil eine verschobene Datei ihre Herkunft
+#: verliert.
+SCHEMA_VERSION = 2
+
 _OI_SCHEMA = pa.schema(
     [
         pa.field("ts", pa.int64(), nullable=False),
         pa.field("open_interest", pa.float64(), nullable=False),
+        pa.field("venue", pa.string(), nullable=False),
     ]
 )
 
@@ -60,8 +91,24 @@ _RATIO_SCHEMA = pa.schema(
         pa.field("ts", pa.int64(), nullable=False),
         pa.field("buy_ratio", pa.float64(), nullable=False),
         pa.field("sell_ratio", pa.float64(), nullable=False),
+        pa.field("venue", pa.string(), nullable=False),
     ]
 )
+
+#: Das Manifest liegt NEBEN den Daten, nicht in ihnen.
+#:
+#: Die vier bestehenden Dateien tragen keine Venue-Spalte und werden nicht
+#: umgeschrieben. Ihre Herkunft ist deshalb eine Aussage ueber sie, nicht in
+#: ihnen -- und sie ist eine INFERENZ, die ihren Beleg mitfuehren muss.
+PROVENANCE_FILE = "PROVENANCE.json"
+
+
+class ForeignVenueError(RuntimeError):
+    """Daten einer anderen Boerse wuerden mit diesen vermischt.
+
+    `RuntimeError`, nicht `ValueError`: das ist kein ungueltiger Eingabewert,
+    sondern ein Schreib- oder Lesevorgang, der nicht stattfinden darf.
+    """
 
 
 class DerivativesUnavailableError(RuntimeError):
@@ -109,7 +156,11 @@ class DerivativesSource:
     modes have nothing to do with each other.
     """
 
-    def __init__(self, exchange: Any, venue_name: str = "bybit", *, max_retries: int = 4) -> None:
+    def __init__(self, exchange: Any, venue_name: str, *, max_retries: int = 4) -> None:
+        # `venue_name` ist PFLICHT. Der Vorgabewert war "bybit", und
+        # `backfill_derivatives.py` hat ihn benutzt, waehrend
+        # `run_live.py:171` die konfigurierte Venue uebergab -- zwei
+        # Boersen in einem Datensatz, ohne dass eine Zeile es sagte.
         self.exchange = exchange
         self.venue = venue(venue_name)
         self.max_retries = max_retries
@@ -266,43 +317,280 @@ def _tidy(frame: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-class DerivativesStore:
-    """Positioning series on disk, one file per symbol and kind.
+def _schema_for(kind: str) -> pa.Schema:
+    return _OI_SCHEMA if kind == "open_interest" else _RATIO_SCHEMA
 
-    One file rather than partitioned by year: an hourly series over three years
-    is twenty-six thousand rows, which is small enough that partitioning would
-    add directories without saving a single rewrite.
+
+def _legacy_schema_for(kind: str) -> pa.Schema:
+    return _OI_SCHEMA_V1 if kind == "open_interest" else _RATIO_SCHEMA_V1
+
+
+def _tidy_by_venue(frame: pd.DataFrame) -> pd.DataFrame:
+    """Sortieren und deduplizieren -- Schluessel ist (venue, ts), nicht ts.
+
+    `_tidy` nahm `ts` allein. Innerhalb einer Partition genuegt das, weil dort
+    nur eine Boerse liegt. Der Schluessel muss trotzdem die Venue enthalten:
+    sonst verschluckt eine spaetere Zusammenfuehrung mehrerer Partitionen
+    stillschweigend eine Boerse, und zwar die zuerst gelesene.
+    """
+    if frame.empty:
+        return frame
+    return (
+        frame.drop_duplicates(subset=["venue", "ts"], keep="last")
+        .sort_values(["venue", "ts"])
+        .reset_index(drop=True)
+        .astype({"ts": "int64"})
+    )
+
+
+class DerivativesStore:
+    """Positionierungsreihen auf der Platte -- eine Boerse je Datei, erzwungen.
+
+    **Was hier schiefging.** `LivePositioning.refresh` schrieb frisch geholte
+    Zeilen in dieselbe Datei wie die Backfill-Historie. Die Live-Quelle kam
+    aus `run_live.py:171` ueber `config.engine.exchange.name` (Binance), die
+    Historie aus `backfill_derivatives.py` ueber hartkodiertes `ccxt.bybit`.
+    Die Schemata trugen keine Venue, und `_tidy` deduplizierte auf `ts` allein
+    -- bei Ueberlappung gewann die spaeter geschriebene Zeile.
+
+    Die Groessenordnung ist gemessen: Bybit 16419.749 gegen Binance 47921.245
+    fuer BTCUSDT am 2021-10-01 00:00, Faktor ~2.9 (`learn/panel.py:138`). Bei
+    `MIN_OI_CHANGE = 0.004` (`analysis/positioning.py:48`) waere die Naht ein
+    riesiges Open-Interest-Signal aus einem Datenfehler.
+
+    **Zwei Schranken, nicht eine.** Die Venue ist Verzeichnisebene UND
+    Pflichtspalte. Der Pfad trennt die Daten physisch; die Spalte macht eine
+    einzelne Datei selbsterklaerend, auch wenn sie aus ihrem Verzeichnis
+    geloest wird.
+
+    **Das Erbe wird gelesen, niemals beschrieben.** Die vier bestehenden
+    Dateien liegen unter `root/<SYMBOL>/<kind>.parquet` und bleiben
+    byte-identisch -- der neue Pfad enthaelt die Venue, also kann `write` sie
+    nicht treffen. Ihre Herkunft steht in einem Manifest daneben, als
+    INFERENZ mit Beleg.
     """
 
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        venue: str,
+        on_foreign: str | None = None,
+    ) -> None:
+        """`venue` ist Pflicht, `on_foreign` beim Lesen.
+
+        `on_foreign` hat absichtlich keinen Vorgabewert: was bei fremden Daten
+        geschehen soll, ist eine Entscheidung des Aufrufers, und ein
+        Vorgabewert waere genau die stille Entscheidung, die dieses Modul
+        beseitigt. `"raise"` bricht ab, `"legacy"` liefert eine leere Reihe und
+        laesst den Aufrufer das Fehlen berichten.
+
+        Schreiben braucht die Angabe nicht -- dort ist die Antwort immer
+        Abbruch.
+        """
+        if venue not in SUPPORTED:
+            raise ValueError(
+                f"Venue {venue!r} ist nicht unterstuetzt. Bekannt: "
+                f"{sorted(SUPPORTED)}."
+            )
+        if on_foreign not in (None, "raise", "legacy"):
+            raise ValueError(
+                f"on_foreign {on_foreign!r} -- erlaubt sind 'raise' und 'legacy'."
+            )
         self.root = root
+        self.venue_name = venue
+        self.on_foreign = on_foreign
+
+    # -- Pfade -------------------------------------------------------------- #
 
     def path(self, symbol: str, kind: str) -> Path:
+        """Der Schreibpfad. Enthaelt die Venue, darum trifft er kein Erbe."""
+        return self.root / self.venue_name / symbol / f"{kind}.parquet"
+
+    def legacy_path(self, symbol: str, kind: str) -> Path:
+        """Das alte Layout ohne Venue-Ebene. Nur zum Lesen."""
         return self.root / symbol / f"{kind}.parquet"
 
+    # -- Schreiben ---------------------------------------------------------- #
+
     def write(self, symbol: str, kind: str, frame: pd.DataFrame) -> int:
-        """Merge with whatever is stored and rewrite. Returns the total row count."""
+        """Zusammenfuehren und schreiben. Bricht bei fremden Zeilen ab."""
         if frame.empty:
             return 0
-        schema = _OI_SCHEMA if kind == "open_interest" else _RATIO_SCHEMA
-        path = self.path(symbol, kind)
-        path.parent.mkdir(parents=True, exist_ok=True)
 
+        if "venue" in frame.columns:
+            fremd = sorted(set(frame["venue"].astype(str)) - {self.venue_name})
+            if fremd:
+                raise ForeignVenueError(
+                    f"Der Rahmen traegt Zeilen von {fremd} und dieser Speicher "
+                    f"ist {self.venue_name!r}. Zwei Boersen in einer Datei sind "
+                    f"nachtraeglich nicht trennbar -- dieser Schreibvorgang "
+                    f"findet nicht statt."
+                )
+            frame = frame.drop(columns=["venue"])
+
+        schema = _schema_for(kind)
+        frame = frame.copy()
+        frame["venue"] = self.venue_name
+
+        path = self.path(symbol, kind)
         if path.exists():
             stored: pd.DataFrame = pq.read_table(path).to_pandas()
-            frame = _tidy(pd.concat([stored, frame], ignore_index=True))
+            if "venue" in stored.columns:
+                fremd = sorted(set(stored["venue"].astype(str)) - {self.venue_name})
+                if fremd:
+                    raise ForeignVenueError(
+                        f"{path} enthaelt Zeilen von {fremd}, dieser Speicher "
+                        f"ist {self.venue_name!r}. Die Datei wird nicht "
+                        f"angefasst."
+                    )
+            else:
+                raise ForeignVenueError(
+                    f"{path} traegt keine Venue-Spalte, ist also Schema v1 "
+                    f"unbekannter Herkunft. Eine Datei unbekannter Herkunft "
+                    f"wird nicht fortgeschrieben."
+                )
+            frame = _tidy_by_venue(pd.concat([stored, frame], ignore_index=True))
+        else:
+            frame = _tidy_by_venue(frame)
 
-        table = pa.Table.from_pandas(frame[schema.names], schema=schema, preserve_index=False)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        table = pa.Table.from_pandas(
+            frame[schema.names], schema=schema, preserve_index=False
+        )
+        table = table.replace_schema_metadata(
+            {"schema_version": str(SCHEMA_VERSION), "venue": self.venue_name}
+        )
         pq.write_table(table, path, compression=_COMPRESSION)
         return len(frame)
 
+    # -- Lesen -------------------------------------------------------------- #
+
+    def _empty(self, kind: str) -> pd.DataFrame:
+        schema = _schema_for(kind)
+        return pd.DataFrame(
+            {
+                name: pd.Series(dtype="object" if name == "venue" else "float64")
+                for name in schema.names
+            }
+        )
+
     def read(self, symbol: str, kind: str) -> pd.DataFrame:
+        """Die eigene Partition, oder ein passendes Erbe, oder nichts."""
         path = self.path(symbol, kind)
+        if path.exists():
+            # Die eigene Partition stellt keine Fremddaten-Frage.
+            loaded: pd.DataFrame = pq.read_table(path).to_pandas()
+            return loaded
+
+        legacy = self.legacy_path(symbol, kind)
+        if not legacy.exists():
+            return self._empty(kind)
+
+        # Erst HIER wird die Entscheidung gebraucht: es liegt ein Erbe da,
+        # dessen Herkunft nicht in ihm selbst steht. Die Angabe wird nicht
+        # beim Konstruieren verlangt, weil ein Speicher, der nur schreibt
+        # oder nur seine eigene Partition liest, sie nicht braucht -- eine
+        # Pflichtangabe an dieser Stelle waere Zeremonie ohne Schutz.
+        if self.on_foreign is None:
+            raise TypeError(
+                f"{legacy} liegt im alten Layout, und dieser Speicher wurde "
+                "ohne on_foreign gebaut. Was mit Daten fremder oder "
+                "unbekannter Herkunft geschehen soll, ist eine Entscheidung "
+                "des Aufrufers: 'raise' bricht ab, 'legacy' liefert eine "
+                "leere Reihe. Sie wird nicht stillschweigend getroffen."
+            )
+
+        manifest = self.read_provenance(self.root)
+        herkunft = manifest.get("venue") if manifest else None
+
+        if herkunft is None:
+            if self.on_foreign == "raise":
+                raise ForeignVenueError(
+                    f"{legacy} liegt im alten Layout und die Herkunft ist "
+                    f"unbekannt -- es gibt kein {PROVENANCE_FILE}. Unbekannte "
+                    f"Herkunft wird KEINER Boerse zugeordnet."
+                )
+            return self._empty(kind)
+
+        if herkunft != self.venue_name:
+            if self.on_foreign == "raise":
+                raise ForeignVenueError(
+                    f"{legacy} ist laut Manifest {herkunft!r}, dieser Speicher "
+                    f"ist {self.venue_name!r}. Kein stiller Ersatz mit einer "
+                    f"anderen Boerse."
+                )
+            return self._empty(kind)
+
+        loaded = pq.read_table(legacy).to_pandas()
+        loaded["venue"] = herkunft
+        return loaded[_schema_for(kind).names]
+
+    # -- Das Manifest ------------------------------------------------------- #
+
+    @staticmethod
+    def read_provenance(root: Path) -> dict[str, Any] | None:
+        path = root / PROVENANCE_FILE
         if not path.exists():
-            schema = _OI_SCHEMA if kind == "open_interest" else _RATIO_SCHEMA
-            return pd.DataFrame({name: pd.Series(dtype="float64") for name in schema.names})
-        loaded: pd.DataFrame = pq.read_table(path).to_pandas()
+            return None
+        loaded: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         return loaded
+
+    @staticmethod
+    def write_provenance(
+        root: Path, *, venue: str, evidence: str
+    ) -> dict[str, Any]:
+        """Die Herkunft des Erbes festhalten -- als Inferenz, mit Beleg.
+
+        Die vier bestehenden Dateien tragen keine Venue-Spalte. Ihre Herkunft
+        ist deshalb eine Aussage UEBER sie, und sie muss ihren Beleg
+        mitfuehren. `inferred` steht darum fest auf wahr: solange die Zeilen
+        selbst es nicht sagen, ist es eine Schlussfolgerung.
+
+        Nur lesend auf den Parquet-Dateien.
+        """
+        if venue not in SUPPORTED:
+            raise ValueError(f"Venue {venue!r} ist nicht unterstuetzt.")
+        if not evidence.strip():
+            raise ValueError(
+                "Eine Herkunftsangabe ohne Beleg ist in diesem Projekt keine "
+                "Angabe -- siehe audit/P0A_LEGACY_FREEZE.md."
+            )
+
+        files: list[dict[str, Any]] = []
+        for symbol_dir in sorted(d for d in root.iterdir() if d.is_dir()):
+            if symbol_dir.name in SUPPORTED:
+                continue  # eine Venue-Partition, kein Erbe
+            for parquet in sorted(symbol_dir.glob("*.parquet")):
+                digest = hashlib.sha256(parquet.read_bytes()).hexdigest()
+                table = pq.read_table(parquet)
+                ts = table.column("ts").to_pylist() if table.num_rows else []
+                files.append(
+                    {
+                        "path": f"{symbol_dir.name}/{parquet.name}",
+                        "sha256": digest,
+                        "bytes": parquet.stat().st_size,
+                        "rows": table.num_rows,
+                        "first_ts": min(ts) if ts else None,
+                        "last_ts": max(ts) if ts else None,
+                        "columns": list(table.schema.names),
+                        "carries_venue_column": "venue" in table.schema.names,
+                    }
+                )
+
+        manifest: dict[str, Any] = {
+            "schema_version": SCHEMA_VERSION,
+            "legacy_layout": "<SYMBOL>/<kind>.parquet",
+            "venue": venue,
+            "inferred": True,
+            "evidence": evidence,
+            "written_utc": datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "files": files,
+        }
+        (root / PROVENANCE_FILE).write_text(
+            json.dumps(manifest, indent=1, ensure_ascii=False), encoding="utf-8"
+        )
+        return manifest
 
 
 class LivePositioning:

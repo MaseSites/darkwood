@@ -78,8 +78,18 @@ def main(argv: list[str] | None = None) -> int:
             "options": {"defaultType": "swap", "defaultSubType": "linear"},
         }
     )
-    source = DerivativesSource(exchange)
-    store = DerivativesStore(config.engine.paths.data_dir / "derivatives")
+    # `ccxt.bybit` steht oben hartkodiert, also ist die Venue dieses Skripts
+    # BYBIT -- unabhaengig davon, was config.engine.exchange.name sagt. Vorher
+    # trug weder die Quelle noch der Speicher diese Angabe: die Quelle nahm
+    # ihren Vorgabewert "bybit", der Speicher kannte ueberhaupt keine Venue,
+    # und `run_live.py` schrieb mit der KONFIGURIERTEN Venue in dieselben
+    # Dateien. Jetzt steht sie an beiden Stellen und wird erzwungen.
+    source = DerivativesSource(exchange, "bybit")
+    store = DerivativesStore(
+        config.engine.paths.data_dir / "derivatives",
+        venue="bybit",
+        on_foreign="raise",
+    )
 
     print(f"{args.interval} series from {args.since}, {len(args.symbols)} symbol(s)\n")
     failures = 0
