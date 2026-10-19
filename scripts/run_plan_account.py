@@ -146,7 +146,38 @@ def _tag(ms: int) -> str:
     return f"{datetime.datetime.fromtimestamp(ms / 1000, datetime.UTC):%d.%m.%Y}"
 
 
-def main(argv: list[str] | None = None) -> int:
+def juengstes_fenster(
+    trades: list[dict[str, object]], tage: int | None, *, start: float
+) -> list[dict[str, object]]:
+    """Nur die juengsten N Tage der Daten -- oder alles, wenn None.
+
+    **Gemessen vom juengsten Trade der DATEN, nicht von heute.** Die
+    gespeicherten Kerzen enden irgendwann; "die letzten 30 Tage" ab heute
+    koennte ein leeres Fenster sein, und ein leeres Fenster sieht aus wie ein
+    Befund ("die Regel handelt nicht mehr"), obwohl es nur heisst, dass die
+    Daten aelter sind.
+
+    Das Konto faengt im Ausschnitt wieder bei `start` an. Das ist eine andere
+    Frage als die ueber den ganzen Zeitraum -- naemlich "was taete die Regel
+    JETZT mit 1.000", nicht "wohin fuehrt der ganze Pfad" -- und die Ausgabe
+    sagt das, damit die beiden Zahlen nicht verwechselt werden.
+    """
+    if tage is None:
+        return trades
+    ende = max(int(t["opened_ts"]) for t in trades)
+    grenze = ende - tage * 86_400_000
+    im_fenster = [t for t in trades if int(t["opened_ts"]) >= grenze]
+    print(
+        f"AUSSCHNITT: die letzten {tage} Tage der Daten "
+        f"({_tag(grenze)} bis {_tag(ende)}) -- {len(im_fenster):,} von "
+        f"{len(trades):,} Trades.\n"
+        f"Das Konto startet in diesem Fenster wieder bei {start:,.2f}, "
+        f"traegt also NICHT den Verlauf davor.\n"
+    )
+    return im_fenster
+
+
+def _argumente(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fills", type=Path, default=Path("data/replay_fills"))
     parser.add_argument("--start", type=float, default=START)
@@ -154,9 +185,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--hebel", type=float, default=7.0)
     parser.add_argument("--zeige", type=int, default=20,
                         help="wie viele Trades einzeln ausgeschrieben werden")
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "--letzte-tage", type=int, default=None,
+        help="nur die juengsten N Tage des Nachspiels -- zeigt, was die Regel "
+             "zuletzt getan haette, statt was sie 2008 getan haette",
+    )
+    return parser.parse_args(argv)
 
-    trades = lade(args.fills)
+
+def main(argv: list[str] | None = None) -> int:
+    args = _argumente(argv)
+
+    trades = juengstes_fenster(lade(args.fills), args.letzte_tage, start=args.start)
+    if not trades:
+        print("Keine Trades in diesem Fenster.")
+        return 1
+
     konto = args.start
     hoch = konto
     liquidiert = boden_bei = 0
