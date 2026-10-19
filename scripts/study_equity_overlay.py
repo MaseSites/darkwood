@@ -149,10 +149,9 @@ def laufe(
         margin = handelbar * anteil
         nominal = margin * hebel
         liq = max(1.0 / hebel - MMR, 0.0)
-        if r[i] < 0 and stop[i] > liq:
-            schritt = -margin                      # Boerse schliesst zuerst
-        else:
-            schritt = nominal * stop[i] * r[i]
+        # Boerse schliesst zuerst, wenn der Stop jenseits der Liquidation liegt.
+        liquidiert = r[i] < 0 and stop[i] > liq
+        schritt = -margin if liquidiert else nominal * stop[i] * r[i]
         konto = max(konto + schritt, 0.0)
         hoch = max(hoch, konto)
         letzte.append(float(r[i]))
@@ -189,9 +188,12 @@ def main(argv: list[str] | None = None) -> int:
 
     from traidingbrain.learn.overlays import REGELN  # noqa: PLC0415
 
-    regeln: list[tuple[str, Regel]] = [
-        ("ohne Ueberlagerung (Basis)", ohne_ueberlagerung),
-        ("gar nicht handeln (Cash)", alles_in_cash),
+    # Fabriken, nicht fertige Regeln -- eine zustandsbehaftete Regel darf
+    # ihren Zustand nicht in den naechsten Durchlauf tragen. Siehe den
+    # Kommentar an REGELN; der Fehler hat zwei Ratschen-Zeilen erfunden.
+    fabriken: list[tuple[str, object]] = [
+        ("ohne Ueberlagerung (Basis)", lambda: ohne_ueberlagerung),
+        ("gar nicht handeln (Cash)", lambda: alles_in_cash),
         *REGELN,
     ]
 
@@ -201,14 +203,17 @@ def main(argv: list[str] | None = None) -> int:
     basis_enden: np.ndarray | None = None
     print(f"{'Regel':34s} {'echter Pfad':>12s} {'Median':>9s} {'5.':>8s} "
           f"{'95.':>9s} {'>Basis':>7s} {'Boden':>6s}")
-    for name, regel in regeln:
-        echt, _h, _b, _u = laufe(r, stop, regel)
+    for name, fabrik in fabriken:
+        echt, _h, _b, _u = laufe(r, stop, fabrik())  # type: ignore[operator]
         enden = np.array(
-            [laufe(r[o], stop[o], regel)[0] for o in ordnungen], dtype=float
+            [laufe(r[o], stop[o], fabrik())[0] for o in ordnungen],  # type: ignore[operator]
+            dtype=float,
         ) / START
         boeden = float(
-            np.mean([1.0 if laufe(r[o], stop[o], regel)[2] >= 0 else 0.0
-                     for o in ordnungen[:200]])
+            np.mean([
+                1.0 if laufe(r[o], stop[o], fabrik())[2] >= 0 else 0.0  # type: ignore[operator]
+                for o in ordnungen[:200]
+            ])
         )
         if basis_enden is None:
             basis_enden = enden
