@@ -355,6 +355,44 @@ class SystemState(BaseModel):
 # --------------------------------------------------------------------------- #
 
 
+def system_state(services: Services) -> SystemState:
+    """Der Systemzustand fuers Kopffeld -- aus demselben Konto wie alles andere.
+
+    **Hier stand `services.account`, und das war immer `None`.** Das statische
+    Feld setzt niemand: `run_dashboard.py` belegt `account_provider`, und jede
+    andere Stelle liest ueber `account_state()`. Nur dieser eine Endpunkt griff
+    am Anbieter vorbei -- und weil `None` zugleich "kein Konto" und "nicht
+    geprueft" bedeutete, meldete das Kopffeld seit jeher **„A risk limit is
+    blocking new trades"**, waehrend der Haendler daneben handelte. Eine
+    Warnung, die immer leuchtet, ist keine Warnung: sie trainiert den Leser
+    darauf, sie zu uebersehen, und dann sieht er auch die echte nicht.
+
+    Der 503 aus `account_state()` waere hier falsch. Dieser Endpunkt beschreibt
+    das System und muss auch ohne Konto antworten koennen -- also abfangen
+    statt durchreichen. Dann heisst `None` wieder nur „kein Kontostand", und
+    das ist dann auch wahr.
+
+    Steht auf Modulebene und nicht im Endpunkt, damit es ohne laufenden Server
+    pruefbar ist. Genau dieses Stueck wurde nie geprueft.
+    """
+    try:
+        account: AccountState | None = services.account_state()
+    except HTTPException:
+        account = None
+    verdict = services.limits.check(account, symbol="") if account is not None else None
+    return SystemState(
+        equity=account.equity if account else 0.0,
+        open_positions=len(account.open_positions) if account else 0,
+        pending_proposals=len(services.store.list_pending()),
+        kill_switch_engaged=services.kill_switch.is_engaged(),
+        kill_switch_reason=services.kill_switch.reason(),
+        limits_allow_trading=verdict.allowed if verdict else False,
+        limit_blockers=verdict.blockers if verdict else ["no account state"],
+        execution_connected=services.executor is not None,
+        testnet=services.config.engine.exchange.testnet,
+    )
+
+
 def create_app(services: Services) -> FastAPI:
     app = FastAPI(
         title="traidingBrain",
@@ -366,19 +404,7 @@ def create_app(services: Services) -> FastAPI:
 
     @app.get("/api/state", response_model=SystemState)
     def state() -> SystemState:
-        account = services.account
-        verdict = services.limits.check(account, symbol="") if account is not None else None
-        return SystemState(
-            equity=account.equity if account else 0.0,
-            open_positions=len(account.open_positions) if account else 0,
-            pending_proposals=len(services.store.list_pending()),
-            kill_switch_engaged=services.kill_switch.is_engaged(),
-            kill_switch_reason=services.kill_switch.reason(),
-            limits_allow_trading=verdict.allowed if verdict else False,
-            limit_blockers=verdict.blockers if verdict else ["no account state"],
-            execution_connected=services.executor is not None,
-            testnet=services.config.engine.exchange.testnet,
-        )
+        return system_state(services)
 
     @app.get("/api/proposals", response_model=list[ProposalView])
     def pending() -> list[ProposalView]:

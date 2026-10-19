@@ -31,6 +31,7 @@ import uvicorn
 from traidingbrain.analysis.pipeline import MultiFrameAnalysis
 from traidingbrain.analysis.snapshot import SnapshotBuilder
 from traidingbrain.api.app import Services, build_default_services, create_app
+from traidingbrain.api.portfolio import account_equity
 from traidingbrain.brain.fake import FakeBrain
 from traidingbrain.clock import SystemClock
 from traidingbrain.config.settings import load_secrets
@@ -51,6 +52,7 @@ from traidingbrain.execution.venuebinding import (
 from traidingbrain.journal.history import closed_trades
 from traidingbrain.journal.store import JournalStore
 from traidingbrain.journal.version import run_signature
+from traidingbrain.live.paperstate import PaperStateStore
 from traidingbrain.proposals.builder import BuildFailure
 from traidingbrain.risk.limits import AccountState
 
@@ -292,6 +294,33 @@ def _signatur(services: Services) -> str:
     return f"{basis}|{services.signature_suffix}" if services.signature_suffix else basis
 
 
+def kontostand(services: Services) -> float:
+    """Was DIESES Konto gerade haelt -- aus dem Kontospeicher.
+
+    **Hier stand `config.engine.simulation.initial_equity`**, der Startwert
+    EINES Marktes. Die drei Verlustsicherungen sind Prozente vom Konto, also
+    rechnete das bestehende Konto gegen 1.000 statt gegen 11.775: der
+    Tagesdeckel lag bei 54 statt bei rund 589, elffach zu eng, und das
+    Dashboard meldete dauerhaft "blockiert".
+
+    Sichtbar wurde es erst, als `/api/state` ueberhaupt ein Urteil zu sehen
+    bekam. Vorher las der Endpunkt `services.account` -- immer `None` -- und
+    meldete "kein Kontostand". Ein Fehler hielt den anderen verdeckt.
+
+    `account_equity` ist die eine Stelle, die diese Frage beantwortet, und sie
+    kennt den Unterschied zwischen geteilter Kasse und Summe der Einzelkonten.
+
+    Der Haendler war nie betroffen: er liest `broker.equity`
+    (`live/paper.py:833`). Dieses Tor entscheidet nur ueber Handbestaetigungen.
+
+    Steht auf Modulebene statt im Abschluss, damit es gegen einen echten
+    `PaperStateStore` pruefbar ist statt gegen eine Nachbildung davon.
+    """
+    speicher = PaperStateStore(services.config.engine.paths.data_dir / services.state_name)
+    kapital, _hoch, _gepoolt = account_equity(speicher, services.config)
+    return kapital
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
@@ -358,6 +387,9 @@ def main(argv: list[str] | None = None) -> int:
         Unarmiert bleibt die Liste leer -- unbedenklich, weil unarmiert nichts
         gesendet werden kann, und `_assert_trading_allowed` blockt ohnehin,
         wenn gar kein Zustand da ist.
+
+        Das Kapital kommt aus `kontostand()` -- dem Kontospeicher, nicht der
+        Konfiguration. Warum das ein behobener Fehler ist, steht dort.
         """
         offen: list[Position] = []
         if services.executor is not None:
@@ -370,7 +402,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  offene Positionen nicht abrufbar: {exc}", file=sys.stderr)
                 raise
         return AccountState.from_history(
-            equity=services.config.engine.simulation.initial_equity,
+            equity=kontostand(services),
             history=closed_trades(journal, signature=_signatur(services)),
             now_ms=SystemClock().now_ms(),
             open_positions=offen,

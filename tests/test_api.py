@@ -22,7 +22,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from tests.factories import make_snapshot, make_symbol_spec
-from traidingbrain.api.app import Services, _cost_floor, create_app
+from traidingbrain.api.app import Services, _cost_floor, create_app, system_state
 from traidingbrain.api.market import build_market_view
 from traidingbrain.brain.fake import FakeBrain
 from traidingbrain.config.settings import AppConfig, load_config
@@ -439,3 +439,52 @@ def test_the_age_is_measured_from_the_close_not_the_open() -> None:
     )
 
     assert view.behind_ms < hour // 2
+
+
+# --------------------------------------------------------------------------- #
+# Das Kopffeld: der Zustand, den der Mensch zuerst liest
+# --------------------------------------------------------------------------- #
+
+
+def test_das_kopffeld_liest_das_konto_vom_anbieter(services: Services) -> None:
+    """Produktiv gibt es nur `account_provider` -- und der muss ankommen.
+
+    Dieser Test hat gefehlt, und sein Fehlen war sichtbar: das Dashboard
+    meldete auf BEIDEN Konten dauerhaft "A risk limit is blocking new trades",
+    waehrend der Papierhaendler daneben handelte. `/api/state` las
+    `services.account`, das statische Feld, und das setzt im Betrieb niemand.
+
+    Warum die bestehenden Tests das durchliessen: der Fixture oben setzt
+    `account=`. Er ist anders geformt als die Wirklichkeit, und ein Fixture,
+    das anders geformt ist als die Wirklichkeit, prueft die Wirklichkeit nicht.
+    Hier wird darum der produktive Pfad nachgebaut -- Anbieter gesetzt,
+    statisches Feld ausdruecklich leer.
+    """
+    konto = services.account
+    assert konto is not None
+    services.account = None
+    services.account_provider = lambda: konto
+
+    zustand = system_state(services)
+
+    assert zustand.equity == 10_000.0
+    assert zustand.limits_allow_trading
+    assert zustand.limit_blockers == []
+
+
+def test_das_kopffeld_antwortet_auch_ganz_ohne_konto(services: Services) -> None:
+    """Ohne Konto heisst "kein Kontostand" -- und der Endpunkt bleibt am Leben.
+
+    `account_state()` wirft hier 503, und das ist fuer die Seiten richtig, die
+    ein Konto BRAUCHEN. Dieser Endpunkt beschreibt das System; er muss auch
+    dann antworten, wenn noch keines existiert. Der Unterschied ist, dass die
+    Meldung jetzt stimmt, statt immer zu leuchten.
+    """
+    services.account = None
+    services.account_provider = None
+
+    zustand = system_state(services)
+
+    assert zustand.equity == 0.0
+    assert not zustand.limits_allow_trading
+    assert zustand.limit_blockers == ["no account state"]
