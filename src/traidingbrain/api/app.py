@@ -31,8 +31,8 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -70,6 +70,7 @@ from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.domain.proposal import FactorView, ProposalAdjustment, TradeProposal
 from traidingbrain.execution.venuebinding import VenueBinding
 from traidingbrain.journal.record import Source
+from traidingbrain.journal.version import run_signature
 from traidingbrain.proposals.builder import BuildFailure, ProposalBuilder, describe
 from traidingbrain.proposals.store import ProposalStore
 from traidingbrain.risk.limits import AccountState, KillSwitch, RiskLimits
@@ -159,6 +160,40 @@ class Services:
     """
 
     binding: VenueBinding | None = None
+
+    state_name: str = "paper.sqlite"
+    """Welcher Kontospeicher gezeigt wird.
+
+    Vorbelegt mit dem bestehenden, damit jeder Aufruf unveraendert bleibt.
+    Gesetzt wird er nur fuer das zweite Papierkonto (`plan_paper.sqlite`), das
+    vorwaerts bemisst -- und dass der Name hier steht statt in `_state_path`
+    hartkodiert, ist der ganze Unterschied zwischen "zwei Konten ansehen" und
+    "zwei Konten verwechseln".
+    """
+
+    signature_suffix: str = ""
+    """Der Zusatz in der Laufsignatur dieses Kontos, etwa `plan30x7`.
+
+    Er entscheidet, WELCHE Journalzeilen zu diesem Konto gehoeren. Leer heisst
+    das bestehende Konto. Ohne ihn wuerde das Dashboard des einen Kontos die
+    Trades des anderen in seine Verlustsicherungen rechnen -- genau der Fehler,
+    der am 19.10.2026 in der Statusansicht des Papierhaendlers gefunden wurde.
+    """
+
+    account_label: str = ""
+    """Ein kurzer Name fuers Kopffeld, damit zwei offene Fenster unterscheidbar
+    sind. Leer heisst: kein Zusatz, die Seite sieht aus wie immer."""
+
+    deposit_total: float | None = None
+    """Was auf dieses Konto EINGEZAHLT wurde, falls nicht herleitbar.
+
+    `None` heisst: aus `initial_equity` mal Zahl der Maerkte herleiten. Das
+    stimmt fuer das bestehende Konto, das aus zwoelf Einzelkonten entstand
+    und spaeter zusammengelegt wurde.
+
+    Fuer ein Konto, das von Anfang an EINE Kasse ist, stimmt es nicht: das
+    Plankonto startet mit 1.000 gesamt, die Herleitung machte daraus 12.000
+    und das Dashboard meldete -91,67 %."""
     """Die geprüfte Venue- und Umgebungsbindung dieses Laufs.
 
     `None`, solange nicht scharf geschaltet ist — ohne Ausführung gibt es
@@ -327,19 +362,7 @@ def create_app(services: Services) -> FastAPI:
         version="0.1.0",
     )
 
-    dashboard = Path(__file__).resolve().parent.parent / "dashboard"
-    if dashboard.exists():
-        app.mount("/static", NoCacheStatic(directory=dashboard / "static"), name="static")
-
-        @app.get("/", include_in_schema=False)
-        def index() -> FileResponse:
-            # Same reasoning as NoCacheStatic: the page is served from this
-            # machine to this machine, and a cached shell loading fresh scripts
-            # is the worst of both.
-            return FileResponse(
-                dashboard / "templates" / "index.html",
-                headers={"Cache-Control": "no-store"},
-            )
+    _mount_dashboard(app, services)
 
     @app.get("/api/state", response_model=SystemState)
     def state() -> SystemState:
@@ -524,7 +547,7 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
         working one otherwise.
         """
         return build_paper_readout(
-            services.config.engine.paths.data_dir / "paper.sqlite",
+            services.config.engine.paths.data_dir / services.state_name,
             services.config.engine.paths.data_dir / "journal.sqlite",
             config=services.config,
             now_ms=int(time.time() * 1000),
@@ -545,6 +568,8 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
             _journal_path(services),
             services.config,
             now_ms=int(time.time() * 1000),
+            deposit=services.deposit_total,
+            signature=_konto_signatur(services),
         )
 
     @app.get("/api/portfolio/open", response_model=list[OpenTrade])
@@ -641,8 +666,75 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
         return _score_for(services, symbol)
 
 
+def _mount_dashboard(app: FastAPI, services: Services) -> None:
+    """Statische Dateien und die Seite selbst anhaengen.
+
+    Ausgelagert, weil `create_app` an der Anweisungsgrenze stand und das
+    Hinzufuegen des Kontonamens sie gerissen hat. Der Inhalt ist unveraendert.
+    """
+    dashboard = Path(__file__).resolve().parent.parent / "dashboard"
+    if not dashboard.exists():
+        return
+    app.mount("/static", NoCacheStatic(directory=dashboard / "static"), name="static")
+
+    @app.get("/", include_in_schema=False)
+    def index() -> Response:
+        """Die Seite, mit dem Namen des Kontos darin.
+
+        Gleiche Begruendung wie bei `NoCacheStatic` fuer das Nichtzwischen-
+        speichern: die Seite geht von dieser Maschine an diese Maschine, und
+        eine zwischengespeicherte Huelle mit frischen Skripten ist das
+        Schlechteste von beidem.
+
+        **Warum hier eine Einsetzung steht und keine reine Datei.** Seit dem
+        19.10.2026 gibt es ein ZWEITES Papierkonto, und zwei offene Fenster mit
+        denselben Zahlen und demselben Titel sind eine Falle: man liest das
+        eine und meint das andere. Ohne `account_label` bleibt die Seite Byte
+        fuer Byte wie vorher.
+        """
+        roh = (dashboard / "templates" / "index.html").read_text(encoding="utf-8")
+        return HTMLResponse(
+            _mit_kontonamen(roh, services.account_label),
+            headers={"Cache-Control": "no-store"},
+        )
+
+
+def _mit_kontonamen(seite: str, label: str) -> str:
+    """Den Kontonamen in Titel und Kopfzeile setzen -- oder nichts tun.
+
+    Ohne `label` kommt die Seite Byte fuer Byte unveraendert zurueck. Das ist
+    die Bedingung dafuer, dass dieser Hebel ueberhaupt da sein darf: das
+    bestehende Dashboard sieht aus wie immer.
+
+    Die Kopfzeile nutzt das vorhandene `.wordmark span` (gedaempfte Farbe,
+    Gewicht 400), das es im Stylesheet schon gibt. Hier wird also kein neues
+    Element entworfen, sondern ein vorhandenes mit Inhalt gefuellt.
+    """
+    if not label:
+        return seite
+    return seite.replace(
+        "<title>traidingBrain</title>",
+        f"<title>{label} · traidingBrain</title>",
+    ).replace(
+        '<h1 class="wordmark">traidingBrain</h1>',
+        f'<h1 class="wordmark">traidingBrain <span>{label}</span></h1>',
+    )
+
+
+def _konto_signatur(services: Services) -> str | None:
+    """Die Signatur DIESES Kontos, oder None fuer "alles zeigen".
+
+    None, solange kein Zusatz gesetzt ist: das bestehende Konto hat unter drei
+    Signaturen gehandelt (18 Zeilen ohne, 9 vor und 6 nach der
+    Portfolioumstellung), und sie alle gehoeren ihm.
+    """
+    if not services.signature_suffix:
+        return None
+    return f"{run_signature(services.config)}|{services.signature_suffix}"
+
+
 def _state_path(services: Services) -> Path:
-    return services.config.engine.paths.data_dir / "paper.sqlite"
+    return services.config.engine.paths.data_dir / services.state_name
 
 
 def _journal_path(services: Services) -> Path:

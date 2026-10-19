@@ -74,6 +74,24 @@ DEMO_SPEC = {
 #: hardcoded port only ever means a collision with whatever else is already on it.
 DEFAULT_PORT = int(os.environ.get("PORT") or 8787)
 
+#: Die Konten, die dieses Dashboard zeigen kann.
+#:
+#: Je Konto drei Dinge, und alle drei muessen zusammenpassen, sonst zeigt
+#: die Seite den Kontostand des einen mit den Trades des anderen:
+#: der Speicher, der Signaturzusatz (welche Journalzeilen dazugehoeren) und
+#: ein eigener Vorgabeport, damit zwei Fenster nebeneinander laufen koennen.
+KONTEN: dict[str, tuple[str, str, str, int, float | None]] = {
+    # Name: (Speicherdatei, Signaturzusatz, Kopfzeilen-Etikett, Vorgabeport)
+    # Name: (Speicher, Signaturzusatz, Etikett, Port, Einsatz)
+    #
+    # Der Einsatz ist bei "live" None, weil er sich herleiten laesst: das
+    # Konto entstand aus zwoelf Einzelkonten zu je 1.000. Das Plankonto ist
+    # von Anfang an EINE Kasse mit 1.000 -- ohne die Angabe meldete das
+    # Dashboard -91,67 %, weil es 12.000 als Einsatz annahm.
+    "live": ("paper.sqlite", "", "", DEFAULT_PORT, None),
+    "plan": ("plan_paper.sqlite", "plan30x7", "Plankonto 30%x7", DEFAULT_PORT + 1, 1_000.0),
+}
+
 #: How far back --demo may look for a bar the analysis actually liked. Most bars
 #: are declined, which is the system working; a demo that only tries the newest
 #: one therefore shows an empty screen most of the time and reads as a failure.
@@ -262,6 +280,18 @@ def _free_port(host: str, preferred: int) -> int:
     return 0
 
 
+def _signatur(services: Services) -> str:
+    """Die Laufsignatur DIESES Kontos, mit Zusatz.
+
+    Genau dieselbe Zusammensetzung wie in `scripts/papertrade.py`. Stimmten die
+    beiden nicht ueberein, wuerde das Dashboard die Trades seines eigenen
+    Kontos nicht finden und still mit einer leeren Historie rechnen -- also mit
+    Verlustsicherungen, die nichts sehen.
+    """
+    basis = run_signature(services.config)
+    return f"{basis}|{services.signature_suffix}" if services.signature_suffix else basis
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
@@ -271,6 +301,12 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_PORT,
         help=f"default {DEFAULT_PORT}, or $PORT when the launcher assigns one",
     )
+    parser.add_argument(
+        "--account",
+        choices=sorted(KONTEN),
+        default="live",
+        help="welches Papierkonto gezeigt wird (live = das bestehende)",
+    )
     parser.add_argument("--demo", action="store_true", help="seed one real proposal to look at")
     parser.add_argument(
         "--execute",
@@ -279,7 +315,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    state_name, suffix, label, konto_port, einsatz = KONTEN[args.account]
+    # Der kontospezifische Port greift nur, wenn weder --port noch $PORT
+    # etwas gesagt hat. Sonst gewinnt immer die ausdrueckliche Angabe.
+    if args.port == DEFAULT_PORT and not os.environ.get("PORT"):
+        args.port = konto_port
+
     services = build_default_services()
+    services.state_name = state_name
+    services.signature_suffix = suffix
+    services.account_label = label
+    services.deposit_total = einsatz
     # Echte Historie statt einer leeren Liste, und eine echte Uhr statt 0.
     #
     # Vorher stand hier `recent_trades=[]`, `open_positions=[]` und
@@ -325,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise
         return AccountState.from_history(
             equity=services.config.engine.simulation.initial_equity,
-            history=closed_trades(journal, signature=run_signature(services.config)),
+            history=closed_trades(journal, signature=_signatur(services)),
             now_ms=SystemClock().now_ms(),
             open_positions=offen,
         )

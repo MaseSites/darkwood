@@ -559,10 +559,33 @@ def run(traders: list[PaperTrader], source: MarketData | None, *, cycles: int | 
 def show_status(traders: list[PaperTrader]) -> int:
     config = load_config()
     journal = JournalStore(config.engine.paths.data_dir / JOURNAL_NAME)
-    live = journal.all(source=Source.LIVE)
+
+    # NUR die Trades DIESES Kontos.
+    #
+    # Bis zum 19.10.2026 stand hier `journal.all(source=Source.LIVE)` -- alle
+    # Vorwaertstrades, ueber jede Konfiguration hinweg. Mit einem zweiten
+    # Papierkonto ist das falsch: das Journal ist geteilt, die Konten sind es
+    # nicht. Die Risikologik filterte schon immer korrekt
+    # (`closed_trades(signature=...)`); nur diese ANSICHT mischte, und eine
+    # Ansicht, die zwei Stichproben zusammenwirft, erzeugt genau die Zahl, die
+    # niemand nachrechnen kann.
+    #
+    # Gemessen am 19.10.2026 lagen drei Signaturen im Journal: 18 Zeilen ohne
+    # (von vor der Signatur), 9 vor der Portfolioumstellung, 6 danach.
+    signatur = traders[0].run_signature if traders else ""
+    alle_live = journal.all(source=Source.LIVE)
+    live = [e for e in alle_live if e.run_signature == signatur] if signatur else alle_live
+    fremd = len(alle_live) - len(live)
 
     print("Papertrading-Konto\n")
     print(account_line(traders))
+    if signatur:
+        print(f"  Signatur: {signatur}")
+    if fremd:
+        print(
+            f"  ({fremd} weitere Vorwaertstrades im Journal gehoeren ANDEREN "
+            f"Konfigurationen und sind hier nicht gezaehlt.)"
+        )
     for trader in traders:
         tally = trader.state.tally
         print(f"  {trader.status()}")

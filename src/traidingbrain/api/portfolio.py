@@ -568,7 +568,13 @@ def account_equity(states: PaperStateStore, config: AppConfig) -> tuple[float, f
 
 
 def build_portfolio(
-    state_path: Path, journal_path: Path, config: AppConfig, *, now_ms: int
+    state_path: Path,
+    journal_path: Path,
+    config: AppConfig,
+    *,
+    now_ms: int,
+    deposit: float | None = None,
+    signature: str | None = None,
 ) -> Portfolio:
     """Ein Konto, und was die Märkte darauf getan haben.
 
@@ -584,6 +590,19 @@ def build_portfolio(
 
     live = journal.all(source=Source.LIVE)
 
+    # Gehoert dieses Journal MEHREREN Konten, zaehlt nur das eigene.
+    #
+    # Ohne `signature` bleibt alles wie bisher -- das bestehende Konto ist das
+    # einzige, das je unter seinen Signaturen gehandelt hat, und fuer es ist
+    # die Begruendung unten richtig.
+    #
+    # Mit `signature` nicht: seit dem 19.10.2026 gibt es ein zweites
+    # Papierkonto an demselben Journal. Ungefiltert zeigte seine Seite die
+    # Marktbeitraege des ANDEREN Kontos -- "BTCUSDT -63,81" auf einem Konto,
+    # das noch keinen Trade hatte, und "+279,79 USDT unerklaert" als Differenz.
+    if signature:
+        live = [entry for entry in live if entry.run_signature == signature]
+
     # Die Teilmenge, die zur LAUFENDEN Konfiguration gehoert.
     #
     # Beides muss stimmen: `run_signature` deckt die Konfiguration,
@@ -592,10 +611,11 @@ def build_portfolio(
     # Vorwaertstrades gar keine Signatur, und sie sind aus den Daten keiner
     # Konfiguration zuzuordnen.
     #
-    # Die Markt-Beitraege unten rechnen weiter ueber ALLE Trades: der
-    # Kontostand hat sie alle bezahlt, und eine Tabelle, die nur die
+    # Die Markt-Beitraege unten rechnen ueber alle Trades DIESES Kontos:
+    # sein Kontostand hat sie bezahlt, und eine Tabelle, die nur die
     # laufende Epoche zeigt, wuerde den Kontostand nicht mehr erklaeren.
-    # Nur die SCHLAGZEILE wird auf eine Konfiguration eingeschraenkt.
+    # Nur die SCHLAGZEILE wird zusaetzlich auf eine Konfiguration
+    # eingeschraenkt.
     current = current_era(live, config)
 
     closed = [entry for entry in live if entry.closed_ts]
@@ -624,7 +644,17 @@ def build_portfolio(
     # Was eingezahlt wurde. Die Kasse entstand aus der Summe der Einzelkonten,
     # und jedes begann bei `initial_equity` -- also ist der Einsatz das
     # Produkt und nicht die Zahl aus der Konfiguration allein.
-    start = per_account * len(symbols)
+    # Was eingezahlt wurde.
+    #
+    # Die Herleitung `per_account * Maerkte` stimmt fuer das bestehende
+    # Konto: es entstand aus zwoelf Einzelkonten zu je `initial_equity` und
+    # wurde spaeter zusammengelegt. Fuer ein Konto, das von Anfang an EINE
+    # Kasse ist, stimmt sie nicht -- das Plankonto startet mit 1.000 gesamt,
+    # und die Herleitung machte daraus 12.000 und meldete -91,67 %.
+    #
+    # Darum uebergebbar. Ohne Angabe bleibt die alte Herleitung, also sieht
+    # das bestehende Konto aus wie immer.
+    start = deposit if deposit is not None else per_account * len(symbols)
     change = equity - start
     # Die Reservierung wird nicht gespeichert, sondern aus den offenen
     # Positionen hergeleitet -- dieselbe Herleitung wie in
