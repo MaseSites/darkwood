@@ -70,7 +70,13 @@ from traidingbrain.live.paperstate import PaperState, PaperStateStore, Tally
 from traidingbrain.risk.limits import AccountState, RiskLimits
 from traidingbrain.sim.broker import Fill, OpenPosition, SimBroker, _Ledger
 from traidingbrain.sim.engine import AnalysisStrategy
-from traidingbrain.sim.plan import Assessment, TradeIntent, assess, setup_label
+from traidingbrain.sim.plan import (
+    Assessment,
+    Sizer,
+    TradeIntent,
+    assess,
+    setup_label,
+)
 from traidingbrain.strategies.guide import GuidePool
 
 #: Bars refetched per timeframe each cycle.
@@ -221,6 +227,7 @@ class PaperTrader:
         limits: RiskLimits | None = None,
         ledger: _Ledger | None = None,
         book: OpenBook | None = None,
+        sizer: Sizer | None = None,
     ) -> None:
         self.symbol = symbol
         self.config = config
@@ -235,6 +242,14 @@ class PaperTrader:
         # Ohne Speicher wird nichts aufgezeichnet und nichts bricht.
         self.signals = signals
         self.run_signature = run_signature
+        #: Eine abweichende Groessenregel, oder None fuer die uebliche.
+        #:
+        #: Optional und mit None vorbelegt, damit JEDER bestehende Aufruf
+        #: unveraendert weiterlaeuft -- das Konto, das es gibt, rechnet
+        #: rueckwaerts (Risikobudget hinein, Menge heraus) und soll das auch
+        #: weiter tun. Gesetzt wird der Hebel nur vom zweiten Konto, das
+        #: ausdruecklich vorwaerts bemisst.
+        self.sizer = sizer
         #: Die Kontogrenzen, oder None.
         #:
         #: Optional, damit Tests und der Golden-Tape ohne sie laufen -- aber
@@ -650,6 +665,7 @@ class PaperTrader:
             equity=self.broker.equity,
             created_ts=created,
             expires_ts=created + self.config.engine.simulation.entry_expiry_bars * signal_ms,
+            sizer=self.sizer,
         )
         entry = verdict.entry
         # Die Kontogrenzen, erst wenn das Signal selbst durchgekommen ist.

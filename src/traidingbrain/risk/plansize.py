@@ -29,8 +29,11 @@ und dabei eine vergisst.
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Callable
+from typing import Any
 
 from traidingbrain.domain.enums import Side
+from traidingbrain.risk.sizing import PositionSize
 
 #: Wartungsmargensatz, wenn keiner übergeben wird. Derselbe Wert und dieselbe
 #: Begründung wie in `data/exchange.py`: zu hoch angesetzt rückt die
@@ -259,3 +262,69 @@ def portfolio_load(plans: list[PlanSize], *, equity: float) -> PortfolioLoad:
         correlated_loss_share=verlust / equity,
         free_margin=equity - gebunden,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Als Groessenregel fuer `sim/plan.assess`
+# --------------------------------------------------------------------------- #
+
+
+def forward_sizer(
+    *, margin_share: float, leverage: float, max_risk_share: float | None = None
+) -> Callable[[Any, Any, float], PositionSize]:
+    """Die Vorwaertsregel als `Sizer` fuer `sim/plan.assess`.
+
+    Gebaut fuer ein ausdruecklich beauftragtes zweites Papierkonto: „300 von
+    1.000 Franken, siebenfacher Hebel, danach aufstocken". Das Aufstocken
+    steckt darin, dass die Margin ein ANTEIL ist -- waechst das Konto, waechst
+    die Margin mit.
+
+    **Was dieser Sizer an `assess` zurueckgibt, ist das WIRKLICHE Risiko.** Er
+    rechnet `risk_amount = qty * |Einstieg - Stop|` aus der fertigen Menge,
+    nicht aus einem Budget. Damit sehen alle nachfolgenden Regeln -- der
+    Kostendeckel, die Hebelwahl, das Journal -- dieselbe Zahl, die auch
+    wirklich auf dem Spiel steht. Ein Sizer, der hier ein geplantes Budget
+    zurueckgaebe, wuerde jede Kennzahl stromabwaerts verfaelschen.
+
+    Die Menge wird auf `qty_step` ABGERUNDET, wie `risk/sizing.py` es auch tut:
+    aufrunden hiesse mehr riskieren als beschlossen.
+
+    **`max_risk_share` ist der einzige Deckel, der auf diesem Pfad wirkt.**
+    Die Deckel in `risk.sizing` (`absolute_max_risk_pct`,
+    `uncalibrated_cap_risk_pct`) begrenzen das RISIKOBUDGET, und das liest
+    dieser Sizer nicht -- er rechnet vorwaerts. Ein Lauf, der sich auf jene
+    Deckel beruft, beruft sich auf eine Pruefung, die hier nicht stattfindet.
+    Darum dieser: er prueft das GERECHNETE Risiko gegen das Konto und lehnt
+    ab, statt zu kuerzen. Kuerzen waere die stillere und schlechtere Antwort
+    -- es wuerde die Regel heimlich in eine andere verwandeln.
+
+    `None` heisst ausdruecklich kein Deckel, und das ist ein zulaessiger,
+    aber zu nennender Zustand.
+    """
+
+    def sizer(intent: Any, spec: Any, equity: float) -> PositionSize:
+        entry = float(intent.entry)
+        stop_distance = abs(entry - float(intent.stop))
+        notional = equity * margin_share * leverage
+        schritte = int(notional / entry / spec.qty_step) if entry > 0 else 0
+        qty = schritte * spec.qty_step
+        risiko = qty * stop_distance
+        zu_gross = (
+            max_risk_share is not None
+            and equity > 0
+            and risiko > max_risk_share * equity
+        )
+        if qty < spec.min_qty or qty * entry < spec.min_notional or zu_gross:
+            # `is_viable` prueft auf qty > 0; eine Null hier ist das einzige
+            # Nein, das ein Sizer sagen darf.
+            return PositionSize(
+                qty=0.0, notional=0.0, risk_amount=0.0, stop_distance=stop_distance
+            )
+        return PositionSize(
+            qty=qty,
+            notional=qty * entry,
+            risk_amount=risiko,
+            stop_distance=stop_distance,
+        )
+
+    return sizer

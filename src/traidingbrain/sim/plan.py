@@ -33,6 +33,7 @@ that only want the order.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from traidingbrain.config.settings import AppConfig
@@ -40,7 +41,12 @@ from traidingbrain.domain.enums import OrderType, Rule, Side
 from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.domain.snapshot import MarketSnapshot
 from traidingbrain.risk.leverage import choose_leverage
-from traidingbrain.risk.sizing import costs_are_affordable, position_size, risk_budget
+from traidingbrain.risk.sizing import (
+    PositionSize,
+    costs_are_affordable,
+    position_size,
+    risk_budget,
+)
 from traidingbrain.sim.broker import PendingEntry
 
 
@@ -121,6 +127,16 @@ class Assessment:
         return self.entry is not None
 
 
+#: Eine andere Art, die Groesse zu bestimmen: Absicht, Instrumentregeln und
+#: Konto hinein, fertige Position heraus.
+#:
+#: Der Vertrag ist absichtlich eng. Ein Sizer darf NICHT entscheiden, OB ein
+#: Trade stattfindet -- jede Ablehnungsregel laeuft vor und nach ihm weiter,
+#: und `is_viable` ist das einzige Nein, das er aussprechen darf. Eine
+#: Groessenregel, die auch filtern duerfte, waere eine zweite Strategie an
+#: einer Stelle, an der niemand sie sucht.
+Sizer = Callable[["TradeIntent", SymbolSpec, float], PositionSize]
+
 def assess(
     intent: TradeIntent,
     snapshot: MarketSnapshot | None,
@@ -131,12 +147,26 @@ def assess(
     equity: float,
     created_ts: int,
     expires_ts: int,
+    sizer: Sizer | None = None,
 ) -> Assessment:
     """Run every risk rule and say what happened, in order.
 
     The order is the one the rules have always run in and it is load-bearing for
     the record: a signal that fails two rules is attributed to the first, so the
     counts stay a partition rather than overlapping sets.
+
+    **`sizer` ist additiv und greift nur, wenn er übergeben wird.** Ohne ihn
+    läuft exakt die bisherige Rechnung: Risikobudget hinein, Menge heraus
+    (rückwärts). Mit ihm läuft eine andere -- und der Grund, dass dieser Hebel
+    existiert, ist ein ausdrücklicher Auftrag: ein zweites Papierkonto, das
+    VORWÄRTS bemisst (ein Anteil des Kontos als Margin, mal Hebel).
+
+    Die beiden Richtungen sind nicht symmetrisch. Rückwärts ist das Risiko eine
+    Eingabe und damit bekannt; vorwärts ist es ein Ergebnis. Gemessen über die
+    7.335 Replay-Trades riskiert „30 % Margin bei 7x" im Median 4,38 % des
+    Kontos, im 99. Perzentil **30,62 %** -- bei einem Konfigurationsdeckel von
+    3 %. Ein Konto, das so bemisst, braucht darum seine EIGENE
+    Risikokonfiguration; den produktiven Deckel rührt dieser Parameter nicht an.
     """
     risk_config = config.risk
     reward_risk = intent.reward_risk
@@ -186,7 +216,13 @@ def assess(
             f"{risk_config.sizing.min_confidence:.0f}, also kein Budget",
         )
 
-    size = position_size(intent.side, intent.entry, intent.stop, budget.risk_amount, spec)
+    size = (
+        sizer(intent, spec, equity)
+        if sizer is not None
+        else position_size(
+            intent.side, intent.entry, intent.stop, budget.risk_amount, spec
+        )
+    )
     if not size.is_viable:
         return refused(
             Rule.SIZE,

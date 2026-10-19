@@ -16,11 +16,14 @@ diese Tests nageln fest, dass sie dort stehen **und stimmen**.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from traidingbrain.domain.enums import Side
 from traidingbrain.risk.plansize import (
     UnsizeablePlanError,
+    forward_sizer,
     plan_size,
     portfolio_load,
 )
@@ -206,3 +209,70 @@ def test_die_beschreibung_nennt_die_entscheidende_zahl() -> None:
 
 def test_die_beschreibung_warnt_bei_liquidation_vor_dem_stop() -> None:
     assert "ACHTUNG" in _plan(stop=85.0).describe()
+
+
+# --------------------------------------------------------------------------- #
+# 6. Als Groessenregel fuer `assess`
+# --------------------------------------------------------------------------- #
+
+
+def test_der_sizer_meldet_das_wirkliche_risiko() -> None:
+    """Die Zahl, die stromabwaerts alles entscheidet.
+
+    `assess` gibt `size.risk_amount` an den Kostendeckel, die Hebelwahl und das
+    Journal weiter. Gaebe der Sizer hier ein geplantes Budget zurueck statt des
+    gerechneten Risikos, waere jede Kennzahl danach falsch -- und zwar in die
+    guenstige Richtung.
+    """
+    sizer = forward_sizer(margin_share=0.30, leverage=7.0)
+    absicht = SimpleNamespace(entry=100.0, stop=98.0, side=Side.LONG)
+    spec = SimpleNamespace(qty_step=0.001, min_qty=0.001, min_notional=5.0)
+
+    groesse = sizer(absicht, spec, 1_000.0)
+
+    # 1.000 x 30 % x 7 = 2.100 Nominal, bei Kurs 100 also 21 Einheiten.
+    assert groesse.qty == pytest.approx(21.0)
+    assert groesse.notional == pytest.approx(2_100.0)
+    # Und das Risiko ist 21 x 2 = 42 -- die 4,2 % des Kontos aus Abschnitt 1.
+    assert groesse.risk_amount == pytest.approx(42.0)
+    assert groesse.stop_distance == pytest.approx(2.0)
+    assert groesse.is_viable
+
+
+def test_der_sizer_rundet_ab_und_nicht_auf() -> None:
+    """Aufrunden hiesse mehr riskieren als beschlossen."""
+    sizer = forward_sizer(margin_share=0.30, leverage=7.0)
+    absicht = SimpleNamespace(entry=100.0, stop=98.0, side=Side.LONG)
+    spec = SimpleNamespace(qty_step=1.0, min_qty=1.0, min_notional=5.0)
+
+    groesse = sizer(absicht, spec, 1_000.0)
+    assert groesse.qty == pytest.approx(21.0)
+
+    # Ein Konto, das auf 20,9 Einheiten kaeme, bekommt 20 -- nicht 21.
+    kleiner = sizer(absicht, spec, 995.0)
+    assert kleiner.qty == pytest.approx(20.0)
+
+
+def test_der_sizer_waechst_mit_dem_konto() -> None:
+    """Das Aufstocken aus dem Auftrag: 300, dann 350, dann 400.
+
+    Es steckt nicht in einer Regel, sondern darin, dass die Margin ein ANTEIL
+    ist.
+    """
+    sizer = forward_sizer(margin_share=0.30, leverage=7.0)
+    absicht = SimpleNamespace(entry=100.0, stop=98.0, side=Side.LONG)
+    spec = SimpleNamespace(qty_step=0.001, min_qty=0.001, min_notional=5.0)
+
+    for konto, erwartet in ((1_000.0, 2_100.0), (1_167.0, 2_450.7), (1_333.0, 2_799.3)):
+        assert sizer(absicht, spec, konto).notional == pytest.approx(erwartet, rel=1e-3)
+
+
+def test_eine_zu_kleine_position_meldet_sich_als_nicht_tragfaehig() -> None:
+    """Das einzige Nein, das ein Sizer sagen darf."""
+    sizer = forward_sizer(margin_share=0.30, leverage=7.0)
+    absicht = SimpleNamespace(entry=100.0, stop=98.0, side=Side.LONG)
+    spec = SimpleNamespace(qty_step=1.0, min_qty=1.0, min_notional=10_000.0)
+
+    groesse = sizer(absicht, spec, 1_000.0)
+    assert not groesse.is_viable
+    assert groesse.qty == 0.0

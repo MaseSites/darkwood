@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from traidingbrain.clock import SystemClock
-from traidingbrain.config.settings import load_config
+from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.data.exchange import MarketData
 from traidingbrain.data.funding import FundingStore
 from traidingbrain.data.store import ParquetStore
@@ -52,6 +52,7 @@ from traidingbrain.live.paper import (
     PaperTrader,
     state_path,
 )
+from traidingbrain.sim.plan import Sizer
 from traidingbrain.storage.singleton import AlreadyRunningError, SingleInstance
 
 #: Damit das Alter eines Fehlschlags in Stunden statt in 300 Minuten steht.
@@ -86,11 +87,33 @@ def clock_text(ts_ms: int) -> str:
 
 
 def build_traders(
-    symbols: list[str], *, offline: bool
+    symbols: list[str],
+    *,
+    offline: bool,
+    config: AppConfig | None = None,
+    state_name: str | None = None,
+    signature_suffix: str = "",
+    sizer: Sizer | None = None,
 ) -> tuple[list[PaperTrader], MarketData | None]:
-    config = load_config()
+    """Die Haendler dieses Laufs.
+
+    Die vier letzten Parameter sind additiv und mit den bisherigen Werten
+    vorbelegt -- ohne sie baut diese Funktion exakt, was sie immer gebaut hat.
+
+    Sie existieren fuer ein ausdruecklich beauftragtes ZWEITES Papierkonto, das
+    vorwaerts bemisst (ein Anteil des Kontos als Margin, mal Hebel). Dass es
+    einen eigenen Speicher, eine eigene Konfiguration UND einen eigenen
+    Signaturzusatz braucht, ist kein Zierrat: seine Zeilen duerfen nie mit
+    denen des bestehenden Kontos gemittelt werden, und ein Zusatz in der
+    Signatur macht das mechanisch unmoeglich statt bloss unerwuenscht.
+    """
+    config = config or load_config()
     store = ParquetStore(config.engine.paths.parquet_dir)
-    states = PaperStateStore(state_path(config))
+    states = PaperStateStore(
+        config.engine.paths.data_dir / state_name
+        if state_name
+        else state_path(config)
+    )
     journal = JournalStore(config.engine.paths.data_dir / JOURNAL_NAME)
     kill_switch = KillSwitch(config.engine.paths.data_dir / "KILL_SWITCH")
     limits = RiskLimits(config.risk.limits, kill_switch)
@@ -100,7 +123,9 @@ def build_traders(
     # Derselbe Speicher und dieselbe Signatur wie im Replay, damit eine
     # Live-Zeile und eine Replay-Zeile dieselbe Frage beantworten koennen.
     signal_store = SignalStore(config.engine.paths.data_dir / "signals.sqlite")
-    signature = run_signature(config)
+    signature = run_signature(config) + (
+        f"|{signature_suffix}" if signature_suffix else ""
+    )
 
     source: MarketData | None = None
     if not offline:
@@ -151,6 +176,9 @@ def build_traders(
                 # jede weitere Eroeffnung stoppt, ohne den Haendler zu toeten.
                 limits=limits,
                 ledger=shared,
+                # Die Groessenregel. None heisst: die uebliche,
+                # rueckwaerts aus dem Risikobudget.
+                sizer=sizer,
                 # Die vierte Grenze, die bis heute auf diesem Pfad nicht
                 # ausloesen konnte: die Zahl gleichzeitig offener Positionen.
                 book=book,
