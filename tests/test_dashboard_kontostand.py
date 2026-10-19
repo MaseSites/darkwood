@@ -32,14 +32,14 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-import run_dashboard  # noqa: E402
+import run_dashboard
 
-from traidingbrain.api.app import Services  # noqa: E402
-from traidingbrain.config.settings import AppConfig, load_config  # noqa: E402
-from traidingbrain.live.paperstate import PaperState, PaperStateStore  # noqa: E402
-from traidingbrain.proposals.builder import ProposalBuilder  # noqa: E402
-from traidingbrain.proposals.store import ProposalStore  # noqa: E402
-from traidingbrain.risk.limits import KillSwitch, RiskLimits  # noqa: E402
+from traidingbrain.api.app import Services
+from traidingbrain.config.settings import AppConfig, load_config
+from traidingbrain.live.paperstate import PaperState, PaperStateStore
+from traidingbrain.proposals.builder import ProposalBuilder
+from traidingbrain.proposals.store import ProposalStore
+from traidingbrain.risk.limits import KillSwitch, RiskLimits
 
 #: Zwoelf Maerkte mal 1.000 -- so ist das bestehende Konto entstanden.
 MAERKTE = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT")

@@ -252,3 +252,101 @@ def test_the_order_is_unchanged_by_the_refactor(config: AppConfig) -> None:
     assert entry.leverage == pytest.approx(result.leverage)
     assert entry.risk_amount == pytest.approx(result.risk_amount)
     assert entry.snapshot_hash == "", "no snapshot was given, so none may be invented"
+
+
+# --------------------------------------------------------------------------- #
+# Die Schwelle darf nicht vom letzten Bit entschieden werden
+# --------------------------------------------------------------------------- #
+
+
+def _ziel_wie_setup_a(entry: float, stop: float, side: Side) -> float:
+    """Genau die Zeile aus `strategy/setups.py:202`, nachgebaut.
+
+    Nicht "ungefaehr so": die Reihenfolge der Rechenschritte IST der Fehler.
+    `close + faktor * risk * sign` addiert einen winzigen Betrag auf einen
+    grossen Preis, und was dabei an Bits wegfaellt, holt die spaetere
+    Subtraktion nicht zurueck.
+    """
+    risk = abs(entry - stop)
+    return entry + 1.5 * risk * side.sign
+
+
+def test_ein_ziel_auf_der_schwelle_wird_nicht_abgelehnt(config: AppConfig) -> None:
+    """Der gemeldete Fall, unveraendert.
+
+    Am 19.10.2026 lehnte das Plankonto ein DOGEUSDT-Signal ab mit dem Text
+    „Chance-Risiko 1.50 unter dem Minimum 1.50". Nachgerechnet lag das
+    Verhaeltnis bei 1.4999999999999636 -- eine Luecke von 3,6e-14.
+
+    Gemessen ueber alle 36.155 gespeicherten A-Signale lag **kein einziges**
+    echt unter der Huerde; die 8.820 Ablehnungen waren vollstaendig Rauschen.
+    """
+    entry, stop = 0.07985, 0.07966
+    ziel = _ziel_wie_setup_a(entry, stop, Side.LONG)
+    absicht = intent(entry=entry, stop=stop, target=ziel)
+
+    assert absicht.reward_risk < 1.5, (
+        "Der Test prueft nichts, wenn das Verhaeltnis nicht wirklich knapp "
+        "unter der Schwelle liegt -- dann ist die Rechnung exakt aufgegangen "
+        "und der Fehler ist gar nicht nachgestellt."
+    )
+    assert absicht.reward_risk == pytest.approx(1.5, abs=1e-9)
+
+    ergebnis = verdict(absicht, config)
+    assert ergebnis.refused_by is not Rule.REWARD_RISK, (
+        f"Chance-Risiko {absicht.reward_risk!r} wurde abgelehnt, obwohl es "
+        f"{1.5 - absicht.reward_risk:.2e} von der Schwelle entfernt liegt"
+    )
+
+
+def test_ein_echt_zu_kleines_verhaeltnis_wird_weiter_abgelehnt(config: AppConfig) -> None:
+    """Die Toleranz darf die Regel nicht aushebeln, nur ihr Rauschband raeumen.
+
+    1,4 ist nicht 1,5, und der Abstand ist siebenstellig groesser als jedes
+    Rundungsrauschen (gemessen groesste Abweichung: 2,78e-13).
+    """
+    entry, stop = 100.0, 98.0
+    knapp_zu_wenig = entry + 1.4 * abs(entry - stop)
+
+    ergebnis = verdict(intent(entry=entry, stop=stop, target=knapp_zu_wenig), config)
+
+    assert ergebnis.refused_by is Rule.REWARD_RISK
+    assert ergebnis.reward_risk == pytest.approx(1.4)
+
+
+@pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])
+def test_kein_ziel_aus_setup_as_bauweise_faellt_je_durch(
+    config: AppConfig, side: Side
+) -> None:
+    """Die eigentliche Eigenschaft, ueber viele Preise statt an einem Fall.
+
+    Setup A legt sein erstes Ziel auf genau 1,5 R -- dieselbe Zahl wie die
+    Huerde. Ein so gebautes Ziel darf die Chance-Risiko-Regel NIE ausloesen,
+    bei keinem Preis und keiner Stopweite. Vorher tat es das in 24,4 % der
+    Faelle, und welche, entschied die letzte Stelle.
+
+    Die Preise decken fuenf Groessenordnungen ab (DOGE bei 0,08 bis BTC bei
+    70.000), weil genau dort der Fehler entsteht: je groesser der Preis im
+    Verhaeltnis zur Stopweite, desto mehr Bits fallen beim Addieren weg.
+    """
+    preise = (0.07985, 0.2491, 1.1199, 12.318, 243.7, 3_412.55, 68_901.23)
+    weiten = (0.0003, 0.0012, 0.005, 0.019, 0.047)
+
+    durchgefallen = []
+    geprueft = 0
+    for entry in preise:
+        for anteil in weiten:
+            stop = entry - entry * anteil * side.sign
+            ziel = _ziel_wie_setup_a(entry, stop, side)
+            absicht = intent(entry=entry, stop=stop, target=ziel, side=side)
+            if not absicht.is_coherent:
+                continue
+            geprueft += 1
+            if verdict(absicht, config).refused_by is Rule.REWARD_RISK:
+                durchgefallen.append((entry, stop, absicht.reward_risk))
+
+    assert geprueft >= 30, f"nur {geprueft} Faelle geprueft -- der Fall zu eng"
+    assert not durchgefallen, (
+        f"{len(durchgefallen)} von {geprueft} Zielen aus Setup As Bauweise "
+        f"wurden von der Chance-Risiko-Regel abgelehnt: {durchgefallen[:3]}"
+    )

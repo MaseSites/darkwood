@@ -245,9 +245,12 @@ FACTS: tuple[Fact, ...] = (
     ),
     Fact(
         "Dateien im Live-Entscheidungspfad",
-        "journal/version.py und DIE_VORWAERTSSTICHPROBE nennen 59; 56 am Morgen "
-        "des 13.10., 58 am Mittag, 59 seit live/book.py.",
-        _decision_closure, 59, fixed=True,
+        "journal/version.py nennt 60; 56 am Morgen des 13.10., 58 am Mittag, "
+        "59 seit live/book.py, 60 seit risk/schwellen.py am 19.10. "
+        "DIE_VORWAERTSSTICHPROBE nennt weiter 59 -- die Stichprobe lief unter "
+        "59, und ein Bericht ueber einen vergangenen Lauf wird nicht "
+        "nachtraeglich auf den heutigen Stand gehoben.",
+        _decision_closure, 60, fixed=True,
     ),
     Fact(
         "aktive Setups",

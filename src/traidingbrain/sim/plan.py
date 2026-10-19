@@ -41,6 +41,7 @@ from traidingbrain.domain.enums import OrderType, Rule, Side
 from traidingbrain.domain.market import SymbolSpec
 from traidingbrain.domain.snapshot import MarketSnapshot
 from traidingbrain.risk.leverage import choose_leverage
+from traidingbrain.risk.schwellen import unterschreitet
 from traidingbrain.risk.sizing import (
     PositionSize,
     costs_are_affordable,
@@ -191,11 +192,16 @@ def assess(
             leverage=leverage,
         )
 
-    if reward_risk < risk_config.limits.min_reward_risk:
+    # `unterschreitet` statt `<`: ein Treffer AUF der Schwelle ist kein
+    # Unterschreiten. Setup A legt sein Ziel per Konstruktion auf exakt 1,5 R
+    # -- dieselbe Zahl wie die Huerde -- und der nackte Vergleich lehnte davon
+    # 8.820 von 36.155 Signalen ab, ohne dass EINES echt darunter lag. Die
+    # ganze Begruendung und der gemessene Preis stehen in `risk/schwellen.py`.
+    if unterschreitet(reward_risk, risk_config.limits.min_reward_risk):
         return refused(
             Rule.REWARD_RISK,
-            f"Chance-Risiko {reward_risk:.2f} unter dem Minimum "
-            f"{risk_config.limits.min_reward_risk:.2f}",
+            f"Chance-Risiko {reward_risk:.4f} unter dem Minimum "
+            f"{risk_config.limits.min_reward_risk:.4f}",
         )
 
     # No snapshot means no history lookup, so no evidence that confidence

@@ -276,7 +276,7 @@ def decision_version() -> str:
       nur ein Bericht geschrieben wurde.
 
     Zu grob und zu fein. Dieser Stempel liegt dazwischen: er hasht den
-    Quelltext der 59 Dateien, die der Live-Entscheidungspfad erreicht, ohne
+    Quelltext der 60 Dateien, die der Live-Entscheidungspfad erreicht, ohne
     Kommentare, Docstrings und Formatierung. Ein Commit, der einen Bericht
     schreibt, bewegt ihn nicht. Ein Commit, der eine Setup-Schwelle ändert,
     bewegt ihn — und `run_signature` hätte das nicht gesehen.

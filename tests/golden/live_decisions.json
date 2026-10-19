@@ -46,7 +46,7 @@
           "action": "abgelehnt",
           "cost_fraction": 0.0,
           "decided_ts": 1791469800000,
-          "detail": "Chance-Risiko 0.80 unter dem Minimum 1.50",
+          "detail": "Chance-Risiko 0.8000 unter dem Minimum 1.5000",
           "entry": 1.1099,
           "leverage": 0.0,
           "qty": 0.0,
