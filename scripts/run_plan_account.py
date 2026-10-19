@@ -11,6 +11,20 @@ Ausgänge stehen fest; sie kommen aus den 7.335 gespeicherten Trades. Verändert
 wird ausschliesslich die GRÖSSE. Das ist der saubere Schnitt: eine Grössenregel
 kann nicht ändern, welcher Trade gewinnt, nur wie viel er bewegt.
 
+**Und was es darum ÜBERSCHÄTZT: die Zahl der Trades.** Dieses Skript reiht die
+Trades hintereinander auf und nimmt jeden -- es unterstellt, dass immer Platz
+war. War es nicht. Jede Position bindet `Margin-Anteil mal Konto`, bei 30 % passen
+also **drei** ins Konto, und die vierte findet nichts mehr
+(`sim/broker.py:500` lehnt genau so ab). Über die gespeicherten Trades waren
+67,9 % der Zeit mehr als drei gleichzeitig offen.
+
+Gemessen in `scripts/study_plan_slots.py`: mit Margin-Buchhaltung wären **43 %
+der Einstiege abgelehnt** worden, und der Median über 30-Tage-Fenster steigt
+von 0,34x auf **0,67x**. Die Richtung ist vorhersagbar -- weniger Trades einer
+Population mit negativer Erwartung heisst weniger Verlust -- die Grösse war es
+nicht. Wer eine Zahl über das ERGEBNIS braucht, nimmt jenes Skript; dieses hier
+beantwortet die engere Frage, was die Grössenregel je Trade tut.
+
 Drei Dinge, die der reine R-Vergleich nicht zeigt und dieses Skript darum
 mitrechnet:
 
