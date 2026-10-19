@@ -86,6 +86,7 @@ def lauf(
     hebel: float,
     max_offen: int | None,
     margin_pruefen: bool,
+    liquidation_streng: bool = False,
 ) -> tuple[float, int, int, int]:
     """Endstand, genommen, abgelehnt-Margin, abgelehnt-Platz.
 
@@ -133,7 +134,11 @@ def lauf(
             continue
 
         r = float(row["r_multiple"])
-        ergebnis = -p.margin if (p.stop_beyond_liquidation and r < 0) else p.loss_at_stop * r
+        if p.stop_beyond_liquidation and (liquidation_streng or r < 0):
+            # Liquidiert: die ganze Margin, nicht der geplante Betrag.
+            ergebnis = -p.margin
+        else:
+            ergebnis = p.loss_at_stop * r
         offen.append(Offen(zu_ts=int(row["closed_ts"]), margin=p.margin, ergebnis=ergebnis))
         genommen += 1
 
@@ -179,16 +184,21 @@ def main(argv: list[str] | None = None) -> int:
         ("nur Margin", None, True),
         (f"Margin UND Platz ({deckel})", deckel, True),
     )
-    print(f"{'Variante':28s} {'Median':>8s} {'>1.0x':>7s} {'genommen':>9s} "
-          f"{'abgel. Margin':>14s} {'abgel. Platz':>13s}")
-    print("-" * 86)
+    print(f"{'Variante':28s} {'Median':>8s} {'streng':>8s} {'>1.0x':>7s} "
+          f"{'genommen':>9s} {'abgel. Margin':>14s} {'abgel. Platz':>13s}")
+    print("-" * 95)
     for name, max_offen, margin_pruefen in varianten:
-        enden = [lauf(f, anteil=args.margin_anteil, hebel=args.hebel,
-                      max_offen=max_offen, margin_pruefen=margin_pruefen)
-                 for f in fenster]
-        faktoren = sorted(k / START for k, _, _, _ in enden)
+        zeile = []
+        for streng in (False, True):
+            enden = [lauf(f, anteil=args.margin_anteil, hebel=args.hebel,
+                          max_offen=max_offen, margin_pruefen=margin_pruefen,
+                          liquidation_streng=streng)
+                     for f in fenster]
+            zeile.append((sorted(k / START for k, _, _, _ in enden), enden))
+        faktoren, enden = zeile[0]
         print(
             f"{name:28s} {statistics.median(faktoren):8.4f} "
+            f"{statistics.median(zeile[1][0]):8.4f} "
             f"{sum(1 for f in faktoren if f > 1.0)/len(faktoren):7.1%} "
             f"{sum(e[1] for e in enden):9,d} {sum(e[2] for e in enden):14,d} "
             f"{sum(e[3] for e in enden):13,d}"
@@ -205,7 +215,29 @@ def main(argv: list[str] | None = None) -> int:
         "Die Richtung ist vorhersagbar und daher kein Befund: weniger Trades\n"
         "einer Population mit negativer Erwartung heisst weniger Verlust. Was\n"
         "die Messung liefert, ist die GROESSE des Unterschieds -- und die\n"
-        "Erkenntnis, dass die Groessenregel die Platzgrenze still veraendert."
+        "Erkenntnis, dass die Groessenregel die Platzgrenze still veraendert.\n"
+        "\n"
+        "DIE SPALTE 'streng' IST EIN RAND, KEINE ZWEITE MEINUNG.\n"
+        "Ein Trade, dessen Stop jenseits der Liquidation liegt, haette die\n"
+        "Boerse vor dem Stop schliessen sehen. Ob das WIRKLICH passiert waere,\n"
+        "steht nicht in den Daten: die gespeicherten Fills fuehren keine\n"
+        "unguenstigste Zwischenbewegung. Darum zwei Raender statt einer\n"
+        "geratenen Zahl.\n"
+        "\n"
+        "  'Median'  liquidiert nur die VERLIERER -- der Gewinner laeuft voll\n"
+        "            durch, obwohl die Position unterwegs geschlossen worden\n"
+        "            waere. Zu guenstig.\n"
+        "  'streng'  liquidiert jeden Trade jenseits der Liquidation. Zu\n"
+        "            streng, denn ein Gewinner ohne Gegenbewegung haette\n"
+        "            ueberlebt.\n"
+        "\n"
+        "Liegen beide nah beieinander, haengt die Aussage nicht am Modell.\n"
+        "Klaffen sie, liegt sie innerhalb der Luecke und nirgends genauer --\n"
+        "und das ist bei hohem Hebel der Fall, wo die Luecke das Ergebnis\n"
+        "beherrscht. Bei 30 % x 7x betrifft es 88 von 7.335 Trades (28 davon\n"
+        "Gewinner); bei 10 % x 21x sind es 1.134 (401 Gewinner), und DORT\n"
+        "erzeugt die guenstige Lesart den Eindruck, mehr Hebel sei wieder\n"
+        "besser."
     )
     return 0
 
