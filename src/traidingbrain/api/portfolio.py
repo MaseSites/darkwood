@@ -719,7 +719,38 @@ def _ledger_row(entry: JournalEntry) -> LedgerRow:
     )
 
 
-def build_ledger(journal_path: Path, *, source: Source, symbol: str | None = None) -> Ledger:
+def _nur_dieses_konto(
+    entries: list[JournalEntry], signature: str | None
+) -> list[JournalEntry]:
+    """Die Zeilen eines Kontos aus einem geteilten Journal.
+
+    **Fuenfmal derselbe Fehler, an fuenf Stellen.** Seit dem 19.10.2026 gibt es
+    zwei Papierkonten an EINEM Journal. Gefunden und einzeln behoben wurden:
+    die Statusansicht des Papierhaendlers, der Kontostand im Dashboard, die
+    Marktbeitraege, und jetzt Hauptbuch und Verlaufskurve.
+
+    Jedes Mal dieselbe Form: ein Leser, der das geteilte Journal fuer sein
+    eigenes hielt. Die RISIKOLOGIK hat nie gemischt -- sie filtert seit jeher
+    ueber `closed_trades(signature=...)`. Nur die ANSICHTEN taten es, und eine
+    Ansicht, die zwei Stichproben zusammenwirft, erzeugt genau die Zahl, die
+    hinterher niemand nachrechnen kann.
+
+    `None` heisst ausdruecklich "alles": das bestehende Konto hat unter drei
+    Signaturen gehandelt -- 18 Zeilen ohne (von vor der Signatur), 9 vor und 6
+    nach der Portfolioumstellung -- und sie gehoeren alle ihm.
+    """
+    if not signature:
+        return entries
+    return [entry for entry in entries if entry.run_signature == signature]
+
+
+def build_ledger(
+    journal_path: Path,
+    *,
+    source: Source,
+    symbol: str | None = None,
+    signature: str | None = None,
+) -> Ledger:
     """Every trade of one kind, newest first.
 
     One kind, never both: a list that mixed replayed and forward trades would
@@ -727,6 +758,9 @@ def build_ledger(journal_path: Path, *, source: Source, symbol: str | None = Non
     """
     journal = JournalStore(journal_path)
     entries = journal.all(source=source, symbol=symbol)
+    # Nur die Zeilen DIESES Kontos, falls eins benannt ist. Siehe
+    # `_nur_dieses_konto`.
+    entries = _nur_dieses_konto(entries, signature)
     entries.sort(key=lambda e: e.closed_ts, reverse=True)
     shown = entries[:MAX_LEDGER]
     return Ledger(
@@ -736,14 +770,19 @@ def build_ledger(journal_path: Path, *, source: Source, symbol: str | None = Non
     )
 
 
-def build_curve(journal_path: Path, *, source: Source) -> Curve:
+def build_curve(
+    journal_path: Path, *, source: Source, signature: str | None = None
+) -> Curve:
     """The running total in R, oldest first, with how far it fell on the way.
 
     In R rather than francs because the account changed size: a franc curve
     across that boundary shows a cliff no trade caused.
     """
     journal = JournalStore(journal_path)
-    entries = sorted(journal.all(source=source), key=lambda e: e.closed_ts)
+    entries = sorted(
+        _nur_dieses_konto(journal.all(source=source), signature),
+        key=lambda e: e.closed_ts,
+    )
 
     points: list[CurvePoint] = []
     running = 0.0

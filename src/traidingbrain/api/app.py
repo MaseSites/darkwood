@@ -608,12 +608,21 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
         One kind, never both. A list that mixed replayed with forward trades
         would invite exactly the average this project refuses to compute.
         """
-        return build_ledger(_journal_path(services), source=_source(source), symbol=symbol)
+        return build_ledger(
+            _journal_path(services),
+            source=_source(source),
+            symbol=symbol,
+            signature=_konto_signatur(services),
+        )
 
     @app.get("/api/portfolio/curve", response_model=Curve)
     def curve(source: str = "live") -> Curve:
         """The running total in R, with how far it fell below its own peak."""
-        return build_curve(_journal_path(services), source=_source(source))
+        return build_curve(
+            _journal_path(services),
+            source=_source(source),
+            signature=_konto_signatur(services),
+        )
 
     @app.get("/api/portfolio/settings", response_model=SettingsView)
     def settings() -> SettingsView:
