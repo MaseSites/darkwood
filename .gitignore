@@ -78,3 +78,7 @@ dist/
 /freqtrade/user_data/config.local.json
 data/arms_*.jsonl
 data/arms_*.log
+
+# Dauerbetrieb: Startdateien und Logs werden erzeugt, nicht gepflegt.
+# `python scripts/dauerbetrieb.py --einrichten` schreibt sie neu.
+data/dienst/
