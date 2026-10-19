@@ -86,6 +86,17 @@ MAX_EVERY = 60.0
 #: Das Buch seltener als die Trades. Es dient dazu, eine Order VOR ihrem
 #: Fill gesehen zu haben -- dafuer braucht es nicht jede Aenderung, sondern
 #: genug Aufnahmen ueber die Zeit.
+#:
+#: **Warum das jetzt einstellbar ist.** Am 19.10.2026 wurde nachgerechnet,
+#: womit die Market-Making-Familie geschlossen worden war: "0,0 % der Orders
+#: am Quotierungsabstand ueberleben 30 Sekunden". Die Zahl stimmt -- aber bei
+#: dieser Kadenz ist der kleinste beobachtbare Abstand 28 Sekunden, und ob
+#: eine Quote 1, 5 oder 20 Sekunden steht, ist in solchen Daten ueberhaupt
+#: nicht sichtbar. Genau dort wird Market Making entschieden. Die Messung
+#: beantwortete also eine Frage, die niemand gestellt hatte.
+#:
+#: Fuer diese Frage braucht es `--book-every 1`. Der Vorgabewert bleibt 30,
+#: damit bestehende Aufnahmen vergleichbar bleiben.
 BOOK_EVERY = 30.0
 
 #: Wie oft ein Fortschrittsvermerk kommt. Zehn Minuten: oft genug, um
@@ -350,13 +361,13 @@ def report(markets: list[Market], *, started: float) -> None:
     print(f"\n  Liegt unter {OUT}")
 
 
-def banner(markets: list[Market], *, hours: float) -> None:
+def banner(markets: list[Market], *, hours: float, buch_takt: float) -> None:
     """Was dieser Lauf vorhat, bevor er es tut."""
     print("=" * 72)
     print("Aufnahme: Quotes UND Trades, mit lokaler Empfangszeit")
     print("=" * 72)
     print(f"\n  Dauer    {hours:.1f}h\n  Ziel     {OUT}")
-    print(f"  Buch     alle {BOOK_EVERY:.0f}s je Markt")
+    print(f"  Buch     alle {buch_takt:g}s je Markt")
     print(f"  Stillstand wird nach {STALL_AFTER / 60:.0f} Minuten ohne Trade gemeldet")
     print("\n  Trade-Takt je Markt, aus der gemessenen Rate und PAGE=100:")
     for m in markets:
@@ -401,6 +412,11 @@ def main() -> int:
     parser.add_argument("--hours", type=float, default=11.0)
     parser.add_argument("--markets", default="BTC,ETH,SOL,XRP,DOGE,LINK")
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument(
+        "--book-every", type=float, default=BOOK_EVERY,
+        help="Sekunden zwischen zwei Buchaufnahmen je Markt. 1 fuer die "
+             "Market-Making-Frage; der Vorgabewert 30 kann sie nicht sehen.",
+    )
     args = parser.parse_args()
 
     wanted = [s.strip().upper() for s in args.markets.split(",") if s.strip()]
@@ -408,7 +424,7 @@ def main() -> int:
     if not markets:
         raise SystemExit(f"Keine aktiven Maerkte unter {wanted}.")
 
-    banner(markets, hours=args.hours)
+    banner(markets, hours=args.hours, buch_takt=args.book_every)
 
     started = time.time()
     deadline = started + args.hours * 3600
@@ -433,7 +449,7 @@ def main() -> int:
                     except (urllib.error.URLError, TimeoutError, OSError) as problem:
                         market.tally.errors += 1
                         market.tally.last_error = str(problem)[:120]
-                    market.next_book = now + BOOK_EVERY
+                    market.next_book = now + args.book_every
 
             last_count, last_progress = watch_stall(
                 markets, collected_before=last_count, since=last_progress, now=now
