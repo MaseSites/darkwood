@@ -38,13 +38,16 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from traidingbrain.domain.enums import Side
-from traidingbrain.risk.plansize import UnsizeablePlanError, plan_size
+from traidingbrain.learn.aussicht import (
+    BLOCK_TAGE,
+    BODEN,
+    MIN_TRADES_JE_BLOCK,
+    TAG_MS,
+    Fill,
+    _block_faktor,
+)
 
-TAG_MS = 86_400_000
 START = 1_000.0
-#: Unter diesem Anteil des Starts ist keine Position mehr stellbar.
-BODEN = 0.01
 #: Monate je Szenario.
 MONATE = 6
 
@@ -55,60 +58,39 @@ MIN_TRADES = 10
 MIN_GUTE = 20
 
 
-def lade(root: Path) -> list[dict[str, object]]:
-    zeilen: list[dict[str, object]] = []
+def bausteine(root: Path, *, anteil: float, hebel: float
+              ) -> tuple[list[int], np.ndarray, np.ndarray]:
+    """Die Monatsfaktoren, mit ihren Startzeitpunkten.
+
+    Nutzt `learn.aussicht._block_faktor` statt einer zweiten Fassung: das
+    Dashboard und dieses Skript muessen dieselbe Zahl zeigen, und zwei
+    Implementierungen derselben Rechnung driften irgendwann um ein paar
+    Hundertstel auseinander -- genau die Groesse der Effekte, um die es hier
+    geht.
+    """
+    fills: list[Fill] = []
     for path in sorted(root.glob("*.json")):
         blob = json.loads(path.read_text(encoding="utf-8"))
         for row in blob["fills"]:
-            row["symbol"] = blob["symbol"]
-            zeilen.append(row)
-    zeilen.sort(key=lambda r: int(r["opened_ts"]))
-    return zeilen
+            gelesen = Fill.von(row)
+            if gelesen is not None:
+                fills.append(gelesen)
+    fills.sort(key=lambda f: f.opened_ts)
+    t0, t1 = fills[0].opened_ts, fills[-1].opened_ts
 
-
-def monatsfaktor(
-    block: list[dict[str, object]], *, anteil: float, hebel: float
-) -> tuple[float, float, int, int]:
-    """Faktor, tiefster Zwischenstand, genommene Trades, Liquidationen.
-
-    Auf einem Konto von 1,0 gerechnet. Weil Margin und Positionsgroesse beide
-    ANTEILE sind, skaliert alles mit dem Konto -- der Faktor ist derselbe,
-    egal ob das Konto bei 1.000 oder bei 40 steht. Genau das macht zehn
-    Millionen Szenarien rechenbar.
-    """
-    konto, tief = 1.0, 1.0
-    offen: list[tuple[int, float, float]] = []
-    genommen = liq = 0
-    for row in block:
-        auf = int(row["opened_ts"])
-        for pos in sorted([p for p in offen if p[0] <= auf]):
-            konto += pos[2]
-            tief = min(tief, konto)
-            offen.remove(pos)
-        entry, qty = float(row["entry_price"]), float(row["qty"])
-        if entry <= 0 or qty <= 0:
-            continue
-        seite = Side.SHORT if str(row["side"]).lower() == "short" else Side.LONG
-        weite = float(row["risk_amount"]) / qty
-        stop = entry + weite if seite is Side.SHORT else entry - weite
-        try:
-            p = plan_size(equity=konto, margin_share=anteil, leverage=hebel,
-                          entry=entry, stop=stop, side=seite)
-        except UnsizeablePlanError:
-            continue
-        if p.margin > konto - sum(o[1] for o in offen):
-            continue
-        r = float(row["r_multiple"])
-        if p.stop_beyond_liquidation:
-            ergebnis, liq = -p.margin, liq + 1
-        else:
-            ergebnis = p.loss_at_stop * r
-        offen.append((int(row["closed_ts"]), p.margin, ergebnis))
-        genommen += 1
-    for pos in offen:
-        konto += pos[2]
-        tief = min(tief, konto)
-    return max(konto, 0.0), max(tief, 0.0), genommen, liq
+    start: list[int] = []
+    faktor: list[float] = []
+    tiefst: list[float] = []
+    anfang = t0
+    while anfang + BLOCK_TAGE * TAG_MS <= t1:
+        block = [f for f in fills if anfang <= f.opened_ts < anfang + BLOCK_TAGE * TAG_MS]
+        if len(block) >= MIN_TRADES_JE_BLOCK:
+            f_, tief = _block_faktor(block, margin_share=anteil, leverage=hebel)
+            start.append(anfang)
+            faktor.append(f_)
+            tiefst.append(tief)
+        anfang += BLOCK_TAGE * TAG_MS
+    return start, np.array(faktor), np.array(tiefst)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -120,28 +102,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=20261019)
     args = parser.parse_args(argv)
 
-    trades = lade(args.fills)
-    t0, t1 = int(trades[0]["opened_ts"]), int(trades[-1]["opened_ts"])
+    start, faktor, tiefst = bausteine(
+        args.fills, anteil=args.margin_anteil, hebel=args.hebel
+    )
+    bloecke = start
 
-    # -- Die Bausteine: echte Kalendermonate ------------------------------ #
-    bloecke: list[tuple[int, list[dict[str, object]]]] = []
-    anfang = t0
-    while anfang + 30 * TAG_MS <= t1:
-        w = [t for t in trades if anfang <= int(t["opened_ts"]) < anfang + 30 * TAG_MS]
-        if len(w) >= MIN_TRADES:
-            bloecke.append((anfang, w))
-        anfang += 30 * TAG_MS
-
-    faktor = np.empty(len(bloecke))
-    tiefst = np.empty(len(bloecke))
-    anzahl = np.empty(len(bloecke), dtype=int)
-    liqs = np.empty(len(bloecke), dtype=int)
-    for i, (_, b) in enumerate(bloecke):
-        faktor[i], tiefst[i], anzahl[i], liqs[i] = monatsfaktor(
-            b, anteil=args.margin_anteil, hebel=args.hebel
-        )
-
-    print(f"{len(bloecke)} echte Monate als Bausteine, "
+    print(f"{len(faktor)} echte Monate als Bausteine, "
           f"{args.margin_anteil:.0%} Margin x {args.hebel:g}x")
     print(f"  Monatsfaktor: schlechtester {faktor.min():.4f}  Median "
           f"{np.median(faktor):.4f}  bester {faktor.max():.4f}")
@@ -150,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     # -- Zehn Millionen Szenarien ----------------------------------------- #
     rng = np.random.default_rng(args.seed)
     print(f"{args.laeufe:,} Szenarien a {MONATE} Monate ...")
-    zug = rng.integers(0, len(bloecke), size=(args.laeufe, MONATE))
+    zug = rng.integers(0, faktor.size, size=(args.laeufe, MONATE))
 
     konto = np.full(args.laeufe, 1.0)
     lebt = np.ones(args.laeufe, dtype=bool)
@@ -188,14 +154,14 @@ def zerlege(ende, zug, faktor, bloecke, rng) -> int:
         return 0
 
     print("\n1. WELCHE MONATE ZIEHEN SIE?")
-    haeufig_gut = np.bincount(zug[gut].ravel(), minlength=len(bloecke)) / (gut.sum() * MONATE)
-    haeufig_alle = np.full(len(bloecke), 1.0 / len(bloecke))
+    haeufig_gut = np.bincount(zug[gut].ravel(), minlength=len(faktor)) / (gut.sum() * MONATE)
+    haeufig_alle = np.full(len(faktor), 1.0 / len(faktor))
     ordnung = np.argsort(-haeufig_gut)
     print(f"   {'Monat ab':12s} {'Faktor':>8s} {'Anteil gut':>11s} "
           f"{'Anteil alle':>12s} {'Verhaeltnis':>12s}")
     for i in ordnung[:8]:
         tag = datetime.datetime.fromtimestamp(
-            bloecke[i][0] / 1000, datetime.UTC).strftime("%d.%m.%Y")
+            bloecke[i] / 1000, datetime.UTC).strftime("%d.%m.%Y")
         print(f"   {tag:12s} {faktor[i]:8.4f} {haeufig_gut[i]:11.3%} "
               f"{haeufig_alle[i]:12.3%} {haeufig_gut[i]/haeufig_alle[i]:11.2f}x")
 

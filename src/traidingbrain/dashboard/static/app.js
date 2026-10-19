@@ -1715,7 +1715,44 @@ function marketCard(market) {
     </li>`;
 }
 
-function renderKonto(portfolio) {
+/* Wohin dieses Konto nach der gemessenen Verteilung läuft.
+ *
+ * Die Seite zeigte "1'000.00 +0.00 %" und verschwieg, was dieselbe
+ * Größenregel über die gespeicherten Monate getan hat — genau die Zahl, die
+ * die Erwartung Wochen früher richtiggestellt hätte.
+ *
+ * Bewusst OHNE Mittelwert: bei multiplikativem Wachstum wird er von wenigen
+ * sehr guten Pfaden beherrscht. Über zehn Millionen Szenarien lag die Mitte
+ * bei 37 CHF, während das beste Konto 340'246 erreichte — ein Mittelwert
+ * daraus ist eine Zahl, die kein einziges Konto je sieht. */
+function aussichtBlock(a) {
+  if (!a) return "";
+  const warm = a.chance_plus >= 0.5 ? "up" : "down";
+  return `
+    <div class="konto__aussicht">
+      <span class="konto__aussicht-kopf">
+        Wohin das läuft &mdash; ${a.monate} Monate, bei
+        ${Math.round(100 * a.margin_share)} % Margin &times; ${a.leverage}&times;
+      </span>
+      <span class="konto__aussicht-zahlen">
+        Mitte <strong>${money(a.median)}</strong> &middot;
+        95 % unter ${money(a.p95)} &middot;
+        bestes je ${money(a.bestes)}<br />
+        <span class="${warm}">Chance auf Plus ${(100 * a.chance_plus).toFixed(1)} %</span>
+        &middot; 90 % verloren in ${(100 * a.chance_ruin).toFixed(1)} %
+      </span>
+      <span class="konto__aussicht-fuss">
+        Keine Vorhersage. Das ist, was dieselbe Regel über
+        ${a.monate_gesamt} gespeicherte Monate getan hätte, davon
+        ${a.gewinnmonate} Gewinnmonate. Welcher Monat gut wird, ist
+        <strong>nicht vorhersagbar</strong>: die Autokorrelation der
+        Monatsfaktoren liegt bei &minus;0,16 im Zufallsband, und weder BTCs
+        Rendite noch seine Volatilität im Vormonat sagen etwas darüber.
+      </span>
+    </div>`;
+}
+
+function renderKonto(portfolio, ausblick) {
   const host = document.getElementById("konto");
   if (!host) return;
   if (portfolio === "unavailable") {
@@ -1764,6 +1801,7 @@ function renderKonto(portfolio) {
           Zielquote ist das egal, für einen Frankenbetrag nicht.
         </span>
       </span>
+      ${aussichtBlock(ausblick)}
       <div class="konto__actions konto__actions--account">
         <input class="konto__amount" type="number" min="1" step="50" value="500"
                aria-label="Betrag in USDT" id="topup-amount" />
@@ -1883,11 +1921,15 @@ function renderSettings(settings) {
 
 async function loadKonto() {
   try {
-    const [portfolio, settings] = await Promise.all([
+    const [portfolio, settings, ausblick] = await Promise.all([
       api("/api/portfolio"),
       api("/api/portfolio/settings"),
+      /* Ein rückwärts bemessenes Konto hat keine Aussicht — dort gibt es kein
+       * "Anteil mal Hebel". Der Endpunkt antwortet dann mit null, und der
+       * Block fällt weg, statt eine fremde Zahl zu zeigen. */
+      api("/api/aussicht").catch(() => null),
     ]);
-    renderKonto(portfolio);
+    renderKonto(portfolio, ausblick);
     renderSettings(settings);
   } catch {
     renderKonto("unavailable");

@@ -71,6 +71,12 @@ from traidingbrain.domain.proposal import FactorView, ProposalAdjustment, TradeP
 from traidingbrain.execution.venuebinding import VenueBinding
 from traidingbrain.journal.record import Source
 from traidingbrain.journal.version import run_signature
+from traidingbrain.learn.aussicht import (
+    Aussicht,
+    Monatsfaktoren,
+    aussicht,
+    monatsfaktoren,
+)
 from traidingbrain.proposals.builder import BuildFailure, ProposalBuilder, describe
 from traidingbrain.proposals.store import ProposalStore
 from traidingbrain.risk.limits import AccountState, KillSwitch, RiskLimits
@@ -183,6 +189,15 @@ class Services:
     account_label: str = ""
     """Ein kurzer Name fuers Kopffeld, damit zwei offene Fenster unterscheidbar
     sind. Leer heisst: kein Zusatz, die Seite sieht aus wie immer."""
+
+    plan_sizing: tuple[float, float] | None = None
+    """(Margin-Anteil, Hebel) -- nur fuer ein VORWAERTS bemessenes Konto.
+
+    `None` heisst: dieses Konto bemisst rueckwaerts (Risikobudget hinein,
+    Menge heraus). Dann gibt es kein `m = Anteil mal Hebel`, und die Aussicht
+    laesst sich nicht rechnen -- der Endpunkt antwortet dort mit `None` statt
+    eine Zahl zu erfinden, die fuer ein anderes Konto gelten wuerde.
+    """
 
     deposit_total: float | None = None
     """Was auf dieses Konto EINGEZAHLT wurde, falls nicht herleitbar.
@@ -336,6 +351,42 @@ class ConfirmRequest(BaseModel):
 
 class KillRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=200)
+
+
+class AussichtView(BaseModel):
+    """Die Verteilung der Endstaende -- bewusst OHNE Erwartungswert.
+
+    Bei multiplikativem Wachstum wird der Mittelwert von wenigen sehr guten
+    Pfaden beherrscht und sagt nichts darueber, was EINEM Konto passiert:
+    ueber zehn Millionen Szenarien lag die Mitte bei 37 CHF, waehrend das
+    beste Konto 340.246 erreichte.
+    """
+
+    start: float
+    monate: int
+    p05: float
+    p25: float
+    median: float
+    p75: float
+    p95: float
+    bestes: float
+    chance_plus: float
+    chance_ruin: float
+    gewinnmonate: int
+    monate_gesamt: int
+    margin_share: float
+    leverage: float
+
+    @classmethod
+    def of(cls, a: Aussicht) -> AussichtView:
+        return cls(
+            start=round(a.start, 2), monate=a.monate,
+            p05=round(a.p05, 2), p25=round(a.p25, 2), median=round(a.median, 2),
+            p75=round(a.p75, 2), p95=round(a.p95, 2), bestes=round(a.bestes, 2),
+            chance_plus=round(a.chance_plus, 4), chance_ruin=round(a.chance_ruin, 4),
+            gewinnmonate=a.gewinnmonate, monate_gesamt=a.monate_gesamt,
+            margin_share=a.margin_share, leverage=a.leverage,
+        )
 
 
 class SystemState(BaseModel):
@@ -598,6 +649,36 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
             signature=_konto_signatur(services),
         )
 
+    @app.get("/api/aussicht", response_model=AussichtView | None)
+    def wohin_das_laeuft(monate: int = 6) -> AussichtView | None:
+        """Wohin dieses Konto nach der gemessenen Verteilung laeuft.
+
+        **Warum das neben dem Kontostand gehoert.** Die Seite zeigte
+        "1.000.00 +0.00 %" und verschwieg, was dieselbe Groessenregel ueber
+        die gespeicherten Monate getan hat. Genau diese Zahl haette die
+        Erwartung Wochen frueher richtiggestellt.
+
+        **Keine Vorhersage, und das steht auch im Text, den sie mitliefert.**
+        Die Suche nach einem Vorhersager der Monatsqualitaet ist gelaufen und
+        gescheitert -- Autokorrelation -0,1557 im Zufallsband, und weder BTCs
+        Rendite noch seine Volatilitaet im Vormonat sagen etwas.
+
+        `None` fuer ein rueckwaerts bemessenes Konto: dort gibt es kein
+        `Anteil mal Hebel`, und eine Zahl aus der fremden Groessenregel waere
+        schlimmer als keine.
+        """
+        if services.plan_sizing is None:
+            return None
+        anteil, hebel = services.plan_sizing
+        faktoren = _monatsfaktoren(services, anteil, hebel)
+        stand = build_portfolio(
+            _state_path(services), _journal_path(services), services.config,
+            now_ms=int(time.time() * 1000), deposit=services.deposit_total,
+            signature=_konto_signatur(services),
+        ).equity
+        gerechnet = aussicht(faktoren, start=stand, monate=monate)
+        return AussichtView.of(gerechnet) if gerechnet is not None else None
+
     @app.get("/api/portfolio/open", response_model=list[OpenTrade])
     def open_trades() -> list[OpenTrade]:
         """Every position still running, with where it stands right now."""
@@ -766,6 +847,25 @@ def _konto_signatur(services: Services) -> str | None:
     if not services.signature_suffix:
         return None
     return f"{run_signature(services.config)}|{services.signature_suffix}"
+
+
+#: Monatsfaktoren je (Margin-Anteil, Hebel). Sie zu rechnen heisst, jeden
+#: gespeicherten Monat einmal zu simulieren -- Sekunden, nicht Millisekunden.
+#: Sie haengen aber NUR an der Groessenregel, nicht am Kontostand (jede
+#: Position bindet denselben ANTEIL), also gilt derselbe Satz, solange die
+#: Regel gleich bleibt. Genau diese Eigenschaft macht zehn Millionen
+#: Szenarien rechenbar, und hier macht sie das Dashboard schnell.
+_FAKTOREN: dict[tuple[float, float], Monatsfaktoren] = {}
+
+
+def _monatsfaktoren(services: Services, anteil: float, hebel: float) -> Monatsfaktoren:
+    schluessel = (anteil, hebel)
+    if schluessel not in _FAKTOREN:
+        _FAKTOREN[schluessel] = monatsfaktoren(
+            services.config.engine.paths.data_dir / "replay_fills",
+            margin_share=anteil, leverage=hebel,
+        )
+    return _FAKTOREN[schluessel]
 
 
 def _state_path(services: Services) -> Path:

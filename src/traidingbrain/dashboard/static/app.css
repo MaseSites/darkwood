@@ -2361,6 +2361,46 @@ body {
   color: var(--dimmer);
 }
 
+/* Die Aussicht: was dieselbe Groessenregel ueber die gespeicherten Monate
+ * getan hat. Ein eigener Block mit Linie links statt einer weiteren Zeile im
+ * Kleingedruckten -- das ist keine Fussnote zum Kontostand, es ist die Zahl,
+ * die ihn einordnet. Die Linie nimmt `--caution`, weil der Block warnt, ohne
+ * dass er wie ein Fehler aussieht. */
+.konto__aussicht {
+  flex-basis: 100%;
+  margin-top: var(--s4);
+  padding: var(--s3) var(--s4);
+  border-left: 2px solid var(--caution);
+  background: var(--panel-high);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.konto__aussicht-kopf {
+  display: block;
+  font: 600 11px/1.5 var(--sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.konto__aussicht-zahlen {
+  display: block;
+  margin-top: var(--s2);
+  font: 400 13px/1.7 var(--mono);
+  color: var(--text);
+}
+
+.konto__aussicht-zahlen .up { color: var(--long); }
+.konto__aussicht-zahlen .down { color: var(--short); }
+
+.konto__aussicht-fuss {
+  display: block;
+  margin-top: var(--s2);
+  max-width: 62ch;
+  font: 400 11px/1.6 var(--sans);
+  color: var(--dimmer);
+}
+
 .konto__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

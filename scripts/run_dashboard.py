@@ -28,6 +28,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import uvicorn
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import plantrade
+
 from traidingbrain.analysis.pipeline import MultiFrameAnalysis
 from traidingbrain.analysis.snapshot import SnapshotBuilder
 from traidingbrain.api.app import Services, build_default_services, create_app
@@ -92,6 +96,20 @@ KONTEN: dict[str, tuple[str, str, str, int, float | None]] = {
     # Dashboard -91,67 %, weil es 12.000 als Einsatz annahm.
     "live": ("paper.sqlite", "", "", DEFAULT_PORT, None),
     "plan": ("plan_paper.sqlite", "plan30x7", "Plankonto 30%x7", DEFAULT_PORT + 1, 1_000.0),
+}
+
+#: Die VORWAERTSREGEL je Konto, oder None.
+#:
+#: Aus `plantrade.py` importiert statt hier wiederholt. Stuenden die Zahlen an
+#: zwei Stellen, wuerde das Dashboard irgendwann eine Aussicht fuer eine
+#: Groessenregel zeigen, die der Haendler gar nicht fuehrt -- derselbe Fehler,
+#: den `_signatur()` weiter unten fuer die Laufsignatur beschreibt.
+#:
+#: `None` heisst: dieses Konto bemisst RUECKWAERTS (Risikobudget hinein, Menge
+#: heraus). Dort gibt es kein `Anteil mal Hebel`, also auch keine Aussicht.
+PLAN_SIZING: dict[str, tuple[float, float] | None] = {
+    "live": None,
+    "plan": (plantrade.MARGIN_ANTEIL, plantrade.HEBEL),
 }
 
 #: How far back --demo may look for a bar the analysis actually liked. Most bars
@@ -355,6 +373,7 @@ def main(argv: list[str] | None = None) -> int:
     services.signature_suffix = suffix
     services.account_label = label
     services.deposit_total = einsatz
+    services.plan_sizing = PLAN_SIZING[args.account]
     # Echte Historie statt einer leeren Liste, und eine echte Uhr statt 0.
     #
     # Vorher stand hier `recent_trades=[]`, `open_positions=[]` und
