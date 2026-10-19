@@ -102,7 +102,7 @@ viel Gewicht, dass sie vor einer Entscheidung nachgerechnet gehören.*
 
 | Familie | machbar | warum sie fällt |
 |---|---|---|
-| **Market Making** | **nein** | Braucht durchlaufendes Quotieren auf einer handelbaren Venue. Lighter steht nicht in `venue.py`, Bybit hat null Mikrostruktur, jede Order braucht ein menschlich gehaltenes Token. ⚠ Und die Vorfrage fällt: **0,0 % der Orders am Quotierungsabstand überleben 30 Sekunden**; der Spread-Term echter Maker scheitert am Replikationstor mit 113,5x. |
+| **Market Making** | **offen** | Braucht durchlaufendes Quotieren auf einer handelbaren Venue. Lighter steht nicht in `venue.py`, Bybit hat null Mikrostruktur, jede Order braucht ein menschlich gehaltenes Token. ~~Und die Vorfrage fällt: 0,0 % der Orders am Quotierungsabstand überleben 30 Sekunden; der Spread-Term echter Maker scheitert am Replikationstor mit 113,5x.~~ **Am 19.10.2026 nachgerechnet, siehe Abschnitt 3a: die 0,0 % stimmen, messen aber die falsche Zeitskala; die 113,5x existieren nirgends.** |
 | **Volatilitätsrisikoprämie** | teilweise | Weg (a) Optionen: das definierende implizite Bein fehlt **vollständig** und ist nur käuflich. Weg (b) Funding: machbar — und **dieselbe gescheiterte Carry-Familie unter neuem Namen**. Der Vola-Gradient, der sie unterscheiden würde (3,9x über die volle Historie), ist nach dem November-2024-Bruch verschwunden; jedes Vola-Terzil liegt danach nach Maut negativ. |
 | **Optionskonvexität** | teilweise | ⚠ Die Kostenfrage ist schlüssellos entschieden: der Optionsanteil ist in **allen vier Verfallseimern 1,5–1,7x grösser** als die 0,105 % des Perps — das projekteigene Tötungskriterium ist erfüllt. Die PnL-Frage ist nicht machbar: Deribit bewahrt öffentlich nur den letzten Verfall auf (64 Instrumente, ein Termin). Und sie **erbt den Richtungsbefund vollständig** — eine 0,25-Delta-Option zu kaufen verlangt einen gerichteten 4–8-Stunden-Aufruf. |
 | **Relative Value** | teilweise | Überraschend gut bei den Daten: die Spot/Perp-Zeitgleichheit ist **exakt** (33.013 von 33.013 auf der Stunde, 3,8 Jahre, 8 Märkte). Aber: der Same-Venue-Arm ist als **E6 schon erledigt_negativ** mit Vorzeichenwechsel in der Replikation; die Cross-Venue-Dislokation liegt selbst in ihrer extremsten Sekunde aus 24 Stunden noch **24-fach unter** der Maut von 280 bp; der Funding-Spread bräuchte 269 Tage und perfekte Voraussicht. Und ein Treffer wäre **nicht ausführbar**: Bybit hat keine einzige Kurszeile auf der Platte, `binance_spot` darf per Konstruktion nie eine Order tragen. |
@@ -119,6 +119,76 @@ Mikrostruktur-Ereignis (der Bedingungsgeber ist eine Zahlungsverpflichtung, kein
 Preismerkmal), echter gehedgter Arbitrage (die Kursrichtung kommt in der
 Zerlegung nicht vor) und Market Making im Ansatz (es verdient am Spread). Alle
 drei fallen aus anderen Gründen.
+
+---
+
+## 3a. Nachtrag 19.10.2026 — die zwei ⚠-Zahlen nachgerechnet
+
+Oben steht: *„Agentenmessungen, von mir nicht nachgerechnet. Die mit ⚠
+markierten tragen so viel Gewicht, dass sie vor einer Entscheidung
+nachgerechnet gehören."* Das ist jetzt geschehen, jeder Befund anschliessend
+adversarisch gegengeprüft. **Die beiden Familien gehen verschieden aus.**
+
+### Optionskonvexität — die Totzahl HÄLT
+
+Der Widerlegungsversuch ist gescheitert. `cost.py` rechnet exakt die
+berichteten **1,6 / 1,5 / 1,7 / 1,6x** nach. Über 133 Varianten (Haltedauer
+1–24 h, fünf Delta-Bänder, vier Eimer) fallen nur drei unter 1,0x — alle bei
+1 h Haltedauer und damit ausserhalb des projekteigenen 4–8-h-Fensters; das
+Bootstrap liefert in keinem Eimer einen Zug unter 1,0x.
+
+Zwei Verfeinerungen: über das echte 4–8-h-Fenster sind es **1,32–1,81x**,
+nicht 1,5–1,7x. Und der gewählte Nenner (je Underlying-Notional) ist der für
+Optionen **günstigste** — je Delta-Exposure sind es 5,63x, als Anteil der
+Prämie 26,6 %. Gemessen ist der **Hausanteil** (Spread + Theta + Gebühr), nicht
+die Prämie; die Commit-Nachricht `8915020` ist an dieser Stelle falsch
+formuliert, dieses Dokument war korrekt.
+
+**Eine Beweislücke bleibt und ist neu:** die tragenden Dateien liegen im
+Sitzungs-Scratchpad, nicht im Repository. Eine Messung, die eine Familie
+tötet und sich aus dem Projekt heraus nicht wiederholen lässt, ist nach den
+eigenen Massstäben nicht reproduzierbar.
+
+### Market Making — die Schliessung hält NICHT
+
+Nicht, weil der Markt gut wäre. Aus drei Gründen:
+
+**1. Die 0,0 % stimmen — unter der richtigen Lesart.** Ein Agent mass 1,667 %
+und hielt die Zahl für gekippt; die Gegenprüfung hat ihn widerlegt. Er zählte
+Orders, die sich bis zu **63 bp** wegbewegt hatten, und 24 % seiner
+„Überlebenden" waren *andere* Orders auf derselben Kennung (geänderte
+`initial_base_amount` — bei einer ruhenden Order unmöglich; `order_id` ist auf
+dieser Venue ein **Slot**, keine Order-Identität). Richtig gelesen — dieselbe
+Order, noch am Antritt — sind es **0,313 %**, für BTC/ETH/SOL **exakt
+0,000 %** (60 % aller Beobachtungen), zweistufig gebootstrappt
+[0,0000; 0,8701] %.
+
+**2. Sie beantwortet die falsche Frage.** `scripts/collect_venue_tape.py:89`
+setzt `BOOK_EVERY = 30.0` — das Buch wird **alle 30 Sekunden** aufgenommen,
+kleinster gemessener Paarabstand 28,0 s. Ob eine Quote 1, 5 oder 20 Sekunden
+steht, ist in diesen Daten nicht sichtbar, **und genau dort wird Market Making
+entschieden.** Die Messung sagt „eine Quote überlebt keine 30 Sekunden" — was
+niemand erwarten würde, der quotiert.
+
+**3. Die 113,5x existieren nirgends.** `grep` über `audit/`, `docs/`,
+`scripts/`, `src/` findet sie **genau einmal**: in derselben Tabellenzeile, die
+sie als Beweis zitiert. Kein Skript, kein JSON, kein Logeintrag rechnet sie.
+
+Dazu zwei Einschränkungen, die für jede Zahl dieser Familie gelten:
+
+* `data/intents.sqlite` hat **0 Zeilen**. Dieses Projekt hat nie eine Order
+  geschrieben; jede Überlebenszahl ist über **fremde** Orders gemessen — deren
+  Warteschlangenposition, Storno-Logik und Latenz. Adverse Selektion sagt,
+  dass ein langsamer Teilnehmer genau dann gefüllt wird, wenn es schlecht für
+  ihn ist, und das ist hier nicht messbar.
+* Die ganze Aufnahme ist **ein Kalendertag** (24,8 h, 07.–08.10.2026, sechs
+  Märkte). Jedes „das Tor hält" daraus ist in-sample.
+
+**Was zu tun wäre, um die Familie wirklich zu entscheiden:** eine
+Buchaufnahme mit **1-Sekunden-Kadenz oder feiner**, über mehrere, zeitlich
+getrennte Tage. Das ist Datenerhebung, keine Analyse — und sie existiert
+nicht. Bis dahin ist Market Making **weder belegt noch widerlegt**, und das
+ist etwas anderes als „fällt".
 
 ---
 
