@@ -193,20 +193,70 @@ def build_traders(
     return traders, source
 
 
+class VenueSpecUnavailableError(RuntimeError):
+    """Die Boerse hat ihre Instrumentregeln nicht geliefert, und geraten wird nicht.
+
+    Kein Abbruch um des Abbruchs willen: der Rueckfall `DEFAULT_SPEC` traegt
+    **Bybits** Takersatz (0,055 %), waehrend dieser Lauf auf Binance handelt
+    (0,050 %). Das Kostentor rechnet `c / max_cost_fraction_of_risk`, also
+    verschiebt der Unterschied die Mindest-Stopweite von 1,2500 % auf
+    1,3125 % -- ein um 5 % strengeres Tor, das rund 48 % aller Signale
+    beurteilt. Still.
+    """
+
+
 def _spec(source: MarketData | None, symbol: str) -> SymbolSpec:
-    """The venue's own contract rules, or the documented fallback.
+    """The venue's own contract rules -- fetched, or the run refuses to start.
 
     Fetched rather than assumed, because the tick size and the minimum notional
     decide whether a position is placeable at all, and a wrong minimum silently
     refuses every trade in the cheapest symbol.
+
+    **Hier stand ein stiller Rueckfall, und der war der Fehler.** Ein
+    gescheiterter Abruf endete mit einer Zeile auf stderr -- die im Betrieb in
+    einer Logdatei landet, die niemand liest -- und `DEFAULT_SPEC`. Der
+    Haendler glaubte dann, auf Binance zu sein, und rechnete mit Bybits
+    Gebuehren. Der Schwesterlauf hat ueber 900 Datenabrufe scheitern sehen,
+    der Pfad ist also keine Theorie.
+
+    **Die Unterscheidung, die jetzt gemacht wird**, und sie ist genau die, die
+    `execution/venuebinding.py` schon trifft: ein inkohaerenter Lauf darf
+    *messen*, niemals *senden*.
+
+    * ``source is None`` heisst ``--offline``. Das hat ein Mensch auf der
+      Kommandozeile gewaehlt, und ohne Boerse gibt es nichts abzurufen. Der
+      Rueckfall ist dort die Absicht -- aber er wird ausgesprochen statt
+      vorausgesetzt.
+    * Ein **gescheiterter** Abruf hat niemand gewaehlt. Dort wird geworfen.
+
+    Dass darunter schon alles richtig gemacht wird, macht den Fang hier erst
+    schlimm: `data/exchange.py` wirft `UnpublishedSpecError` fuer sechs
+    Felder, die die Boerse nicht veroeffentlicht, und der Abruf hat vier
+    Versuche hinter sich. Dieses `except Exception` machte aus einem
+    absichtlichen Alarm einen stillen Ersatz. Wer bis hier kommt, hat ein
+    dauerhaftes Problem, kein voruebergehendes.
     """
     if source is None:
+        print(
+            f"  {symbol}: --offline, also keine Boerse -- Instrumentregeln aus "
+            f"DEFAULT_SPEC (Bybit: taker {DEFAULT_SPEC['taker_fee']:.3%}, "
+            f"maker {DEFAULT_SPEC['maker_fee']:.3%})",
+            file=sys.stderr,
+            flush=True,
+        )
         return SymbolSpec(symbol=symbol, **DEFAULT_SPEC)
     try:
         return source.fetch_symbol_spec(symbol)
     except Exception as exc:
-        print(f"  {symbol}: Spezifikation nicht abrufbar ({exc}), Standardwerte", file=sys.stderr)
-        return SymbolSpec(symbol=symbol, **DEFAULT_SPEC)
+        raise VenueSpecUnavailableError(
+            f"{symbol}: die Boerse hat ihre Instrumentregeln nicht geliefert "
+            f"({type(exc).__name__}: {exc}). Dieser Lauf startet NICHT. "
+            f"Der frueher benutzte Rueckfall DEFAULT_SPEC traegt Bybits "
+            f"Takersatz {DEFAULT_SPEC['taker_fee']:.3%}; gehandelt wird aber "
+            f"auf einer anderen Boerse, und das Kostentor beurteilt damit rund "
+            f"48 % aller Signale gegen eine falsche Mindest-Stopweite. Mit "
+            f"--offline laeuft derselbe Code bewusst gegen DEFAULT_SPEC."
+        ) from exc
 
 
 def shared_ledger(config: object, states: PaperStateStore) -> _Ledger | None:
@@ -702,7 +752,22 @@ def main() -> int:
         print("Journal-Einträge bleiben -- was passiert ist, ist passiert.")
         return 0
 
-    traders, source = build_traders(symbols, offline=args.offline or args.status)
+    # Eine Richtlinien-Verweigerung, kein Absturz -- dieselbe Form wie die
+    # Einzelinstanz-Sperre weiter unten. Der Unterschied ist sichtbar: ein
+    # Rueckverfolgungsstapel liest sich wie ein Defekt und verleitet zum
+    # Neustarten, eine benannte Ablehnung sagt, was zu tun ist.
+    try:
+        traders, source = build_traders(symbols, offline=args.offline or args.status)
+    except VenueSpecUnavailableError as refusal:
+        print(f"\nStart abgelehnt: {refusal}", file=sys.stderr, flush=True)
+        print(
+            "  Frueher lief der Haendler hier einfach weiter -- mit den\n"
+            "  Instrumentregeln einer anderen Boerse. Pruefe die Verbindung,\n"
+            "  oder starte mit --offline, wenn das Nachspielen gemeint war.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 2
 
     if args.status:
         return show_status(traders)
