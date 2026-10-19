@@ -269,3 +269,100 @@ Verteilung ein ehrliches Ziel, und mit welcher Wahrscheinlichkeit?
 * Nichts behaupten, was du nicht aus den Zahlen oben oder aus Literatur
   belegen kannst — und wenn aus Literatur, dann mit der Grössenordnung dort
   und dem Hinweis, ob sie nach Kosten gemessen wurde.
+
+---
+
+# NACHTRAG 19.10.2026 — was die Nachprüfung geändert hat
+
+ChatGPT hat drei Punkte benannt. Alle drei wurden gemessen, jeder Befund
+anschliessend adversarisch gegengeprüft, und die beiden tragenden Zahlen habe
+ich danach selbst reproduziert. **Zwei der drei Punkte korrigieren das
+Briefing — und beide zu Gunsten des Systems.**
+
+## Punkt 1 (Näherung bei f ≈ 0,10) — beantwortet, günstig
+
+Die quadratische Näherung war **pessimistisch**, nicht optimistisch. Exakt über
+die empirische Verteilung gerechnet (`max_f E[ln(1+f·R)]`, Schiefe +0,7706,
+Exzess −0,7200):
+
+| N | Näherung | exakt | Differenz |
+|---|---|---|---|
+| 312 | +0,1923 R | **+0,1851 R** | −3,8 % |
+| 662 | +0,1320 R | +0,1287 R | −2,5 % |
+| 3.000 | +0,0620 R | +0,0613 R | −1,2 % |
+| 17.840 | +0,0254 R | +0,0253 R | −0,5 % |
+
+Die Schranke im Briefing war also um 3,8 % zu hoch angesetzt. **Ruin tritt ab
+f > 0,5290 ein** (schlechtester Trade −1,8905 R); das f-Optimum bei N=312
+liegt mit ~0,10 weit darunter.
+
+## Punkt 2 (die obere Intervallgrenze) — der eigentliche Fehler
+
+Die **+0,0254 R waren gleich zweifach zu niedrig**:
+
+1. **Zu wenige Ziehungen.** Mit 4.000 Ziehungen kommt +0,0254, mit 20.000
+   **+0,0262**. Die Zahl war ein Ziehungsartefakt.
+2. **Die falsche Clusterung.** Nach MARKT zu clustern erfasst die Abhängigkeit
+   nicht: gemessen trägt ein gemeinsamer **Wochenfaktor** 96,9 % der Struktur
+   (Intervall schliesst null aus, 8,9 SD über der Permutationsnull). Gegen
+   bekannte Wahrheit kalibriert erfasst Markt-Clustering nur **0,682** der
+   echten Streuung, Zeitblöcke 0,821, Zwei-Wege-Clusterung 0,914.
+
+Zwei-Wege-Clusterung nach Cameron/Gelbach/Miller (`V = V_markt + V_zeit −
+V_schnitt`), selbst nachgerechnet:
+
+| Blocklänge | SE | obere Grenze |
+|---|---|---|
+| 7 Tage | 0,02631 | **+0,0387** |
+| 14 Tage | 0,02537 | +0,0368 |
+| 30 Tage | 0,02491 | +0,0359 |
+| 90 Tage | 0,02273 | +0,0316 |
+
+**Die 7-Tage-Wahl ist die weiteste des Gitters, also eine Auswahl.** Der
+Gittermedian liegt bei ~+0,0363.
+
+## Die korrigierte Antwort
+
+| Methode | obere Grenze | Faktor zur Schranke | nötige Trades/182 T | je Tag |
+|---|---|---|---|---|
+| Markt-Cluster *(Briefing)* | +0,0262 | 7,06 | 16.642 | 91,4 |
+| Zeitblock 7 T | +0,0337 | 5,49 | 10.030 | 55,1 |
+| Zwei-Wege, Gittermedian | +0,0363 | 5,10 | 8.637 | 47,5 |
+| **Zwei-Wege, 7 T** | **+0,0387** | **4,78** | **7.592** | **41,7** |
+
+Gemessener Durchsatz: **3,533/Tag** unbeschränkt (7.335 / 2.075,9 Tage),
+**1,714/Tag** mit der Margin-Grenze des Plankontos. Der nötige Durchsatz ist
+also Faktor **11,8 bis 25,9** über dem unbeschränkten System.
+
+## Punkt 3 (Belegung) — geht anders aus als vermutet
+
+Die 44-Minuten-Schranke war **zu locker, nicht zu streng**. `λ ≤ L/W ≤
+Plätze/W` gilt für jede Belegung; Dauerbelegung ist der **günstigste** Fall,
+keine nötige Annahme. Bei L < Plätze sinkt der mögliche Durchsatz weiter.
+
+Dazu zwei Korrekturen an der Belegungsmessung selbst:
+* Die zwölf Replay-Läufe sind **unabhängige Einzelmarkt-Läufe ohne
+  Portfoliodeckel**. „L = 4,86" ist der Anteil der Zeit, in der mindestens k
+  von 12 Märkten offen sind — **nicht** die Belegung eines gemeinsamen Kontos.
+* Dass nie zwei Positionen im selben Markt offen sind, ist eine
+  **Architektur-Invariante** (`sim/broker.py:354`, `:488`), kein Messergebnis.
+  Der Schattenpfad zeigt für BTCUSDT **930 Signale ohne jeden
+  Ablehnungsgrund**, die nur am besetzten Platz scheiterten — gegen 555
+  genommene Trades im selben Lauf.
+
+## Punkt 4 (überlappende Fenster) — mein Satz fällt
+
+„Die Spannweite ist darum eher zu eng als zu weit" ist **nicht haltbar**. Die
+genaue Antwort ist schärfer als ChatGPTs Einwand: die Frage ist bei dieser
+Auflösung **in keine Richtung entscheidbar**. min-max wächst monoton mit der
+Zahl der Fenster (n=11: 1,27; n=63: 2,41; n=1894: 7,22) und schätzt daher
+nichts — es zählt, wie oft man hingesehen hat. Gegen die Wahrheit aller 1.894
+möglichen Tagesstarts gemessen verfehlt der **nicht**-überlappende Entwurf die
+Spannweite stärker (−0,0872) als der überlappende (−0,0150).
+
+## Was sich NICHT geändert hat
+
+Das Fazit. Es fehlt Faktor **4,8 bis 7,1** je nach Methode statt 7,6 — und die
+Durchsatzachse ist durch Punkt 3 eher enger geworden, nicht weiter. Keiner der
+124 eingetragenen Arme erreicht die Schranke: 12 schliessen die Null aus, und
+**alle zwölf sind negativ**.
