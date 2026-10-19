@@ -20,6 +20,7 @@ sein Verhalten die Ausgabe ist.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -56,11 +57,35 @@ def _cache(path: Path, rows: list[tuple[str, str, float]]) -> None:
 
 
 def _run(cache: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Das Skript als Prozess -- mit festgenagelter Kodierung auf BEIDEN Seiten.
+
+    **Warum beides noetig ist und eine Seite allein es schlimmer macht.** Ohne
+    Angabe entscheidet die Umgebung, was durch die Leitung geht. Gemessen auf
+    dieser Maschine, dasselbe Kind, dasselbe Wort "Maerkte":
+
+    =========================  =====================
+    ohne `PYTHONIOENCODING`    ``b'M\\xe4rkte'``  (cp1252)
+    mit `PYTHONIOENCODING=utf-8`  ``b'M\\xc3\\xa4rkte'``  (UTF-8)
+    =========================  =====================
+
+    Der Test vergleicht gegen ``"3/4 Märkte"``. Ohne die Variable las er
+    zufaellig richtig; mit ihr bekam er ``"3/4 MÃ¤rkte"`` und fiel -- waehrend
+    einer ganz anderen Aenderung, was eine Viertelstunde Suche kostete.
+
+    Nur ``encoding="utf-8"`` im Elternteil waere die falsche Haelfte der
+    Behebung: sie haette den zweiten Fall geheilt und den ERSTEN gebrochen.
+    Darum wird das Kind gezwungen, UTF-8 zu schreiben, *und* der Elternteil
+    liest UTF-8. Dann ist die Umgebung ohne Belang -- was der Punkt ist: ein
+    Test, der von der Spracheinstellung der Maschine abhaengt, prueft die
+    Maschine mit.
+    """
     return subprocess.run(
         [sys.executable, str(SCRIPT), "--only-report", "--cache", str(cache), *args],
         capture_output=True,
         check=False,
         text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         cwd=str(ROOT),
     )
 
