@@ -78,6 +78,78 @@ def as_closed_trade(entry: JournalEntry) -> ClosedTrade | None:
     )
 
 
+def konto_schluessel(signature: str) -> tuple[str, str]:
+    """Welches KONTO eine Laufsignatur bezeichnet, ohne dessen Groessenregel.
+
+    Eine Signatur sieht so aus::
+
+        1000.0|['A', 'B', ...]|1.0|M15|refused-v1|portfolio|cap5|crv0.01|plan30x7r15f
+        <------------------ Konfiguration ------------------>|<-- Konto+Regel -->
+
+    Das letzte Feld ist der Kontozusatz. Sein fuehrender Buchstabenteil nennt
+    das KONTO (``plan``), der Rest die Groessenregel (``30x7r15f``). Dieser
+    Schluessel behaelt die Konfiguration und wirft die Groessenregel weg, so
+    dass ``plan30x7``, ``plan30x7r15`` und ``plan30x7r15f`` denselben
+    Schluessel ergeben -- und ein anderes Konto oder eine andere
+    Setup-Auswahl weiterhin einen anderen.
+    """
+    prefix, _, zusatz = signature.rpartition("|")
+    i = 0
+    while i < len(zusatz) and zusatz[i].isalpha():
+        i += 1
+    return prefix, zusatz[:i]
+
+
+def account_trades(
+    store: JournalStore,
+    *,
+    signature: str,
+    source: Source = Source.LIVE,
+    symbol: str | None = None,
+) -> list[ClosedTrade]:
+    """Alle geschlossenen Trades DIESES KONTOS, ueber Groessenregeln hinweg.
+
+    **Warum das neben `closed_trades` steht.** Die Verlustbremsen sind
+    Aussagen ueber GELD AUF EINEM KONTO, nicht ueber eine Forschungsepoche.
+    Ein Konto vergisst seine Verluste nicht, wenn man den Hebel verstellt.
+
+    Gemessen am 20.10.2026, und es war ein stiller Defekt: der Plan-Konto-
+    Haendler filterte ueber `closed_trades` auf die volle Signatur. Als am
+    Nachmittag der Risikodeckel dazukam, wechselte der Zusatz von `plan30x7`
+    auf `plan30x7r15` -- und damit sah die Tagesbremse null Trades statt elf.
+
+        Zusatz          Trades  heute USD  mit den scharfen Grenzen
+        plan30x7            11     -99.00  blockiert, 21.9 h Abkuehlung
+        plan30x7r15          0       0.00  ERLAUBT
+
+    Ein Druck auf "Apply" im Terminal setzte die Tagesverlustbremse, die
+    Wochenbremse und die Abkuehlung auf null zurueck -- in genau dem Moment,
+    in dem sie etwas verhindern sollen. Niemand hat das entschieden; es fiel
+    aus der Signaturfilterung heraus.
+
+    **Was NICHT gepoolt wird.** Der Konfigurationsteil vor dem Kontozusatz
+    bleibt scharf. Ein anderes Kapital, eine andere Setup-Auswahl, eine
+    andere Zeitebene, ein anderes Kostentor sind weiterhin getrennt -- das
+    war der Fehler vom 12.10.2026 (zwei Konten mit Verlustserie 2 und keinem
+    einzigen), und er kommt dadurch nicht zurueck. Gepoolt wird ausschliesslich
+    die GROESSENREGEL desselben Kontos.
+
+    Fuer Forschungsauswertungen bleibt `closed_trades` richtig: dort ist die
+    Epoche die Frage, nicht das Konto.
+    """
+    if not signature:
+        return []
+    schluessel = konto_schluessel(signature)
+    out: list[ClosedTrade] = []
+    for entry in store.all(source=source, symbol=symbol):
+        if konto_schluessel(entry.run_signature) != schluessel:
+            continue
+        trade = as_closed_trade(entry)
+        if trade is not None:
+            out.append(trade)
+    return out
+
+
 def closed_trades(
     store: JournalStore,
     *,

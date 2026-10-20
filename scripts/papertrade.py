@@ -591,6 +591,17 @@ def run(traders: list[PaperTrader], source: MarketData | None, *, cycles: int | 
             for trader in traders:
                 trader.decide()
             done += 1
+            # Ein Herzschlag je Zyklus. Vorher schrieb diese Schleife NUR beim
+            # Schliessen eines Trades -- am Abend des 20.10. lief sie zwoelf
+            # Minuten lang still, und von aussen war "entscheidet gerade" nicht
+            # von "haengt" zu unterscheiden. Ein Zyklus dauert bei zwoelf
+            # Maerkten Minuten, also ist eine Zeile je Zyklus kein Rauschen.
+            offen = sum(1 for t in traders if t.state.position is not None)
+            print(
+                f"[{clock_text(int(time.time() * 1000))} UTC] Zyklus {done}"
+                f" · {len(traders)} Maerkte geprueft · {offen} offen",
+                flush=True,
+            )
             if cycles is None or done < cycles:
                 time.sleep(POLL_SECONDS)
     except KeyboardInterrupt:

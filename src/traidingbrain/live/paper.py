@@ -59,7 +59,7 @@ from traidingbrain.domain.enums import ExitReason, Rule, Timeframe
 from traidingbrain.domain.market import FundingRate, SymbolSpec
 from traidingbrain.domain.protocols import Clock, DataSource
 from traidingbrain.journal.build import reason_at
-from traidingbrain.journal.history import closed_trades
+from traidingbrain.journal.history import account_trades
 from traidingbrain.journal.postmortem import examine
 from traidingbrain.journal.record import JournalEntry, Source, TradeReason
 from traidingbrain.journal.signals import Action, SignalRecord, SignalStore
@@ -824,17 +824,24 @@ class PaperTrader:
         # Maerkte gezaehlt waere dieselbe Zahl Alltag und hielte den Handel
         # dauernd an. Das ist eine offene Messfrage und keine, die hier
         # stillschweigend anders beantwortet wird.
+        # `account_trades` und nicht `closed_trades`: eine Verlustbremse ist
+        # eine Aussage ueber GELD AUF EINEM KONTO, und ein Konto vergisst
+        # seine Verluste nicht, wenn man den Hebel verstellt. Mit der vollen
+        # Signatur gefiltert sah die Tagesbremse am 20.10.2026 null Trades
+        # statt elf, sobald der Risikodeckel den Zusatz von `plan30x7` auf
+        # `plan30x7r15` schob -- ein Druck auf "Apply" im Terminal setzte sie
+        # zurueck. Der Konfigurationsteil der Signatur bleibt scharf.
         account = (
-            closed_trades(self.journal, signature=self.run_signature)
+            account_trades(self.journal, signature=self.run_signature)
             if self.book is not None
-            else closed_trades(self.journal, signature=self.run_signature, symbol=self.symbol)
+            else account_trades(self.journal, signature=self.run_signature, symbol=self.symbol)
         )
         state = AccountState.from_history(
             equity=self.broker.equity,
             history=account,
             now_ms=now_ms,
             open_positions=self.book.positions() if self.book is not None else None,
-            streak_history=closed_trades(
+            streak_history=account_trades(
                 self.journal, signature=self.run_signature, symbol=self.symbol
             ),
         )

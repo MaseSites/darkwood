@@ -26,7 +26,12 @@ from pathlib import Path
 import pytest
 
 from traidingbrain.domain.enums import STATE_OF_EXIT, ExitReason, Side, TradeState
-from traidingbrain.journal.history import as_closed_trade, closed_trades
+from traidingbrain.journal.history import (
+    account_trades,
+    as_closed_trade,
+    closed_trades,
+    konto_schluessel,
+)
 from traidingbrain.journal.record import JournalEntry, PostMortem, Source, TradeReason
 from traidingbrain.journal.store import JournalStore
 
@@ -210,3 +215,77 @@ def test_every_exit_reason_has_a_state() -> None:
         trade = as_closed_trade(entry(exit_reason=reason_value))
         assert trade is not None, reason_value
         assert trade.state is state
+
+
+# --------------------------------------------------------------------------- #
+# Ein Konto vergisst seine Verluste nicht, wenn man den Hebel verstellt
+# --------------------------------------------------------------------------- #
+
+KONTO_ALT = "1000.0|['A', 'B']|0.08|M15|refused-v1|plan30x7"
+KONTO_NEU = "1000.0|['A', 'B']|0.08|M15|refused-v1|plan30x7r15f"
+KONTO_ANDERS = "1000.0|['A', 'B']|0.08|M15|refused-v1|demo30x7"
+KONFIG_ANDERS = "1000.0|['A', 'B', 'C']|0.08|M15|refused-v1|plan30x7"
+
+
+def test_eine_neue_groessenregel_loescht_die_verlusthistorie_nicht(
+    store: JournalStore,
+) -> None:
+    """Der stille Defekt vom 20.10.2026, mechanisch ausgeschlossen.
+
+    Der Haendler filterte ueber die VOLLE Signatur. Als der Risikodeckel den
+    Zusatz von `plan30x7` auf `plan30x7r15` schob, sah die Tagesbremse null
+    Trades statt elf -- ein Druck auf "Apply" im Terminal setzte sie zurueck,
+    in genau dem Moment, in dem sie etwas verhindern soll.
+
+    Gemessen, bevor dies behoben wurde:
+
+        Zusatz          Trades  heute USD  mit den scharfen Grenzen
+        plan30x7            11     -99.00  blockiert, 21.9 h Abkuehlung
+        plan30x7r15          0       0.00  ERLAUBT
+    """
+    store.record([
+        entry("live-BTCUSDT-1", run_signature=KONTO_ALT),
+        entry("live-BTCUSDT-2", run_signature=KONTO_ALT),
+        entry("live-BTCUSDT-3", run_signature=KONTO_NEU),
+    ])
+    # Die Forschungssicht bleibt epochengetrennt -- das ist ihr Zweck.
+    assert len(closed_trades(store, signature=KONTO_NEU)) == 1
+    # Die Kontosicht sieht das ganze Konto, ueber beide Groessenregeln.
+    assert len(account_trades(store, signature=KONTO_NEU)) == 3
+    assert len(account_trades(store, signature=KONTO_ALT)) == 3
+
+
+def test_die_kontosicht_poolt_nicht_ueber_konten_oder_konfigurationen(
+    store: JournalStore,
+) -> None:
+    """Der Fehler vom 12.10.2026 darf durch die Behebung nicht zurueckkommen.
+
+    Damals zaehlte die Bremse drei Konfigurationsepochen zusammen und fand
+    Verlustserien, die so nie stattgefunden haben. Gepoolt wird AUSSCHLIESSLICH
+    die Groessenregel desselben Kontos -- nicht das Konto, nicht die
+    Setup-Auswahl, nicht das Kostentor.
+    """
+    store.record([
+        entry("live-BTCUSDT-1", run_signature=KONTO_ALT),
+        entry("live-BTCUSDT-2", run_signature=KONTO_ANDERS),
+        entry("live-BTCUSDT-3", run_signature=KONFIG_ANDERS),
+    ])
+    assert len(account_trades(store, signature=KONTO_ALT)) == 1
+    assert konto_schluessel(KONTO_ALT) == konto_schluessel(KONTO_NEU)
+    assert konto_schluessel(KONTO_ALT) != konto_schluessel(KONTO_ANDERS)
+    assert konto_schluessel(KONTO_ALT) != konto_schluessel(KONFIG_ANDERS)
+
+
+def test_eine_signatur_ohne_kontozusatz_bleibt_fuer_sich(store: JournalStore) -> None:
+    """Das Standardkonto traegt keinen Zusatz -- sein Schluessel ist leer.
+
+    Ohne diesen Fall wuerde jede zusatzlose Signatur mit jeder anderen
+    zusatzlosen gepoolt, auch wenn ihre Konfiguration verschieden ist. Der
+    Praefix traegt das, und der bleibt scharf.
+    """
+    assert konto_schluessel(SIG) != konto_schluessel(OTHER)
+    store.record([
+        entry("live-BTCUSDT-1", run_signature=SIG),
+        entry("live-BTCUSDT-2", run_signature=OTHER),
+    ])
+    assert len(account_trades(store, signature=SIG)) == 1

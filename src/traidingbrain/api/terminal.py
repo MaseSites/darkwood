@@ -40,6 +40,7 @@ from pydantic import BaseModel, Field
 
 from traidingbrain.api.portfolio import account_equity, build_ledger
 from traidingbrain.config.settings import AppConfig
+from traidingbrain.journal.history import konto_schluessel
 from traidingbrain.journal.record import Source
 from traidingbrain.live.paperstate import PaperStateStore
 
@@ -869,10 +870,20 @@ def _frueheres_konto(journal_pfad: Path, aktuelle: str | None) -> list[dict]:
     und nach der Umstellung vom 20.10. abends. Ein anderes Konto (`live`, ohne
     Zusatz) kommt hier NICHT herein; das war der Fehler, der dem Plankonto
     einmal -63.81 USD auf BTCUSDT zeigte, die ein anderes Konto gemacht hatte.
+
+    **Die Regel kommt aus `journal/history.konto_schluessel` und wird hier
+    nicht nachgebaut.** Vorher stand hier ein eigener Praefix-Vergleich auf
+    dem Wort "plan", der nur fuer ein so benanntes Konto funktionierte. Zwei
+    Fassungen derselben Regel driften, und dieselbe Regel entscheidet seit dem
+    20.10. abends auch, was die Verlustbremsen sehen -- eine Abweichung waere
+    dann nicht kosmetisch, sondern eine Anzeige, die ein anderes Konto zeigt
+    als die Bremse zaehlt.
     """
-    if not aktuelle or "|plan" not in aktuelle:
+    if not aktuelle:
         return []
-    kopf = aktuelle.rsplit("|plan", 1)[0] + "|plan"
+    schluessel = konto_schluessel(aktuelle)
+    if not schluessel[1]:  # kein Kontozusatz -- es gibt keine frueheren Regeln
+        return []
     con = sqlite3.connect(f"file:{journal_pfad}?mode=ro", uri=True, timeout=20)
     raus: list[dict] = []
     try:
@@ -882,7 +893,9 @@ def _frueheres_konto(journal_pfad: Path, aktuelle: str | None) -> list[dict]:
             except json.JSONDecodeError:
                 continue
             sig = p.get("run_signature") or ""
-            if not sig.startswith(kopf) or sig == aktuelle or not p.get("closed_ts"):
+            if konto_schluessel(sig) != schluessel or sig == aktuelle:
+                continue
+            if not p.get("closed_ts"):
                 continue
             pm = p.get("post_mortem") or {}
             rs = p.get("reason") or {}
