@@ -393,7 +393,16 @@ function renderDecisions() {
   $("#dec-lev").textContent = `${s.leverage.toFixed(0)}× (Position ${money(s.initial_margin_usd * s.leverage, 0)} USD)`;
   $("#dec-stop").textContent = "aus dem Setup (Struktur), nie nachgezogen";
   $("#dec-target").textContent = "aus dem Setup, Chance:Risiko mindestens " + (s.fix_crv ? `${s.crv}:1` : "offen (Tor aus)");
-  $("#dec-maxrisk").textContent = `höchstens ${s.max_loss_pct.toFixed(0)} % des Kontos je Trade`;
+  // Zwei verschiedene Regeln, und bis zum 20.10. abends stand hier nur die
+  // schwächere: `max_loss_pct` LEHNT einen Trade ab, der mehr riskieren
+  // würde (35 % — ein Notnagel, der fast nie greift), `risk_cap_pct` KÜRZT
+  // die Position auf 1.5 %. Gezeigt wurde die 35 unter dem Wort
+  // „Risikodeckel", also las man, ein Trade dürfe ein Drittel des Kontos
+  // riskieren. Die bindende Regel steht jetzt zuerst.
+  $("#dec-maxrisk").textContent = s.risk_cap_pct != null
+    ? `${s.risk_cap_pct.toFixed(2)} % des Kontos je Trade — die Position wird dafür gekürzt`
+      + ` (Ablehnung erst über ${s.max_loss_pct.toFixed(0)} %)`
+    : `kein Deckel; abgelehnt erst über ${s.max_loss_pct.toFixed(0)} % des Kontos je Trade`;
   $("#dec-slots").textContent = "5 gleichzeitig (Margin bindet bei 3)";
   $("#dec-gates").textContent = (s.fix_crv ? `CRV ${s.crv}:1` : "CRV offen") + " · Kostentor offen";
   $("#dec-note").textContent = "Der Bot handelt auf M15-Schluss, zwölf Märkte, Papiergeld. Die Regeln stehen in config_offen/; Änderungen laufen über Konto → Erweiterte Einstellungen und tragen eine neue Laufsignatur.";
