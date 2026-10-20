@@ -105,6 +105,18 @@ AUFGABEN: tuple[Aufgabe, ...] = (
         "traidingBrain-dash-live", "scripts/run_dashboard.py", "--account live",
         "Dashboard des bestehenden Kontos, 127.0.0.1:8787.",
     ),
+    #: Am 19.10. als Sitzungskind gestartet und mit der Sitzung gestorben --
+    #: nach genau einer Stunde, Rueckgabewert 4, den der Sammler gar nicht
+    #: kennt (er kennt 0, 2 und eine Ausnahme). Der Wert kam vom Aufrufer.
+    #: Ich hatte die Aufnahme bewusst NICHT in den Autostart genommen, mit der
+    #: Begruendung, sie sei "eine einmalige Erhebung ueber elf Stunden". Genau
+    #: das ist der Grund, warum sie hier hingehoert: elf Stunden sind laenger
+    #: als jede Sitzung und laenger als die Zeit bis zum naechsten Standby.
+    Aufgabe(
+        "traidingBrain-tape", "scripts/collect_venue_tape.py",
+        "--hours 11 --markets BTC,ETH,SOL --book-every 1",
+        "Buchaufnahme in feiner Kadenz fuer die Market-Making-Frage.",
+    ),
 )
 
 
@@ -213,6 +225,26 @@ def einrichten() -> int:
             f'-DontStopIfGoingOnBatteries -RestartCount {NEUSTARTS} '
             f'-RestartInterval (New-TimeSpan -Minutes {NEUSTART_ABSTAND_MIN}) '
             f'-ExecutionTimeLimit (New-TimeSpan -Days 0); '
+            # Am Morgen des 20.10. starteten alle drei Aufgaben korrekt um
+            # 07:59:30 -- drei Sekunden nach dem Aufwachen aus dem Standby --
+            # und waren zwei Minuten spaeter alle drei weg, mit Rueckgabewert
+            # 0xC000013A. Das ist STATUS_CONTROL_C_EXIT: nicht abgestuerzt,
+            # sondern von aussen GESTOPPT. Drei Prozesse gleichzeitig, sauber
+            # beendet -- das kann kein Absturz sein.
+            #
+            # `StopOnIdleEnd` ist der einzige vorhandene Schalter, der genau
+            # diese Signatur erzeugt: die Aufgabenplanung stoppt Aufgaben, wenn
+            # der Leerlauf endet. Microsoft dokumentiert ihn als wirksam nur bei
+            # `RunOnlyIfIdle`, und das steht hier auf false -- BELEGT ist die
+            # Ursache also nicht, und der Nachweis fehlt, weil das Protokoll
+            # "TaskScheduler/Operational" auf dieser Maschine abgeschaltet ist
+            # (Einschalten braucht Adminrechte).
+            #
+            # Trotzdem abschalten: der Schalter kann nur einen Weg zum Tod
+            # entfernen, keinen hinzufuegen. Eine Vermutung, die nichts kostet,
+            # darf man ausraeumen -- man darf sie nur nicht fuer bewiesen
+            # erklaeren.
+            f'$s.IdleSettings.StopOnIdleEnd = $false; '
             f'Register-ScheduledTask -TaskName "{a.name}" -Action $a '
             f'-Trigger $t -Settings $s -Force | Out-Null; '
             f'"eingerichtet: {a.name}"'
