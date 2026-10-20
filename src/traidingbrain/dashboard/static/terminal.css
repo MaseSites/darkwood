@@ -398,7 +398,11 @@ button:disabled { cursor: not-allowed; color: var(--ink-3); }
 }
 @media (max-width: 980px) {
   body { overflow: auto; }
-  .term { height: auto; grid-template-columns: 1fr; grid-template-rows: auto; grid-template-areas: "top" "main" "right" "bottom" "left"; }
+  /* Schmal gestapelt kommt die Trade-Leiste DIREKT unter den Chart. Vorher lag
+     das ganze Bot-Fenster dazwischen, und wer seine Trades sehen wollte,
+     musste an elf Eingabefeldern vorbeiscrollen. */
+  .term { height: auto; grid-template-columns: 1fr; grid-template-rows: auto; grid-template-areas: "top" "main" "bottom" "right" "left"; }
+  .term__bottom { min-height: 260px; }
   .term__main { min-height: 420px; }
   .term__left { grid-template-rows: auto auto; }
 }

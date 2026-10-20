@@ -28,6 +28,9 @@ const api = async (path, opts) => {
   return r.json();
 };
 const money = (v, d = 2) => (v ?? 0).toLocaleString("de-CH", { minimumFractionDigits: d, maximumFractionDigits: d });
+// Preise nach Groessenordnung: 82'115.5, 104.63, 1.1938. Eine feste Stelle
+// liess DOT, XRP und ATOM als "1.2 -> 1.2" erscheinen -- Einstieg und Ausstieg gleich.
+const px = (v) => { const a = Math.abs(v ?? 0); return money(v, a >= 1000 ? 1 : a >= 10 ? 2 : 4); };
 const signed = (v, d = 2) => (v >= 0 ? "+" : "") + money(v, d);
 const pct = (v, d = 2) => (v >= 0 ? "+" : "") + (v ?? 0).toFixed(d) + "%";
 const clock = (ts) => { const d = new Date(ts); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
@@ -114,12 +117,12 @@ function positionLines() {
     if (p.symbol !== S.symbol) continue;
     const qty = p.qty ?? 0;
     const side = String(p.side).toLowerCase().startsWith("l") ? 1 : -1;
-    lines.push({ price: p.entry, colour: "#e8edf5", dash: [2, 3], width: 1, label: `Einstieg ${money(p.entry, 1)}`, id: `${p.id}-e` });
+    lines.push({ price: p.entry, colour: "#e8edf5", dash: [2, 3], width: 1, label: `Einstieg ${px(p.entry)}`, id: `${p.id}-e` });
     if (p.tp) lines.push({ price: p.tp, colour: "#22c55e", label: `${signed((p.tp - p.entry) * qty * side, 0)} USD`, id: `${p.id}-tp`, closable: p.source === "manuell", pid: p.id, kind: "tp" });
     if (p.sl) lines.push({ price: p.sl, colour: "#ef4444", label: `${signed((p.sl - p.entry) * qty * side, 0)} USD`, id: `${p.id}-sl`, closable: p.source === "manuell", pid: p.id, kind: "sl" });
   }
-  for (const d of S.drawings) if (d.symbol === S.symbol && d.type === "hline") lines.push({ price: d.price, colour: "#f59e0b", dash: [1, 0], width: 1, label: money(d.price, 1), id: d.id, closable: true, drawing: true });
-  for (const a of S.alerts) if (a.symbol === S.symbol) lines.push({ price: a.price, colour: "#facc15", dash: [8, 4], width: 1, label: `Alarm ${money(a.price, 1)}`, id: `al-${a.id}`, closable: true, alert: true });
+  for (const d of S.drawings) if (d.symbol === S.symbol && d.type === "hline") lines.push({ price: d.price, colour: "#f59e0b", dash: [1, 0], width: 1, label: px(d.price), id: d.id, closable: true, drawing: true });
+  for (const a of S.alerts) if (a.symbol === S.symbol) lines.push({ price: a.price, colour: "#facc15", dash: [8, 4], width: 1, label: `Alarm ${px(a.price)}`, id: `al-${a.id}`, closable: true, alert: true });
   return lines;
 }
 
@@ -200,7 +203,7 @@ function checkAlerts() {
     const prev = a.last ?? S.head.last;
     if ((prev <= a.price && S.head.last >= a.price) || (prev >= a.price && S.head.last <= a.price)) {
       a.fired = true; a.firedAt = Date.now();
-      if ("Notification" in window && Notification.permission === "granted") new Notification(`${a.symbol} ${money(a.price, 1)} erreicht`);
+      if ("Notification" in window && Notification.permission === "granted") new Notification(`${a.symbol} ${px(a.price)} erreicht`);
     }
     a.last = S.head.last;
   }
@@ -267,10 +270,10 @@ function renderBottom() {
         const tpUsd = p.tp ? (p.tp - p.entry) * p.qty * side : null, slUsd = p.sl ? (p.sl - p.entry) * p.qty * side : null;
         return `<div class="pos__row">
           <span>${p.symbol} <span class="${side > 0 ? "up" : "down"}">${side > 0 ? "Long" : "Short"}</span></span>
-          <span>${money(p.position_size, 0)} USD</span><span>${money(p.margin ?? 0, 0)} USD</span><span>${money(p.entry, 1)}</span>
+          <span>${money(p.position_size, 0)} USD</span><span>${money(p.margin ?? 0, 0)} USD</span><span>${px(p.entry)}</span>
           <span class="muted">${p.source === "bot" ? "Bot" : "Manuell"}</span><span>${(p.leverage ?? 1).toFixed(0)}x</span>
-          <div class="tpsl"><span class="up">${p.tp ? `${money(p.tp, 1)} <small>(${signed(tpUsd, 0)} USD / ${pct(((p.tp - p.entry) / p.entry) * 100 * side)})</small>` : "–"}</span>
-            <span class="down">${p.sl ? `${money(p.sl, 1)} <small>(${signed(slUsd, 0)} USD / ${pct(((p.sl - p.entry) / p.entry) * 100 * side)})</small>` : "–"}</span></div>
+          <div class="tpsl"><span class="up">${p.tp ? `${px(p.tp)} <small>(${signed(tpUsd, 0)} USD / ${pct(((p.tp - p.entry) / p.entry) * 100 * side)})</small>` : "–"}</span>
+            <span class="down">${p.sl ? `${px(p.sl)} <small>(${signed(slUsd, 0)} USD / ${pct(((p.sl - p.entry) / p.entry) * 100 * side)})</small>` : "–"}</span></div>
           <span class="${(p.unrealized ?? 0) >= 0 ? "up" : "down"}">${signed(p.unrealized ?? 0)} USD</span>
           <span>${p.source === "manuell" ? `<button class="btn-link" data-close="${p.id}">Market</button>` : `<span class="muted" title="vom Bot gefuehrt">Bot</span>`}</span>
         </div>`;
@@ -284,7 +287,7 @@ function renderBottom() {
     const mine = S.alerts.filter((a) => true);
     host.innerHTML = `<p class="empty">Preisalarm: Werkzeug „Messen“ wählen und in den Chart klicken, oder <button class="btn-link" id="al-add">beim aktuellen Kurs setzen</button>. Benachrichtigung im Browser, wenn der Kurs die Linie kreuzt.</p>` +
       (mine.length ? `<div class="hist__head" style="grid-template-columns:110px 120px 1fr 120px 60px"><span>Asset</span><span>Preis</span><span>Zustand</span><span>gesetzt</span><span></span></div>` +
-        mine.map((a) => `<div class="hist__row" style="grid-template-columns:110px 120px 1fr 120px 60px"><span>${a.symbol}</span><span>${money(a.price, 1)}</span><span class="${a.fired ? "up" : "muted"}">${a.fired ? `ausgelöst ${clock(a.firedAt)}` : "wartet"}</span><span class="muted">${day(a.created)}</span><button class="btn-link" data-al="${a.id}">x</button></div>`).join("") : "");
+        mine.map((a) => `<div class="hist__row" style="grid-template-columns:110px 120px 1fr 120px 60px"><span>${a.symbol}</span><span>${px(a.price)}</span><span class="${a.fired ? "up" : "muted"}">${a.fired ? `ausgelöst ${clock(a.firedAt)}` : "wartet"}</span><span class="muted">${day(a.created)}</span><button class="btn-link" data-al="${a.id}">x</button></div>`).join("") : "");
     $("#al-add")?.addEventListener("click", () => { if (S.head) addAlert(S.head.last); if ("Notification" in window && Notification.permission === "default") Notification.requestPermission(); });
     $$("button[data-al]", host).forEach((b) => b.addEventListener("click", () => { S.alerts = S.alerts.filter((a) => String(a.id) !== b.dataset.al); saveAlerts(); renderBottom(); renderChart(); }));
   } else {
@@ -294,9 +297,9 @@ function renderBottom() {
         const side = String(t.side).toLowerCase().startsWith("l") ? 1 : -1;
         return `<div class="hist__row" title="${t.verdict ?? ""}">
           <span>${t.symbol} <span class="${side > 0 ? "up" : "down"}">${side > 0 ? "Long" : "Short"}</span></span>
-          <span class="muted">${t.source === "bot" ? "Bot" : "Manuell"}</span><span>${money(t.entry, 1)}</span><span>${money(t.exit, 1)}</span>
+          <span class="muted">${t.source === "bot" ? "Bot" : "Manuell"}</span><span>${px(t.entry)}</span><span>${px(t.exit)}</span>
           <span>${t.position_size ? `${money(t.position_size, 0)} USD` : "–"}</span><span>${t.leverage ? `${Number(t.leverage).toFixed(0)}x` : "–"}</span>
-          <div class="tpsl"><span class="up">${t.tp ? money(t.tp, 1) : "–"}</span><span class="down">${t.sl ? money(t.sl, 1) : "–"}</span></div>
+          <div class="tpsl"><span class="up">${t.tp ? px(t.tp) : "–"}</span><span class="down">${t.sl ? px(t.sl) : "–"}</span></div>
           <span class="${(t.net_pnl ?? 0) >= 0 ? "up" : "down"}">${signed(t.net_pnl ?? 0)} USD <small class="muted">${(t.r_multiple ?? 0).toFixed(2)} R</small></span>
           <span class="muted">${t.exit_reason ?? ""}${t.stopped_by_wick ? " · Docht" : ""}${t.max_favourable_r ? ` · best +${t.max_favourable_r.toFixed(2)} R` : ""}</span>
         </div>`;
@@ -366,8 +369,8 @@ function updateManualSummary() {
   const tp = Number($("#m-tp").value), sl = Number($("#m-sl").value), side = S.side === "long" ? 1 : -1;
   $("#m-tp-pct").textContent = tp ? pct(((tp - h.last) / h.last) * 100 * side, 2) : "%";
   $("#m-sl-pct").textContent = sl ? pct(((sl - h.last) / h.last) * 100 * side, 2) : "%";
-  $("#m-summary").innerHTML = `<span>Price: ${money(h.last, 1)} USD</span><span>Margin: ${money(margin, 0)} USD</span><span>Position: ${money(pos, 0)} USD (${qty.toFixed(4)})</span><span>Fees: ${money(fees)} USD</span>` +
-    (tp ? `<span class="up">TP ${money(tp, 1)} → ${signed((tp - h.last) * qty * side, 0)} USD</span>` : "") + (sl ? `<span class="down">SL ${money(sl, 1)} → ${signed((sl - h.last) * qty * side, 0)} USD</span>` : "");
+  $("#m-summary").innerHTML = `<span>Price: ${px(h.last)} USD</span><span>Margin: ${money(margin, 0)} USD</span><span>Position: ${money(pos, 0)} USD (${qty.toFixed(4)})</span><span>Fees: ${money(fees)} USD</span>` +
+    (tp ? `<span class="up">TP ${px(tp)} → ${signed((tp - h.last) * qty * side, 0)} USD</span>` : "") + (sl ? `<span class="down">SL ${px(sl)} → ${signed((sl - h.last) * qty * side, 0)} USD</span>` : "");
   const btn = $("#m-submit"); btn.textContent = S.side === "long" ? "Kauf" : "Verkauf"; btn.className = `cta ${S.side === "long" ? "cta--buy" : "cta--sell"}`;
 }
 function wireManual() {
@@ -383,7 +386,7 @@ function wireManual() {
     };
     if (!(body.margin_usd > 0)) { flash(msg, "Margin fehlt.", "err"); $("#m-margin").focus(); return; }
     btn.setAttribute("aria-busy", "true");
-    try { const r = await api("/api/terminal/order", { method: "POST", body: JSON.stringify(body) }); flash(msg, `Papier-Order gefüllt bei ${money(r.entry, 1)} (${r.qty.toFixed(4)}).`, "ok"); await tickPositions(); S.tab = "positions"; syncTabs(); }
+    try { const r = await api("/api/terminal/order", { method: "POST", body: JSON.stringify(body) }); flash(msg, `Papier-Order gefüllt bei ${px(r.entry)} (${r.qty.toFixed(4)}).`, "ok"); await tickPositions(); S.tab = "positions"; syncTabs(); }
     catch (err) { flash(msg, err.message, "err"); }
     finally { btn.removeAttribute("aria-busy"); }
   });
