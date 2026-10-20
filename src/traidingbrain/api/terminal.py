@@ -202,6 +202,65 @@ def orderbuch(symbol: str, depth: int = 10) -> Orderbuch:
     )
 
 
+class Heatmap(BaseModel):
+    """Ruhende Buchtiefe, in Preiskoerbe gebuendelt.
+
+    **Warum ein eigener Endpunkt und nicht die Orderbuch-Leiter.** Gemessen am
+    20.10.2026 auf BTCUSDT: 20 Buchzeilen decken 6 USD ab, 100 decken 25, erst
+    1000 decken 262 USD. Der Chart zeigt rund 1.500 USD Hoehe -- die Leiter mit
+    ihren 40 Zeilen ist darin zwei Pixel hoch und war deshalb unsichtbar. Nicht
+    kaputt, sondern zu flach.
+
+    Die Leiter bleibt bei Tiefe 20 im Sekundentakt (sie zeigt den Spread), die
+    Heatmap holt 1000 Zeilen seltener und buendelt sie hier statt im Browser:
+    60 Koerbe statt 1000 Zeilen ueber die Leitung.
+
+    **Was sie NICHT zeigt.** Was im Buch steht, muss nicht liegen bleiben: ueber
+    die eigene Bandmessung verschwanden bis zu 49 % der ruhenden Orders je
+    17 s, ohne dass der Preis sie erreichte. Das hier ist angezeigte Tiefe, kein
+    Versprechen auf eine Ausfuehrung.
+    """
+
+    symbol: str
+    mid: float
+    bins: list[list[float]]  # [preis, menge, seite] -- seite +1 Gebot, -1 Brief
+    max_qty: float
+    low: float
+    high: float
+    ts: int
+
+
+def heatmap(symbol: str, bins: int = 60, depth: int = 1000) -> Heatmap:
+    buch = orderbuch(symbol, depth)
+    bids, asks = buch.bids, buch.asks
+    if not bids or not asks:
+        raise HTTPException(status_code=502, detail="Orderbuch leer")
+    mid = (bids[0][0] + asks[0][0]) / 2
+    lo, hi = bids[-1][0], asks[-1][0]
+    spanne = hi - lo
+    if spanne <= 0:
+        raise HTTPException(status_code=502, detail="Orderbuch ohne Spanne")
+    breite = spanne / bins
+    koerbe: dict[tuple[int, int], float] = {}
+    for preis, menge in bids:
+        koerbe[(min(bins - 1, int((preis - lo) / breite)), 1)] = (
+            koerbe.get((min(bins - 1, int((preis - lo) / breite)), 1), 0.0) + menge
+        )
+    for preis, menge in asks:
+        koerbe[(min(bins - 1, int((preis - lo) / breite)), -1)] = (
+            koerbe.get((min(bins - 1, int((preis - lo) / breite)), -1), 0.0) + menge
+        )
+    reihen = [
+        [round(lo + (i + 0.5) * breite, 8), round(q, 6), float(seite)]
+        for (i, seite), q in sorted(koerbe.items())
+    ]
+    return Heatmap(
+        symbol=symbol, mid=mid, bins=reihen,
+        max_qty=max((q for _, q, _ in reihen), default=0.0),
+        low=lo, high=hi, ts=int(time.time() * 1000),
+    )
+
+
 class KalenderEintrag(BaseModel):
     ts: int
     country: str
@@ -885,6 +944,10 @@ def router(services: Any, konto_signatur, state_path, journal_path, followed) ->
     @r.get("/orderbook/{symbol}", response_model=Orderbuch)
     def _ob(symbol: str, depth: int = 10) -> Orderbuch:
         return orderbuch(symbol.upper(), depth)
+
+    @r.get("/heatmap/{symbol}", response_model=Heatmap)
+    def _heat(symbol: str, bins: int = 60) -> Heatmap:
+        return heatmap(symbol.upper(), bins)
 
     @r.get("/calendar", response_model=Kalender)
     def _cal() -> Kalender:

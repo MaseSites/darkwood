@@ -37,7 +37,7 @@ const S = {
   // Zoom JE SYMBOL UND ZEITEBENE. Vorher gab es einen gemeinsamen Zustand,
   // und wer BTC auf 400 Kerzen gezogen hatte, bekam ETH genauso duenn --
   // eine Einstellung, die fuer einen Markt gemacht war, galt fuer alle.
-  zoomBy: {}, drag: null, curve: null, book: null,
+  zoomBy: {}, drag: null, curve: null, book: null, heat: null,
   ebenen: JSON.parse(localStorage.getItem("dw-ebenen") || "{}"),
 };
 function zoomKey() { return `${S.symbol}|${S.tf}`; }
@@ -119,6 +119,21 @@ async function tickBook() {
   } catch (e) { $("#ob-sum").textContent = "–"; }
 }
 
+/* ---------------------------------------------------- Heatmap (tiefes Buch) -- */
+// Getrennt von der Leiter oben: die zeigt den Spread und braucht Tempo, die
+// Heatmap braucht TIEFE. Gemessen auf BTCUSDT decken 20 Zeilen 6 USD ab und
+// 1000 Zeilen 262 -- bei rund 1'500 USD Charthoehe ist nur das zweite sichtbar.
+// Darum seltener, dafuer tief, und serverseitig in 60 Koerbe gebuendelt.
+async function tickHeatmap() {
+  if (S.view !== "markt" || S.ebenen.heatmap === false) return;
+  try {
+    const h = await fuerMarkt((s) => api(`/api/terminal/heatmap/${s}?bins=60`));
+    if (h === VERALTET) return;
+    S.heat = h;
+    if (S.center === "chart") renderChart();
+  } catch (e) { /* alte Heatmap bleibt stehen */ }
+}
+
 /* ------------------------------------------------------------- Kalender -- */
 async function tickCalendar() {
   try {
@@ -161,7 +176,7 @@ function chartOpts(extra = {}) {
   const z = zoom();
   // Das Buch traegt sein Symbol -- wie die formende Kerze. Ein fremdes Buch
   // liefert Heatmap-Baender in einer ganz anderen Groessenordnung.
-  const buch = S.book && S.book.symbol === S.symbol ? S.book : null;
+  const buch = S.heat && S.heat.symbol === S.symbol ? S.heat : null;
   return { candles, forming, lines: positionLines(), layers: S.ebenen, book: buch,
     visible: z.visible, end: z.end,
     signalIndex: setup ? (S.market.candles.length - 1) : undefined, ...extra };
@@ -611,7 +626,7 @@ function setView(v) {
   $$("#views [data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === v)));
   for (const id of ["markt", "konto", "trades", "verlauf"]) $(`#view-${id}`).classList.toggle("hidden", id !== v);
   document.body.dataset.view = v;
-  if (v === "markt") { renderChart(); tickBook(); }
+  if (v === "markt") { renderChart(); tickBook(); tickHeatmap(); }
   if (v === "konto") tickAccount();
   if (v === "trades") { renderTrades(); tickHistory(); }
   if (v === "verlauf") tickVerlauf();
@@ -634,7 +649,7 @@ function wireShell() {
   $$("#hist-filter [data-src]").forEach((b) => b.addEventListener("click", () => { S.histSrc = b.dataset.src; $$("#hist-filter [data-src]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); renderTrades(); }));
   $$("#tf [data-tf]").forEach((b) => b.addEventListener("click", () => { S.tf = b.dataset.tf; S.live = null; $$("#tf [data-tf]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); loadMarket(); tickLive(); }));
   $$("#a-range [data-range]").forEach((b) => b.addEventListener("click", () => { S.range = b.dataset.range; $$("#a-range [data-range]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); tickAccount(); }));
-  $("#sym").addEventListener("change", (e) => { S.symbol = e.target.value; S.lastOb = null; S.live = null; S.book = null; loadMarket(); tickLive(); tickHead(); tickBook(); tickScore(); });
+  $("#sym").addEventListener("change", (e) => { S.symbol = e.target.value; S.lastOb = null; S.live = null; S.book = null; S.heat = null; loadMarket(); tickLive(); tickHead(); tickBook(); tickHeatmap(); tickScore(); });
   new ResizeObserver(() => { if (S.view === "konto" && S.account) drawEquity($("#a-chart"), S.account.series, S.range); if (S.view === "verlauf" && S.curve) drawRCurve($("#v-chart"), S.curve.points ?? []); }).observe(document.body);
 }
 
@@ -647,9 +662,10 @@ async function boot() {
   $("#sym").value = S.symbol;
   wireShell(); wireChart(); wireSettings(); wireManual();
   setView("markt"); setCenter("chart"); setMode("bot");
-  await Promise.all([tickHead(), loadMarket(), tickLive(), tickBook(), tickCalendar(), tickScore(), tickPositions(), tickHistory(), loadSettings(), tickAccount()]);
+  await Promise.all([tickHead(), loadMarket(), tickLive(), tickBook(), tickCalendar(), tickHeatmap(), tickScore(), tickPositions(), tickHistory(), loadSettings(), tickAccount()]);
   setInterval(() => { tickHead(); tickBook(); checkAlerts(); }, 1000);
   setInterval(tickLive, 2000);
+  setInterval(tickHeatmap, 5000);
   setInterval(() => { loadMarket(); tickPositions(); }, 15000);
   setInterval(() => { tickScore(); tickHistory(); if (S.view === "verlauf") tickVerlauf(); }, 30000);
   setInterval(tickCalendar, 15 * 60 * 1000);

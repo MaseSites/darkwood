@@ -102,6 +102,41 @@ def test_dashboard_und_haendler_bilden_denselben_signaturzusatz() -> None:
     assert str(int(round(plantrade.MARGIN_ANTEIL * 100))) in etikett
 
 
+def test_geloeste_verlustbremsen_stehen_in_der_signatur() -> None:
+    """Eine Lockerung der Verlustbremsen darf nicht spurlos bleiben.
+
+    Tages-, Wochengrenze und Abkuehlung stehen in `risk.yaml` -- also weder in
+    der Laufsignatur noch im Entscheidungsstempel. Sie entscheiden aber, WELCHE
+    Trades ueberhaupt entstehen: am 20.10.2026 blockierten zwei von ihnen das
+    Konto fuer 22 Stunden. Ohne das `f` liessen sich Trades mit und ohne Bremse
+    stillschweigend in einer Zahl mitteln.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    import plantrade
+
+    assert plantrade.signatur_zusatz(0.30, 7.0, 0.015, False) == "plan30x7r15"
+    assert plantrade.signatur_zusatz(0.30, 7.0, 0.015, True) == "plan30x7r15f"
+    assert plantrade.signatur_zusatz(0.30, 7.0, None, True) == "plan30x7f"
+    # Ohne Lockerung byte-gleich zu allem, was vor dem 20.10. geschrieben wurde.
+    assert plantrade.signatur_zusatz(0.30, 7.0, None, False) == "plan30x7"
+
+    # Und der Schalter wird GELESEN, nicht von Hand gepflegt: er muss zu den
+    # Zahlen passen, die wirklich in der Datei des Kontos stehen.
+    import yaml
+
+    grenzen = (yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "config_offen" / "risk.yaml").read_text(encoding="utf-8")
+    ) or {})["limits"]
+    gelockert = any(
+        float(grenzen[k]) > v for k, v in plantrade.BREMSEN_SCHARF.items()
+    )
+    assert plantrade.BREMSEN_FREI == gelockert
+    assert plantrade.SIGNATUR_ZUSATZ.endswith("f") == gelockert
+
+
 def test_orderbuchtiefe_rastet_auf_eine_erlaubte_zahl_ein() -> None:
     """Binance nimmt nur 5/10/20/50/100/500/1000; alles andere ist HTTP 400.
 
@@ -122,3 +157,38 @@ def test_orderbuchtiefe_rastet_auf_eine_erlaubte_zahl_ein() -> None:
     assert einrasten(5000) == 1000
     for d in range(1, 120):
         assert einrasten(d) in BINANCE_TIEFEN
+
+
+def test_heatmap_buendelt_ein_tiefes_buch_in_koerbe() -> None:
+    """Die Heatmap war nicht kaputt, sie war zu flach.
+
+    Gemessen auf BTCUSDT am 20.10.2026: 20 Buchzeilen decken 6 USD ab, 100
+    decken 25, erst 1000 decken 262. Bei rund 1'500 USD Charthoehe ist die
+    40-zeilige Leiter zwei Pixel hoch -- unsichtbar, und zwar korrekt.
+
+    Der Test haelt die beiden Eigenschaften fest, die das Buendeln haben muss:
+    keine Menge geht verloren, und beide Seiten bleiben getrennt. Eine Heatmap,
+    die Gebote und Briefe in denselben Korb wirft, zeigt an jeder Wand Grau.
+    """
+    from unittest.mock import patch
+
+    from traidingbrain.api.terminal import Orderbuch, heatmap
+
+    bids = [[100.0 - i * 0.1, 1.0] for i in range(500)]
+    asks = [[100.1 + i * 0.1, 2.0] for i in range(500)]
+    gefaelscht = Orderbuch(
+        symbol="TESTUSDT", bids=bids, asks=asks,
+        bid_total=500.0, ask_total=1000.0, bid_share_pct=33.3, spread_bp=10.0, ts=0,
+    )
+    with patch("traidingbrain.api.terminal.orderbuch", return_value=gefaelscht):
+        h = heatmap("TESTUSDT", bins=20)
+
+    gebote = sum(q for _, q, s in h.bins if s > 0)
+    briefe = sum(q for _, q, s in h.bins if s < 0)
+    assert round(gebote, 3) == 500.0, "Gebotsmenge darf beim Buendeln nicht verlorengehen"
+    assert round(briefe, 3) == 1000.0, "Briefmenge darf beim Buendeln nicht verlorengehen"
+    assert h.low == bids[-1][0] and h.high == asks[-1][0]
+    # Jeder Korb traegt genau eine Seite -- sonst verschwindet die Wand im Mittel.
+    assert all(s in (1.0, -1.0) for _, _, s in h.bins)
+    # Und die Spanne ist die des Buches, nicht die des Charts.
+    assert all(h.low <= p <= h.high for p, _, _ in h.bins)

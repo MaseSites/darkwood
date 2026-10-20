@@ -136,14 +136,26 @@ export function drawTerminalChart(canvas, view, opts = {}) {
     if (b.high < lo || b.low > hi) continue;
     const top = y(b.high), bottom = y(b.low);
     const rgb = BAND_FARBE[b.kind] ?? "124,138,163";
+    // Ab dem Balken, an dem die Zone entstand -- nicht ueber die ganze Breite.
+    // Ein Pool ueber den ganzen Chart behauptet, er haette schon vorher
+    // dagelegen; gelesen wird er als "liegt seit DANN da und ist offen".
+    const iStart = b.from_ts == null ? null : indexFuerTs(candles, b.from_ts);
+    const xStart = iStart == null ? pL : Math.max(pL, xk(iStart - Math.max(0, offset)));
     ctx.fillStyle = `rgba(${rgb},0.16)`;
-    ctx.fillRect(pL, top, pW, Math.max(2, bottom - top));
+    ctx.fillRect(xStart, top, Math.max(2, pR - xStart), Math.max(2, bottom - top));
     if (ebene === "liquiditaet") {
       // Pools bekommen eine Kante und Sterne: die Zahl der Beruehrungen ist
       // das Mass, wie viel dort liegt.
       ctx.strokeStyle = `rgba(${rgb},0.55)`; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(pL, top + 0.5); ctx.lineTo(pR, top + 0.5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xStart, top + 0.5); ctx.lineTo(pR, top + 0.5); ctx.stroke();
       drawStars(ctx, pR - 8, top + 10, naechsteBeruehrungen(view, b), c);
+      // Wer hier liegt: ueber dem Preis die Stops der Shorts (Kaufseite),
+      // darunter die der Longs. Das ist die Richtung, in die der Markt zieht.
+      const kaufseite = b.kind === "equal_highs";
+      ctx.fillStyle = `rgba(${rgb},0.85)`;
+      ctx.font = `9px ${c.mono}`;
+      ctx.textAlign = "left";
+      ctx.fillText(kaufseite ? "Kaufseite" : "Verkaufsseite", xStart + 4, top - 3);
     }
   }
 
@@ -332,17 +344,34 @@ function drawProfile(ctx, candles, g) {
  * die Waende. Das ist die Frage, die ein Stop oder ein Ziel beantwortet
  * haben will, und sie ist mit einem Schnappschuss ehrlich zu beantworten.
  */
-function drawHeatmap(ctx, book, g) {
-  const alle = [...(book.bids ?? []).map(([p, q]) => [p, q, 1]), ...(book.asks ?? []).map(([p, q]) => [p, q, -1])];
-  if (!alle.length) return;
-  const max = Math.max(...alle.map(([, q]) => q)) || 1;
-  const breite = 34;
+function drawHeatmap(ctx, heat, g) {
+  const koerbe = heat.bins ?? [];
+  if (!koerbe.length) return;
+  const max = heat.max_qty || Math.max(...koerbe.map(([, q]) => q)) || 1;
+  const breite = 44;
+  // Korbhoehe aus der Buchspanne, damit die Streifen aneinanderstossen statt
+  // als Haarlinien zu verschwinden: bei 1000 Zeilen deckt das Buch ein paar
+  // hundert USD ab, verteilt auf 60 Koerbe.
+  const hoehe = Math.max(2, Math.abs(g.y(heat.low) - g.y(heat.high)) / koerbe.length);
+  let sichtbar = 0;
   ctx.save();
-  for (const [preis, menge, seite] of alle) {
+  for (const [preis, menge, seite] of koerbe) {
     if (preis < g.lo || preis > g.hi) continue;
+    sichtbar++;
     const stark = Math.min(1, menge / max);
-    ctx.fillStyle = seite > 0 ? `rgba(34,197,94,${0.12 + stark * 0.55})` : `rgba(239,68,68,${0.12 + stark * 0.55})`;
-    ctx.fillRect(g.pR - breite, g.y(preis) - 1.5, breite * (0.35 + stark * 0.65), 3);
+    ctx.fillStyle = seite > 0 ? `rgba(34,197,94,${0.10 + stark * 0.62})` : `rgba(239,68,68,${0.10 + stark * 0.62})`;
+    ctx.fillRect(g.pR - breite, g.y(preis) - hoehe / 2, breite * (0.22 + stark * 0.78), hoehe);
+  }
+  // Wo das Buch ueberhaupt reicht -- sonst liest man die leere Flaeche
+  // darueber und darunter als "keine Liquiditaet" statt als "nicht gemessen".
+  if (sichtbar) {
+    ctx.strokeStyle = "rgba(250,204,21,0.30)";
+    ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
+    for (const p of [heat.low, heat.high]) {
+      if (p < g.lo || p > g.hi) continue;
+      ctx.beginPath(); ctx.moveTo(g.pR - breite, g.y(p) + 0.5); ctx.lineTo(g.pR, g.y(p) + 0.5); ctx.stroke();
+    }
+    ctx.setLineDash([]);
   }
   ctx.restore();
 }

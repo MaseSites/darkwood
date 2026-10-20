@@ -149,6 +149,13 @@ class LevelBand(BaseModel):
     kind: str
     label: str
 
+    #: Der Balken, an dem die Zone entstand. Ein Liquiditaetspool wird gelesen
+    #: als "dieser Preis liegt seit DANN da und ist noch nicht abgeholt" -- ein
+    #: Band ueber die ganze Chartbreite behauptet, er haette schon vorher
+    #: existiert. Offen, weil strukturelle Zonen diesen Zeitpunkt (noch) nicht
+    #: mitfuehren; der Zeichner faellt dann auf die volle Breite zurueck.
+    from_ts: int | None = None
+
 
 class Diagonal(BaseModel):
     """A trendline, as two points the chart can join.
@@ -373,6 +380,11 @@ def _bands_near(
                         high=zone.high,
                         kind=zone.kind.value,
                         label=BAND_LABELS.get(zone.kind.value, zone.kind.value),
+                        from_ts=(
+                            int(stamps[zone.created_index])
+                            if 0 <= zone.created_index < len(stamps)
+                            else None
+                        ),
                     ),
                 )
             )
