@@ -268,10 +268,51 @@ limits:
   # brutto-negativ ist mit einem Intervall ohne Null.
   max_open_positions: 5
   max_positions_per_symbol: 1
-  max_daily_loss_pct: 0.05
-  max_weekly_loss_pct: 0.10
+  # GELOCKERT am 20.10.2026 auf ausdrueckliche Anweisung des Nutzers
+  # ("auch wenn steht, dass jetzt nicht mehr getradet wird, weil wir zu viel
+  # verloren haben, trade weiter -- dieses Limit sollte aufgehoben werden").
+  # Nur dieses Konto, nur Papier, kein echtes Geld.
+  #
+  # **Was in diesem Moment wirklich blockierte, gemessen statt angenommen:**
+  #
+  #   Tagesgrenze    99.00 USD Verlust gegen 50.00 erlaubt   BLOCKIERT
+  #   Abkuehlung     4 Verluste in Folge, letzter vor 1.7 h  BLOCKIERT, 22.3 h
+  #   Wochengrenze   99.00 USD gegen 100.00 erlaubt          frei, aber 1 USD davor
+  #
+  # Ohne diese Aenderung haette das Konto den ganzen Abend und den groessten
+  # Teil des morgigen Tages keinen einzigen Trade eroeffnet.
+  #
+  # **Die Zahlen sind hergeleitet, nicht gewaehlt.** Das gleichzeitig offene
+  # Risiko ist gedeckelt durch Plaetze mal Risikodeckel:
+  #
+  #     max_open_positions * risk_cap_share = 5 * 1.5 % = 7.5 %
+  #
+  # Eine Tagesgrenze unter diesem Wert haelt das Konto an, sobald EIN voll
+  # besetzter Satz ausstoppt -- sie wuerde die Bremse zur Normalbedingung
+  # machen statt zur Ausnahme. 25 % sind gut drei solcher Saetze, 50 % in der
+  # Woche sind sechs. Das ist die Begruendung der Groessenordnung; eine
+  # Messung, dass diese Grenzen besser waeren, gibt es nicht und wird hier
+  # auch nicht behauptet.
+  #
+  # **Was das kostet, offen gesagt.** Die gemessene Erwartung je Trade liegt
+  # ueber 7.335 Replay-Trades in [-0.0868; +0.0594] R -- nicht zuverlaessig
+  # negativ, aber auch kein Gewinner. Ein Konto ohne wirksame Verlustbremse
+  # auf einer Erwartung, die die Null einschliesst, kann bis auf null laufen.
+  # Was dagegen steht, ist der Risikodeckel von 1.5 % je Trade, und der ist
+  # die einzige Groesse hier, die heute an elf echten Trades nachgerechnet
+  # wurde (-13.75 statt -90.18 USD).
+  #
+  # **Scharf bleiben:** Kill-Switch, 5 Plaetze, 1 Position je Symbol, der
+  # Kostendeckel und der Risikodeckel. Gelockert werden genau die drei
+  # Zeilen, die nach einem Verlust den Handel anhalten.
+  #
+  # Zurueck auf scharf: 0.05 / 0.10 / 3 eintragen und den Haendler neu
+  # starten. Der Signaturzusatz verliert dann sein `f`, und die Trades
+  # beider Epochen bleiben trennbar.
+  max_daily_loss_pct: 0.25
+  max_weekly_loss_pct: 0.50
   # After this many consecutive losses, stop proposing until a human resets it.
-  cooldown_after_consecutive_losses: 3
+  cooldown_after_consecutive_losses: 8
   cooldown_hours: 24
   min_reward_risk: 0.01
 

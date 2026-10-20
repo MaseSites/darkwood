@@ -85,9 +85,36 @@ HEBEL = float(_PLAN.get("leverage", HEBEL))
 RISIKODECKEL = _PLAN.get("risk_cap_share")
 RISIKODECKEL = float(RISIKODECKEL) if RISIKODECKEL is not None else None
 
+#: Die Werte, bei denen die drei Verlustbremsen als "scharf" gelten. Sie sind
+#: die ausgelieferte Vorgabe; alles Lockerere ist eine Entscheidung und muss
+#: in der Signatur stehen.
+BREMSEN_SCHARF = {"max_daily_loss_pct": 0.05, "max_weekly_loss_pct": 0.10,
+                  "cooldown_after_consecutive_losses": 3}
+
+
+def _bremsen_frei(config_dir: str = "config_offen") -> bool:
+    """Sind Tages-, Wochengrenze oder Abkuehlung gegenueber der Vorgabe gelockert?
+
+    Gelesen statt gesetzt: ein Schalter, den man von Hand pflegt, laeuft
+    irgendwann der Datei davon, die er beschreiben soll.
+    """
+    import yaml
+    pfad = Path(__file__).resolve().parent.parent / config_dir / "risk.yaml"
+    if not pfad.exists():
+        return False
+    try:
+        grenzen = (yaml.safe_load(pfad.read_text(encoding="utf-8")) or {}).get("limits") or {}
+    except Exception:  # noqa: BLE001 -- eine kaputte Datei darf den Haendler nicht stoppen
+        return False
+    return any(float(grenzen.get(k, v)) > v for k, v in BREMSEN_SCHARF.items())
+
+
+BREMSEN_FREI = _bremsen_frei()
+
 
 def signatur_zusatz(margin_share: float, leverage: float,
-                    risk_cap_share: float | None = None) -> str:
+                    risk_cap_share: float | None = None,
+                    bremsen_frei: bool = False) -> str:
     """`plan30x7` aus (0.30, 7.0), `plan30x7r15` mit 1.5 % Risikodeckel.
 
     EINE Funktion dafuer, damit Haendler und Dashboard denselben Zusatz bilden
@@ -100,16 +127,24 @@ def signatur_zusatz(margin_share: float, leverage: float,
     Trade ist -- und eine Groessenaenderung ohne Spur waere genau der Fehler,
     der die Vorwaertsstichprobe am 09.10. dreimal hat schrumpfen lassen.
     Ohne Deckel bleibt der Zusatz byte-gleich zu allem davor.
+
+    `bremsen_frei` haengt ein `f` an, wenn Tages-, Wochengrenze und Abkuehlung
+    gelockert sind. Nach demselben Argument: diese drei entscheiden, WELCHE
+    Trades ueberhaupt entstehen, und das ist ein groesserer Eingriff als die
+    Groesse. Sie stehen in `risk.yaml`, also weder in der Laufsignatur noch im
+    Entscheidungsstempel -- ohne dieses Zeichen waere die Lockerung vom
+    20.10.2026 in keiner gespeicherten Zeile zu erkennen, und Trades mit und
+    ohne Bremse liessen sich stillschweigend mitteln.
     """
     basis = f"plan{int(round(margin_share * 100))}x{leverage:g}"
-    if risk_cap_share is None:
-        return basis
-    return f"{basis}r{risk_cap_share * 1000:g}"
+    if risk_cap_share is not None:
+        basis = f"{basis}r{risk_cap_share * 1000:g}"
+    return f"{basis}f" if bremsen_frei else basis
 
 
 #: Das Etikett in der Laufsignatur. Ohne es liessen sich die Zeilen dieses
 #: Kontos mit denen des anderen mitteln, und genau das darf nicht passieren.
-SIGNATUR_ZUSATZ = signatur_zusatz(MARGIN_ANTEIL, HEBEL, RISIKODECKEL)
+SIGNATUR_ZUSATZ = signatur_zusatz(MARGIN_ANTEIL, HEBEL, RISIKODECKEL, BREMSEN_FREI)
 
 #: Der Risikodeckel DIESES Kontos.
 #:
@@ -182,6 +217,10 @@ def main() -> int:
     print(f"  Kostentor       {config.risk.limits.max_cost_fraction_of_risk:.2f}"
           f"   CRV-Tor {config.risk.limits.min_reward_risk:.2f}"
           f"   {'<<< OFFEN' if _tore_offen else '(produktiv)'}")
+    _g = config.risk.limits
+    print(f"  Verlustbremsen  Tag {_g.max_daily_loss_pct:.0%} · Woche {_g.max_weekly_loss_pct:.0%}"
+          f" · Abkuehlung nach {_g.cooldown_after_consecutive_losses} Verlusten"
+          f"   {'<<< GELOCKERT' if BREMSEN_FREI else '(produktiv)'}")
     if _tore_offen:
         print("                  Gemessen auf 3.553 abgelehnten Signalen:")
         print("                  -0.1464 R je Trade. Auf ausdrueckliche Anweisung.")
