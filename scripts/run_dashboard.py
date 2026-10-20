@@ -401,6 +401,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--demo", action="store_true", help="seed one real proposal to look at")
     parser.add_argument(
+        "--config-dir", type=Path, default=None,
+        help="Eigenes Konfigurationsverzeichnis -- MUSS dasselbe sein wie beim "
+             "Haendler dieses Kontos, sonst sucht das Dashboard unter einer "
+             "anderen Laufsignatur und findet die eigenen Trades nicht.",
+    )
+    parser.add_argument(
         "--execute",
         action="store_true",
         help="arm the testnet executor so a held confirmation reaches the exchange",
@@ -413,7 +419,22 @@ def main(argv: list[str] | None = None) -> int:
     if args.port == DEFAULT_PORT and not os.environ.get("PORT"):
         args.port = konto_port
 
-    services = build_default_services()
+    # Die Konfiguration des Dashboards MUSS die des Haendlers sein.
+    #
+    # Am 20.10.2026 lief der Haendler mit `--config-dir config_offen` (beide
+    # Wirtschaftlichkeitstore offen) und das Dashboard ohne. Die Laufsignatur
+    # haengt am Kostendeckel: der Haendler schrieb unter `|1.0|...|crv0.01|`,
+    # das Dashboard suchte unter `|0.08|`. Zwei geschlossene Trades standen im
+    # Journal und die Trade-Ansicht war leer.
+    #
+    # Das war NICHT nur eine Anzeige. `_signatur` sagt es eine Funktion weiter
+    # oben: findet das Dashboard die Trades seines Kontos nicht, rechnet es
+    # still mit einer LEEREN Historie -- also mit Verlustsicherungen, die
+    # nichts sehen. Nach zwei Verlusttrades stand der Tagesdeckel bei null
+    # verbrauchtem Budget.
+    services = build_default_services(
+        plantrade.plan_config(args.config_dir) if args.config_dir else None
+    )
     services.state_name = state_name
     services.signature_suffix = suffix
     services.account_label = label

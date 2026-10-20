@@ -162,6 +162,23 @@ def _position_view(state: object, last_price: float) -> PaperPosition | None:
     )
 
 
+def _gehoert_dazu(signature: str | None):
+    """Welche Journaleintraege zu diesem Konto gehoeren.
+
+    Ohne Signatur: alle -- das alte Verhalten, bewusst erhalten fuer Werkzeuge,
+    die ueber alles schauen wollen. Mit Signatur: nur die, deren gespeicherte
+    `run_signature` passt.
+
+    Der erste Entwurf ging ueber `closed_trades()` und verglich `trade_id`.
+    Das war ein Umweg um nichts: `JournalEntry` TRAEGT `run_signature` selbst,
+    und `ClosedTrade` hat gar kein `trade_id`. Der direkte Vergleich ist
+    kuerzer und hat eine Fehlerquelle weniger.
+    """
+    if signature is None:
+        return lambda _entry: True
+    return lambda entry: entry.run_signature == signature
+
+
 def build_paper_readout(
     state_path: Path,
     journal_path: Path,
@@ -169,20 +186,37 @@ def build_paper_readout(
     config: AppConfig,
     now_ms: int,
     symbols: list[str] | None = None,
+    signature: str | None = None,
 ) -> PaperReadout:
     """Read both files and say what the paper trader is doing.
 
     `now_ms` is passed in rather than read from the clock so a test can pin the
     staleness arithmetic, which is the only thing here with a time dependency.
+
+    **`signature` grenzt auf DIESES Konto ein, und sein Fehlen war ein Fehler.**
+    Bis zum 20.10.2026 summierte diese Funktion `journal.all(source=LIVE)`,
+    also jeden Live-Trade des Journals -- quer ueber alle Konten und alle
+    Konfigurationen. Das Plankonto zeigte dadurch auf BTCUSDT -63.81 USD aus
+    zwei Trades, die ein anderes Konto gemacht hatte, waehrend `/api/portfolio`
+    fuer denselben Markt korrekt 0.00 aus 0 Trades meldete. Zwei Endpunkte,
+    dieselbe Frage, zwei Antworten.
+
+    `portfolio`, `aussicht` und `ledger` gaben die Signatur von Anfang an mit;
+    nur dieser Pfad wurde vergessen. Siehe auch `one-account-not-twelve`: das
+    Journal haelt mehrere Konten, und wer nicht einschraenkt, mittelt sie.
+
+    `None` bleibt erlaubt, damit Tests und Werkzeuge, die bewusst ueber alles
+    schauen wollen, es weiter koennen -- aber die Ansichten geben sie mit.
     """
     states = PaperStateStore(state_path)
     journal = JournalStore(journal_path)
 
     live_all = journal.all(source=Source.LIVE)
+    gehoert_dazu = _gehoert_dazu(signature)
     realised: dict[str, float] = {}
     counted: dict[str, int] = {}
     for entry in live_all:
-        if not entry.closed_ts:
+        if not entry.closed_ts or not gehoert_dazu(entry):
             continue
         realised[entry.symbol] = realised.get(entry.symbol, 0.0) + entry.net_pnl
         counted[entry.symbol] = counted.get(entry.symbol, 0) + 1

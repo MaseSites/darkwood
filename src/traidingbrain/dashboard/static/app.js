@@ -1786,7 +1786,20 @@ function renderKonto(portfolio, ausblick) {
         ${signed(portfolio.change)} USDT &middot; ${signed(portfolio.change_pct, 2)} %
       </span>
       <span class="total__meta">
-        ${portfolio.trades} Trades vorwärts &middot; ${hit}<br />
+        ${portfolio.trades} Trades vorwärts &middot; ${hit}${
+          /* `trades` zaehlt die laufende Generation, `trades_all` alle. Beide
+             Zahlen sind richtig, aber "0 Trades vorwaerts" allein liest sich
+             als "nichts passiert" -- auch dann, wenn das Konto zwei Trades
+             gemacht hat und seither nur der Code angefasst wurde. Der
+             Entscheidungsstempel ist ABSICHTLICH konservativ (er bewegt sich
+             auch bei Aenderungen, die keine Entscheidung veraendern), also
+             passiert genau das bei jeder Reparatur an der Anzeige.
+             Am 20.10.2026 standen so zwei Verlusttrades im Journal und das
+             Dashboard sagte "noch kein abgeschlossener Trade". */
+          portfolio.trades_all > portfolio.trades
+            ? ` <span style="color: var(--dimmer)">(${portfolio.trades_all} insgesamt, der Rest unter einem früheren Codestand)</span>`
+            : ""
+        }<br />
         ${money(portfolio.reserved)} USDT Margin gebunden &middot;
         ${money(portfolio.available)} USDT frei &middot;
         ${money(portfolio.open_risk)} USDT im Risiko${gap}<br />
@@ -1975,7 +1988,7 @@ function renderLedger(ledger, source) {
     host.innerHTML = `<p class="konto__state">
       ${
         source === "live"
-          ? "Noch kein Trade vorwärts abgeschlossen. Die ersten brauchen Stunden bis Tage."
+          ? "Noch kein Trade vorwärts abgeschlossen &mdash; unter DIESEM Codestand. Hat das Konto schon gehandelt, liegen die Trades unter einem früheren; die Kopfzeile nennt dann beide Zahlen."
           : "Keine nachgespielten Trades im Journal."
       }</p>`;
     if (hint) hint.textContent = "";

@@ -125,9 +125,15 @@ AUFGABEN: tuple[Aufgabe, ...] = (
         "--config-dir config_offen",
         "Papierhaendler des Plankontos (30 % Margin x 7x), Tore OFFEN.",
     ),
+    #: `--config-dir` MUSS dasselbe sein wie beim Haendler darueber. Die
+    #: Laufsignatur haengt am Kostendeckel; stimmen die beiden nicht ueberein,
+    #: sucht das Dashboard seine eigenen Trades unter einem Schluessel, den es
+    #: nicht gibt -- und rechnet die Verlustsicherungen auf einer leeren
+    #: Historie. Am 20.10. war die Trade-Ansicht nach zwei Verlusten leer.
     Aufgabe(
-        "traidingBrain-dash-plan", "scripts/run_dashboard.py", "--account plan",
-        "Dashboard des Plankontos, 127.0.0.1:8788.",
+        "traidingBrain-dash-plan", "scripts/run_dashboard.py",
+        "--account plan --config-dir config_offen",
+        "Dashboard des Plankontos, 127.0.0.1:8788 (Tore OFFEN wie der Haendler).",
     ),
     Aufgabe(
         "traidingBrain-dash-live", "scripts/run_dashboard.py", "--account live",

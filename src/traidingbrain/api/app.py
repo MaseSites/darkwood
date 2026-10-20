@@ -629,6 +629,12 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
             config=services.config,
             now_ms=int(time.time() * 1000),
             symbols=_followed_symbols(services),
+            # Die Laufsignatur, wie `portfolio`, `aussicht` und `ledger` sie
+            # schon immer mitgaben -- hier fehlte sie. Ohne sie summierte
+            # `build_paper_readout` ALLE Live-Trades des Journals, also auch
+            # die des anderen Papierkontos: das Plankonto zeigte am 20.10. auf
+            # BTCUSDT -63.81 USD aus zwei Trades, die es nie gemacht hat.
+            signature=_konto_signatur(services),
         )
 
     @app.get("/api/portfolio", response_model=Portfolio)
