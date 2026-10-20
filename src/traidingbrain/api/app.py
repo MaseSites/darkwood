@@ -822,17 +822,6 @@ def _mount_dashboard(app: FastAPI, services: Services) -> None:
             headers={"Cache-Control": "no-store"},
         )
 
-
-def _score_read_dict(services: Services, symbol: str) -> dict:
-    """Der Score als Woerterbuch, fuer das Terminal. Dieselbe Rechnung wie
-    `/api/market/{symbol}/score`, nur ohne das Pydantic-Modell dazwischen."""
-    return _score_for(services, symbol).model_dump()
-
-
-def _chart_dict(services: Services, symbol: str) -> dict:
-    """Die Marktansicht als Woerterbuch, fuer das Terminal."""
-    return _market_for(services, symbol, None).model_dump()
-
     @app.get("/", include_in_schema=False)
     def index() -> Response:
         """Die Seite, mit dem Namen des Kontos darin.
@@ -1194,3 +1183,13 @@ def build_default_services(config: AppConfig | None = None) -> Services:
         limits=limits,
         kill_switch=kill_switch,
     )
+
+def _score_read_dict(services: Services, symbol: str) -> dict:
+    """Der Score als Woerterbuch, fuer das Terminal. Dieselbe Rechnung wie
+    `/api/market/{symbol}/score`, nur ohne das Pydantic-Modell dazwischen."""
+    return _score_for(services, symbol).model_dump()
+
+
+def _chart_dict(services: Services, symbol: str) -> dict:
+    """Die Marktansicht als Woerterbuch, fuer das Terminal."""
+    return _market_for(services, symbol, None).model_dump()
