@@ -222,8 +222,10 @@ button:disabled { cursor: not-allowed; color: var(--ink-3); }
   display: flex; flex-direction: column; gap: 2px; pointer-events: none;
 }
 .chart__legend b { font-weight: 600; }
+/* Oben rechts, nicht unten links: unten liegt die Zeitachse, und in einem
+   schmalen Fenster schrieben sich Ablesung und Achse uebereinander. */
 .chart__readout {
-  position: absolute; left: 10px; bottom: 6px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); pointer-events: none;
+  position: absolute; right: 100px; top: 8px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); pointer-events: none; text-align: right;
 }
 .chart__empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-2); }
 .linebox {
