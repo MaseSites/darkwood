@@ -17,12 +17,20 @@
         <button data-view="markt" aria-pressed="true">Markt</button>
         <button data-view="konto" aria-pressed="false">Konto</button>
         <button data-view="trades" aria-pressed="false">Trades</button>
-        <button data-view="verlauf" aria-pressed="false">Verlauf</button>
       </nav>
-      <label class="topbar__sym">
-        <select id="sym" aria-label="Markt"></select>
-        <svg class="tri" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 9 9H1z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
-      </label>
+      <!-- Eigene Auswahl statt <select>: die native Liste von Windows ist
+           weiss und laesst sich nicht gestalten -- in einem dunklen Terminal
+           blendet sie, und man erkennt nur die markierte Zeile. Das <select>
+           bleibt als unsichtbarer Trager erhalten, damit alles, was
+           `$("#sym").value` setzt und `change` ausloest, weiter funktioniert. -->
+      <div class="symwahl" id="symwahl">
+        <button class="symwahl__knopf" id="sym-knopf" aria-haspopup="listbox" aria-expanded="false">
+          <span id="sym-text">&mdash;</span>
+          <svg class="tri" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 9 9H1z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+        </button>
+        <div class="symwahl__liste" id="sym-liste" role="listbox" hidden></div>
+        <select id="sym" aria-label="Markt" class="visually-hidden" tabindex="-1"></select>
+      </div>
       <div class="seg topbar__tf" role="group" aria-label="Zeitrahmen" id="tf">
         <button class="seg__btn" data-tf="W1">W1</button>
         <button class="seg__btn" data-tf="D1">D1</button>
@@ -156,27 +164,37 @@
 
     <!-- ================================================== Konto -->
     <div class="view page hidden" id="view-konto">
-      <div class="acct__hero">
-        <div class="brand">DARKWOOD TERMINAL</div>
-        <div class="stat"><span class="stat__label">Win-Rate</span><span class="stat__value" id="a-win">&mdash;</span></div>
-        <div class="stat" style="grid-column:1"><span class="stat__label">Account Balance</span><span class="stat__value" id="a-bal">&mdash;</span></div>
-        <div class="stat"><span class="stat__label">PNL Today</span><span class="stat__value" id="a-pnl">&mdash;</span></div>
-        <div class="stat"><span class="stat__label">Max Drawdown</span><span class="stat__value down" id="a-dd">&mdash;</span></div>
-        <div class="stat"><span class="stat__label">Bot Accuracy</span><span class="stat__value" id="a-acc">&mdash;</span></div>
-        <div class="stat"><span class="stat__label">Trades</span><span class="stat__value" id="a-n">&mdash;</span></div>
-      </div>
-      <div class="acct__body">
-        <div class="acct__range" role="group" aria-label="Zeitraum" id="a-range">
-          <button data-range="today">Today</button><button data-range="week">Week</button><button data-range="month" aria-pressed="true">Month</button><button data-range="all">All</button>
+      <header class="kt__kopf">
+        <div class="kt__links">
+          <div class="kt__marke">Plankonto · Papiergeld</div>
+          <div class="kt__stand" id="k-bal">&mdash;</div>
+          <div class="kt__unter" id="k-unter">&mdash;</div>
         </div>
-        <h3 class="acct__title">Account</h3>
-        <canvas class="acct__chart" id="a-chart"></canvas>
-        <p class="acct__note" id="a-note"></p>
+        <div class="kt__zeit" role="group" aria-label="Zeitraum" id="a-range">
+          <button data-range="today">Heute</button><button data-range="week">Woche</button><button data-range="month" aria-pressed="true">Monat</button><button data-range="all">Alles</button>
+        </div>
+      </header>
+
+      <div class="kt__kacheln" id="k-kacheln"></div>
+
+      <div class="kt__charts">
+        <section class="panel kt__chart">
+          <h2 class="panel__head">Kapital in USD <span class="panel__hint" id="k-eq-hint"></span></h2>
+          <canvas class="acct__chart" id="a-chart"></canvas>
+          <p class="acct__note" id="a-note"></p>
+        </section>
+        <section class="panel kt__chart">
+          <h2 class="panel__head">Verlauf in R <span class="panel__hint">Vielfache des riskierten Betrags &mdash; groessenunabhaengig, darum die ehrlichere Kurve</span></h2>
+          <canvas class="v-chart" id="v-chart"></canvas>
+          <div class="v-stats" id="v-stats"></div>
+        </section>
       </div>
-      <section class="panel page__panel">
-        <h2 class="panel__head">Regeln des Bots <span class="panel__hint">was er gerade tut, und warum</span></h2>
+      </section>
+      <section class="panel page__panel kt__regeln">
+        <h2 class="panel__head">Regeln des Bots <span class="panel__hint">was er gerade tut, und warum &mdash; jede Regel mit ihrer Messung</span></h2>
         <div id="konto-regeln" class="regeln"></div>
       </section>
+
       <details class="panel page__panel">
         <summary class="panel__head">Erweiterte Einstellungen <span class="panel__hint">nur anfassen, wenn Du weisst, warum &mdash; Apply startet den Händler neu</span></summary>
         <div class="adv">
@@ -213,15 +231,6 @@
           <button class="seg__btn" data-src="manuell" aria-pressed="false">Manuell</button>
         </div>
         <div class="table" id="tr-hist"><p class="empty">Lade&hellip;</p></div>
-      </section>
-    </div>
-
-    <!-- ================================================== Verlauf -->
-    <div class="view page hidden" id="view-verlauf">
-      <section class="panel page__panel">
-        <h2 class="panel__head">Verlauf in R <span class="panel__hint">Summe der Vielfachen des riskierten Betrags, je abgeschlossenem Trade</span></h2>
-        <canvas class="v-chart" id="v-chart"></canvas>
-        <div class="v-stats" id="v-stats"></div>
       </section>
     </div>
 

@@ -437,6 +437,58 @@ async function zeichnungGemeldet(d) {
   }
 }
 
+/* ------------------------------------------------------ Marktauswahl -- */
+/**
+ * Eigene Auswahlliste statt des nativen <select>.
+ *
+ * Die Liste von Windows ist weiss und laesst sich nicht gestalten. In einem
+ * dunklen Terminal blendet sie, und man erkennt nur die markierte Zeile --
+ * genau die Beschwerde: "es ist so sehr weiss und ich sehe es nur, wenn ich
+ * drueberscrolle."
+ *
+ * Das <select> bleibt unsichtbar bestehen und bleibt die Quelle der Wahrheit:
+ * alles, was `$("#sym").value` setzt und `change` ausloest -- `zeigeImMarkt`,
+ * die Positionsleiste, der Start -- funktioniert unveraendert weiter.
+ */
+function renderSymWahl() {
+  const sel = $("#sym"), liste = $("#sym-liste");
+  const aktuell = sel.value;
+  $("#sym-text").textContent = aktuell.replace("USDT", "/USDT");
+  liste.innerHTML = [...sel.options].map((o) => {
+    const kurz = o.value.replace("USDT", "");
+    return `<button role="option" class="symwahl__zeile" data-sym="${o.value}"
+      aria-selected="${o.value === aktuell}">
+      <span class="symwahl__name">${kurz}</span>
+      <span class="symwahl__quote">/USDT</span>
+    </button>`;
+  }).join("");
+}
+
+function wireSymWahl() {
+  const knopf = $("#sym-knopf"), liste = $("#sym-liste"), sel = $("#sym");
+  const zu = () => { liste.hidden = true; knopf.setAttribute("aria-expanded", "false"); };
+  knopf.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (knopf.getAttribute("aria-expanded") === "true") { zu(); return; }
+    renderSymWahl();
+    liste.hidden = false; knopf.setAttribute("aria-expanded", "true");
+    liste.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+  });
+  liste.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const b = e.target.closest("[data-sym]"); if (!b) return;
+    zu();
+    if (sel.value === b.dataset.sym) return;
+    sel.value = b.dataset.sym;
+    sel.dispatchEvent(new Event("change"));
+  });
+  document.addEventListener("click", zu);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") zu(); });
+  // Auch wenn das Symbol von woanders gesetzt wird (z. B. "Ansehen"), muss
+  // der Knopf mitgehen -- sonst zeigt er den alten Markt an.
+  sel.addEventListener("change", () => { $("#sym-text").textContent = sel.value.replace("USDT", "/USDT"); });
+}
+
 /* ----------------------------------------------------- Zeichenwerkzeuge -- */
 function merkeZeichnungen() {
   // Nur die eigenen Zeichnungen, nie die Vorschau. Ein halb gesetzter Zug im
@@ -620,7 +672,7 @@ function wireChart() {
   wireIndikatoren();
   document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
-    if (e.key === "1") setView("markt"); if (e.key === "2") setView("konto"); if (e.key === "3") setView("trades"); if (e.key === "4") setView("verlauf");
+    if (e.key === "1") setView("markt"); if (e.key === "2") setView("konto"); if (e.key === "3") setView("trades");
     if (e.key === "m") setMode("manual"); if (e.key === "b") setMode("bot");
     if (S.view === "markt" && (e.key === "+" || e.key === "-")) { const z = zoom(); z.visible = Math.max(20, Math.round((z.visible ?? 120) * (e.key === "+" ? 1 / 1.15 : 1.15))); renderChart(); }
   });
@@ -905,18 +957,88 @@ function renderTrades() {
 }
 
 /* ------------------------------------------------------------ Konto -- */
+/**
+ * Eine Kachel im Konto: Zahl, Einordnung, Begruendung.
+ *
+ * **Warum jede Zahl eine Begruendung bekommt.** Die alte Ansicht zeigte
+ * "Max Drawdown -14%" und "Bot Accuracy 64%" nebeneinander, als waeren das
+ * gleichwertige Auskuenfte. Sind sie nicht: die eine ist eine Tatsache ueber
+ * die Vergangenheit, die andere eine Quote aus 13 Faellen, die morgen anders
+ * aussehen kann. Wer das nicht danebenschreibt, laedt dazu ein, beiden
+ * gleich stark zu glauben.
+ */
+function kachel({ titel, wert, klasse = "", einordnung, grund, sicher }) {
+  return `<div class="kt__kachel">
+    <div class="kt__kt">${titel}${sicher === false ? '<span class="kt__weich" title="noch nicht belastbar">vorläufig</span>' : ""}</div>
+    <div class="kt__kw ${klasse}">${wert}</div>
+    ${einordnung ? `<div class="kt__ke">${einordnung}</div>` : ""}
+    ${grund ? `<div class="kt__kg">${grund}</div>` : ""}
+  </div>`;
+}
+
+function renderKonto() {
+  const a = S.account; if (!a) return;
+  const start = a.start || 1;
+  const gesamt = a.balance - start, gesamtPct = (gesamt / start) * 100;
+
+  $("#k-bal").innerHTML = `${money(a.balance, 2)} <small>USD</small>`;
+  $("#k-unter").innerHTML =
+    `<span class="${gesamt >= 0 ? "up" : "down"}">${signed(gesamt)} USD (${pct(gesamtPct, 1)})</span>` +
+    ` <span class="muted">seit Start bei ${money(start, 0)} USD</span>`;
+
+  // Die Schwelle, ab der eine Quote etwas heisst. 30 ist nicht gewaehlt,
+  // sondern die Zahl, ab der das Konto-Endpunkt selbst ein Urteil zulaesst.
+  const genug = a.trades >= 30;
+  const kacheln = [
+    kachel({
+      titel: "Heute", wert: `${signed(a.pnl_today)} USD`,
+      klasse: a.pnl_today >= 0 ? "up" : "down",
+      einordnung: pct(a.pnl_today_pct, 1) + " des Startkapitals",
+      grund: a.pnl_today < 0
+        ? "Ein einzelner Tag sagt nichts ueber die Regel — die gemessene Erwartung je Trade liegt in [−0.087; +0.059] R und schliesst die Null ein."
+        : "Ein einzelner Tag sagt nichts ueber die Regel. Erst ein paar hundert Trades tun das.",
+    }),
+    kachel({
+      titel: "Trefferquote", wert: a.win_rate === null ? "–" : `${a.win_rate.toFixed(0)} %`,
+      sicher: genug,
+      einordnung: `aus ${a.trades} Trades`,
+      grund: genug
+        ? "Die Auszahlung ist fest: Gewinner tragen rund +1.48 R, Verlierer −1.05 R. Bei dieser Auszahlung braucht es rund 41 % Treffer, um bei null zu landen."
+        : `Unter 30 Trades ist das eine Momentaufnahme, keine Quote. Zwei Trades mehr oder weniger verschieben sie um ${a.trades ? (100 / a.trades).toFixed(0) : "?"} Punkte.`,
+    }),
+    kachel({
+      titel: "Höchstrückgang", wert: `${a.max_drawdown_pct.toFixed(1)} %`, klasse: "down",
+      einordnung: "vom höchsten Stand bis zum tiefsten",
+      grund: "Gemessen über die ganze Kapitalkurve, nicht nur Start gegen Ende — der Gipfel dazwischen zählt mit.",
+    }),
+    kachel({
+      titel: "Bot-Genauigkeit", wert: a.bot_accuracy === null ? "–" : `${a.bot_accuracy.toFixed(0)} %`,
+      sicher: genug,
+      einordnung: a.bot_accuracy_n ? `n = ${a.bot_accuracy_n}` : "noch keine Fälle",
+      grund: "Anteil der Trades, bei denen die Richtung des Scores und das Ergebnis übereinstimmten. Das ist eine Aussage über die RICHTUNG, nicht über den Gewinn.",
+    }),
+    kachel({
+      titel: "Abgeschlossene Trades", wert: String(a.trades),
+      einordnung: `~1.9 pro Tag gemessen`,
+      grund: "Die Zahl zählt dieses Konto über alle Größenregeln hinweg — ein Apply ändert die Regel, nicht die Geschichte.",
+    }),
+    kachel({
+      titel: "Offen", wert: String([...S.botPositions, ...S.positions].length),
+      einordnung: `höchstens 5 gleichzeitig`,
+      grund: "Die Margin bindet schon bei 3 Positionen zu 30 % — der Platz-Deckel ist darum selten der bindende.",
+    }),
+  ];
+  $("#k-kacheln").innerHTML = kacheln.join("");
+  $("#k-eq-hint").textContent = `Start ${money(start, 0)} USD · Zeitraum ${a.range}`;
+}
+
 async function tickAccount() {
   try {
     S.account = await api(`/api/terminal/account?range=${S.range}`);
     const a = S.account;
-    $("#a-bal").textContent = `${money(a.balance, 0)} USD`;
-    const p = $("#a-pnl"); p.innerHTML = `${signed(a.pnl_today, 0)} USD <small>${pct(a.pnl_today_pct, 1)}</small>`; p.className = `stat__value ${a.pnl_today >= 0 ? "up" : "down"}`;
-    $("#a-dd").textContent = `${a.max_drawdown_pct.toFixed(0)}%`;
-    $("#a-win").textContent = a.win_rate === null ? "–" : `${a.win_rate.toFixed(0)}%`;
-    $("#a-acc").innerHTML = a.bot_accuracy === null ? "–" : `${a.bot_accuracy.toFixed(0)}% <small>n=${a.bot_accuracy_n}</small>`;
-    $("#a-n").textContent = String(a.trades);
-    $("#a-note").textContent = `${a.note} Zeitraum: ${a.range}. Start ${money(a.start, 0)} USD.`;
-    if (S.view === "konto") drawEquity($("#a-chart"), a.series, a.range);
+    $("#a-note").textContent = a.note;
+    renderKonto();
+    if (S.view === "konto") { drawEquity($("#a-chart"), a.series, a.range); tickVerlauf(); }
   } catch (e) { $("#a-note").textContent = `Konto: ${e.message}`; }
   renderRegeln();
 }
@@ -933,7 +1055,7 @@ function renderRegeln() {
 
 /* ------------------------------------------------------------ Verlauf -- */
 async function tickVerlauf() {
-  if (S.view !== "verlauf") return;
+  if (S.view !== "konto") return;
   try { S.curve = await api("/api/portfolio/curve"); } catch (e) { $("#v-stats").textContent = `Verlauf: ${e.message}`; return; }
   const pts = S.curve.points ?? [];
   if (!pts.length) { $("#v-stats").innerHTML = `<p class="empty">Noch kein abgeschlossener Trade.</p>`; return; }
@@ -1038,12 +1160,11 @@ function flash(el, text, kind) { el.textContent = text; el.className = `msg ${ki
 function setView(v) {
   S.view = v;
   $$("#views [data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === v)));
-  for (const id of ["markt", "konto", "trades", "verlauf"]) $(`#view-${id}`).classList.toggle("hidden", id !== v);
+  for (const id of ["markt", "konto", "trades"]) $(`#view-${id}`).classList.toggle("hidden", id !== v);
   document.body.dataset.view = v;
   if (v === "markt") { renderChart(); tickBook(); tickHeatmap(); }
   if (v === "konto") tickAccount();
   if (v === "trades") { renderTrades(); tickHistory(); }
-  if (v === "verlauf") tickVerlauf();
 }
 function setCenter(c) {
   S.center = c; $$("#center-seg [data-center]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.center === c)));
@@ -1064,7 +1185,7 @@ function wireShell() {
   $$("#tf [data-tf]").forEach((b) => b.addEventListener("click", () => { S.tf = b.dataset.tf; S.live = null; $$("#tf [data-tf]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); loadMarket(); tickLive(); }));
   $$("#a-range [data-range]").forEach((b) => b.addEventListener("click", () => { S.range = b.dataset.range; $$("#a-range [data-range]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); tickAccount(); }));
   $("#sym").addEventListener("change", (e) => { S.symbol = e.target.value; S.lastOb = null; S.live = null; S.book = null; S.heat = null; loadMarket(); tickLive(); tickHead(); tickBook(); tickHeatmap(); tickScore(); });
-  new ResizeObserver(() => { if (S.view === "konto" && S.account) drawEquity($("#a-chart"), S.account.series, S.range); if (S.view === "verlauf" && S.curve) drawRCurve($("#v-chart"), S.curve.points ?? []); }).observe(document.body);
+  new ResizeObserver(() => { if (S.view === "konto" && S.account) drawEquity($("#a-chart"), S.account.series, S.range); if (S.view === "konto" && S.curve) drawRCurve($("#v-chart"), S.curve.points ?? []); }).observe(document.body);
 }
 
 async function boot() {
@@ -1074,14 +1195,15 @@ async function boot() {
   const syms = await api("/api/market").catch(() => ["BTCUSDT"]);
   $("#sym").innerHTML = syms.map((s) => `<option value="${s}">${s.replace("USDT", "/USDT")}</option>`).join("");
   $("#sym").value = S.symbol;
-  wireShell(); wireChart(); wireSettings(); wireManual(); wireUnten();
+  $("#sym-text").textContent = S.symbol.replace("USDT", "/USDT");
+  wireShell(); wireChart(); wireSettings(); wireManual(); wireUnten(); wireSymWahl();
   setView("markt"); setCenter("chart"); setMode("bot");
   await Promise.all([tickHead(), loadMarket(), tickLive(), tickBook(), tickCalendar(), tickHeatmap(), tickScore(), tickPositions(), tickHistory(), loadSettings(), tickAccount()]);
   setInterval(() => { tickHead(); tickBook(); checkAlerts(); }, 1000);
   setInterval(tickLive, 2000);
   setInterval(tickHeatmap, 5000);
   setInterval(() => { loadMarket(); tickPositions(); }, 15000);
-  setInterval(() => { tickScore(); tickHistory(); if (S.view === "verlauf") tickVerlauf(); }, 30000);
+  setInterval(() => { tickScore(); tickHistory(); if (S.view === "konto") tickVerlauf(); }, 30000);
   setInterval(tickCalendar, 15 * 60 * 1000);
   setInterval(() => { if (S.view === "konto") tickAccount(); }, 60000);
 }

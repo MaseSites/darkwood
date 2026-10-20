@@ -600,6 +600,13 @@ class ZeichnungUrteil(BaseModel):
     punkte: list[str]
 
 
+def _pr(x: float) -> str:
+    """Ein Preis, lesbar. `:,.4g` lieferte `8.271e+04` statt 82'714 -- eine
+    Zahl in Exponentialschreibweise ist in einem Handelsterminal keine Zahl."""
+    n = 2 if abs(x) >= 100 else (4 if abs(x) >= 1 else 6)
+    return f"{x:,.{n}f}".replace(",", "'")
+
+
 #: Wie nah ein gezeichneter Preis an einer gemessenen Zone liegen darf, damit
 #: man von "derselben Stelle" sprechen kann -- in ATR, nicht in Prozent. Ein
 #: fester Prozentsatz waere bei BTC etwas voellig anderes als bei DOGE.
@@ -647,8 +654,8 @@ def zeichnung_beurteilen(symbol: str, tf: str, z: Zeichnung, chart: dict) -> Zei
             if lo - rand <= pr <= hi + rand:
                 treffer += 1
                 gefunden.append(
-                    f"{pr:,.4g} liegt in **{b.get('label', b.get('kind'))}** "
-                    f"({lo:,.4g}–{hi:,.4g})".replace(",", "'")
+                    f"{_pr(pr)} liegt in **{b.get('label', b.get('kind'))}** "
+                    f"({_pr(lo)}–{_pr(hi)})"
                 )
                 break
 
@@ -659,8 +666,8 @@ def zeichnung_beurteilen(symbol: str, tf: str, z: Zeichnung, chart: dict) -> Zei
             entfernt = abs(pr - preis) / atr
             if entfernt > 8:
                 hinweise.append(
-                    f"{pr:,.4g} ist {entfernt:.1f} ATR vom Kurs entfernt — so weit "
-                    f"draussen reagiert der Markt erfahrungsgemaess auf nichts mehr.".replace(",", "'")
+                    f"{_pr(pr)} ist {entfernt:.1f} ATR vom Kurs entfernt — so weit "
+                    f"draussen reagiert der Markt erfahrungsgemaess auf nichts mehr."
                 )
 
     if z.typ in ("trend", "rectrot") and diagonalen:
