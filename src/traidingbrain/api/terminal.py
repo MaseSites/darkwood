@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import sqlite3
 import subprocess
 import time
@@ -850,16 +851,31 @@ def position_tp_sl(pid: str, tp: float | None, sl: float | None) -> dict:
     return {"ok": True}
 
 
+#: Zerlegt einen Kontozusatz: Name, Marginanteil, Hebel, Deckel, Bremsen frei.
+#:
+#: **Von Hand zerlegt ging das schief, und zwar sofort.** Hier stand ein
+#: `rest.split("r", 1)` mit `float(deckel)`. Als der Zusatz am 20.10. abends
+#: ein `f` fuer geloeste Verlustbremsen bekam, lief das auf `float("15f")` --
+#: und das Dashboard startete nicht mehr. Ein Format, das waechst, braucht
+#: einen Parser, der das Unbekannte stehen laesst, statt eines, der annimmt,
+#: er kenne das letzte Zeichen.
+_ZUSATZ = re.compile(r"^(?P<konto>[a-z]+)(?P<anteil>\d+)x(?P<hebel>[\d.]+)"
+                     r"(?:r(?P<deckel>[\d.]+))?(?P<frei>f)?$")
+
+
 def _regel(signatur: str | None) -> str:
-    """Die Groessenregel als kurzes Etikett: `30%x7` oder `30%x7 · Deckel 1.5%`."""
-    if not signatur or "|plan" not in signatur:
+    """Die Groessenregel als kurzes Etikett: `30%x7 · Deckel 1.5% · Bremsen frei`."""
+    if not signatur:
         return "?"
-    zusatz = signatur.rsplit("|", 1)[-1]           # plan30x7r15
-    rest = zusatz.removeprefix("plan")
-    if "r" in rest:
-        groesse, deckel = rest.split("r", 1)
-        return f"{groesse.replace('x', '%x')} · Deckel {float(deckel) / 10:g}%"
-    return rest.replace("x", "%x")
+    treffer = _ZUSATZ.match(signatur.rsplit("|", 1)[-1])
+    if treffer is None:
+        return "?"
+    teile = [f"{treffer['anteil']}%x{treffer['hebel']}"]
+    if treffer["deckel"]:
+        teile.append(f"Deckel {float(treffer['deckel']) / 10:g}%")
+    if treffer["frei"]:
+        teile.append("Bremsen frei")
+    return " · ".join(teile)
 
 
 def _frueheres_konto(journal_pfad: Path, aktuelle: str | None) -> list[dict]:

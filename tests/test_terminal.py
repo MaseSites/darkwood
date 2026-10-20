@@ -192,3 +192,24 @@ def test_heatmap_buendelt_ein_tiefes_buch_in_koerbe() -> None:
     assert all(s in (1.0, -1.0) for _, _, s in h.bins)
     # Und die Spanne ist die des Buches, nicht die des Charts.
     assert all(h.low <= p <= h.high for p, _, _ in h.bins)
+
+
+def test_das_regel_etikett_stolpert_nicht_ueber_einen_gewachsenen_zusatz() -> None:
+    """Der Zusatz waechst, der Parser darf nicht mitraten.
+
+    Am 20.10.2026 abends bekam der Kontozusatz ein `f` fuer geloeste
+    Verlustbremsen. `_regel` zerlegte ihn damals von Hand mit
+    `rest.split("r", 1)` und `float(deckel)` -- das lief auf `float("15f")`,
+    und das Dashboard startete nicht mehr. Ein Format, das waechst, braucht
+    einen Parser, der Unbekanntes stehen laesst.
+    """
+    from traidingbrain.api.terminal import _regel
+
+    assert _regel("x|plan30x7") == "30%x7"
+    assert _regel("x|plan30x7r15") == "30%x7 · Deckel 1.5%"
+    assert _regel("x|plan30x7r15f") == "30%x7 · Deckel 1.5% · Bremsen frei"
+    assert _regel("x|plan30x7f") == "30%x7 · Bremsen frei"
+    assert _regel("x|demo50x10r20") == "50%x10 · Deckel 2%"
+    # Kein Kontozusatz, kaputte Eingabe, nichts -- immer ein Etikett, nie ein Absturz.
+    for kaputt in ("x|cap5", "x|refused-v1", "", None, "plan", "x|plan30"):
+        assert _regel(kaputt) == "?"
