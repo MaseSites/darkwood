@@ -14,6 +14,13 @@
  * letzten -- ein stehender Chart und ein toter Feed sehen sonst gleich aus.
  */
 import { drawTerminalChart, drawEquity, drawRCurve, fmt, EBENEN } from "/static/terminal-chart.js";
+import { INDIKATOREN } from "/static/terminal-indikatoren.js";
+
+/** Was sichtbar ist, wenn noch nie etwas eingestellt wurde: EMA 20 und 200,
+ *  wie bisher festverdrahtet -- nur jetzt aenderbar. */
+function standardIndikatoren() {
+  return INDIKATOREN.ema.vorgaben.map((v) => ({ art: "ema", an: true, ...v }));
+}
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -39,6 +46,10 @@ const S = {
   // eine Einstellung, die fuer einen Markt gemacht war, galt fuer alle.
   zoomBy: {}, drag: null, curve: null, book: null, heat: null,
   ebenen: JSON.parse(localStorage.getItem("dw-ebenen") || "{}"),
+  // Eine LISTE, kein Objekt: derselbe Indikator darf mehrfach vorkommen
+  // (EMA 20 UND EMA 200 UND EMA 50), und die Reihenfolge ist die
+  // Zeichenreihenfolge.
+  indikatoren: JSON.parse(localStorage.getItem("dw-indikatoren") || "null") ?? standardIndikatoren(),
 };
 function zoomKey() { return `${S.symbol}|${S.tf}`; }
 function zoom() { return (S.zoomBy[zoomKey()] ??= { visible: null, end: null }); }
@@ -178,6 +189,7 @@ function chartOpts(extra = {}) {
   // liefert Heatmap-Baender in einer ganz anderen Groessenordnung.
   const buch = S.heat && S.heat.symbol === S.symbol ? S.heat : null;
   return { candles, forming, lines: positionLines(), layers: S.ebenen, book: buch,
+    indikatoren: S.indikatoren,
     visible: z.visible, end: z.end,
     signalIndex: setup ? (S.market.candles.length - 1) : undefined, ...extra };
 }
@@ -187,7 +199,11 @@ function renderChart() {
   const g = drawTerminalChart(canvas, S.market, chartOpts({ hover: S.hover }));
   if (!g) return;
   const candles = mergedCandles(), last = candles[candles.length - 1];
-  $("#legend").innerHTML = g.ema ? `<span><b style="color:#ef4444">EMA 200</b> ${g.ema.e200 ? px(g.ema.e200) : "–"}</span><span><b style="color:#60a5fa">EMA 20</b> ${g.ema.e20 ? px(g.ema.e20) : "–"}</span>` : "";
+  // Die Legende kommt jetzt aus dem, was WIRKLICH gezeichnet wurde. Vorher
+  // stand hier "EMA 200 / EMA 20" fest im Text -- wer den 50er einstellte,
+  // bekam trotzdem die alte Beschriftung.
+  $("#legend").innerHTML = (g.legende ?? []).map((e) =>
+    `<span><b style="color:${e.farbe}">${e.label}</b> ${Number.isFinite(e.wert) ? px(e.wert) : "–"}</span>`).join("");
   if (!S.hover) $("#readout").textContent = `${day(last.ts)}  O ${px(last.open)}  H ${px(last.high)}  L ${px(last.low)}  C ${px(last.close)}  ATR ${S.market.atr_pct !== undefined ? (S.market.atr_pct * 100).toFixed(2) : "–"}%${zoom().end !== null ? "  · verschoben" : ""}`;
   $("#lineboxes").innerHTML = g.boxes.map((b) => `<div class="linebox" style="top:${b.y}px;color:${b.colour}"><span>${b.label}</span>${b.closable ? `<button data-line="${b.id}" title="entfernen">x</button>` : ""}</div>`).join("");
 }
@@ -218,8 +234,38 @@ function renderLayers() {
     b.setAttribute("aria-checked", String(ebeneAn(b.dataset.lay))));
 }
 
+/** Oeffnen/Schliessen fuer ein Popover. EIN Helfer fuer beide Fenster: zwei
+ *  Fassungen derselben Logik driften, und seit heute Abend gibt es zwei. */
+function wirePopover(btnSel, panelSel, beimOeffnen) {
+  const btn = $(btnSel), panel = $(panelSel);
+  const zu = () => { panel.hidden = true; btn.setAttribute("aria-expanded", "false"); };
+  panel.addEventListener("click", (e) => e.stopPropagation());
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (btn.getAttribute("aria-expanded") === "true") { zu(); return; }
+    // Nur eines offen -- zwei nebeneinander ueberdecken den Chart.
+    document.dispatchEvent(new CustomEvent("dw-pop-zu"));
+    beimOeffnen?.();
+    panel.hidden = false; btn.setAttribute("aria-expanded", "true");
+    // Ins Fenster ziehen. Das Indikatoren-Panel ist 420 px breit; in einem
+    // schmalen Fenster ragte es rechts hinaus und war schlicht nicht da --
+    // sichtbar nur daran, dass der Knopf "offen" meldete und nichts kam.
+    panel.style.left = "0px";
+    const r = panel.getBoundingClientRect();
+    const ueber = r.right - (window.innerWidth - 8);
+    if (ueber > 0) panel.style.left = `${-Math.min(ueber, r.left - 8)}px`;
+    // Aus dem Knopf wachsen lassen, 140 ms -- nicht aus dem Nichts.
+    panel.classList.add("enter");
+    requestAnimationFrame(() => panel.classList.remove("enter"));
+  });
+  document.addEventListener("dw-pop-zu", zu);
+  document.addEventListener("click", zu);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") zu(); });
+  return { zu, panel };
+}
+
 function wireLayers() {
-  const btn = $("#btn-indicators"), panel = $("#layers");
+  const panel = $("#layers");
   panel.innerHTML = ebenenMarkup();
   renderLayers();
   panel.addEventListener("click", (e) => {
@@ -233,18 +279,110 @@ function wireLayers() {
     localStorage.setItem("dw-ebenen", JSON.stringify(S.ebenen));
     renderLayers(); renderChart();
   });
-  const zu = () => { panel.hidden = true; btn.setAttribute("aria-expanded", "false"); };
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const offen = btn.getAttribute("aria-expanded") === "true";
-    if (offen) { zu(); return; }
-    panel.hidden = false; btn.setAttribute("aria-expanded", "true");
-    // Aus dem Knopf wachsen lassen, 140 ms -- nicht aus dem Nichts.
-    panel.classList.add("enter");
-    requestAnimationFrame(() => panel.classList.remove("enter"));
+  wirePopover("#btn-settings", "#layers");
+}
+
+/* ------------------------------------------------ Indikatoren-Fenster -- */
+const IND_FARBEN = ["#60a5fa", "#f87171", "#fbbf24", "#34d399", "#a78bfa",
+                    "#2dd4bf", "#fb923c", "#f0abfc", "#94a3b8", "#c084fc"];
+
+function merkeIndikatoren() {
+  localStorage.setItem("dw-indikatoren", JSON.stringify(S.indikatoren));
+}
+
+/** Ein Feld des Indikators als Eingabe. Zahl oder Auswahl -- mehr Typen hat
+ *  bisher keiner gebraucht, und einen Typ auf Vorrat zu bauen hiesse, ihn
+ *  ungetestet mitzuschleppen. */
+function feldMarkup(feld, wert, i) {
+  if (feld.typ === "auswahl") {
+    const opt = feld.optionen.map((o) =>
+      `<option value="${o.v}"${String(o.v) === String(wert) ? " selected" : ""}>${o.t}</option>`).join("");
+    return `<label class="ind__feld"><span>${feld.label}</span>
+      <select data-ind="${i}" data-feld="${feld.k}">${opt}</select></label>`;
+  }
+  return `<label class="ind__feld"><span>${feld.label}</span>
+    <input type="number" data-ind="${i}" data-feld="${feld.k}" value="${wert}"
+      min="${feld.min ?? 1}" max="${feld.max ?? 9999}" step="${feld.schritt ?? 1}"></label>`;
+}
+
+function renderIndikatoren() {
+  const host = $("#indikatoren");
+  const aktiv = S.indikatoren.map((e, i) => {
+    const def = INDIKATOREN[e.art];
+    if (!def) return "";
+    const felder = def.felder.map((f) => feldMarkup(f, e[f.k] ?? f.vorgabe, i)).join("");
+    return `<div class="ind" data-zeile="${i}">
+      <button class="ind__an" role="checkbox" aria-checked="${e.an !== false}" data-an="${i}"
+              title="ein- oder ausblenden"><span class="lay__box"></span></button>
+      <input class="ind__farbe" type="color" value="${e.farbe ?? IND_FARBEN[i % IND_FARBEN.length]}"
+             data-ind="${i}" data-feld="farbe" aria-label="Farbe für ${def.name}">
+      <span class="ind__name">${def.name}</span>
+      <span class="ind__felder">${felder}</span>
+      <button class="ind__weg" data-weg="${i}" title="entfernen" aria-label="${def.name} entfernen">×</button>
+    </div>`;
+  }).join("");
+
+  const wahl = Object.entries(INDIKATOREN)
+    .map(([k, d]) => `<option value="${k}">${d.name}${d.art === "pane" ? " (eigene Achse)" : ""}</option>`).join("");
+
+  host.innerHTML = `
+    <div class="pop__kopf">Aktiv</div>
+    <div class="ind__liste">${aktiv || '<div class="muted ind__leer">Keiner. Unten einen hinzufügen.</div>'}</div>
+    <div class="pop__foot pop__foot--ind">
+      <select id="ind-neu" aria-label="Indikator hinzufügen">${wahl}</select>
+      <button type="button" id="ind-add">hinzufügen</button>
+      <button type="button" data-ind-all="reset">Vorgabe</button>
+    </div>`;
+}
+
+function wireIndikatoren() {
+  const { panel } = wirePopover("#btn-indicators", "#indikatoren", renderIndikatoren);
+  renderIndikatoren();
+
+  // Ein Handler fuer das ganze Panel. Es wird bei jeder Aenderung neu
+  // gebaut, und ein Handler je Knopf waere nach dem Neubau ins Leere
+  // gebunden -- derselbe Fehler, der das Ebenen-Fenster heute Abend nach
+  // jedem einzelnen Klick zuschlagen liess.
+  panel.addEventListener("click", (e) => {
+    const an = e.target.closest("[data-an]");
+    const weg = e.target.closest("[data-weg]");
+    const alle = e.target.closest("[data-ind-all]");
+    const add = e.target.closest("#ind-add");
+    if (an) { const i = +an.dataset.an; S.indikatoren[i].an = S.indikatoren[i].an === false; }
+    else if (weg) S.indikatoren.splice(+weg.dataset.weg, 1);
+    else if (alle) S.indikatoren = standardIndikatoren();
+    else if (add) {
+      const art = $("#ind-neu").value, def = INDIKATOREN[art];
+      // Mehrfach erlaubt nur, wo es Sinn hat: drei EMAs ja, drei MACDs nein.
+      if (!def.mehrfach && S.indikatoren.some((x) => x.art === art)) {
+        flash($("#m-msg"), `${def.name} ist schon da`, "err");
+        return;
+      }
+      const vorgabe = def.vorgaben?.[0] ?? Object.fromEntries(def.felder.map((f) => [f.k, f.vorgabe]));
+      S.indikatoren.push({ art, an: true, farbe: IND_FARBEN[S.indikatoren.length % IND_FARBEN.length], ...vorgabe });
+    } else return;
+    merkeIndikatoren(); renderIndikatoren(); renderChart();
   });
-  document.addEventListener("click", zu);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") zu(); });
+
+  // Zahl- und Farbfelder: `input` statt `change`, damit der Chart beim
+  // Tippen mitgeht. Keine Animation -- das hier wird oft angefasst.
+  const uebernehmen = (e) => {
+    const feld = e.target.closest("[data-feld]");
+    if (!feld) return;
+    const i = +feld.dataset.ind, k = feld.dataset.feld;
+    if (!S.indikatoren[i]) return;
+    if (k === "farbe") S.indikatoren[i].farbe = feld.value;
+    else {
+      const zahl = Number(feld.value);
+      if (!Number.isFinite(zahl)) return;
+      const def = INDIKATOREN[S.indikatoren[i].art].felder.find((f) => f.k === k);
+      // Geklemmt statt abgelehnt: wer 0 tippt, soll nicht stumm scheitern.
+      S.indikatoren[i][k] = Math.min(def?.max ?? 9999, Math.max(def?.min ?? 1, zahl));
+    }
+    merkeIndikatoren(); renderChart();
+  };
+  panel.addEventListener("input", uebernehmen);
+  panel.addEventListener("change", uebernehmen);
 }
 
 function wireChart() {
@@ -323,6 +461,7 @@ function wireChart() {
   }));
   new ResizeObserver(() => renderChart()).observe($("#chartwrap"));
   wireLayers();
+  wireIndikatoren();
   document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
     if (e.key === "1") setView("markt"); if (e.key === "2") setView("konto"); if (e.key === "3") setView("trades"); if (e.key === "4") setView("verlauf");

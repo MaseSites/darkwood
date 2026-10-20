@@ -21,10 +21,25 @@
  * Kerze aus dem rechten Rand holen kann.
  */
 
-const PAD = { left: 56, right: 92, top: 14, bottom: 26 };
+import { INDIKATOREN } from "./terminal-indikatoren.js";
 
+const PAD = { left: 56, right: 92, top: 14, bottom: 26 };
+//: Luft zwischen zwei Unterachsen. Zwei Register, nicht eins: 6 px INNERHALB
+//: einer Achse (Beschriftung zum Rand), 10 px ZWISCHEN ihnen -- sonst lesen
+//: sich drei gestapelte Achsen als eine einzige gestreifte Flaeche.
+const PANE_LUFT = 10;
+
+/**
+ * Die EBENEN sind die Zeichnungen des Charts -- Zonen, Pools, Struktur,
+ * Linien. Sie werden an- und ausgeschaltet, mehr nicht, und gehoeren ins
+ * Settings-Fenster.
+ *
+ * Die INDIKATOREN (terminal-indikatoren.js) sind gerechnete Kurven mit
+ * Parametern und haben ein eigenes Fenster. `ema` stand bis zum 20.10.2026
+ * HIER und war damit auf 20 und 200 festgenagelt -- wer nur den 50er sehen
+ * wollte, hatte keine Stelle, an der er das sagt.
+ */
 export const EBENEN = {
-  ema: "EMA 20 / 200",
   fvg: "Fair Value Gaps",
   zonen: "Angebot & Nachfrage",
   liquiditaet: "Liquidität (Pools & Sweeps)",
@@ -85,7 +100,18 @@ export function drawTerminalChart(canvas, view, opts = {}) {
     short: cssVar("--short"), star: cssVar("--star"), mark: cssVar("--mark"), surface: cssVar("--surface"),
   };
 
-  const pL = PAD.left, pR = W - PAD.right, pT = PAD.top, pB = H - PAD.bottom;
+  const pL = PAD.left, pR = W - PAD.right, pT = PAD.top;
+  // Die Unterachsen werden VOM Preisbereich abgezogen, nicht ueber ihn gelegt.
+  // Ein RSI (0-100) in der Preisachse waere ein flacher Strich am unteren
+  // Rand -- derselbe Groessenordnungsfehler wie bei der Heatmap heute Abend.
+  const aktivePanes = (opts.indikatoren ?? [])
+    .filter((e) => e.an !== false && INDIKATOREN[e.art]?.art === "pane");
+  const paneHoehen = aktivePanes.map((e) => INDIKATOREN[e.art].hoehe ?? 60);
+  const paneGesamt = paneHoehen.reduce((a, b) => a + b + PANE_LUFT, 0);
+  const pBvoll = H - PAD.bottom;
+  // Der Preis behaelt mindestens 45 % der Hoehe; wer sechs Unterachsen
+  // anschaltet, bekommt sie schmaler statt einen Chart ohne Kerzen.
+  const pB = Math.max(pT + (pBvoll - pT) * 0.45, pBvoll - paneGesamt);
   const pW = pR - pL, pH = pB - pT;
 
   const total = candles.length;
@@ -160,6 +186,12 @@ export function drawTerminalChart(canvas, view, opts = {}) {
   }
 
   /* ---- Trendlinien ---- */
+  // Beschnitten auf den Preisbereich. Seit die Unterachsen (RSI, Volumen)
+  // Platz vom Preis abziehen, endet er oberhalb des Chartbodens -- eine
+  // verlaengerte Trendlinie lief sonst quer durch den RSI und sah dort aus
+  // wie ein Indikator, der sie nie gezeichnet hat.
+  ctx.save();
+  ctx.beginPath(); ctx.rect(pL, pT, pR - pL, pB - pT); ctx.clip();
   if (on("trend")) for (const g of view?.diagonals ?? []) {
     const i0 = indexFuerTs(candles, g.from_ts), i1 = indexFuerTs(candles, g.to_ts);
     if (i0 === null || i1 === null) continue;
@@ -170,27 +202,78 @@ export function drawTerminalChart(canvas, view, opts = {}) {
     ctx.lineTo(xk(i1 - Math.max(0, offset)), y(g.to_price)); ctx.stroke(); ctx.restore();
   }
 
+  ctx.restore();
+
   /* ---- Volumenprofil links ---- */
   if (on("volumen")) drawProfile(ctx, shown, { pL, pT, pB, y, lo, hi });
 
   /* ---- EMAs ---- */
-  let emaWerte = null;
-  if (on("ema")) {
-    const closes = candles.map((k) => k.close);
-    const e20 = ema(closes, 20), e200 = ema(closes, 200);
-    const linie = (series, colour, dash) => {
-      ctx.save(); ctx.setLineDash(dash); ctx.strokeStyle = colour; ctx.lineWidth = 1.2; ctx.beginPath();
-      let started = false;
-      for (let i = 0; i < shown.length; i++) {
-        const v = series[Math.max(0, offset) + i]; if (v === null || v === undefined) continue;
-        if (!started) { ctx.moveTo(xk(i), y(v)); started = true; } else ctx.lineTo(xk(i), y(v));
+  // Zeichnet eine Serie in einen beliebigen Bereich. `yy` bildet den Wert auf
+  // Pixel ab -- fuer Overlays die Preisachse, fuer Unterachsen deren eigene.
+  // `null` wird UEBERSPRUNGEN statt auf 0 gesetzt: eine aufwaermende EMA, die
+  // bei null beginnt, zieht sonst eine Linie quer durch den Chart.
+  const zeichneSerie = (serie, yy, { farbe, dash = [], dick = 1.2, richtung = null }) => {
+    ctx.save(); ctx.setLineDash(dash); ctx.lineWidth = dick;
+    let offen = false, letzteR = null;
+    for (let i = 0; i < shown.length; i++) {
+      const j = Math.max(0, offset) + i;
+      const v = serie[j];
+      if (v === null || v === undefined || !Number.isFinite(v)) { if (offen) { ctx.stroke(); offen = false; } continue; }
+      // Supertrend wechselt die Farbe mit der Richtung -- dafuer muss der Zug
+      // an der Wende abgesetzt werden, sonst faerbt die letzte Farbe alles.
+      const r = richtung ? richtung[j] : null;
+      if (offen && richtung && r !== letzteR) { ctx.stroke(); offen = false; }
+      if (!offen) {
+        ctx.strokeStyle = richtung ? (r === 1 ? c.long : c.short) : farbe;
+        ctx.beginPath(); ctx.moveTo(xk(i), yy(v)); offen = true;
+      } else ctx.lineTo(xk(i), yy(v));
+      letzteR = r;
+    }
+    if (offen) ctx.stroke();
+    ctx.restore();
+  };
+
+  const zeichneFlaeche = (oben, unten, yy, farbe) => {
+    ctx.save(); ctx.fillStyle = `${farbe}22`;
+    ctx.beginPath();
+    let erster = null, letzter = null;
+    for (let i = 0; i < shown.length; i++) {
+      const v = oben[Math.max(0, offset) + i];
+      if (v == null) continue;
+      if (erster === null) { erster = i; ctx.moveTo(xk(i), yy(v)); } else ctx.lineTo(xk(i), yy(v));
+      letzter = i;
+    }
+    if (erster === null) { ctx.restore(); return; }
+    for (let i = letzter; i >= erster; i--) {
+      const v = unten[Math.max(0, offset) + i];
+      if (v != null) ctx.lineTo(xk(i), yy(v));
+    }
+    ctx.closePath(); ctx.fill(); ctx.restore();
+    zeichneSerie(oben, yy, { farbe, dick: 1 });
+    zeichneSerie(unten, yy, { farbe, dick: 1 });
+  };
+
+  /* ---- Overlay-Indikatoren (einstellbar, nicht mehr festverdrahtet) ---- */
+  const legende = [];
+  ctx.save();
+  ctx.beginPath(); ctx.rect(pL, pT, pR - pL, pB - pT); ctx.clip();
+  for (const eintrag of opts.indikatoren ?? []) {
+    const def = INDIKATOREN[eintrag.art];
+    if (!def || def.art !== "overlay" || eintrag.an === false) continue;
+    let serien;
+    try { serien = def.rechne(candles, eintrag); } catch { continue; }
+    for (const sr of serien) {
+      const farbe = sr.farbe ?? eintrag.farbe ?? "#60a5fa";
+      if (sr.art === "flaeche") zeichneFlaeche(sr.oben, sr.unten, y, farbe);
+      else zeichneSerie(sr.werte, y, { farbe, dash: sr.dash ?? [], dick: sr.dick ?? 1.2, richtung: sr.richtung ?? null });
+      if (sr.label) {
+        const letzte = (sr.werte ?? sr.oben ?? []).filter((v) => v != null).pop();
+        if (letzte != null) legende.push({ label: sr.label, wert: letzte, farbe });
       }
-      ctx.stroke(); ctx.restore();
-    };
-    linie(e200, c.short, [5, 4]);
-    linie(e20, "#60a5fa", [3, 3]);
-    emaWerte = { e20: e20[e20.length - 1], e200: e200[e200.length - 1] };
+    }
   }
+
+  ctx.restore();
 
   /* ---- Kerzen ---- */
   for (let i = 0; i < shown.length; i++) {
@@ -274,8 +357,84 @@ export function drawTerminalChart(canvas, view, opts = {}) {
     ctx.fillStyle = c.ink; ctx.fillText(fmt(price), pR + 8, hy);
   }
 
+  /* ---- Unterachsen: RSI, MACD, Stochastik, ATR, Volumen ---- */
+  let paneY = pB + PANE_LUFT;
+  for (let n = 0; n < aktivePanes.length; n++) {
+    const eintrag = aktivePanes[n], def = INDIKATOREN[eintrag.art];
+    const h = paneHoehen[n], oben = paneY, unten = paneY + h;
+    paneY = unten + PANE_LUFT;
+    if (unten > H - 4) break;                      // kein Zeichnen ins Nichts
+
+    let serien;
+    try { serien = def.rechne(candles, eintrag); } catch { continue; }
+    const sichtbar = [];
+    for (const sr of serien) {
+      for (let i = 0; i < shown.length; i++) {
+        const v = sr.werte?.[Math.max(0, offset) + i];
+        if (v != null && Number.isFinite(v)) sichtbar.push(v);
+      }
+    }
+    if (!sichtbar.length) continue;
+    // Die Skala der Achse: fest, wenn der Indikator eine hat (RSI 0-100),
+    // sonst aus den SICHTBAREN Werten -- nicht aus allen, sonst staucht ein
+    // alter Ausreisser die ganze Achse flach.
+    let pLo, pHi;
+    if (def.skala) { [pLo, pHi] = def.skala; }
+    else {
+      pLo = Math.min(...sichtbar, ...(def.marken ?? []));
+      pHi = Math.max(...sichtbar, ...(def.marken ?? []));
+      const luft = (pHi - pLo) * 0.1 || 1; pLo -= luft; pHi += luft;
+    }
+    const pSpan = (pHi - pLo) || 1;
+    const yy = (v) => unten - ((v - pLo) / pSpan) * h;
+
+    ctx.save();
+    ctx.strokeStyle = c.rule; ctx.lineWidth = 1;
+    ctx.strokeRect(pL + 0.5, oben + 0.5, pR - pL, h);
+    ctx.setLineDash([2, 4]);
+    for (const marke of def.marken ?? []) {
+      if (marke < pLo || marke > pHi) continue;
+      const my = Math.round(yy(marke)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(pL, my); ctx.lineTo(pR, my); ctx.stroke();
+      ctx.fillStyle = c.ink3; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.fillText(String(marke), pR + 6, my);
+    }
+    ctx.restore();
+
+    for (const sr of serien) {
+      const farbe = sr.farbe ?? eintrag.farbe ?? "#94a3b8";
+      if (sr.art === "balken") {
+        ctx.save();
+        const nullY = Math.max(oben, Math.min(unten, yy(Math.max(pLo, Math.min(pHi, 0)))));
+        for (let i = 0; i < shown.length; i++) {
+          const j = Math.max(0, offset) + i, v = sr.werte[j];
+          if (v == null || !Number.isFinite(v)) continue;
+          // Volumenbalken nehmen die Farbe ihrer Kerze -- so liest man
+          // Kaufdruck ohne eine zweite Legende.
+          ctx.fillStyle = sr.nachKerze
+            ? (candles[j].close >= candles[j].open ? `${c.long}66` : `${c.short}66`)
+            : (v >= 0 ? `${c.long}99` : `${c.short}99`);
+          const vy = yy(v);
+          ctx.fillRect(xk(i) - body / 2, Math.min(vy, nullY), Math.max(1, body), Math.max(1, Math.abs(vy - nullY)));
+        }
+        ctx.restore();
+      } else {
+        zeichneSerie(sr.werte, yy, { farbe, dash: sr.dash ?? [], dick: sr.dick ?? 1.2 });
+      }
+      if (sr.label) {
+        const letzte = (sr.werte ?? []).filter((v) => v != null).pop();
+        if (letzte != null) legende.push({ label: sr.label, wert: letzte, farbe, pane: true });
+      }
+    }
+    ctx.save();
+    ctx.fillStyle = c.ink3; ctx.textAlign = "left"; ctx.textBaseline = "top";
+    ctx.font = '10px ui-monospace, "Cascadia Mono", Menlo, monospace';
+    ctx.fillText(def.name, pL + 5, oben + 4);
+    ctx.restore();
+  }
+
   return { pL, pR, pT, pB, slot, x: xk, y, lo, hi, offset: Math.max(0, offset), vorn, end, total,
-    count: shown.length, spalten, boxes, ema: emaWerte, visible };
+    count: shown.length, spalten, boxes, legende, visible };
 }
 
 function indexFuerTs(candles, ts) {

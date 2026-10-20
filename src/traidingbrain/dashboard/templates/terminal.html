@@ -31,7 +31,11 @@
         <button class="seg__btn" data-tf="M15" aria-pressed="true">15m</button>
       </div>
       <div class="pop">
-        <button class="seg__btn seg__btn--lone" id="btn-indicators" aria-expanded="false" aria-controls="layers">Indicators</button>
+        <button class="seg__btn seg__btn--lone" id="btn-indicators" aria-expanded="false" aria-controls="indikatoren">Indikatoren</button>
+        <div class="pop__panel pop__panel--breit" id="indikatoren" role="group" aria-label="Indikatoren wählen und einstellen" hidden></div>
+      </div>
+      <div class="pop">
+        <button class="seg__btn seg__btn--lone" id="btn-settings" aria-expanded="false" aria-controls="layers">Settings</button>
         <div class="pop__panel" id="layers" role="group" aria-label="Ebenen ein- und ausblenden" hidden></div>
       </div>
       <span class="topbar__spacer"></span>
@@ -72,8 +76,10 @@
             </div>
             <div class="chart__wrap" id="chartwrap">
               <canvas class="chart__canvas" id="chart"></canvas>
-              <div class="chart__legend" id="legend"></div>
-              <div class="chart__readout" id="readout"></div>
+              <div class="chart__kopf">
+                <div class="chart__legend" id="legend"></div>
+                <div class="chart__readout" id="readout"></div>
+              </div>
               <div id="lineboxes"></div>
             </div>
           </div>

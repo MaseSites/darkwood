@@ -234,15 +234,28 @@ button:disabled { cursor: not-allowed; color: var(--ink-3); }
 .tools svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.6; }
 .chart__wrap { position: relative; }
 .chart__canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+/* Eine ZEILE, die umbricht -- keine Spalte. Mit zwei festverdrahteten EMAs
+   war die Spalte zwei Zeilen hoch; seit die Indikatoren frei waehlbar sind,
+   wuchs sie mit jedem dazu und verdeckte die Kerzen. Umbruch statt Stapel
+   haelt sie flach, auch bei sechs Indikatoren. */
+/* Legende und Kerzenablesung STAPELN, statt beide absolut zu setzen. Mit
+   zwei festen EMAs passten 42 px Abstand; seit die Legende mit jedem
+   Indikator waechst, schob sie sich in die Ablesung. Ein Fluss-Container
+   loest das ein fuer alle Mal -- egal wie viele Indikatoren dazukommen. */
+.chart__kopf {
+  position: absolute; left: 10px; top: 8px; right: 100px;
+  display: flex; flex-direction: column; gap: 3px; pointer-events: none;
+}
 .chart__legend {
-  position: absolute; left: 10px; top: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
-  display: flex; flex-direction: column; gap: 2px; pointer-events: none;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+  display: flex; flex-wrap: wrap; gap: 2px 12px; pointer-events: none;
+  line-height: 1.35;
 }
 .chart__legend b { font-weight: 600; }
 /* Oben rechts, nicht unten links: unten liegt die Zeitachse, und in einem
    schmalen Fenster schrieben sich Ablesung und Achse uebereinander. */
 .chart__readout {
-  position: absolute; left: 10px; top: 42px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); pointer-events: none;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-3); pointer-events: none;
 }
 .chart__empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-2); }
 .linebox {
@@ -483,4 +496,74 @@ button:disabled { cursor: not-allowed; color: var(--ink-3); }
 }
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 0ms !important; }
+}
+
+/* ---------------------------------------------- Indikatoren-Fenster -- */
+/* Zwei Abstandsregister, nicht eins: 6 px INNERHALB einer Zeile, 14 px
+   zwischen den Gruppen. Ein einziger Abstand ueberall behauptet, alle
+   Elemente haetten dasselbe Gewicht -- Naehe ist hier Bedeutung. */
+.pop__panel--breit { min-width: 420px; }
+
+.pop__kopf {
+  font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-3); padding: 2px 4px 8px;
+}
+
+.ind__liste { display: flex; flex-direction: column; gap: 2px; }
+.ind__leer { padding: 10px 4px 14px; font-size: 12px; }
+
+.ind {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 4px; border-radius: 5px;
+  transition: background 140ms cubic-bezier(.23,1,.32,1);
+}
+.ind:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+
+.ind__an {
+  background: none; border: 0; padding: 2px; cursor: pointer; line-height: 0;
+  transition: transform 160ms cubic-bezier(.23,1,.32,1);
+}
+.ind__an:active { transform: scale(.9); }
+/* Das Haekchen fehlte: die Ebenen-Checkbox zeichnet es ueber ::after, und
+   ohne diese Regel blieb hier eine gefuellte Flaeche ohne Zeichen -- vier
+   aktive Indikatoren sahen aus wie vier ausgeschaltete. Dieselbe Farbe wie
+   im Settings-Fenster, damit beide Haken dasselbe bedeuten. */
+.ind__an[aria-checked="true"] .lay__box { background: var(--long); border-color: var(--long); }
+.ind__an[aria-checked="true"] .lay__box::after { content: "✓"; font-weight: 700; }
+
+.ind__farbe {
+  width: 16px; height: 16px; padding: 0; border: 1px solid var(--rule);
+  border-radius: 3px; background: none; cursor: pointer; flex: 0 0 auto;
+}
+.ind__farbe::-webkit-color-swatch-wrapper { padding: 0; }
+.ind__farbe::-webkit-color-swatch { border: 0; border-radius: 2px; }
+
+.ind__name { font-size: 12px; min-width: 104px; flex: 0 0 auto; }
+.ind__felder { display: flex; gap: 6px; flex: 1 1 auto; flex-wrap: wrap; }
+
+.ind__feld { display: flex; align-items: center; gap: 4px; }
+.ind__feld > span { font-size: 10px; color: var(--ink-3); }
+.ind__feld input, .ind__feld select {
+  width: 58px; background: var(--surface-2, #0d1117); color: var(--ink);
+  border: 1px solid var(--rule); border-radius: 4px;
+  padding: 2px 4px; font: 11px ui-monospace, "Cascadia Mono", Menlo, monospace;
+}
+.ind__feld select { width: auto; }
+.ind__feld input:focus-visible, .ind__feld select:focus-visible,
+.ind__farbe:focus-visible, .ind__an:focus-visible, .ind__weg:focus-visible {
+  outline: 2px solid var(--star); outline-offset: 1px;
+}
+
+.ind__weg {
+  background: none; border: 0; color: var(--ink-3); cursor: pointer;
+  font-size: 15px; line-height: 1; padding: 0 4px; flex: 0 0 auto;
+  transition: color 140ms ease, transform 160ms cubic-bezier(.23,1,.32,1);
+}
+.ind__weg:hover { color: var(--short); }
+.ind__weg:active { transform: scale(.88); }
+
+.pop__foot--ind { display: flex; gap: 6px; align-items: center; margin-top: 14px; }
+.pop__foot--ind select {
+  flex: 1 1 auto; background: var(--surface-2, #0d1117); color: var(--ink);
+  border: 1px solid var(--rule); border-radius: 4px; padding: 3px 5px; font-size: 11px;
 }
