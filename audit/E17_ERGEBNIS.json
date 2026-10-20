@@ -1,0 +1,78 @@
+{
+  "vergleiche": 73,
+  "z": 3.3955408561842817,
+  "band": [
+    0.5,
+    2.0
+  ],
+  "min_trades": 200,
+  "codestand": [
+    "0311ffba621b",
+    "d435dfde8083"
+  ],
+  "gemischte_staende_freigegeben": "fc6f014 vs 61020fa: git diff zeigt im src-Baum NUR journal/version.py (das Anhaengen des CRV-Felds an run_signature). analysis/, sim/, execution/, domain/, data/ und die vom Replay benutzten journal-Module sind byte-gleich; der Stempel wanderte, weil sein eigener Rechner sich aenderte. run_signature ist bei allen 68 Dateien identisch.",
+  "maerkte_gesehen": 12,
+  "maerkte_ungesehen": 56,
+  "arme": [
+    {
+      "arm": "E17.1",
+      "n": 4110,
+      "mittel": 0.034105051764306664,
+      "lo": -0.06944605661295611,
+      "hi": 0.13765616014156945,
+      "gesehen": 0.05235719121893579,
+      "verhaeltnis": 0.6513919286023893,
+      "tor1": false,
+      "tor2": true,
+      "urteil": "GEFALLEN",
+      "schwanz": {
+        "schlechtester_block": -1.0579779995349659,
+        "schlechtester_markt": "BANDUSDT",
+        "schlechtester_markt_r": -0.30897320507045783,
+        "groesster_rueckgang_R": 103.92491586216849,
+        "anteil_maerkte_negativ": 0.39285714285714285,
+        "maerkte": 56
+      }
+    },
+    {
+      "arm": "E17.2",
+      "n": 16063,
+      "mittel": 0.0005668865751597868,
+      "lo": -0.06752387690216458,
+      "hi": 0.06865765005248414,
+      "gesehen": 0.001608706359400567,
+      "verhaeltnis": 0.3523866066962146,
+      "tor1": false,
+      "tor2": false,
+      "urteil": "GEFALLEN",
+      "schwanz": {
+        "schlechtester_block": -0.8572948301383139,
+        "schlechtester_markt": "YFIUSDT",
+        "schlechtester_markt_r": -0.2534198266929189,
+        "groesster_rueckgang_R": 257.65613595341125,
+        "anteil_maerkte_negativ": 0.4107142857142857,
+        "maerkte": 56
+      }
+    },
+    {
+      "arm": "Basis",
+      "n": 30846,
+      "mittel": -0.03487729910962273,
+      "lo": -0.09153928351573376,
+      "hi": 0.021784685296488297,
+      "gesehen": -0.013226874919085606,
+      "verhaeltnis": 2.636851056880929,
+      "tor1": false,
+      "tor2": false,
+      "urteil": "GEFALLEN",
+      "schwanz": {
+        "schlechtester_block": -0.5872102647582378,
+        "schlechtester_markt": "C98USDT",
+        "schlechtester_markt_r": -0.1784516946405767,
+        "groesster_rueckgang_R": 1133.9502776196446,
+        "anteil_maerkte_negativ": 0.6785714285714286,
+        "maerkte": 56
+      }
+    }
+  ]
+}

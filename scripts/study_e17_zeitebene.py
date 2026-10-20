@@ -202,6 +202,13 @@ def schwanz(zeilen: list[dict]) -> dict:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--fills", type=pathlib.Path, default=NEU)
+    p.add_argument(
+        "--gemischt-erlauben", dest="gemischt_erlauben", default="",
+        metavar="BEGRUENDUNG",
+        help="Gibt gemischte Entscheidungscodes frei. Verlangt eine Begruendung, "
+             "die ins Ergebnis geschrieben wird -- eine Freigabe ohne Beleg "
+             "waere genau die stille Vermischung, die der Abbruch verhindert.",
+    )
     a = p.parse_args(argv)
 
     if not a.fills.exists():
@@ -220,10 +227,19 @@ def main(argv: list[str] | None = None) -> int:
     print("=" * 76)
     print(f"\n  Quelle        {a.fills}")
     print(f"  Codestaende   {sorted(staende)}")
-    if len(staende) > 1:
+    if len(staende) > 1 and not a.gemischt_erlauben:
         print("\n  ABBRUCH: mehr als ein Entscheidungscode in der Stichprobe.")
         print("  Ein Ergebnis auf gemischter Herkunft ist keine Messung.")
+        print("\n  Wenn die Staende NACHWEISLICH dasselbe Verhalten haben --")
+        print("  also kein Unterschied in analysis/, sim/, execution/, domain/,")
+        print("  data/ oder den vom Replay benutzten journal-Modulen --, dann")
+        print("  mit --gemischt-erlauben \"<Begruendung>\" freigeben. Der Grund")
+        print("  landet im Ergebnis; eine Freigabe ohne Beleg gibt es nicht.")
         return 3
+    if len(staende) > 1:
+        # Freigegeben, und der Grund steht im Ergebnis -- nicht nur im Kopf
+        # dessen, der sie erteilt hat.
+        print(f"\n  GEMISCHTE STAENDE FREIGEGEBEN: {a.gemischt_erlauben}")
 
     gesehen = [z for z in alle if z["symbol"] in gesehen_syms]
     unseen = [z for z in alle if z["symbol"] not in gesehen_syms]
@@ -292,6 +308,7 @@ def main(argv: list[str] | None = None) -> int:
     ziel.write_text(json.dumps({
         "vergleiche": VERGLEICHE, "z": z_krit, "band": BAND,
         "min_trades": MIN_TRADES, "codestand": sorted(staende),
+        "gemischte_staende_freigegeben": a.gemischt_erlauben or None,
         "maerkte_gesehen": n_s, "maerkte_ungesehen": n_u,
         "arme": ergebnis,
     }, indent=2, default=float), encoding="utf-8")
