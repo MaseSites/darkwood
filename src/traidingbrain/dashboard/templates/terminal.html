@@ -30,7 +30,10 @@
         <button class="seg__btn" data-tf="H1">H1</button>
         <button class="seg__btn" data-tf="M15" aria-pressed="true">15m</button>
       </div>
-      <button class="seg__btn seg__btn--lone" id="btn-indicators" aria-pressed="true">Indicators</button>
+      <div class="pop">
+        <button class="seg__btn seg__btn--lone" id="btn-indicators" aria-expanded="false" aria-controls="layers">Indicators</button>
+        <div class="pop__panel" id="layers" role="group" aria-label="Ebenen ein- und ausblenden" hidden></div>
+      </div>
       <span class="topbar__spacer"></span>
       <span class="live" id="live" title="letzte Aktualisierung"><span class="live__dot"></span><span id="live-time">–</span></span>
       <span class="topbar__price" id="hd-price">&mdash;</span>

@@ -179,8 +179,16 @@ class Orderbuch(BaseModel):
     ts: int
 
 
+#: Die Tiefen, die Binance annimmt. Jede andere Zahl ist HTTP 400 -- `limit=40`
+#: sah am 20.10. aus wie "Quelle nicht erreichbar" (mein Code machte daraus
+#: ein 502), war aber ein falscher Parameter. Darum hier eine Liste statt
+#: eines Bereichs: ein `min(50, depth)` laesst 40 durch und luegt dann.
+BINANCE_TIEFEN = (5, 10, 20, 50, 100, 500, 1000)
+
+
 def orderbuch(symbol: str, depth: int = 10) -> Orderbuch:
-    d = _get_json(f"{BINANCE}/depth?symbol={symbol}&limit={max(5, min(50, depth))}", ttl=1)
+    erlaubt = min((t for t in BINANCE_TIEFEN if t >= depth), default=BINANCE_TIEFEN[-1])
+    d = _get_json(f"{BINANCE}/depth?symbol={symbol}&limit={erlaubt}", ttl=1)
     bids = [[float(p), float(q)] for p, q in d["bids"][:depth]]
     asks = [[float(p), float(q)] for p, q in d["asks"][:depth]]
     bt = sum(q for _, q in bids)
@@ -522,6 +530,7 @@ class BotSettings(BaseModel):
     crv: float = Field(ge=0.1, le=20)
     auto_trader: bool
     min_bot_rating: int = Field(ge=0, le=100)
+    risk_cap_pct: float | None = None
 
 
 class BotSettingsView(BotSettings):
@@ -570,6 +579,7 @@ def bot_settings_lesen(state_path: Path, config: AppConfig, signature: str) -> B
         crv=min_rr if min_rr >= 1.0 else 4.0,
         auto_trader=_trader_laeuft(),
         min_bot_rating=int(p.get("min_bot_rating", 0)),
+        risk_cap_pct=(float(p["risk_cap_share"]) * 100 if p.get("risk_cap_share") is not None else None),
         balance=round(kapital, 2),
         trader_running=_trader_laeuft(),
         signature=signature,
@@ -580,6 +590,7 @@ def bot_settings_lesen(state_path: Path, config: AppConfig, signature: str) -> B
             "margin_pct": "Positionsgroesse = Kapital x Margin x Hebel (sofort nach Neustart)",
             "leverage": "Hebel der Planregel (sofort nach Neustart)",
             "max_loss_pct": "Deckel auf das Risiko je Trade, im Sizer geprueft",
+            "risk_cap_pct": "Deckelt das Risiko je Trade und KUERZT dafuer die Position. Gegengerechnet an den elf Trades vom 20.10.: -13.75 statt -90.18 USD.",
             "min_loss_pct": "NOCH OHNE WIRKUNG -- der Sizer kennt keinen Boden; gespeichert wird es.",
             "fix_crv": "Mindest-Chance-Risiko im Tor (risk.yaml)",
             "auto_trader": "startet oder stoppt die Aufgabe traidingBrain-plankonto",
@@ -592,6 +603,11 @@ def bot_settings_lesen(state_path: Path, config: AppConfig, signature: str) -> B
 def bot_settings_anwenden(s: BotSettings) -> dict:
     """Schreibt die Dateien, startet den Haendler neu. Rueckgabe: was passiert ist."""
     PLAN_YAML.parent.mkdir(parents=True, exist_ok=True)
+    # Den Deckel aus der Datei uebernehmen, wenn das Formular keinen schickt --
+    # sonst loescht ein "Apply" aus dem Terminal still die wichtigste
+    # Risikoeinstellung des Kontos.
+    vorher = _lese_plan_yaml()
+    deckel = (s.risk_cap_pct / 100) if s.risk_cap_pct is not None else vorher.get("risk_cap_share")
     plan = {
         "margin_share": round(s.margin_pct / 100, 4),
         "leverage": float(s.leverage),
@@ -600,6 +616,7 @@ def bot_settings_anwenden(s: BotSettings) -> dict:
         "min_risk_share": round(s.min_loss_pct / 100, 4),
         "always_max_risk": bool(s.always_max_risk),
         "min_bot_rating": int(s.min_bot_rating),
+        "risk_cap_share": deckel,
         "geschrieben": datetime.now(timezone.utc).isoformat(),
         "hinweis": "Vom Terminal geschrieben. plantrade.py liest diese Datei, wenn sie existiert.",
     }
@@ -773,6 +790,60 @@ def position_tp_sl(pid: str, tp: float | None, sl: float | None) -> dict:
     return {"ok": True}
 
 
+def _regel(signatur: str | None) -> str:
+    """Die Groessenregel als kurzes Etikett: `30%x7` oder `30%x7 · Deckel 1.5%`."""
+    if not signatur or "|plan" not in signatur:
+        return "?"
+    zusatz = signatur.rsplit("|", 1)[-1]           # plan30x7r15
+    rest = zusatz.removeprefix("plan")
+    if "r" in rest:
+        groesse, deckel = rest.split("r", 1)
+        return f"{groesse.replace('x', '%x')} · Deckel {float(deckel) / 10:g}%"
+    return rest.replace("x", "%x")
+
+
+def _frueheres_konto(journal_pfad: Path, aktuelle: str | None) -> list[dict]:
+    """Trades DESSELBEN Kontos unter einer frueheren Groessenregel.
+
+    Dasselbe Konto heisst: derselbe Signaturzusatz bis auf den Regelteil --
+    `...|plan30x7` und `...|plan30x7r15` sind dasselbe Papierkonto, nur vor
+    und nach der Umstellung vom 20.10. abends. Ein anderes Konto (`live`, ohne
+    Zusatz) kommt hier NICHT herein; das war der Fehler, der dem Plankonto
+    einmal -63.81 USD auf BTCUSDT zeigte, die ein anderes Konto gemacht hatte.
+    """
+    if not aktuelle or "|plan" not in aktuelle:
+        return []
+    kopf = aktuelle.rsplit("|plan", 1)[0] + "|plan"
+    con = sqlite3.connect(f"file:{journal_pfad}?mode=ro", uri=True, timeout=20)
+    raus: list[dict] = []
+    try:
+        for pl, in con.execute("SELECT payload FROM trades WHERE payload IS NOT NULL"):
+            try:
+                p = json.loads(pl)
+            except json.JSONDecodeError:
+                continue
+            sig = p.get("run_signature") or ""
+            if not sig.startswith(kopf) or sig == aktuelle or not p.get("closed_ts"):
+                continue
+            pm = p.get("post_mortem") or {}
+            rs = p.get("reason") or {}
+            raus.append({
+                "closed_ts": p.get("closed_ts"), "opened_ts": p.get("opened_ts"),
+                "symbol": p.get("symbol"), "side": rs.get("side"),
+                "entry": p.get("entry_price"), "exit": p.get("exit_price"),
+                "tp": rs.get("target"), "sl": rs.get("stop"), "net_pnl": p.get("net_pnl"),
+                "fees": p.get("fees"), "r_multiple": p.get("r_multiple"),
+                "exit_reason": p.get("exit_reason"), "setup": rs.get("setup_key"),
+                "rating": rs.get("rating"), "max_favourable_r": pm.get("max_favourable_r"),
+                "stopped_by_wick": pm.get("stopped_by_wick"), "verdict": pm.get("verdict"),
+                "source": "bot", "position_size": None, "leverage": p.get("leverage"),
+                "regel": _regel(sig), "aktuell": False,
+            })
+    finally:
+        con.close()
+    return raus
+
+
 def _manuell_geschlossen() -> list[dict]:
     if not MANUELL_DB.exists():
         return []
@@ -868,16 +939,34 @@ def router(services: Any, konto_signatur, state_path, journal_path, followed) ->
         return position_tp_sl(pid, tp, sl)
 
     @r.get("/history")
-    def _history(limit: int = 50) -> list[dict]:
-        led = build_ledger(journal_path(services), source=Source.LIVE, signature=konto_signatur(services))
+    def _history(limit: int = 50, alle_regeln: bool = True) -> list[dict]:
+        """Die abgeschlossenen Trades DIESES Kontos.
+
+        `alle_regeln=True` zeigt auch die Trades unter einer FRUEHEREN
+        Groessenregel desselben Kontos. Das ist Absicht und keine Nachlaessig-
+        keit: am 20.10. abends bekam das Konto einen Risikodeckel, der
+        Signaturzusatz wechselte von `plan30x7` auf `plan30x7r15`, und mit
+        strenger Filterung waere die Trade-Ansicht schlagartig leer gewesen --
+        elf Trades, die es wirklich gab, unsichtbar.
+
+        Jede Zeile traegt darum `regel`, und die Statistik oben in der Ansicht
+        rechnet weiter je Regel. Zusammenmitteln darf man sie nicht: unter der
+        alten Regel riskierte ein Trade 4.95 bis 46.66 USD, unter der neuen
+        hoechstens 1.5 % des Kontos. In R sind sie vergleichbar, in Dollar
+        nicht.
+        """
+        sig = konto_signatur(services)
+        led = build_ledger(journal_path(services), source=Source.LIVE, signature=sig)
         plan = [{
             "closed_ts": x.closed_ts, "opened_ts": x.opened_ts, "symbol": x.symbol, "side": x.side,
             "entry": x.entry, "exit": x.exit, "tp": x.target, "sl": x.stop, "net_pnl": x.net_pnl,
             "fees": x.fees, "r_multiple": x.r_multiple, "exit_reason": x.exit_reason,
             "setup": x.setup, "rating": x.rating, "max_favourable_r": x.max_favourable_r,
             "stopped_by_wick": x.stopped_by_wick, "verdict": x.verdict, "source": "bot",
-            "position_size": None, "leverage": None,
+            "position_size": None, "leverage": None, "regel": _regel(sig), "aktuell": True,
         } for x in led.rows]
+        if alle_regeln:
+            plan += _frueheres_konto(journal_path(services), sig)
         alle = plan + _manuell_geschlossen()
         alle.sort(key=lambda z: z["closed_ts"] or 0, reverse=True)
         return alle[:limit]

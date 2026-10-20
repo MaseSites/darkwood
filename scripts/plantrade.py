@@ -78,19 +78,38 @@ _PLAN = _plan_yaml()
 MARGIN_ANTEIL = float(_PLAN.get("margin_share", MARGIN_ANTEIL))
 HEBEL = float(_PLAN.get("leverage", HEBEL))
 
+#: Der Risikodeckel, der KUERZT statt abzulehnen. None = aus (wie bisher).
+#: Begruendung und die Gegenrechnung der elf Trades vom 20.10. stehen in
+#: `risk/plansize.py`; kurz: +0.3368 R und -98.99 USD am selben Tag, weil
+#: die Verlierer 2.63x groesser bemessen waren als die Gewinner.
+RISIKODECKEL = _PLAN.get("risk_cap_share")
+RISIKODECKEL = float(RISIKODECKEL) if RISIKODECKEL is not None else None
 
-def signatur_zusatz(margin_share: float, leverage: float) -> str:
-    """`plan30x7` aus (0.30, 7.0). EINE Funktion dafuer, damit Haendler und
-    Dashboard denselben Zusatz bilden -- am 20.10. suchte das Dashboard seine
-    Trades unter einem anderen Schluessel als der Haendler sie schrieb, und die
-    Trade-Ansicht war leer. Dieselbe Funktion an beiden Stellen macht das
-    mechanisch unmoeglich statt bloss unerwuenscht."""
-    return f"plan{int(round(margin_share * 100))}x{leverage:g}"
+
+def signatur_zusatz(margin_share: float, leverage: float,
+                    risk_cap_share: float | None = None) -> str:
+    """`plan30x7` aus (0.30, 7.0), `plan30x7r15` mit 1.5 % Risikodeckel.
+
+    EINE Funktion dafuer, damit Haendler und Dashboard denselben Zusatz bilden
+    -- am 20.10. suchte das Dashboard seine Trades unter einem anderen
+    Schluessel als der Haendler sie schrieb, und die Trade-Ansicht war leer.
+    Dieselbe Funktion an beiden Stellen macht das mechanisch unmoeglich statt
+    bloss unerwuenscht.
+
+    Der Risikodeckel gehoert in den Zusatz, weil er aendert, WIE GROSS jeder
+    Trade ist -- und eine Groessenaenderung ohne Spur waere genau der Fehler,
+    der die Vorwaertsstichprobe am 09.10. dreimal hat schrumpfen lassen.
+    Ohne Deckel bleibt der Zusatz byte-gleich zu allem davor.
+    """
+    basis = f"plan{int(round(margin_share * 100))}x{leverage:g}"
+    if risk_cap_share is None:
+        return basis
+    return f"{basis}r{risk_cap_share * 1000:g}"
 
 
 #: Das Etikett in der Laufsignatur. Ohne es liessen sich die Zeilen dieses
 #: Kontos mit denen des anderen mitteln, und genau das darf nicht passieren.
-SIGNATUR_ZUSATZ = signatur_zusatz(MARGIN_ANTEIL, HEBEL)
+SIGNATUR_ZUSATZ = signatur_zusatz(MARGIN_ANTEIL, HEBEL, RISIKODECKEL)
 
 #: Der Risikodeckel DIESES Kontos.
 #:
@@ -150,6 +169,11 @@ def main() -> int:
     print(f"  Kontospeicher   {config.engine.paths.data_dir / STATE_NAME}")
     print(f"  Signaturzusatz  {SIGNATUR_ZUSATZ}")
     print(f"  Risikodeckel    {PLAN_MAX_RISIKO:.0%} je Trade, IM SIZER geprueft")
+    if RISIKODECKEL is not None:
+        print(f"  RISIKO-DECKEL   {RISIKODECKEL:.2%} je Trade -- kuerzt die Position,")
+        print("                  statt den Trade abzulehnen. Grund: am 20.10. standen")
+        print("                  +0.3368 R und -98.99 USD am selben Tag, weil die")
+        print("                  Verlierer 2.63x groesser bemessen waren als die Gewinner.")
     # Die beiden Wirtschaftlichkeitstore in Klartext. Sie stehen hier, weil
     # sie seit dem 20.10. nicht mehr selbstverstaendlich sind: wer das Log
     # liest, soll ohne Nachsehen wissen, welches Konto er vor sich hat.
@@ -178,6 +202,7 @@ def main() -> int:
         # nur, welche Trades verworfen werden, nicht ihre Groesse -- und das
         # ist eine bekannte Luecke, die hier benannt und nicht verschwiegen ist.
         max_risk_share=float(_PLAN.get("max_risk_share", PLAN_MAX_RISIKO)),
+        risk_cap_share=RISIKODECKEL,
     )
     traders, source = papertrade.build_traders(
         [s.strip() for s in config.engine.symbols.active],

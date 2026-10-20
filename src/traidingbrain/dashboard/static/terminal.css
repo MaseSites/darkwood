@@ -410,6 +410,36 @@ button:disabled { cursor: not-allowed; color: var(--ink-3); }
 .msg.err { color: var(--short); }
 .msg.ok { color: var(--long); }
 
+/* ------------------------------------------------- Ebenen-Einstellungen -- */
+.pop { position: relative; }
+.pop__panel {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; min-width: 250px;
+  background: var(--surface); border: 1px solid var(--rule-2); border-radius: var(--r);
+  padding: var(--sp-2); display: grid; gap: 1px;
+  /* Aus dem Knopf heraus, nicht aus der Mitte: das Fenster gehoert zu ihm. */
+  transform-origin: top left;
+  transition: opacity 140ms var(--ease-out), transform 140ms var(--ease-out);
+}
+.pop__panel[hidden] { display: none; }
+.pop__panel.enter { opacity: 0; transform: scale(0.97); }
+.lay {
+  display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r); cursor: pointer; font-size: 12.5px; background: transparent; border: 0; width: 100%; text-align: left;
+  transition: background 120ms var(--ease-out);
+}
+.lay:hover { background: var(--raised); }
+.lay:active { transform: scale(0.99); }
+.lay__box {
+  width: 14px; height: 14px; border: 1px solid var(--rule-2); border-radius: 2px; flex: none;
+  display: grid; place-items: center; font-size: 10px; color: var(--ground); background: transparent;
+}
+.lay[aria-checked="true"] .lay__box { background: var(--long); border-color: var(--long); }
+.lay[aria-checked="true"] .lay__box::after { content: "✓"; font-weight: 700; }
+.lay__swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.pop__foot { display: flex; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3) 0; border-top: 1px solid var(--rule); margin-top: var(--sp-2); }
+.pop__foot button { background: none; border: 0; color: var(--ink-2); font-size: 11.5px; padding: 2px 4px; border-radius: var(--r); }
+.pop__foot button:hover { background: var(--raised); color: var(--ink); }
+
 /* --------------------------------------------- Bot entscheidet / empfiehlt -- */
 .dec { display: flex; flex-direction: column; gap: var(--sp-3); }
 .dec__state { font-weight: 600; font-size: 13px; line-height: 1.35; }

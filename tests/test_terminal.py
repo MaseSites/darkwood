@@ -100,3 +100,25 @@ def test_dashboard_und_haendler_bilden_denselben_signaturzusatz() -> None:
     assert speicher == plantrade.STATE_NAME
     assert zusatz == plantrade.SIGNATUR_ZUSATZ
     assert str(int(round(plantrade.MARGIN_ANTEIL * 100))) in etikett
+
+
+def test_orderbuchtiefe_rastet_auf_eine_erlaubte_zahl_ein() -> None:
+    """Binance nimmt nur 5/10/20/50/100/500/1000; alles andere ist HTTP 400.
+
+    Am 20.10. fragte das Terminal mit `limit=40` (aus `min(50, depth)`), bekam
+    400 und meldete es als 502 "Quelle nicht erreichbar" -- es sah aus, als
+    waere die Boerse weg, und war ein falscher Parameter. Die Liste ersetzt
+    den Bereich, weil ein Bereich genau diese Luecke laesst.
+    """
+    from traidingbrain.api.terminal import BINANCE_TIEFEN
+
+    def einrasten(depth: int) -> int:
+        return min((t for t in BINANCE_TIEFEN if t >= depth), default=BINANCE_TIEFEN[-1])
+
+    assert einrasten(40) == 50, "40 ist keine erlaubte Tiefe und muss aufgerundet werden"
+    assert einrasten(10) == 10
+    assert einrasten(1) == 5
+    assert einrasten(99) == 100
+    assert einrasten(5000) == 1000
+    for d in range(1, 120):
+        assert einrasten(d) in BINANCE_TIEFEN

@@ -270,7 +270,8 @@ def portfolio_load(plans: list[PlanSize], *, equity: float) -> PortfolioLoad:
 
 
 def forward_sizer(
-    *, margin_share: float, leverage: float, max_risk_share: float | None = None
+    *, margin_share: float, leverage: float, max_risk_share: float | None = None,
+    risk_cap_share: float | None = None,
 ) -> Callable[[Any, Any, float], PositionSize]:
     """Die Vorwaertsregel als `Sizer` fuer `sim/plan.assess`.
 
@@ -306,6 +307,38 @@ def forward_sizer(
         entry = float(intent.entry)
         stop_distance = abs(entry - float(intent.stop))
         notional = equity * margin_share * leverage
+        if risk_cap_share is not None and stop_distance > 0 and equity > 0:
+            # DER RISIKODECKEL, der kuerzt statt abzulehnen -- und warum er
+            # entgegen dem Absatz darueber doch kuerzt.
+            #
+            # Am 20.10.2026 schloss das Plankonto elf Trades mit **+0.3368 R**
+            # und **-98.99 USD**. Positiv in R, negativ in Geld. Der Grund
+            # steht in einer Zeile: unter der reinen Vorwaertsregel ist
+            # `risiko = notional * stopweite`, also PROPORTIONAL zur
+            # Stopweite. Die fuenf Gewinner hatten Stopweiten von 0.22-0.85 %
+            # und riskierten im Schnitt 10.18 USD; die sechs Verlierer hatten
+            # 1.16-2.16 % und riskierten 26.82 USD -- das 2.63-fache. Vier
+            # davon starben in derselben Minute.
+            #
+            # Eine Regel, die auf breite Stops automatisch mehr setzt, wettet
+            # am meisten dort, wo sie am wenigsten weiss. Das ist das
+            # Gegenteil klassischer Bemessung, und es hat einen gewonnenen Tag
+            # in einen verlorenen verwandelt.
+            #
+            # ABLEHNEN waere hier die schlechtere Antwort, anders als beim
+            # `max_risk_share` darueber: dieser Deckel greift bei JEDEM
+            # breiteren Stop, und ein Konto, das alle breiten Stops ablehnt,
+            # handelt nur noch in engen -- also genau in der Population, in
+            # der die Gebuehr am meisten frisst. Kuerzen haelt die Trades und
+            # macht sie gleich schwer.
+            #
+            # Die Positionsgroesse bleibt zusaetzlich durch die
+            # Vorwaertsregel gedeckelt (`min` unten): dieser Deckel kann eine
+            # Position nur VERKLEINERN, nie vergroessern. Bei engen Stops
+            # bleibt die Vorwaertsregel bindend und das Risiko unter dem
+            # Deckel -- die Regel wird also nicht heimlich zur Risikoparitaet,
+            # sondern bekommt eine Obergrenze.
+            notional = min(notional, (risk_cap_share * equity) / (stop_distance / entry))
         schritte = int(notional / entry / spec.qty_step) if entry > 0 else 0
         qty = schritte * spec.qty_step
         risiko = qty * stop_distance

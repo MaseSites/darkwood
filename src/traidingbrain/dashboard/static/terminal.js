@@ -13,7 +13,7 @@
  * Der Punkt oben rechts blinkt bei jedem Tick und nennt die Uhrzeit des
  * letzten -- ein stehender Chart und ein toter Feed sehen sonst gleich aus.
  */
-import { drawTerminalChart, drawEquity, drawRCurve, fmt } from "/static/terminal-chart.js";
+import { drawTerminalChart, drawEquity, drawRCurve, fmt, EBENEN } from "/static/terminal-chart.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -34,8 +34,26 @@ const S = {
   market: null, live: null, head: null, score: null, positions: [], botPositions: [], history: [], calendar: null,
   settings: null, side: "long", indicators: true, hover: null, drawings: [], tool: "cross",
   alerts: JSON.parse(localStorage.getItem("dw-alerts") || "[]"), lastOb: null, range: "month", account: null,
-  zoom: { visible: null, end: null }, drag: null, curve: null,
+  // Zoom JE SYMBOL UND ZEITEBENE. Vorher gab es einen gemeinsamen Zustand,
+  // und wer BTC auf 400 Kerzen gezogen hatte, bekam ETH genauso duenn --
+  // eine Einstellung, die fuer einen Markt gemacht war, galt fuer alle.
+  zoomBy: {}, drag: null, curve: null, book: null,
+  ebenen: JSON.parse(localStorage.getItem("dw-ebenen") || "{}"),
 };
+function zoomKey() { return `${S.symbol}|${S.tf}`; }
+function zoom() { return (S.zoomBy[zoomKey()] ??= { visible: null, end: null }); }
+function zoomReset() { S.zoomBy[zoomKey()] = { visible: null, end: null }; }
+
+/* Eine symbolgebundene Antwort kann nach dem Wechsel eintreffen -- sie gehoert
+   dann zum alten Markt. BTCs Orderbuch als Heatmap unter ETH zieht die
+   Preisachse auf 80'000 hoch und druckt die ETH-Kerzen zu einem Strich
+   zusammen. Wer fragt, merkt sich den Markt und verwirft die Spaetzuendung. */
+const VERALTET = Symbol("veraltet");
+async function fuerMarkt(abruf) {
+  const schluessel = zoomKey();
+  const daten = await abruf(S.symbol, S.tf);
+  return zoomKey() === schluessel ? daten : VERALTET;
+}
 
 /* ------------------------------------------------------------- Sterne -- */
 function stars(n) {
@@ -49,7 +67,9 @@ function pulse() { const d = $("#live"); d.classList.remove("tick"); void d.offs
 /* ------------------------------------------------------------ Kopfzeile -- */
 async function tickHead() {
   try {
-    S.head = await api(`/api/terminal/head/${S.symbol}`);
+    const kopf = await fuerMarkt((s) => api(`/api/terminal/head/${s}`));
+    if (kopf === VERALTET) return;
+    S.head = kopf;
     const h = S.head;
     $("#hd-price").textContent = px(h.last);
     const chg = $("#hd-chg"); chg.textContent = pct(h.change_pct); chg.className = `topbar__chg ${h.change_pct >= 0 ? "up" : "down"}`;
@@ -61,7 +81,9 @@ async function tickHead() {
 /* ------------------------------------------------------- Formende Kerze -- */
 async function tickLive() {
   try {
-    S.live = await api(`/api/terminal/live-candle/${S.symbol}?tf=${S.tf}`);
+    const kerze = await fuerMarkt((s, tf) => api(`/api/terminal/live-candle/${s}?tf=${tf}`));
+    if (kerze === VERALTET) return;
+    S.live = kerze;
     if (S.view === "markt" && S.center === "chart") renderChart();
   } catch (e) { /* alte Kerze bleibt */ }
 }
@@ -80,9 +102,11 @@ function mergedCandles() {
 async function tickBook() {
   if (S.view !== "markt") return;
   try {
-    const ob = await api(`/api/terminal/orderbook/${S.symbol}?depth=10`);
-    const maxQ = Math.max(...ob.bids.map((b) => b[1]), ...ob.asks.map((a) => a[1]), 1e-9);
-    $("#ob").innerHTML = ob.bids.map((b, i) => {
+    const ob = await fuerMarkt((s) => api(`/api/terminal/orderbook/${s}?depth=40`));
+    if (ob === VERALTET) return;
+    S.book = ob;
+    const maxQ = Math.max(...ob.bids.slice(0, 12).map((b) => b[1]), ...ob.asks.slice(0, 12).map((a) => a[1]), 1e-9);
+    $("#ob").innerHTML = ob.bids.slice(0, 12).map((b, i) => {
       const a = ob.asks[i] ?? [0, 0];
       const changed = S.lastOb && (S.lastOb.bids[i]?.[1] !== b[1] || S.lastOb.asks[i]?.[1] !== a[1]);
       return `<div class="ob__row${changed ? " flash" : ""}">
@@ -110,8 +134,11 @@ async function tickCalendar() {
 
 /* ----------------------------------------------------------------- Chart -- */
 async function loadMarket() {
-  try { S.market = await api(`/api/market/${S.symbol}/chart?timeframe=${S.tf}&candles=600`); }
-  catch (e) { S.market = null; $("#legend").innerHTML = `<span class="down">Chart: ${e.message}</span>`; }
+  try {
+    const m = await fuerMarkt((s, tf) => api(`/api/market/${s}/chart?timeframe=${tf}&candles=600`));
+    if (m === VERALTET) return;
+    S.market = m;
+  } catch (e) { S.market = null; $("#legend").innerHTML = `<span class="down">Chart: ${e.message}</span>`; }
   renderChart();
 }
 function positionLines() {
@@ -131,7 +158,12 @@ function chartOpts(extra = {}) {
   const candles = mergedCandles();
   const forming = !!(S.live && S.live.symbol === S.symbol && S.live.timeframe === S.tf && !S.live.closed && candles.length && candles[candles.length - 1].ts === S.live.ts);
   const setup = S.market?.setups?.[0];
-  return { candles, forming, lines: positionLines(), indicators: S.indicators, visible: S.zoom.visible, end: S.zoom.end,
+  const z = zoom();
+  // Das Buch traegt sein Symbol -- wie die formende Kerze. Ein fremdes Buch
+  // liefert Heatmap-Baender in einer ganz anderen Groessenordnung.
+  const buch = S.book && S.book.symbol === S.symbol ? S.book : null;
+  return { candles, forming, lines: positionLines(), layers: S.ebenen, book: buch,
+    visible: z.visible, end: z.end,
     signalIndex: setup ? (S.market.candles.length - 1) : undefined, ...extra };
 }
 function renderChart() {
@@ -140,10 +172,66 @@ function renderChart() {
   const g = drawTerminalChart(canvas, S.market, chartOpts({ hover: S.hover }));
   if (!g) return;
   const candles = mergedCandles(), last = candles[candles.length - 1];
-  $("#legend").innerHTML = S.indicators && g.ema ? `<span><b style="color:#ef4444">EMA 200</b> ${g.ema.e200 ? px(g.ema.e200) : "–"}</span><span><b style="color:#60a5fa">EMA 20</b> ${g.ema.e20 ? px(g.ema.e20) : "–"}</span>` : "";
-  if (!S.hover) $("#readout").textContent = `${day(last.ts)}  O ${px(last.open)}  H ${px(last.high)}  L ${px(last.low)}  C ${px(last.close)}  ATR ${S.market.atr_pct !== undefined ? (S.market.atr_pct * 100).toFixed(2) : "–"}%${S.zoom.end !== null ? "  · verschoben" : ""}`;
+  $("#legend").innerHTML = g.ema ? `<span><b style="color:#ef4444">EMA 200</b> ${g.ema.e200 ? px(g.ema.e200) : "–"}</span><span><b style="color:#60a5fa">EMA 20</b> ${g.ema.e20 ? px(g.ema.e20) : "–"}</span>` : "";
+  if (!S.hover) $("#readout").textContent = `${day(last.ts)}  O ${px(last.open)}  H ${px(last.high)}  L ${px(last.low)}  C ${px(last.close)}  ATR ${S.market.atr_pct !== undefined ? (S.market.atr_pct * 100).toFixed(2) : "–"}%${zoom().end !== null ? "  · verschoben" : ""}`;
   $("#lineboxes").innerHTML = g.boxes.map((b) => `<div class="linebox" style="top:${b.y}px;color:${b.colour}"><span>${b.label}</span>${b.closable ? `<button data-line="${b.id}" title="entfernen">x</button>` : ""}</div>`).join("");
 }
+/* ------------------------------------------------- Ebenen-Einstellungen -- */
+const EBENEN_FARBE = {
+  ema: "#60a5fa", fvg: "#f59e0b", zonen: "#34d399", liquiditaet: "#f87171",
+  struktur: "#9aa7bb", trend: "#22c55e", volumen: "#e8edf5", heatmap: "#facc15", positionen: "#ffffff",
+};
+
+function ebeneAn(key) { return S.ebenen[key] !== false; }
+
+function ebenenMarkup() {
+  return Object.entries(EBENEN).map(([k, label]) =>
+    `<button class="lay" type="button" role="checkbox" aria-checked="${ebeneAn(k)}" data-lay="${k}">
+       <span class="lay__box"></span>
+       <span class="lay__swatch" style="background:${EBENEN_FARBE[k]}"></span>
+       <span>${label}</span></button>`).join("") +
+    `<div class="pop__foot"><button type="button" data-all="on">alle an</button>
+       <button type="button" data-all="off">alle aus</button>
+       <button type="button" data-all="reset">Vorgabe</button></div>`;
+}
+
+// Nur die Haken umsetzen, nie das Panel neu bauen. Ein per innerHTML ersetzter
+// Knopf ist beim Hochblubbern schon aus dem DOM -- panel.contains(target) meldet
+// dann false und der Schliesser draussen haut das Fenster nach einem Klick zu.
+function renderLayers() {
+  $$("[data-lay]", $("#layers")).forEach((b) =>
+    b.setAttribute("aria-checked", String(ebeneAn(b.dataset.lay))));
+}
+
+function wireLayers() {
+  const btn = $("#btn-indicators"), panel = $("#layers");
+  panel.innerHTML = ebenenMarkup();
+  renderLayers();
+  panel.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const ebene = e.target.closest("[data-lay]"), alle = e.target.closest("[data-all]");
+    if (ebene) S.ebenen[ebene.dataset.lay] = !ebeneAn(ebene.dataset.lay);
+    else if (alle) {
+      S.ebenen = alle.dataset.all === "reset" ? {}
+        : Object.fromEntries(Object.keys(EBENEN).map((k) => [k, alle.dataset.all === "on"]));
+    } else return;
+    localStorage.setItem("dw-ebenen", JSON.stringify(S.ebenen));
+    renderLayers(); renderChart();
+  });
+  const zu = () => { panel.hidden = true; btn.setAttribute("aria-expanded", "false"); };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const offen = btn.getAttribute("aria-expanded") === "true";
+    if (offen) { zu(); return; }
+    panel.hidden = false; btn.setAttribute("aria-expanded", "true");
+    // Aus dem Knopf wachsen lassen, 140 ms -- nicht aus dem Nichts.
+    panel.classList.add("enter");
+    requestAnimationFrame(() => panel.classList.remove("enter"));
+  });
+  document.addEventListener("click", zu);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") zu(); });
+}
+
 function wireChart() {
   const canvas = $("#chart");
   canvas.addEventListener("pointermove", (e) => {
@@ -155,8 +243,12 @@ function wireChart() {
         const shift = Math.round((pos.x - S.drag.x) / g.slot);
         if (shift !== 0) {
           const total = mergedCandles().length;
-          const end = Math.max(g.count, Math.min(total, S.drag.end - shift));
-          S.zoom.end = end >= total ? null : end;
+          // Nach rechts ueber das Ende hinaus ist erlaubt: der Zeichner macht
+          // daraus leeren Raum, wie bei TradingView. Vorher war bei der
+          // letzten Kerze Schluss und man kam nicht an den rechten Rand.
+          const maxEnd = total + Math.floor((g.visible ?? g.count) / 3);
+          const end = Math.max(20, Math.min(maxEnd, S.drag.end - shift));
+          zoom().end = end >= total ? (end > total ? end : null) : end;
           S.drag = { x: pos.x, end };
         }
       }
@@ -173,7 +265,7 @@ function wireChart() {
   canvas.addEventListener("pointerdown", (e) => {
     if (S.tool !== "cross" || !S.market) return;
     const box = canvas.getBoundingClientRect();
-    S.drag = { x: e.clientX - box.left, end: S.zoom.end ?? mergedCandles().length };
+    S.drag = { x: e.clientX - box.left, end: zoom().end ?? mergedCandles().length };
     canvas.setPointerCapture(e.pointerId);
   });
   const endDrag = () => { S.drag = null; };
@@ -185,10 +277,10 @@ function wireChart() {
     const g = drawTerminalChart(canvas, S.market, chartOpts());
     if (!g) return;
     const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
-    S.zoom.visible = Math.max(20, Math.min(mergedCandles().length, Math.round(g.count * factor)));
+    zoom().visible = Math.max(20, Math.min(2000, Math.round((g.visible ?? g.count) * factor)));
     renderChart();
   }, { passive: false });
-  canvas.addEventListener("dblclick", () => { S.zoom = { visible: null, end: null }; renderChart(); });
+  canvas.addEventListener("dblclick", () => { zoomReset(); renderChart(); });
   canvas.addEventListener("click", (e) => {
     if (!S.market || S.tool === "cross") return;
     const box = canvas.getBoundingClientRect();
@@ -215,12 +307,12 @@ function wireChart() {
     S.tool = t; $$(".tools button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
   }));
   new ResizeObserver(() => renderChart()).observe($("#chartwrap"));
-  $("#btn-indicators").addEventListener("click", (e) => { S.indicators = !S.indicators; e.currentTarget.setAttribute("aria-pressed", String(S.indicators)); renderChart(); });
+  wireLayers();
   document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
     if (e.key === "1") setView("markt"); if (e.key === "2") setView("konto"); if (e.key === "3") setView("trades"); if (e.key === "4") setView("verlauf");
     if (e.key === "m") setMode("manual"); if (e.key === "b") setMode("bot");
-    if (S.view === "markt" && (e.key === "+" || e.key === "-")) { S.zoom.visible = Math.max(20, Math.round((S.zoom.visible ?? 120) * (e.key === "+" ? 1 / 1.15 : 1.15))); renderChart(); }
+    if (S.view === "markt" && (e.key === "+" || e.key === "-")) { const z = zoom(); z.visible = Math.max(20, Math.round((z.visible ?? 120) * (e.key === "+" ? 1 / 1.15 : 1.15))); renderChart(); }
   });
 }
 
@@ -247,7 +339,11 @@ function checkAlerts() {
 
 /* ------------------------------------------------------------------ Score -- */
 async function tickScore() {
-  try { S.score = await api(`/api/terminal/score/${S.symbol}`); renderScore(); renderReco(); }
+  try {
+    const sc = await fuerMarkt((s) => api(`/api/terminal/score/${s}`));
+    if (sc === VERALTET) return;
+    S.score = sc; renderScore(); renderReco();
+  }
   catch (e) { $("#score-head").textContent = `Score: ${e.message}`; }
 }
 function card(k) {
@@ -536,13 +632,16 @@ function wireShell() {
   $$("#center-seg [data-center]").forEach((b) => b.addEventListener("click", () => setCenter(b.dataset.center)));
   $$("[data-mode]").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
   $$("#hist-filter [data-src]").forEach((b) => b.addEventListener("click", () => { S.histSrc = b.dataset.src; $$("#hist-filter [data-src]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); renderTrades(); }));
-  $$("#tf [data-tf]").forEach((b) => b.addEventListener("click", () => { S.tf = b.dataset.tf; S.live = null; S.zoom = { visible: null, end: null }; $$("#tf [data-tf]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); loadMarket(); tickLive(); }));
+  $$("#tf [data-tf]").forEach((b) => b.addEventListener("click", () => { S.tf = b.dataset.tf; S.live = null; $$("#tf [data-tf]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); loadMarket(); tickLive(); }));
   $$("#a-range [data-range]").forEach((b) => b.addEventListener("click", () => { S.range = b.dataset.range; $$("#a-range [data-range]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); tickAccount(); }));
-  $("#sym").addEventListener("change", (e) => { S.symbol = e.target.value; S.lastOb = null; S.live = null; S.zoom = { visible: null, end: null }; loadMarket(); tickLive(); tickHead(); tickBook(); tickScore(); });
+  $("#sym").addEventListener("change", (e) => { S.symbol = e.target.value; S.lastOb = null; S.live = null; S.book = null; loadMarket(); tickLive(); tickHead(); tickBook(); tickScore(); });
   new ResizeObserver(() => { if (S.view === "konto" && S.account) drawEquity($("#a-chart"), S.account.series, S.range); if (S.view === "verlauf" && S.curve) drawRCurve($("#v-chart"), S.curve.points ?? []); }).observe(document.body);
 }
 
 async function boot() {
+  // Lesehaken fuer die Konsole: window.__dw.zoomBy zeigt, wie viele Kerzen je
+  // Markt sichtbar sind. Nur lesen -- nichts hier drin steuert die Anzeige.
+  window.__dw = S;
   const syms = await api("/api/market").catch(() => ["BTCUSDT"]);
   $("#sym").innerHTML = syms.map((s) => `<option value="${s}">${s.replace("USDT", "/USDT")}</option>`).join("");
   $("#sym").value = S.symbol;
