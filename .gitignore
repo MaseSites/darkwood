@@ -82,3 +82,5 @@ data/arms_*.log
 # Dauerbetrieb: Startdateien und Logs werden erzeugt, nicht gepflegt.
 # `python scripts/dauerbetrieb.py --einrichten` schreibt sie neu.
 data/dienst/
+data/replay_fills_0311/
+data/e17_maerkte.txt
