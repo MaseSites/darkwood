@@ -46,7 +46,8 @@ export const EBENEN = {
   liquiditaet: "Liquidität (Pools & Sweeps)",
   struktur: "Struktur (BOS / CHoCH / Swings)",
   trend: "Trendlinien",
-  volumen: "Volumenprofil",
+  volumen: "Volumen-Näherung (aus Kerzen)",
+  vprofil: "Volumenprofil + VPOC (echte Trades)",
   heatmap: "Orderbuch-Heatmap",
   positionen: "Positionen & Linien",
   // Keine Chart-Ebenen, sondern SEITENTEILE. Sie stehen trotzdem hier, weil
@@ -216,6 +217,7 @@ export function drawTerminalChart(canvas, view, opts = {}) {
 
   /* ---- Volumenprofil links ---- */
   if (on("volumen")) drawProfile(ctx, shown, { pL, pT, pB, y, lo, hi });
+  if (on("vprofil") && opts.vprofil) drawEchtesProfil(ctx, opts.vprofil, { pL, pR, pT, pB, y, lo, hi, c });
 
   /* ---- EMAs ---- */
   // Zeichnet eine Serie in einen beliebigen Bereich. `yy` bildet den Wert auf
@@ -526,6 +528,56 @@ function star(ctx, cx, cy, r) {
   ctx.closePath(); ctx.fill();
 }
 
+/**
+ * Das echte Volumenprofil: Umsatz je Preis aus jedem einzelnen Trade eines
+ * abgeschlossenen Tages, mit Point of Control und Value Area.
+ *
+ * Zwei Dinge, die es von der Kerzen-Naeherung daneben unterscheiden:
+ * die Koerbe haengen an der Preisgroessenordnung und nicht am Zoom (ein POC,
+ * der sich beim Hineinzoomen verschiebt, ist keine Eigenschaft des Marktes),
+ * und jeder Korb weiss, wer der Aggressor war.
+ */
+function drawEchtesProfil(ctx, p, g) {
+  const koerbe = (p.koerbe ?? []).filter((k) => k.preis >= g.lo && k.preis <= g.hi);
+  if (!koerbe.length) return;
+  const max = Math.max(...koerbe.map((k) => k.volumen)) || 1;
+  const breite = 86, x0 = g.pL;
+  // Korbhoehe aus dem Preisabstand zweier Koerbe, nicht aus der Chartbreite:
+  // so stossen die Balken aneinander, egal wie weit gezoomt ist.
+  const schritt = koerbe.length > 1 ? Math.abs(g.y(koerbe[1].preis) - g.y(koerbe[0].preis)) : 3;
+  const h = Math.max(1, schritt - 0.5);
+
+  ctx.save();
+  for (const k of koerbe) {
+    const w = (k.volumen / max) * breite;
+    const yy = g.y(k.preis) - h / 2;
+    const inVA = k.preis >= p.val && k.preis <= p.vah;
+    // Innerhalb der Value Area heller: dort lag die Mehrheit des Umsatzes.
+    ctx.fillStyle = inVA ? "rgba(232,237,245,0.30)" : "rgba(232,237,245,0.12)";
+    ctx.fillRect(x0, yy, w, h);
+    // Der Kaeuferanteil als zweiter Balken darueber -- nicht daneben, sonst
+    // liest man zwei Volumina statt einer Aufteilung.
+    const anteil = k.volumen > 0 ? k.kaeufer / k.volumen : 0.5;
+    ctx.fillStyle = anteil >= 0.5 ? "rgba(34,197,94,0.42)" : "rgba(239,68,68,0.42)";
+    ctx.fillRect(x0, yy, w * Math.abs(anteil - 0.5) * 2, h);
+  }
+  // POC und die beiden Raender der Value Area, ueber die ganze Breite.
+  const linie = (preis, farbe, dash, text) => {
+    if (preis < g.lo || preis > g.hi) return;
+    const yy = Math.round(g.y(preis)) + 0.5;
+    ctx.strokeStyle = farbe; ctx.lineWidth = 1; ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(g.pL, yy); ctx.lineTo(g.pR, yy); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = farbe; ctx.font = '9px ui-monospace, Menlo, monospace';
+    ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+    ctx.fillText(text, g.pL + breite + 5, yy - 1);
+  };
+  linie(p.vah, "rgba(148,163,184,0.75)", [3, 3], "VAH");
+  linie(p.val, "rgba(148,163,184,0.75)", [3, 3], "VAL");
+  linie(p.poc, "#facc15", [], `VPOC ${p.tag}`);
+  ctx.restore();
+}
+
 function drawProfile(ctx, candles, g) {
   const bins = 48, hist = new Array(bins).fill(0);
   for (const k of candles) {
@@ -533,8 +585,15 @@ function drawProfile(ctx, candles, g) {
     hist[i] += k.volume ?? 0;
   }
   const max = Math.max(...hist) || 1, width = 52;
-  // Die Zeile mit dem meisten Volumen ist der Point of Control -- der Preis,
-  // an dem am meisten gehandelt wurde, und damit der staerkste Magnet.
+  // Die Zeile mit dem meisten Volumen. "Point of Control" heisst sie erst,
+  // wenn sie aus echten Trades je Preis kommt -- was hier gerechnet wird, ist
+  // eine NAEHERUNG aus Kerzen, und die verteilt das ganze Volumen einer Kerze
+  // auf ihren Mittelpreis.
+  //
+  // Hier stand "und damit der staerkste Magnet". Das war eine
+  // Signalbehauptung ohne Beleg, geschrieben von mir am 20.10.2026 und am
+  // 21.10. in der Datenrecherche aufgefallen. Diese Ebene sagt "hier lag
+  // Umsatz" und sonst nichts.
   const poc = hist.indexOf(max);
   ctx.save();
   for (let i = 0; i < bins; i++) {

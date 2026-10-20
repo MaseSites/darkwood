@@ -1109,6 +1109,37 @@ def router(services: Any, konto_signatur, state_path, journal_path, followed) ->
     def _ob(symbol: str, depth: int = 10) -> Orderbuch:
         return orderbuch(symbol.upper(), depth)
 
+    @r.get("/volumenprofil/{symbol}")
+    def _vprofil(symbol: str, tag: str = "") -> dict:
+        """Das ECHTE Profil eines abgeschlossenen Tages, aus jedem Trade.
+
+        Nicht die Kerzen-Naeherung im Chart -- die verteilt das ganze Volumen
+        einer Kerze auf ihren Mittelpreis. Hier kommt jeder Trade einzeln aus
+        dem Tagesarchiv der Boerse. Der LAUFENDE Tag fehlt und kann hier nicht
+        geliefert werden; das Archiv erscheint erst am Folgetag, und der
+        Live-Tickstrom ist fuer diese Leitung stumm.
+        """
+        from traidingbrain.api import volumenprofil as vp
+        if tag:
+            pr = vp.profil_fuer_tag(symbol.upper(), tag)
+            if pr is None:
+                raise HTTPException(status_code=404, detail=f"Kein Archiv fuer {symbol.upper()} am {tag}.")
+            return pr.model_dump()
+        # Ohne Tagesangabe rueckwaerts suchen: das Archiv des Vortags
+        # erscheint erst am Folgetag gegen 07:00 UTC, und zwischen Mitternacht
+        # und dieser Stunde gaebe ein starres "gestern" einen 404 zurueck,
+        # obwohl das Profil von vorgestern laengst daliegt.
+        for zurueck in range(1, 5):
+            wann = vp.letzter_fertiger_tag(time.time() - (zurueck - 1) * 86400)
+            pr = vp.profil_fuer_tag(symbol.upper(), wann)
+            if pr is not None:
+                return pr.model_dump()
+        raise HTTPException(
+            status_code=404,
+            detail=(f"Kein Tagesarchiv fuer {symbol.upper()} in den letzten vier Tagen. "
+                    f"Das Archiv erscheint erst am Folgetag; der laufende Tag ist hier nie da."),
+        )
+
     @r.post("/zeichnung/{symbol}", response_model=ZeichnungUrteil)
     def _zeichnung(symbol: str, z: Zeichnung, tf: str = "M15") -> ZeichnungUrteil:
         from traidingbrain.api.app import _chart_dict  # spaet, gegen Zirkel

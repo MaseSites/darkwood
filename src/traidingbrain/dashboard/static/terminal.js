@@ -56,6 +56,7 @@ const S = {
   zeichnungen: JSON.parse(localStorage.getItem("dw-zeichnungen") || "[]"),
   angefangen: null,            // der Zug, der gerade gesetzt wird
   untenTab: "positionen",
+  vprofil: null, vprofilFuer: null, vprofilLaeuft: false,
   stift: { farbe: "#f59e0b", dicke: 1.4 },
 };
 function zoomKey() { return `${S.symbol}|${S.tf}`; }
@@ -197,6 +198,7 @@ function chartOpts(extra = {}) {
   const buch = S.heat && S.heat.symbol === S.symbol ? S.heat : null;
   return { candles, forming, lines: positionLines(), layers: S.ebenen, book: buch,
     indikatoren: S.indikatoren,
+    vprofil: S.vprofil && S.vprofil.symbol === S.symbol ? S.vprofil : null,
     zeichnungen: S.zeichnungen.filter((d) => d.symbol === S.symbol),
     angefangen: S.angefangen, stift: S.stift,
     visible: z.visible, end: z.end,
@@ -295,7 +297,7 @@ function wireLayers() {
         : Object.fromEntries(Object.keys(EBENEN).map((k) => [k, alle.dataset.all === "on"]));
     } else return;
     localStorage.setItem("dw-ebenen", JSON.stringify(S.ebenen));
-    renderLayers(); renderChart();
+    renderLayers(); renderChart(); tickVProfil();
   });
   wirePopover("#btn-settings", "#layers");
 }
@@ -435,6 +437,34 @@ async function zeichnungGemeldet(d) {
   } catch (e) {
     kasten.innerHTML = `<span class="muted">Zeichnung gespeichert. Einschätzung nicht verfügbar: ${e.message}</span>`;
   }
+}
+
+/**
+ * Das echte Volumenprofil holen -- einmal je Markt und Tag.
+ *
+ * Teuer genug, dass es nicht an den Sekundentakt gehoert: ein Tag BTC sind
+ * eine Million Trades und rund 14 Sekunden beim ersten Mal. Danach liegt die
+ * Datei auf der Platte und ein abgeschlossener Tag aendert sich nie wieder.
+ */
+async function tickVProfil() {
+  // KEINE Bedingung auf S.market. Dieser Abruf lief im Start parallel zu
+  // loadMarket, fand dort `S.market === null`, stieg aus -- und versuchte es
+  // nie wieder. Ein Einmalabruf mit einer Bedingung, die zu seinem Zeitpunkt
+  // nie erfuellt ist, laeuft nie. Das Profil braucht den Markt ohnehin nicht,
+  // es braucht nur das Symbol.
+  if (S.ebenen.vprofil === false) return;
+  const schluessel = `${S.symbol}`;
+  if (S.vprofilFuer === schluessel || S.vprofilLaeuft) return;
+  S.vprofilLaeuft = true;
+  try {
+    const p = await fuerMarkt((sym) => api(`/api/terminal/volumenprofil/${sym}`));
+    if (p !== VERALTET) { S.vprofil = p; S.vprofilFuer = schluessel; renderChart(); }
+  } catch (e) {
+    // Fehlt das Archiv, bleibt die Ebene leer und sagt es in der Legende --
+    // eine stille leere Flaeche liest sich wie "kein Volumen".
+    S.vprofil = null; S.vprofilFuer = schluessel;
+    flash($("#m-msg"), `Volumenprofil: ${e.message}`, "err");
+  } finally { S.vprofilLaeuft = false; }
 }
 
 /* ------------------------------------------------------ Marktauswahl -- */
@@ -1184,7 +1214,7 @@ function wireShell() {
   $$("#hist-filter [data-src]").forEach((b) => b.addEventListener("click", () => { S.histSrc = b.dataset.src; $$("#hist-filter [data-src]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); renderTrades(); }));
   $$("#tf [data-tf]").forEach((b) => b.addEventListener("click", () => { S.tf = b.dataset.tf; S.live = null; $$("#tf [data-tf]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); loadMarket(); tickLive(); }));
   $$("#a-range [data-range]").forEach((b) => b.addEventListener("click", () => { S.range = b.dataset.range; $$("#a-range [data-range]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); tickAccount(); }));
-  $("#sym").addEventListener("change", (e) => { S.symbol = e.target.value; S.lastOb = null; S.live = null; S.book = null; S.heat = null; loadMarket(); tickLive(); tickHead(); tickBook(); tickHeatmap(); tickScore(); });
+  $("#sym").addEventListener("change", (e) => { S.symbol = e.target.value; S.lastOb = null; S.live = null; S.book = null; S.heat = null; S.vprofil = null; S.vprofilFuer = null; loadMarket(); tickLive(); tickHead(); tickBook(); tickHeatmap(); tickVProfil(); tickScore(); });
   new ResizeObserver(() => { if (S.view === "konto" && S.account) drawEquity($("#a-chart"), S.account.series, S.range); if (S.view === "konto" && S.curve) drawRCurve($("#v-chart"), S.curve.points ?? []); }).observe(document.body);
 }
 
@@ -1198,10 +1228,14 @@ async function boot() {
   $("#sym-text").textContent = S.symbol.replace("USDT", "/USDT");
   wireShell(); wireChart(); wireSettings(); wireManual(); wireUnten(); wireSymWahl();
   setView("markt"); setCenter("chart"); setMode("bot");
-  await Promise.all([tickHead(), loadMarket(), tickLive(), tickBook(), tickCalendar(), tickHeatmap(), tickScore(), tickPositions(), tickHistory(), loadSettings(), tickAccount()]);
+  await Promise.all([tickHead(), loadMarket(), tickLive(), tickBook(), tickCalendar(), tickHeatmap(), tickVProfil(), tickScore(), tickPositions(), tickHistory(), loadSettings(), tickAccount()]);
   setInterval(() => { tickHead(); tickBook(); checkAlerts(); }, 1000);
   setInterval(tickLive, 2000);
   setInterval(tickHeatmap, 5000);
+  // Alle zwei Minuten nachfassen: liegt das Profil schon, kostet der
+  // Aufruf nichts (S.vprofilFuer bremst ihn ab); fehlte das Archiv beim
+  // ersten Versuch, kommt es so doch noch.
+  setInterval(tickVProfil, 120000);
   setInterval(() => { loadMarket(); tickPositions(); }, 15000);
   setInterval(() => { tickScore(); tickHistory(); if (S.view === "konto") tickVerlauf(); }, 30000);
   setInterval(tickCalendar, 15 * 60 * 1000);
