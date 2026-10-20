@@ -339,6 +339,51 @@ def kontostand(services: Services) -> float:
     return kapital
 
 
+def offene_positionen(services: Services) -> list[Position]:
+    """Was dieses Konto gerade HAELT -- aus dem Kontospeicher.
+
+    **Vorher kamen offene Positionen ausschliesslich vom Executor**, und der
+    ist im Papierbetrieb `None`. Die Liste blieb also immer leer, und zwar
+    strukturell: das Dashboard konnte eine Papierposition nicht anzeigen, egal
+    wie viele offen waren. Am 20.10.2026 stand LTCUSDT short im Konto und
+    `/api/state` meldete `open_positions: 0`.
+
+    Die Begruendung dafuer war "unarmiert kann nichts gesendet werden", und
+    die stimmt -- fuer die SICHERHEIT. Sie gilt aber nicht fuer die ANZEIGE,
+    und sie hat eine zweite Wirkung, die niemand wollte: die Positionsgrenze
+    in `limits.py:210` rechnete `0 >= 5` und konnte nie ausloesen. Dieselbe
+    Klasse Fehler wie der eingefrorene `now_ms` eine Funktion weiter oben --
+    ein Wert, der mangels Quelle auf null stand und dadurch ein Tor
+    stillgelegt hat.
+
+    Der Executor behaelt Vorrang: ist er da, ist die Boerse die Wahrheit.
+    Nur ohne ihn wird der Kontospeicher gelesen.
+
+    Ein Lesefehler wird NICHT als "keine Positionen" durchgereicht, sondern
+    weitergeworfen -- sonst waere es wieder `0 >= 5`, nur mit einem anderen
+    Weg dorthin.
+    """
+    speicher = PaperStateStore(services.config.engine.paths.data_dir / services.state_name)
+    raus: list[Position] = []
+    for symbol in speicher.symbols():
+        zustand = speicher.load(symbol)
+        if zustand is None or zustand.position is None:
+            continue
+        p = zustand.position
+        raus.append(Position(
+            symbol=symbol,
+            side=p.side,
+            qty=p.qty,
+            entry_price=p.entry_price,
+            leverage=p.leverage,
+            liquidation_price=p.liq_price,
+            stop_order_id=None,
+            target_order_id=None,
+            opened_ts=p.opened_ts,
+        ))
+    return raus
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
@@ -410,16 +455,20 @@ def main(argv: list[str] | None = None) -> int:
         Das Kapital kommt aus `kontostand()` -- dem Kontospeicher, nicht der
         Konfiguration. Warum das ein behobener Fehler ist, steht dort.
         """
-        offen: list[Position] = []
-        if services.executor is not None:
-            try:
-                offen = list(services.executor.open_positions())
-            except Exception as exc:
-                # Ein Fehler hier darf NICHT als "keine Positionen" gelesen
-                # werden: das waere wieder `0 >= 5`. Stattdessen kein Zustand,
-                # und das Tor blockt.
-                print(f"  offene Positionen nicht abrufbar: {exc}", file=sys.stderr)
-                raise
+        offen: list[Position]
+        try:
+            # Die Boerse hat Vorrang, wenn es eine gibt; sonst der
+            # Kontospeicher. Vorher stand hier nur der erste Zweig, und ohne
+            # Executor blieb die Liste leer -- siehe `offene_positionen`.
+            offen = (list(services.executor.open_positions())
+                     if services.executor is not None
+                     else offene_positionen(services))
+        except Exception as exc:
+            # Ein Fehler hier darf NICHT als "keine Positionen" gelesen
+            # werden: das waere wieder `0 >= 5`. Stattdessen kein Zustand,
+            # und das Tor blockt.
+            print(f"  offene Positionen nicht abrufbar: {exc}", file=sys.stderr)
+            raise
         return AccountState.from_history(
             equity=kontostand(services),
             history=closed_trades(journal, signature=_signatur(services)),

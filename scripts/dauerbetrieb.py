@@ -83,6 +83,12 @@ NEUSTART_ABSTAND_S = 60
 NEUSTARTS = 3
 NEUSTART_ABSTAND_MIN = 1
 
+#: Wie oft die Aufgabenplanung nachsieht, ob die Aufgabe noch laeuft. Fuenf
+#: Minuten sind der Kompromiss: kurz genug, dass eine Luecke klein bleibt,
+#: lang genug, dass ein normaler Start (der Haendler laedt ein bis zwei
+#: Minuten Historie) nicht mit dem naechsten Anlauf kollidiert.
+WACHINTERVALL_MIN = 5
+
 
 @dataclass(frozen=True, slots=True)
 class Aufgabe:
@@ -272,6 +278,53 @@ def einrichten() -> int:
             f'-WorkingDirectory "{ROOT}"; '
             f'$t = New-ScheduledTaskTrigger -AtLogOn '
             f'-User "$env:USERDOMAIN\\$env:USERNAME"; '
+            # WIEDERHOLUNG, und sie ist der eigentliche Schutz.
+            #
+            # Am 20.10. starben alle sechs Aufgaben ZWEIMAL gleichzeitig --
+            # einmal um 08:01, einmal gegen 13:50. Beide Male steht `^C`
+            # woertlich in den Logdateien, also das, was cmd.exe bei einem
+            # Ctrl+C ausgibt: von aussen unterbrochen, nicht abgestuerzt. Eine
+            # Batch-Schleife ueberlebt das nicht, weil cmd dann "Batchvorgang
+            # beenden (J/N)?" fragt und bei umgeleiteter Eingabe EOF liest.
+            #
+            # WER das Ctrl+C schickt, weiss ich nach zwei Vorfaellen immer noch
+            # nicht. Geprueft und ausgeschlossen: Standby (die Maschine hat
+            # zwischen 07:59 und jetzt nicht geschlafen), Akku, Zeitlimit,
+            # zweite Instanz. `StopOnIdleEnd` war der einzige Verdacht und ist
+            # seit heute frueh aus -- es ist trotzdem wieder passiert, der
+            # Verdacht ist also widerlegt.
+            #
+            # Darum hoere ich auf, die Ursache zu suchen, und mache die Anlage
+            # davon unabhaengig: ein Wiederholungs-Trigger alle fuenf Minuten,
+            # unbegrenzt. Zusammen mit `MultipleInstances = IgnoreNew` heisst
+            # das: laeuft die Aufgabe, wird der Start verworfen; ist sie tot,
+            # startet sie binnen fuenf Minuten von selbst. Eine Reparatur, die
+            # nicht wissen muss, woran der Patient gestorben ist.
+            #
+            # Der Preis steht im Protokoll: jeder Neustart schreibt eine
+            # START-Zeile, also ist eine Luecke in der Stichprobe nachlesbar
+            # statt zu erraten.
+            # Ein ZWEITER Trigger, und er muss ein ZEIT-Trigger sein.
+            #
+            # Der erste Versuch haengte die Wiederholung an den Anmelde-Trigger
+            # (`$t.Repetition = ...`). Das laesst sich registrieren, man kann es
+            # nachlesen -- `Repetition=PT5M` steht brav da -- und es plant
+            # NICHTS: `NextRunTime` bleibt leer. Gemessen: Aufgabe um 14:00:49
+            # getoetet, fuenf Minuten spaeter immer noch "Ready", kein Lauf.
+            # Dieselbe Falle wie `RestartCount` im Oktober: eine Einstellung,
+            # die registriert ist, sichtbar ist und nichts tut.
+            #
+            # Mit einem eigenen Zeit-Trigger fuellt sich `NextRunTime` sofort,
+            # und die Reparatur ist nachgemessen statt angenommen: dieselbe
+            # Aufgabe getoetet um 14:00:49, von selbst zurueck um 14:07:10.
+            #
+            # `-RepetitionDuration` wird NICHT gesetzt. `[TimeSpan]::MaxValue`
+            # wird zu `P99999999DT23H59M59S`, und die Aufgabenplanung
+            # antwortet "Wert ausserhalb des Bereichs" -- "unbegrenzt" heisst
+            # dort KEINE Dauer, nicht eine sehr grosse.
+            f'$wach = New-ScheduledTaskTrigger -Once '
+            f'-At (Get-Date).AddMinutes({WACHINTERVALL_MIN}) '
+            f'-RepetitionInterval (New-TimeSpan -Minutes {WACHINTERVALL_MIN}); '
             f'$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries '
             f'-DontStopIfGoingOnBatteries -RestartCount {NEUSTARTS} '
             f'-RestartInterval (New-TimeSpan -Minutes {NEUSTART_ABSTAND_MIN}) '
@@ -297,7 +350,7 @@ def einrichten() -> int:
             # erklaeren.
             f'$s.IdleSettings.StopOnIdleEnd = $false; '
             f'Register-ScheduledTask -TaskName "{a.name}" -Action $a '
-            f'-Trigger $t -Settings $s -Force | Out-Null; '
+            f'-Trigger @($t, $wach) -Settings $s -Force | Out-Null; '
             f'"eingerichtet: {a.name}"'
         )
         erg = _ps(befehl)
