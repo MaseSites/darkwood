@@ -50,9 +50,37 @@ MARGIN_ANTEIL, HEBEL = 0.30, 7.0
 #: Der Kontospeicher dieses Laufs. NICHT `paper.sqlite`.
 STATE_NAME = "plan_paper.sqlite"
 
+
+def _plan_yaml() -> dict:
+    """Die Ueberschreibungen aus dem Terminal, wenn es welche gibt.
+
+    `config_offen/plan.yaml` wird vom Darkwood Terminal geschrieben ("Apply")
+    und traegt Marginanteil, Hebel und Risikodeckel. Fehlt die Datei, gelten
+    die Konstanten oben -- und die Signatur bleibt byte-gleich zu vorher,
+    weil der Zusatz aus denselben Zahlen gebildet wird.
+
+    Die Zahlen gehen in den SIGNATURZUSATZ (`plan30x7`, `plan50x10`, ...), damit
+    Trades vor und nach einer Aenderung trennbar bleiben. Eine Groessenregel,
+    die sich aendert, ohne eine Spur zu hinterlassen, waere derselbe Fehler,
+    der die Vorwaertsstichprobe am 09.10. dreimal hat schrumpfen lassen.
+    """
+    import yaml
+    pfad = Path(__file__).resolve().parent.parent / "config_offen" / "plan.yaml"
+    if not pfad.exists():
+        return {}
+    try:
+        return yaml.safe_load(pfad.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 -- eine kaputte Datei darf den Haendler nicht stoppen
+        return {}
+
+
+_PLAN = _plan_yaml()
+MARGIN_ANTEIL = float(_PLAN.get("margin_share", MARGIN_ANTEIL))
+HEBEL = float(_PLAN.get("leverage", HEBEL))
+
 #: Das Etikett in der Laufsignatur. Ohne es liessen sich die Zeilen dieses
 #: Kontos mit denen des anderen mitteln, und genau das darf nicht passieren.
-SIGNATUR_ZUSATZ = f"plan{int(MARGIN_ANTEIL * 100)}x{int(HEBEL)}"
+SIGNATUR_ZUSATZ = f"plan{int(round(MARGIN_ANTEIL * 100))}x{HEBEL:g}"
 
 #: Der Risikodeckel DIESES Kontos.
 #:
@@ -134,7 +162,12 @@ def main() -> int:
     print()
 
     sizer = forward_sizer(
-        margin_share=MARGIN_ANTEIL, leverage=HEBEL, max_risk_share=PLAN_MAX_RISIKO
+        margin_share=MARGIN_ANTEIL, leverage=HEBEL,
+        # Der Deckel kommt aus plan.yaml, wenn das Terminal einen gesetzt hat;
+        # sonst die Konstante. Er steht NICHT in der Signatur -- er aendert
+        # nur, welche Trades verworfen werden, nicht ihre Groesse -- und das
+        # ist eine bekannte Luecke, die hier benannt und nicht verschwiegen ist.
+        max_risk_share=float(_PLAN.get("max_risk_share", PLAN_MAX_RISIKO)),
     )
     traders, source = papertrade.build_traders(
         [s.strip() for s in config.engine.symbols.active],

@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Darkwood Terminal · {{ account_label }}</title>
+    <link rel="stylesheet" href="/static/terminal.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%2307090d'/><path d='M4 12V5M8 12V3M12 12V7' stroke='%2322c55e' stroke-width='2'/></svg>" />
+  </head>
+  <body data-account="{{ account_label }}">
+    <div class="term" id="term">
+
+      <!-- ===================================================== links -->
+      <aside class="term__left">
+        <section class="panel" aria-labelledby="cal-head">
+          <h2 class="panel__head" id="cal-head">Wirtschaftskalender <span class="panel__sum" id="cal-sum"></span></h2>
+          <div id="cal"><p class="empty">Lade Kalender&hellip;</p></div>
+        </section>
+        <section class="panel" aria-labelledby="ob-head">
+          <h2 class="panel__head" id="ob-head">Orderbuch <span class="panel__sum" id="ob-sum"></span></h2>
+          <div class="ob" id="ob"><p class="empty">Lade Buch&hellip;</p></div>
+        </section>
+      </aside>
+
+      <!-- ===================================================== oben -->
+      <header class="topbar term__top">
+        <div class="seg" role="group" aria-label="Hauptansicht">
+          <button class="seg__btn" data-view="chart" aria-pressed="true">Chart</button>
+          <button class="seg__btn" data-view="bot" aria-pressed="false">Bot</button>
+        </div>
+        <label class="topbar__sym">
+          <select id="sym" aria-label="Markt"></select>
+          <svg class="tri" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 9 9H1z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+        </label>
+        <div class="seg topbar__tf" role="group" aria-label="Zeitrahmen" id="tf">
+          <button class="seg__btn" data-tf="W1">W1</button>
+          <button class="seg__btn" data-tf="D1">D1</button>
+          <button class="seg__btn" data-tf="H4">H4</button>
+          <button class="seg__btn" data-tf="H1">H1</button>
+          <button class="seg__btn" data-tf="M15" aria-pressed="true">15m</button>
+        </div>
+        <div class="seg" role="group" aria-label="Chartwerkzeuge">
+          <button class="seg__btn" id="btn-indicators" aria-pressed="true">Indicators</button>
+          <button class="seg__btn" id="btn-settings" aria-pressed="false">Settings</button>
+        </div>
+        <span class="topbar__spacer"></span>
+        <span class="topbar__price" id="hd-price">&mdash;</span>
+        <span class="topbar__chg" id="hd-chg"></span>
+        <span class="topbar__meta" id="hd-meta"></span>
+      </header>
+
+      <!-- ===================================================== mitte -->
+      <main class="term__main" id="main">
+        <div class="chart" id="view-chart">
+          <div class="tools" role="toolbar" aria-label="Zeichenwerkzeuge">
+            <button data-tool="cross" aria-pressed="true" title="Fadenkreuz"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/></svg></button>
+            <button data-tool="line" title="Linie"><svg viewBox="0 0 24 24"><path d="M4 20 20 4"/></svg></button>
+            <button data-tool="hline" title="Horizontale"><svg viewBox="0 0 24 24"><path d="M3 8h18M3 16h18"/></svg></button>
+            <button data-tool="rect" title="Zone"><svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="10"/></svg></button>
+            <button data-tool="text" title="Text"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13"/></svg></button>
+            <button data-tool="measure" title="Messen"><svg viewBox="0 0 24 24"><path d="M3 17 17 3M7 21l-4-4M21 7l-4-4"/></svg></button>
+            <button data-tool="clear" title="Zeichnungen löschen"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+          </div>
+          <div class="chart__wrap" id="chartwrap">
+            <canvas class="chart__canvas" id="chart"></canvas>
+            <div class="chart__legend" id="legend"></div>
+            <div class="chart__readout" id="readout"></div>
+            <div id="lineboxes"></div>
+          </div>
+        </div>
+
+        <div class="bot hidden" id="view-bot">
+          <div class="score__head">
+            <h2>Current Score</h2>
+            <span class="score__dir" id="score-dir">&mdash;</span>
+            <span class="muted" id="score-head"></span>
+          </div>
+          <div class="score__bar" aria-label="Long gegen Short">
+            <div class="score__long" id="score-long" style="width:50%">50%</div>
+            <div class="score__short" id="score-short" style="width:50%">50%</div>
+          </div>
+          <div class="cards" id="cards"></div>
+          <div class="bot__sub">
+            <h3>Chart</h3>
+            <div class="cards" id="chart-cards"></div>
+          </div>
+        </div>
+
+        <div class="acct hidden" id="view-account">
+          <div class="acct__hero">
+            <div class="brand">DARKWOOD TERMINAL</div>
+            <div class="stat"><span class="stat__label">Win-Rate</span><span class="stat__value" id="a-win">&mdash;</span></div>
+            <div class="stat" style="grid-column:1"><span class="stat__label">Account Balance</span><span class="stat__value" id="a-bal">&mdash;</span></div>
+            <div class="stat"><span class="stat__label">PNL Today</span><span class="stat__value" id="a-pnl">&mdash;</span></div>
+            <div class="stat"><span class="stat__label">Max Drawdown</span><span class="stat__value down" id="a-dd">&mdash;</span></div>
+            <div class="stat"><span class="stat__label">Bot Accuracy</span><span class="stat__value" id="a-acc">&mdash;</span></div>
+            <div class="stat"><span class="stat__label">Trades</span><span class="stat__value" id="a-n">&mdash;</span></div>
+          </div>
+          <div class="acct__body">
+            <div class="acct__range" role="group" aria-label="Zeitraum" id="a-range">
+              <button data-range="today">Today</button>
+              <button data-range="week">Week</button>
+              <button data-range="month" aria-pressed="true">Month</button>
+              <button data-range="all">All</button>
+            </div>
+            <h3 class="acct__title">Account</h3>
+            <canvas class="acct__chart" id="a-chart"></canvas>
+            <p class="acct__note" id="a-note"></p>
+          </div>
+        </div>
+      </main>
+
+      <!-- ===================================================== unten -->
+      <section class="term__bottom" aria-label="Positionen und Verlauf">
+        <div class="tabs" role="tablist" id="btabs">
+          <button role="tab" data-tab="positions" aria-pressed="true">Positions</button>
+          <button role="tab" data-tab="alerts" aria-pressed="false">Alerts</button>
+          <button role="tab" data-tab="history" aria-pressed="false">Trade History</button>
+        </div>
+        <div class="table" id="btable"><p class="empty">Lade&hellip;</p></div>
+      </section>
+
+      <!-- ===================================================== rechts -->
+      <aside class="term__right">
+        <div class="mode" role="group" aria-label="Modus">
+          <button data-mode="manual" aria-pressed="false">Manual</button>
+          <button data-mode="bot" aria-pressed="true">Bot</button>
+        </div>
+
+        <div class="side" id="side-bot">
+          <div class="field">
+            <label for="bs-margin">Initial Margin / Trade</label>
+            <div class="field__row"><input class="input" id="bs-margin" type="number" min="1" step="any" /><span class="unit">USD</span></div>
+            <input class="range" id="bs-margin-pct" type="range" min="1" max="100" step="1" aria-label="Margin in Prozent des Kontos" />
+            <span class="range__val" id="bs-margin-val">&mdash;</span>
+          </div>
+          <button class="switch" id="bs-maxlev" role="switch" aria-checked="false"><span>Max Leverage</span><span class="switch__track"></span></button>
+          <div class="field"><label for="bs-lev">Leverage</label><div class="field__row"><input class="input" id="bs-lev" type="number" min="1" max="50" step="1" /><span class="unit">x</span></div></div>
+          <div class="field"><label for="bs-maxloss">Max Loss</label><div class="field__row"><input class="input" id="bs-maxloss" type="number" min="0.1" max="50" step="0.1" /><span class="unit">%</span></div></div>
+          <div class="field"><label for="bs-minloss">Min Loss</label><div class="field__row"><input class="input" id="bs-minloss" type="number" min="0" max="50" step="0.1" /><span class="unit">%</span></div></div>
+          <button class="switch" id="bs-maxrisk" role="switch" aria-checked="true"><span>Always Max Risk</span><span class="switch__track"></span></button>
+          <button class="switch" id="bs-fixcrv" role="switch" aria-checked="true"><span>Fix CRV</span><span class="switch__track"></span></button>
+          <div class="crv"><input class="input up" id="bs-crv" type="number" min="0.5" max="20" step="0.5" aria-label="Chance" /><span>:</span><span class="down">1</span></div>
+          <button class="switch" id="bs-auto" role="switch" aria-checked="false"><span>Auto Trader</span><span class="switch__track"></span></button>
+          <div class="field"><label for="bs-rating">Min Bot Rating</label><div class="field__row"><input class="input" id="bs-rating" type="number" min="0" max="100" step="1" /><span class="unit">%</span></div><span class="range__val" id="bs-rating-note"></span></div>
+          <button class="cta cta--apply" id="bs-apply">Apply</button>
+          <p class="msg" id="bs-msg" aria-live="polite"></p>
+        </div>
+
+        <div class="side hidden" id="side-manual">
+          <div class="field__row">
+            <span class="input" id="m-lev-badge" style="width:auto">1X</span>
+            <span class="input" style="width:auto">Isolated</span>
+          </div>
+          <div class="ls" role="group" aria-label="Richtung">
+            <button data-side="long" aria-pressed="true">Long</button>
+            <button data-side="short" aria-pressed="false">Short</button>
+          </div>
+          <div class="ordertype" role="group" aria-label="Ordertyp">
+            <button data-otype="market" aria-pressed="true">Market</button>
+            <button data-otype="limit" aria-pressed="false" disabled title="kommt als Nächstes">Limit</button>
+            <button data-otype="stop" aria-pressed="false" disabled title="kommt als Nächstes">Stop</button>
+          </div>
+          <div class="field">
+            <label for="m-margin">Initial Margin <span class="muted" id="m-avail"></span></label>
+            <div class="field__row"><input class="input" id="m-margin" type="number" min="1" step="any" /><span class="unit">USD</span></div>
+            <input class="range" id="m-margin-pct" type="range" min="1" max="100" step="1" aria-label="Margin in Prozent" />
+            <span class="range__val" id="m-margin-val"></span>
+          </div>
+          <div class="field"><label for="m-lev">Leverage</label><div class="field__row"><input class="input" id="m-lev" type="number" min="1" max="50" step="1" value="1" /><span class="unit">x</span></div></div>
+          <button class="switch" id="m-tp-on" role="switch" aria-checked="true"><span>TP</span><span class="switch__track"></span></button>
+          <div class="field__row"><input class="input up" id="m-tp" type="number" step="any" placeholder="Ziel" /><span class="unit" id="m-tp-pct"></span></div>
+          <button class="switch" id="m-sl-on" role="switch" aria-checked="true"><span>SL</span><span class="switch__track"></span></button>
+          <div class="field__row"><input class="input down" id="m-sl" type="number" step="any" placeholder="Stop" /><span class="unit" id="m-sl-pct"></span></div>
+          <div class="summary" id="m-summary"></div>
+          <button class="cta cta--buy" id="m-submit">Kauf</button>
+          <p class="msg" id="m-msg" aria-live="polite"></p>
+          <div>
+            <div class="muted" style="text-align:center;margin-bottom:6px">Bot-Rating</div>
+            <div class="ratingbar"><div class="score__long" id="r-long" style="width:50%">50%</div><div class="score__short" id="r-short" style="width:50%">50%</div></div>
+            <div class="rating__hint" id="r-hint"></div>
+          </div>
+        </div>
+
+        <div class="footer-tabs" role="group" aria-label="Seite">
+          <button data-page="trade" aria-pressed="true">Trade</button>
+          <button data-page="account" aria-pressed="false">Account</button>
+        </div>
+      </aside>
+    </div>
+
+    <template id="star-tpl"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.5l2.6 5.6 6.1.7-4.5 4.2 1.2 6.1L10 15.1 4.6 18.1l1.2-6.1L1.3 7.8l6.1-.7z"/></svg></template>
+    <script type="module" src="/static/terminal.js"></script>
+  </body>
+</html>

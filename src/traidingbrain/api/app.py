@@ -606,13 +606,18 @@ def _register_market_routes(app: FastAPI, services: Services) -> None:
         return _followed_symbols(services)
 
     @app.get("/api/market/{symbol}/chart", response_model=MarketView)
-    def market(symbol: str, timeframe: str | None = None) -> MarketView:
+    def market(symbol: str, timeframe: str | None = None, candles: int | None = None) -> MarketView:
         """The market right now, drawn the way the analysis reads it.
 
         No trade attached. Most hours have no setup, and a screen only worth
         opening when one appears is a screen nobody learns the market on.
+
+        `candles` kam am 20.10.2026 mit dem Terminal dazu: eine EMA 200
+        braucht mehr als die 180 Kerzen der Vorgabe, sonst bleibt sie leer.
+        Ohne Angabe bleibt die Antwort byte-gleich zu vorher. Gedeckelt auf
+        1.000, weil die Zeichnung darueber ohnehin keine Kerze mehr aufloest.
         """
-        return _market_for(services, symbol, timeframe)
+        return _market_for(services, symbol, timeframe, candles)
 
     @app.get("/api/paper", response_model=PaperReadout)
     def paper() -> PaperReadout:
@@ -799,6 +804,35 @@ def _mount_dashboard(app: FastAPI, services: Services) -> None:
         return
     app.mount("/static", NoCacheStatic(directory=dashboard / "static"), name="static")
 
+    # Das Darkwood Terminal: eigene Seite, eigene Endpunkte, dieselben
+    # Helfer (Signatur, Speicher, Marktliste) wie der Rest -- damit es nicht
+    # eine zweite Vorstellung davon gibt, welches Konto gemeint ist.
+    from traidingbrain.api.terminal import router as terminal_router
+
+    app.include_router(terminal_router(
+        services, _konto_signatur, _state_path, _journal_path, _followed_symbols
+    ))
+
+    @app.get("/terminal", include_in_schema=False)
+    def terminal() -> Response:
+        roh = (dashboard / "templates" / "terminal.html").read_text(encoding="utf-8")
+        label = services.account_label or "Papierkonto"
+        return HTMLResponse(
+            roh.replace("{{ account_label }}", label),
+            headers={"Cache-Control": "no-store"},
+        )
+
+
+def _score_read_dict(services: Services, symbol: str) -> dict:
+    """Der Score als Woerterbuch, fuer das Terminal. Dieselbe Rechnung wie
+    `/api/market/{symbol}/score`, nur ohne das Pydantic-Modell dazwischen."""
+    return _score_for(services, symbol).model_dump()
+
+
+def _chart_dict(services: Services, symbol: str) -> dict:
+    """Die Marktansicht als Woerterbuch, fuer das Terminal."""
+    return _market_for(services, symbol, None).model_dump()
+
     @app.get("/", include_in_schema=False)
     def index() -> Response:
         """Die Seite, mit dem Namen des Kontos darin.
@@ -935,7 +969,9 @@ def _cost_floor(services: Services, symbol: str) -> float:
     )
 
 
-def _market_for(services: Services, symbol: str, requested: str | None) -> MarketView:
+def _market_for(
+    services: Services, symbol: str, requested: str | None, candles: int | None = None
+) -> MarketView:
     """Build the market view, saying which piece is missing when one is."""
     if services.bars is None or services.market is None:
         raise HTTPException(503, "no bar source is wired, so nothing can be charted")
@@ -977,6 +1013,7 @@ def _market_for(services: Services, symbol: str, requested: str | None) -> Marke
         setups=setups_at(analysis, snapshot.ts),
         min_stop=_cost_floor(services, symbol),
         analysis=analysis,
+        **({"context_bars": max(20, min(1000, candles))} if candles else {}),
     )
 
 

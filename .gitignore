@@ -85,3 +85,5 @@ data/dienst/
 data/replay_fills_0311/
 data/e17_maerkte.txt
 data/quarantine/venue_ws/
+data/manual_paper.sqlite
+config_offen/plan.yaml
