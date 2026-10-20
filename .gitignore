@@ -87,3 +87,12 @@ data/e17_maerkte.txt
 data/quarantine/venue_ws/
 data/manual_paper.sqlite
 config_offen/plan.yaml
+
+# Das Handelsbuch wird alle zehn Minuten neu geschrieben (Dienst
+# `traidingBrain-handelsbuch`, `scripts/handelsbuch.py`). Verfolgt machte es
+# das Arbeitsverzeichnis dauerhaft schmutzig, und damit las JEDER
+# Entscheidungsstempel "-dirty" -- also liesse sich "hier lief uncommitteter
+# Strategiecode" nicht mehr von "eine Zeitangabe hat sich bewegt"
+# unterscheiden. Die Quelle (data/journal.sqlite) und der Erzeuger sind
+# verfolgt; das Erzeugnis liegt fuer den Leser auf der Platte.
+/audit/HANDELSBUCH.md
