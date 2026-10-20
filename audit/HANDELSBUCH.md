@@ -1,6 +1,6 @@
 # Handelsbuch — Plankonto
 
-Automatisch geschrieben aus `data/journal.sqlite`, Stand 20.10.2026 17:00 UTC.
+Automatisch geschrieben aus `data/journal.sqlite`, Stand 20.10.2026 17:10 UTC.
 Jede Zeile stammt aus dem gespeicherten Datensatz des Trades. Nichts hier ist geschaetzt.
 
 Neu erzeugen: `python scripts/handelsbuch.py`

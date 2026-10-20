@@ -347,32 +347,50 @@ function drawProfile(ctx, candles, g) {
 function drawHeatmap(ctx, heat, g) {
   const koerbe = heat.bins ?? [];
   if (!koerbe.length) return;
-  const max = heat.max_qty || Math.max(...koerbe.map(([, q]) => q)) || 1;
-  const breite = 44;
-  // Korbhoehe aus der Buchspanne, damit die Streifen aneinanderstossen statt
-  // als Haarlinien zu verschwinden: bei 1000 Zeilen deckt das Buch ein paar
-  // hundert USD ab, verteilt auf 60 Koerbe.
-  const hoehe = Math.max(2, Math.abs(g.y(heat.low) - g.y(heat.high)) / koerbe.length);
-  let sichtbar = 0;
-  ctx.save();
+
+  // **Die Koerbe werden auf die PIXEL gerechnet, nicht auf den Preis.** Der
+  // Server buendelt in 60 Koerbe ueber die Buchspanne; wie hoch die auf dem
+  // Schirm ist, haengt am Zoom. Bei 2'400 USD Chart und 260 USD Buch sind das
+  // 33 Pixel -- 60 Koerbe darin sind ein halber Pixel hoch und mit Alpha 0.10
+  // ueber vollfarbigen Kerzen schlicht unsichtbar. Also: so viele Zeilen wie
+  // Platz ist, mindestens 3 Pixel hoch.
+  const yLo = g.y(Math.max(heat.low, g.lo)), yHi = g.y(Math.min(heat.high, g.hi));
+  const bandH = Math.abs(yLo - yHi);
+  if (bandH < 2) return;
+  const zeilen = Math.max(4, Math.min(koerbe.length, Math.floor(bandH / 3)));
+  const oben = Math.min(yLo, yHi), hoehe = bandH / zeilen;
+
+  const topf = Array.from({ length: zeilen }, () => [0, 0]);  // [Gebote, Briefe]
   for (const [preis, menge, seite] of koerbe) {
     if (preis < g.lo || preis > g.hi) continue;
-    sichtbar++;
+    const i = Math.max(0, Math.min(zeilen - 1, Math.floor((g.y(preis) - oben) / hoehe)));
+    topf[i][seite > 0 ? 0 : 1] += menge;
+  }
+  const max = Math.max(...topf.map(([b, a]) => Math.max(b, a)), 1e-9);
+  const breite = 46, x0 = g.pR - breite;
+
+  ctx.save();
+  // Eigene Spur mit dunklem Grund: sonst mischt sich jeder Streifen mit der
+  // Kerze darunter und man liest die Kerzenfarbe als Buchtiefe.
+  ctx.fillStyle = "rgba(8,11,16,0.82)";
+  ctx.fillRect(x0, oben, breite, bandH);
+  for (let i = 0; i < zeilen; i++) {
+    const [gebote, briefe] = topf[i];
+    const menge = Math.max(gebote, briefe);
+    if (menge <= 0) continue;
     const stark = Math.min(1, menge / max);
-    ctx.fillStyle = seite > 0 ? `rgba(34,197,94,${0.10 + stark * 0.62})` : `rgba(239,68,68,${0.10 + stark * 0.62})`;
-    ctx.fillRect(g.pR - breite, g.y(preis) - hoehe / 2, breite * (0.22 + stark * 0.78), hoehe);
+    ctx.fillStyle = gebote >= briefe
+      ? `rgba(34,197,94,${0.22 + stark * 0.68})`
+      : `rgba(239,68,68,${0.22 + stark * 0.68})`;
+    ctx.fillRect(x0, oben + i * hoehe, breite * (0.18 + stark * 0.82), Math.max(1, hoehe - 0.5));
   }
   // Wo das Buch ueberhaupt reicht -- sonst liest man die leere Flaeche
   // darueber und darunter als "keine Liquiditaet" statt als "nicht gemessen".
-  if (sichtbar) {
-    ctx.strokeStyle = "rgba(250,204,21,0.30)";
-    ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
-    for (const p of [heat.low, heat.high]) {
-      if (p < g.lo || p > g.hi) continue;
-      ctx.beginPath(); ctx.moveTo(g.pR - breite, g.y(p) + 0.5); ctx.lineTo(g.pR, g.y(p) + 0.5); ctx.stroke();
-    }
-    ctx.setLineDash([]);
-  }
+  ctx.strokeStyle = "rgba(250,204,21,0.45)";
+  ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
+  ctx.beginPath(); ctx.moveTo(x0, oben + 0.5); ctx.lineTo(g.pR, oben + 0.5);
+  ctx.moveTo(x0, oben + bandH - 0.5); ctx.lineTo(g.pR, oben + bandH - 0.5); ctx.stroke();
+  ctx.setLineDash([]);
   ctx.restore();
 }
 
