@@ -567,3 +567,74 @@ button:disabled { cursor: not-allowed; color: var(--ink-3); }
   flex: 1 1 auto; background: var(--surface-2, #0d1117); color: var(--ink);
   border: 1px solid var(--rule); border-radius: 4px; padding: 3px 5px; font-size: 11px;
 }
+
+/* ------------------------------------------------- Zeichenwerkzeuge -- */
+.tools__trenner {
+  display: block; height: 1px; background: var(--rule);
+  margin: 4px 6px; opacity: .7;
+}
+.tools button { transition: transform 160ms cubic-bezier(.23,1,.32,1), background 140ms ease; }
+.tools button:active { transform: scale(.92); }
+.tools button:focus-visible { outline: 2px solid var(--star); outline-offset: -2px; }
+
+/* Was der Bot zu einer frisch gesetzten Zeichnung sagt. Unter dem Chart und
+   nicht als Dialog: eine Einschaetzung, die den Blick vom Kurs wegreisst,
+   wird beim zweiten Mal weggeklickt, ohne gelesen zu werden. */
+.zn {
+  margin: 6px 0 0; padding: 8px 10px; border: 1px solid var(--rule);
+  border-radius: var(--r); background: var(--surface); font-size: 12px;
+  line-height: 1.45;
+}
+.zn__kopf { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.zn__urteil {
+  font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
+  padding: 1px 6px; border-radius: 999px; border: 1px solid currentColor;
+}
+.zn__urteil--zustimmung { color: var(--long); }
+.zn__urteil--teilweise  { color: var(--star); }
+.zn__urteil--widerspruch{ color: var(--short); }
+.zn__urteil--neutral    { color: var(--ink-3); }
+.zn__text { color: var(--ink-2); }
+.zn__liste { margin: 6px 0 0; padding-left: 16px; color: var(--ink-3); }
+.zn__liste li { margin: 2px 0; }
+
+/* ------------------------------------- Positionen / Alarme / Verlauf -- */
+.unten { border-top: 1px solid var(--rule); background: var(--ground); }
+.unten__reiter {
+  display: flex; align-items: center; gap: 2px;
+  padding: 4px 8px 0; border-bottom: 1px solid var(--rule);
+}
+.unten__reiter button {
+  background: none; border: 0; color: var(--ink-3); cursor: pointer;
+  font-size: 11.5px; padding: 5px 10px; border-radius: var(--r) var(--r) 0 0;
+  border-bottom: 2px solid transparent;
+  transition: color 140ms ease, background 140ms ease;
+}
+.unten__reiter button:hover { color: var(--ink-2); background: var(--raised); }
+.unten__reiter button[aria-selected="true"] {
+  color: var(--ink); background: var(--surface); border-bottom-color: var(--ink);
+}
+.unten__reiter button:focus-visible { outline: 2px solid var(--star); outline-offset: -2px; }
+.unten__summe { margin-left: auto; font-size: 11.5px; color: var(--ink-2); padding-right: 6px; }
+
+.unten__inhalt { max-height: 164px; overflow-y: auto; }
+/* Acht Spalten wie im Vorbild: Asset, Signal, Einstieg, Margin, Groesse,
+   Hebel, TP/SL, Offen. TP/SL bekommt mehr Platz, weil dort zwei Zeilen mit
+   Preis, USD und Prozent stehen. */
+.unten__zeile {
+  display: grid; grid-template-columns: 1.15fr .6fr .85fr .85fr .9fr .5fr 1.9fr 1.1fr;
+  gap: 8px; align-items: center; padding: 6px 10px;
+  border-bottom: 1px solid var(--rule); font-size: 11.5px;
+}
+.unten__zeile:last-child { border-bottom: 0; }
+.unten__kopf {
+  color: var(--ink-3); font-size: 10px; letter-spacing: .05em;
+  text-transform: uppercase; position: sticky; top: 0;
+  background: var(--ground); z-index: 1;
+}
+.unten__tpsl { display: flex; flex-direction: column; gap: 1px; line-height: 1.25; }
+.unten__tpsl small { opacity: .75; }
+@media (max-width: 920px) {
+  .unten__zeile { grid-template-columns: 1.2fr .6fr .9fr .9fr 1.6fr 1fr; }
+  .unten__zeile > span:nth-child(4), .unten__zeile > span:nth-child(6) { display: none; }
+}

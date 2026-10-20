@@ -48,11 +48,11 @@
     <!-- ================================================== Markt -->
     <div class="view term" id="view-markt">
       <aside class="term__left">
-        <section class="panel" aria-labelledby="cal-head">
+        <section class="panel" aria-labelledby="cal-head" id="panel-kalender">
           <h2 class="panel__head" id="cal-head">Wirtschaftskalender <span class="panel__sum" id="cal-sum"></span></h2>
           <div id="cal"><p class="empty">Lade Kalender&hellip;</p></div>
         </section>
-        <section class="panel" aria-labelledby="ob-head">
+        <section class="panel" aria-labelledby="ob-head" id="panel-orderbuch">
           <h2 class="panel__head" id="ob-head">Orderbuch <span class="panel__sum" id="ob-sum"></span></h2>
           <div class="ob" id="ob"><p class="empty">Lade Buch&hellip;</p></div>
         </section>
@@ -68,12 +68,7 @@
         </div>
         <div class="center-body">
           <div class="chart" id="view-chart">
-            <div class="tools" role="toolbar" aria-label="Zeichenwerkzeuge">
-              <button data-tool="cross" aria-pressed="true" title="Fadenkreuz"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/></svg></button>
-              <button data-tool="hline" title="Horizontale Linie"><svg viewBox="0 0 24 24"><path d="M3 8h18M3 16h18"/></svg></button>
-              <button data-tool="alert" title="Preisalarm setzen"><svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0"/></svg></button>
-              <button data-tool="clear" title="Zeichnungen löschen"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
-            </div>
+            <div class="tools" role="toolbar" aria-label="Zeichenwerkzeuge" id="tools"></div>
             <div class="chart__wrap" id="chartwrap">
               <canvas class="chart__canvas" id="chart"></canvas>
               <div class="chart__kopf">
@@ -81,6 +76,7 @@
                 <div class="chart__readout" id="readout"></div>
               </div>
               <div id="lineboxes"></div>
+              <div class="zn" id="zeichnung-note" hidden></div>
             </div>
           </div>
           <div class="bot hidden" id="view-bot">
@@ -90,7 +86,16 @@
             <div class="bot__sub"><h3>Chart</h3><div class="cards" id="chart-cards"></div></div>
           </div>
         </div>
-        <div class="strip" id="markt-open"><span class="muted">Offene Positionen: lade&hellip;</span></div>
+        <div class="unten" id="markt-unten">
+          <div class="unten__reiter" role="tablist" aria-label="Positionen, Alarme, Verlauf">
+            <button role="tab" data-unten="positionen" aria-selected="true">Positionen</button>
+            <button role="tab" data-unten="alarme" aria-selected="false">Alarme</button>
+            <button role="tab" data-unten="historie" aria-selected="false">Trade History</button>
+            <button role="tab" data-unten="orders" aria-selected="false">Orders</button>
+            <span class="unten__summe" id="unten-summe"></span>
+          </div>
+          <div class="unten__inhalt" id="unten-inhalt"></div>
+        </div>
       </main>
 
       <aside class="term__right">

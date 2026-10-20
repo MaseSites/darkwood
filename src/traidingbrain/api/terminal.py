@@ -580,6 +580,148 @@ def konto(state_path: Path, journal_path: Path, config: AppConfig, signature: st
 # Bot-Einstellungen (lesen / anwenden)
 # --------------------------------------------------------------------------- #
 
+class ZeichnungPunkt(BaseModel):
+    ts: int
+    preis: float
+    index: int | None = None
+
+
+class Zeichnung(BaseModel):
+    typ: str
+    punkte: list[ZeichnungPunkt]
+    text: str | None = None
+
+
+class ZeichnungUrteil(BaseModel):
+    titel: str
+    haltung: str          # zustimmung | teilweise | widerspruch | neutral
+    haltung_text: str
+    begruendung: str
+    punkte: list[str]
+
+
+#: Wie nah ein gezeichneter Preis an einer gemessenen Zone liegen darf, damit
+#: man von "derselben Stelle" sprechen kann -- in ATR, nicht in Prozent. Ein
+#: fester Prozentsatz waere bei BTC etwas voellig anderes als bei DOGE.
+NAHE_ATR = 0.35
+
+
+def zeichnung_beurteilen(symbol: str, tf: str, z: Zeichnung, chart: dict) -> ZeichnungUrteil:
+    """Haelt eine Zeichnung des Nutzers gegen die gemessene Lage.
+
+    **Was das sein soll und was nicht.** Es ist KEIN Daumen hoch. Der Nutzer
+    wollte, dass seine Zeichnung verstanden und bewertet wird und dass wir ihm
+    auch widersprechen -- "dann koennen wir als Mensch noch mit dir connecten".
+    Also: trifft die Linie etwas, das wir unabhaengig gemessen haben, oder
+    nicht? Beides ist eine brauchbare Antwort.
+
+    Gemessen wird gegen das, was ohnehin im Chart steckt: Baender (Zonen,
+    Pools, Luecken), Ereignisse (BOS/CHoCH/Sweeps), Trendlinien und der ATR
+    als Massstab fuer "nah".
+    """
+    atr = float(chart.get("atr") or 0.0)
+    preis = float(chart.get("price") or 0.0)
+    baender = chart.get("bands") or []
+    ereignisse = chart.get("events") or []
+    diagonalen = chart.get("diagonals") or []
+    name = {
+        "trend": "Trendlinie", "hline": "Horizontale", "hray": "Strahl",
+        "fib": "Fibonacci", "long": "Long-Idee", "short": "Short-Idee",
+        "rect": "Rechteck", "rectrot": "Trendkanal", "kreis": "Kreis",
+        "ellipse": "Ellipse", "pfeil": "Pfeil", "lineal": "Messung",
+        "tag": "Preisschild", "text": "Notiz", "pinsel": "Freihand",
+        "marker": "Markierung",
+    }.get(z.typ, z.typ)
+
+    preise = [p.preis for p in z.punkte]
+    if not preise:
+        return ZeichnungUrteil(titel=name, haltung="neutral", haltung_text="leer",
+                               begruendung="Die Zeichnung hat keine Punkte.", punkte=[])
+
+    gefunden: list[str] = []
+    treffer = 0
+    for pr in preise:
+        for b in baender:
+            lo, hi = float(b["low"]), float(b["high"])
+            rand = atr * NAHE_ATR
+            if lo - rand <= pr <= hi + rand:
+                treffer += 1
+                gefunden.append(
+                    f"{pr:,.4g} liegt in **{b.get('label', b.get('kind'))}** "
+                    f"({lo:,.4g}–{hi:,.4g})".replace(",", "'")
+                )
+                break
+
+    hinweise: list[str] = list(dict.fromkeys(gefunden))
+
+    if atr > 0:
+        for pr in preise:
+            entfernt = abs(pr - preis) / atr
+            if entfernt > 8:
+                hinweise.append(
+                    f"{pr:,.4g} ist {entfernt:.1f} ATR vom Kurs entfernt — so weit "
+                    f"draussen reagiert der Markt erfahrungsgemaess auf nichts mehr.".replace(",", "'")
+                )
+
+    if z.typ in ("trend", "rectrot") and diagonalen:
+        hinweise.append(
+            f"Das System haelt hier selbst {len(diagonalen)} Trendlinie(n); "
+            f"deine liegt {'in derselben Richtung' if _gleiche_richtung(z, diagonalen) else 'quer dazu'}."
+        )
+
+    if z.typ in ("long", "short") and len(preise) >= 2:
+        ein, ziel = preise[0], preise[1]
+        richtig = (ziel > ein) if z.typ == "long" else (ziel < ein)
+        if not richtig:
+            hinweise.append(
+                f"**Das Ziel liegt auf der falschen Seite des Einstiegs** für eine "
+                f"{'Long' if z.typ == 'long' else 'Short'}-Idee."
+            )
+        elif atr > 0:
+            hinweise.append(
+                f"Weg zum Ziel: {abs(ziel - ein) / atr:.2f} ATR. "
+                f"Der Median-Trade dieses Systems erreicht 1.18 R und endet bei -0.01 R — "
+                f"ein Ziel, das weiter liegt als die üblichen Bewegungen, wird selten bezahlt."
+            )
+
+    jetzt = [e for e in ereignisse if (e.get("bars_ago") or 99) <= 6]
+    if jetzt:
+        hinweise.append(
+            "Frisch gemessen in der Nähe: " + ", ".join(sorted({e.get("label", "") for e in jetzt})[:3])
+        )
+
+    if treffer and treffer == len(preise):
+        haltung, text = "zustimmung", "trifft Gemessenes"
+        grund = (f"Alle {len(preise)} Punkte liegen auf etwas, das unabhängig gemessen "
+                 f"wurde. Das ist die beste Art von Übereinstimmung: du hast nicht "
+                 f"geraten, was wir sehen — du hast dasselbe gesehen.")
+    elif treffer:
+        haltung, text = "teilweise", f"{treffer} von {len(preise)} treffen"
+        grund = (f"{treffer} von {len(preise)} Punkten liegen auf einer gemessenen Stelle, "
+                 f"die übrigen nicht. Das heisst nicht, dass sie falsch sind — es heisst, "
+                 f"dass wir sie nicht belegen können.")
+    else:
+        haltung, text = "widerspruch", "kein Beleg"
+        grund = (f"Kein Punkt dieser {name} liegt innerhalb von {NAHE_ATR:g} ATR an einer "
+                 f"Zone, einem Pool oder einer Lücke, die wir gemessen haben. Das ist "
+                 f"kein Urteil über deine Idee — nur die ehrliche Auskunft, dass dieses "
+                 f"System dafür keinen Anhaltspunkt liefert.")
+
+    return ZeichnungUrteil(titel=f"{name} auf {symbol} ({tf})", haltung=haltung,
+                           haltung_text=text, begruendung=grund, punkte=hinweise[:6])
+
+
+def _gleiche_richtung(z: Zeichnung, diagonalen: list[dict]) -> bool:
+    if len(z.punkte) < 2:
+        return False
+    eigen = z.punkte[-1].preis - z.punkte[0].preis
+    for d in diagonalen:
+        fremd = float(d.get("to_price", 0)) - float(d.get("from_price", 0))
+        if eigen * fremd > 0:
+            return True
+    return False
+
+
 class BotSettings(BaseModel):
     initial_margin_usd: float
     margin_pct: float = Field(ge=1, le=100)
@@ -959,6 +1101,11 @@ def router(services: Any, konto_signatur, state_path, journal_path, followed) ->
     @r.get("/orderbook/{symbol}", response_model=Orderbuch)
     def _ob(symbol: str, depth: int = 10) -> Orderbuch:
         return orderbuch(symbol.upper(), depth)
+
+    @r.post("/zeichnung/{symbol}", response_model=ZeichnungUrteil)
+    def _zeichnung(symbol: str, z: Zeichnung, tf: str = "M15") -> ZeichnungUrteil:
+        from traidingbrain.api.app import _chart_dict  # spaet, gegen Zirkel
+        return zeichnung_beurteilen(symbol.upper(), tf, z, _chart_dict(services, symbol.upper()))
 
     @r.get("/heatmap/{symbol}", response_model=Heatmap)
     def _heat(symbol: str, bins: int = 60) -> Heatmap:

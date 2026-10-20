@@ -13,8 +13,9 @@
  * Der Punkt oben rechts blinkt bei jedem Tick und nennt die Uhrzeit des
  * letzten -- ein stehender Chart und ein toter Feed sehen sonst gleich aus.
  */
-import { drawTerminalChart, drawEquity, drawRCurve, fmt, EBENEN } from "/static/terminal-chart.js";
+import { drawTerminalChart, drawEquity, drawRCurve, fmt, EBENEN, SEITENTEILE } from "/static/terminal-chart.js";
 import { INDIKATOREN } from "/static/terminal-indikatoren.js";
+import { LEISTE, PUNKTE, WERKZEUGE } from "/static/terminal-zeichnen.js";
 
 /** Was sichtbar ist, wenn noch nie etwas eingestellt wurde: EMA 20 und 200,
  *  wie bisher festverdrahtet -- nur jetzt aenderbar. */
@@ -50,6 +51,12 @@ const S = {
   // (EMA 20 UND EMA 200 UND EMA 50), und die Reihenfolge ist die
   // Zeichenreihenfolge.
   indikatoren: JSON.parse(localStorage.getItem("dw-indikatoren") || "null") ?? standardIndikatoren(),
+  // Zeichnungen in ZEIT und PREIS, nie in Pixeln -- eine Linie, die sich
+  // Bildschirmkoordinaten merkt, wandert beim ersten Zoom vom Kurs weg.
+  zeichnungen: JSON.parse(localStorage.getItem("dw-zeichnungen") || "[]"),
+  angefangen: null,            // der Zug, der gerade gesetzt wird
+  untenTab: "positionen",
+  stift: { farbe: "#f59e0b", dicke: 1.4 },
 };
 function zoomKey() { return `${S.symbol}|${S.tf}`; }
 function zoom() { return (S.zoomBy[zoomKey()] ??= { visible: null, end: null }); }
@@ -176,7 +183,7 @@ function positionLines() {
     if (p.tp) lines.push({ price: p.tp, colour: "#22c55e", label: `${signed((p.tp - p.entry) * qty * side, 0)} USD`, id: `${p.id}-tp`, closable: p.source === "manuell", pid: p.id, kind: "tp" });
     if (p.sl) lines.push({ price: p.sl, colour: "#ef4444", label: `${signed((p.sl - p.entry) * qty * side, 0)} USD`, id: `${p.id}-sl`, closable: p.source === "manuell", pid: p.id, kind: "sl" });
   }
-  for (const d of S.drawings) if (d.symbol === S.symbol) lines.push({ price: d.price, colour: "#f59e0b", dash: [1, 0], width: 1, label: px(d.price), id: d.id, closable: true });
+
   for (const a of S.alerts) if (a.symbol === S.symbol) lines.push({ price: a.price, colour: "#facc15", dash: [8, 4], width: 1, label: `Alarm ${px(a.price)}`, id: `al-${a.id}`, closable: true });
   return lines;
 }
@@ -190,6 +197,8 @@ function chartOpts(extra = {}) {
   const buch = S.heat && S.heat.symbol === S.symbol ? S.heat : null;
   return { candles, forming, lines: positionLines(), layers: S.ebenen, book: buch,
     indikatoren: S.indikatoren,
+    zeichnungen: S.zeichnungen.filter((d) => d.symbol === S.symbol),
+    angefangen: S.angefangen, stift: S.stift,
     visible: z.visible, end: z.end,
     signalIndex: setup ? (S.market.candles.length - 1) : undefined, ...extra };
 }
@@ -232,7 +241,16 @@ function ebenenMarkup() {
 function renderLayers() {
   $$("[data-lay]", $("#layers")).forEach((b) =>
     b.setAttribute("aria-checked", String(ebeneAn(b.dataset.lay))));
+  // Seitenteile sind kein Zeichenbefehl, sondern ein Sichtbarkeitsschalter.
+  for (const [k, sel] of Object.entries(SEITENTEILE)) {
+    const el = document.querySelector(sel);
+    if (el) el.hidden = !ebeneAn(k);
+  }
 }
+
+//: Damit andere Stellen die Ebenen neu zeichnen koennen, ohne das Fenster
+//: zu kennen -- `zeigeImMarkt` schaltet "Positionen & Linien" ein.
+const renderLayersJetzt = renderLayers;
 
 /** Oeffnen/Schliessen fuer ein Popover. EIN Helfer fuer beide Fenster: zwei
  *  Fassungen derselben Logik driften, und seit heute Abend gibt es zwei. */
@@ -385,6 +403,140 @@ function wireIndikatoren() {
   panel.addEventListener("change", uebernehmen);
 }
 
+/**
+ * Was der Bot zu einer frisch gesetzten Zeichnung sagt.
+ *
+ * Der Wunsch dahinter: "wenn ich etwas einzeichne, sollst du das verstehen,
+ * raten, und mir auch widersprechen duerfen." Die Zeichnung geht darum an den
+ * Server, der sie gegen die gemessene Lage haelt -- Zonen, Pools, Struktur,
+ * Indikatoren. Was zurueckkommt, ist eine Einschaetzung MIT Begruendung, kein
+ * Daumen hoch.
+ *
+ * Faellt die Antwort aus, bleibt die Zeichnung trotzdem stehen. Eine
+ * Einschaetzung ist eine Zugabe und keine Bedingung.
+ */
+async function zeichnungGemeldet(d) {
+  renderChart();
+  const kasten = $("#zeichnung-note");
+  if (!kasten) return;
+  kasten.hidden = false;
+  kasten.innerHTML = `<span class="muted">${WERKZEUGE[d.typ]?.name ?? d.typ} gesetzt — der Bot schaut sie an …</span>`;
+  try {
+    const u = await api(`/api/terminal/zeichnung/${S.symbol}?tf=${S.tf}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ typ: d.typ, punkte: d.punkte, text: d.text ?? null }),
+    });
+    kasten.innerHTML = `
+      <div class="zn__kopf"><b>${u.titel}</b>
+        <span class="zn__urteil zn__urteil--${u.haltung}">${u.haltung_text}</span></div>
+      <div class="zn__text">${u.begruendung}</div>
+      ${u.punkte?.length ? `<ul class="zn__liste">${u.punkte.map((x) => `<li>${x}</li>`).join("")}</ul>` : ""}`;
+  } catch (e) {
+    kasten.innerHTML = `<span class="muted">Zeichnung gespeichert. Einschätzung nicht verfügbar: ${e.message}</span>`;
+  }
+}
+
+/* ----------------------------------------------------- Zeichenwerkzeuge -- */
+function merkeZeichnungen() {
+  // Nur die eigenen Zeichnungen, nie die Vorschau. Ein halb gesetzter Zug im
+  // Speicher kaeme beim naechsten Laden als vollendete Linie zurueck.
+  localStorage.setItem("dw-zeichnungen", JSON.stringify(S.zeichnungen));
+}
+
+/** Wo der Zeiger liegt -- in Zeit, Preis und Kerzenindex. */
+function zeigerStelle(e, canvas, g) {
+  if (!g) return null;
+  const box = canvas.getBoundingClientRect();
+  const x = e.clientX - box.left, y = e.clientY - box.top;
+  const preis = g.lo + ((g.pB - y) / (g.pB - g.pT)) * (g.hi - g.lo);
+  const kerzen = mergedCandles();
+  const i = Math.max(0, Math.min(kerzen.length - 1, g.offset + Math.round((x - g.pL) / g.slot - 0.5)));
+  // `ts` auch fuer Punkte RECHTS der letzten Kerze: dort gibt es keine mehr,
+  // also wird die Zeit fortgeschrieben. Ohne das rutschte jede Zeichnung im
+  // leeren Raum auf die letzte Kerze zurueck.
+  const letzte = kerzen[kerzen.length - 1], takt = kerzen.length > 1 ? letzte.ts - kerzen[kerzen.length - 2].ts : 900000;
+  const roh = g.offset + (x - g.pL) / g.slot - 0.5;
+  const ts = roh >= kerzen.length ? letzte.ts + Math.round(roh - kerzen.length + 1) * takt : kerzen[i].ts;
+  return { ts, preis, index: Math.round(roh) };
+}
+
+function zeichnungFertig() {
+  const a = S.angefangen; if (!a) return;
+  const wz = WERKZEUGE[a.typ];
+  const d = {
+    id: `z${Date.now().toString(36)}`, typ: a.typ, symbol: S.symbol, tf: S.tf,
+    punkte: a.punkte, farbe: S.stift.farbe, dicke: S.stift.dicke,
+  };
+  if (wz.text) {
+    const eingabe = prompt(wz.name === "Text" ? "Text:" : "Beschriftung (leer = Preis):", "");
+    if (eingabe === null) { S.angefangen = null; return; }   // abgebrochen
+    d.text = eingabe;
+  }
+  S.zeichnungen.push(d);
+  S.angefangen = null;
+  merkeZeichnungen();
+  zeichnungGemeldet(d);
+}
+
+function wireWerkzeuge() {
+  const leiste = $("#tools");
+  leiste.innerHTML = LEISTE.map((k) => {
+    if (k === null) return '<span class="tools__trenner" role="separator"></span>';
+    const w = WERKZEUGE[k];
+    return `<button data-tool="${k}" title="${w.name}" aria-label="${w.name}"
+      aria-pressed="${k === S.tool}"><svg viewBox="0 0 24 24"><path d="${w.pfad}"/></svg></button>`;
+  }).join("");
+
+  leiste.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-tool]"); if (!b) return;
+    const k = b.dataset.tool;
+    if (k === "clear") {
+      S.zeichnungen = S.zeichnungen.filter((d) => d.symbol !== S.symbol);
+      S.angefangen = null; merkeZeichnungen(); renderChart(); return;
+    }
+    S.tool = k; S.angefangen = null;
+    $$("button[data-tool]", leiste).forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    $("#chart").style.cursor = k === "cross" ? "crosshair" : "copy";
+    renderChart();
+  });
+
+  // Freihand: Pinsel und Marker sammeln, solange die Taste unten ist.
+  const canvas = $("#chart");
+  let frei = null;
+  canvas.addEventListener("pointerdown", (e) => {
+    if (WERKZEUGE[S.tool]?.punkte !== PUNKTE.FREI || !S.market) return;
+    const g = drawTerminalChart(canvas, S.market, chartOpts());
+    frei = { typ: S.tool, punkte: [zeigerStelle(e, canvas, g)] };
+    S.angefangen = frei;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!frei) return;
+    const g = drawTerminalChart(canvas, S.market, chartOpts());
+    const p = zeigerStelle(e, canvas, g);
+    const letzter = frei.punkte[frei.punkte.length - 1];
+    // Punkte ausduennen: jeder Pixel waere ein Punkt, und eine Linie aus
+    // 4'000 Punkten laesst den Chart ruckeln, ohne besser auszusehen.
+    if (!letzter || Math.abs(p.preis - letzter.preis) > (g.hi - g.lo) / 400 || p.index !== letzter.index) {
+      frei.punkte.push(p); renderChart();
+    }
+  });
+  const freiEnde = () => {
+    if (!frei) return;
+    if (frei.punkte.length > 2) { S.angefangen = frei; zeichnungFertig(); }
+    else { S.angefangen = null; renderChart(); }
+    frei = null;
+  };
+  canvas.addEventListener("pointerup", freiEnde);
+  canvas.addEventListener("pointercancel", freiEnde);
+
+  // Escape bricht einen angefangenen Zug ab, statt ihn halb stehen zu lassen.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && S.angefangen) { S.angefangen = null; renderChart(); }
+  });
+}
+
 function wireChart() {
   const canvas = $("#chart");
   canvas.addEventListener("pointermove", (e) => {
@@ -436,17 +588,25 @@ function wireChart() {
   canvas.addEventListener("dblclick", () => { zoomReset(); renderChart(); });
   canvas.addEventListener("click", (e) => {
     if (!S.market || S.tool === "cross") return;
-    const box = canvas.getBoundingClientRect();
     const g = drawTerminalChart(canvas, S.market, chartOpts());
-    const price = g.lo + ((g.pB - (e.clientY - box.top)) / (g.pB - g.pT)) * (g.hi - g.lo);
-    if (S.tool === "hline") { S.drawings.push({ id: `d${Date.now()}`, symbol: S.symbol, price }); renderChart(); }
-    if (S.tool === "alert") addAlert(price);
+    const stelle = zeigerStelle(e, canvas, g);
+    if (!stelle) return;
+    if (S.tool === "alert") { addAlert(stelle.preis); return; }
+    const wz = WERKZEUGE[S.tool];
+    if (!wz?.punkte || wz.punkte === PUNKTE.FREI) return;
+
+    // Mehrpunktige Werkzeuge sammeln Klicks, bis sie voll sind. Kein Ziehen:
+    // ein Klick-Klick trifft auf einem Laptop-Trackpad zuverlaessiger als ein
+    // gehaltener Zug, und die Vorschau zeigt waehrenddessen, was entsteht.
+    S.angefangen ??= { typ: S.tool, punkte: [] };
+    S.angefangen.punkte.push(stelle);
+    if (S.angefangen.punkte.length >= wz.punkte) zeichnungFertig();
+    renderChart();
   });
   $("#lineboxes").addEventListener("click", async (e) => {
     const b = e.target.closest("button[data-line]"); if (!b) return;
     const id = b.dataset.line;
     if (id.startsWith("al-")) { S.alerts = S.alerts.filter((a) => `al-${a.id}` !== id); saveAlerts(); renderChart(); renderTrades(); return; }
-    if (id.startsWith("d")) { S.drawings = S.drawings.filter((d) => d.id !== id); renderChart(); return; }
     const line = positionLines().find((l) => l.id === id);
     if (line?.pid) {
       const p = S.positions.find((x) => x.id === line.pid);
@@ -454,11 +614,7 @@ function wireChart() {
       catch (err) { flash($("#m-msg"), err.message, "err"); }
     }
   });
-  $$(".tools button").forEach((b) => b.addEventListener("click", () => {
-    const t = b.dataset.tool;
-    if (t === "clear") { S.drawings = []; renderChart(); return; }
-    S.tool = t; $$(".tools button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-  }));
+  wireWerkzeuge();
   new ResizeObserver(() => renderChart()).observe($("#chartwrap"));
   wireLayers();
   wireIndikatoren();
@@ -597,15 +753,125 @@ function posRow(p) {
     <span class="${(p.unrealized ?? 0) >= 0 ? "up" : "down"}">${signed(p.unrealized ?? 0)} USD${p.r_now !== undefined && p.r_now !== null ? ` <small class="muted">${(p.r_now).toFixed(2)} R</small>` : ""}</span>
     <span>${p.source === "manuell" ? `<button class="btn-link" data-close="${p.id}">Market</button>` : `<span class="muted" title="vom Bot geführt">Bot</span>`}</span></div>`;
 }
-function renderStrip() {
-  const all = [...S.botPositions, ...S.positions];
-  const sum = all.reduce((t, p) => t + (p.unrealized ?? 0), 0);
-  $("#markt-open").innerHTML = all.length
-    ? `<span>Offen: <b>${all.length}</b> · unrealisiert <b class="${sum >= 0 ? "up" : "down"}">${signed(sum)} USD</b> · ` + all.map((p) => `<button class="btn-link" data-goto="${p.symbol}">${p.symbol.replace("USDT", "")} <span class="${(p.unrealized ?? 0) >= 0 ? "up" : "down"}">${signed(p.unrealized ?? 0, 0)}</span></button>`).join(" ") + `</span><button class="btn-link" data-view="trades">alle Trades →</button>`
-    : `<span class="muted">Keine offene Position. Der Bot entscheidet auf M15-Schluss.</span><button class="btn-link" data-view="trades">Trades →</button>`;
-  $$("[data-goto]", $("#markt-open")).forEach((b) => b.addEventListener("click", () => { $("#sym").value = b.dataset.goto; $("#sym").dispatchEvent(new Event("change")); }));
-  $$("[data-view]", $("#markt-open")).forEach((b) => b.addEventListener("click", () => setView("trades")));
+/**
+ * Der Bereich unter dem Chart: Positionen, Alarme, Verlauf, Orders.
+ *
+ * Vorher stand hier eine EINZEILIGE Leiste. Die zeigte die Summe und die
+ * Symbole, aber nicht, zu welchem Preis man drin ist, mit welchem Hebel und
+ * wo Stop und Ziel liegen -- also genau das, was man wissen will, waehrend
+ * eine Position laeuft.
+ */
+const UNTEN_SPALTEN = {
+  positionen: ["Asset", "Signal", "Einstieg", "Margin", "Größe", "Hebel", "TP / SL", "Offen"],
+  alarme: ["Asset", "Preis", "Richtung", "Abstand", "Gesetzt", "", "", ""],
+  historie: ["Asset", "Signal", "Einstieg", "Ausstieg", "Grund", "R", "USD", "Geschlossen"],
+  orders: ["Asset", "Art", "Preis", "Größe", "Status", "", "", ""],
+};
+
+function untenZeile(zellen, klasse = "") {
+  return `<div class="unten__zeile ${klasse}">${zellen.map((c) => `<span>${c}</span>`).join("")}</div>`;
 }
+
+function renderUnten() {
+  const welche = S.untenTab ?? "positionen";
+  const alle = [...S.botPositions, ...S.positions];
+  const sum = alle.reduce((t, p) => t + (p.unrealized ?? 0), 0);
+  $("#unten-summe").innerHTML = alle.length
+    ? `Offen <b>${alle.length}</b> · unrealisiert <b class="${sum >= 0 ? "up" : "down"}">${signed(sum)} USD</b>`
+    : `<span class="muted">keine offene Position</span>`;
+
+  let zeilen = "";
+  if (welche === "positionen") {
+    zeilen = alle.length ? alle.map((p) => {
+      const lang = String(p.side).toLowerCase().startsWith("l");
+      const s1 = lang ? 1 : -1;
+      const tpUsd = p.tp ? (p.tp - p.entry) * p.qty * s1 : null;
+      const slUsd = p.sl ? (p.sl - p.entry) * p.qty * s1 : null;
+      const tp = p.tp ? `<span class="up">${px(p.tp)} <small>(${signed(tpUsd, 0)} USD / ${pct(((p.tp - p.entry) / p.entry) * 100 * s1)})</small></span>` : `<span class="muted">–</span>`;
+      const sl = p.sl ? `<span class="down">${px(p.sl)} <small>(${signed(slUsd, 0)} USD / ${pct(((p.sl - p.entry) / p.entry) * 100 * s1)})</small></span>` : `<span class="muted">–</span>`;
+      return untenZeile([
+        `<b>${p.symbol.replace("USDT", "/USDT")}</b>`,
+        `<span class="${lang ? "up" : "down"}">${lang ? "Long" : "Short"}</span>`,
+        px(p.entry),
+        `${money(p.margin ?? 0, 0)} USD`,
+        `${money(p.position_size, 0)} USD`,
+        `${(p.leverage ?? 1).toFixed(0)}×`,
+        `<span class="unten__tpsl">${tp}${sl}</span>`,
+        `<button class="btn-link" data-ansehen="${p.symbol}">Ansehen</button>` +
+        (p.source === "manuell" ? ` <button class="btn-link" data-close="${p.id}">Schliessen</button>` : ""),
+      ]);
+    }).join("") : untenZeile([`<span class="muted">Keine offene Position. Der Bot entscheidet auf M15-Schluss.</span>`, "", "", "", "", "", "", ""]);
+  } else if (welche === "alarme") {
+    const preis = S.head?.last ?? 0;
+    zeilen = S.alerts.length ? S.alerts.map((a) => untenZeile([
+      `<b>${a.symbol.replace("USDT", "/USDT")}</b>`, px(a.price),
+      a.price > preis ? `<span class="up">darüber</span>` : `<span class="down">darunter</span>`,
+      preis ? pct(((a.price - preis) / preis) * 100) : "–",
+      a.ts ? day(a.ts) : "–", "", "",
+      `<button class="btn-link" data-alarm-weg="${a.id}">entfernen</button>`,
+    ])).join("") : untenZeile([`<span class="muted">Kein Alarm. Glocke wählen und in den Chart klicken.</span>`, "", "", "", "", "", "", ""]);
+  } else if (welche === "historie") {
+    const h = S.history ?? [];
+    zeilen = h.length ? h.slice(0, 25).map((z) => untenZeile([
+      `<b>${(z.symbol ?? "").replace("USDT", "/USDT")}</b>`,
+      `<span class="${z.side === "long" ? "up" : "down"}">${z.side === "long" ? "Long" : "Short"}</span>`,
+      px(z.entry), px(z.exit), `<span class="muted">${z.exit_reason ?? "–"}</span>`,
+      `<span class="${(z.r_multiple ?? 0) >= 0 ? "up" : "down"}">${z.r_multiple != null ? z.r_multiple.toFixed(2) : "–"}</span>`,
+      `<span class="${(z.net_pnl ?? 0) >= 0 ? "up" : "down"}">${signed(z.net_pnl ?? 0)}</span>`,
+      z.closed_ts ? day(z.closed_ts) : "–",
+    ])).join("") : untenZeile([`<span class="muted">Noch kein abgeschlossener Trade in dieser Ära.</span>`, "", "", "", "", "", "", ""]);
+  } else {
+    // Orders: offene Limit-Orders. Es gibt noch keine -- und das steht hier,
+    // statt einer leeren Tabelle, die aussieht, als waere etwas kaputt.
+    zeilen = untenZeile([
+      `<span class="muted">Der Bot arbeitet mit Market-Einstiegen auf M15-Schluss; `
+      + `es liegen darum keine Limit-Orders im Buch. Manuelle Limit-Orders sind noch nicht gebaut.</span>`,
+      "", "", "", "", "", "", "",
+    ]);
+  }
+
+  $("#unten-inhalt").innerHTML =
+    untenZeile(UNTEN_SPALTEN[welche], "unten__kopf") + zeilen;
+
+  $$("[data-ansehen]", $("#unten-inhalt")).forEach((b) => b.addEventListener("click", () => zeigeImMarkt(b.dataset.ansehen)));
+  $$("[data-alarm-weg]", $("#unten-inhalt")).forEach((b) => b.addEventListener("click", () => {
+    S.alerts = S.alerts.filter((a) => String(a.id) !== b.dataset.alarmWeg);
+    saveAlerts(); renderUnten(); renderChart();
+  }));
+}
+
+/**
+ * Springt in die Marktansicht, waehlt das Symbol und schaltet die Ebene
+ * "Positionen & Linien" ein -- sonst landet man dort und sieht nicht, wo man
+ * steht. Genau das war der Wunsch.
+ */
+function zeigeImMarkt(symbol) {
+  setView("markt");
+  setCenter("chart");
+  if (S.ebenen.positionen === false) {
+    S.ebenen.positionen = true;
+    localStorage.setItem("dw-ebenen", JSON.stringify(S.ebenen));
+    if (typeof renderLayersJetzt === "function") renderLayersJetzt();
+  }
+  if ($("#sym").value !== symbol) {
+    $("#sym").value = symbol;
+    $("#sym").dispatchEvent(new Event("change"));
+  } else renderChart();
+}
+
+function wireUnten() {
+  const leiste = $("#markt-unten");
+  leiste.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-unten]"); if (!b) return;
+    S.untenTab = b.dataset.unten;
+    $$("[data-unten]", leiste).forEach((x) => x.setAttribute("aria-selected", String(x === b)));
+    renderUnten();
+  });
+  renderUnten();
+}
+
+const renderStrip = renderUnten;   // alter Name, damit nichts ins Leere ruft
+
 function renderTrades() {
   if (S.view !== "trades") return;
   const all = [...S.botPositions, ...S.positions];
@@ -808,7 +1074,7 @@ async function boot() {
   const syms = await api("/api/market").catch(() => ["BTCUSDT"]);
   $("#sym").innerHTML = syms.map((s) => `<option value="${s}">${s.replace("USDT", "/USDT")}</option>`).join("");
   $("#sym").value = S.symbol;
-  wireShell(); wireChart(); wireSettings(); wireManual();
+  wireShell(); wireChart(); wireSettings(); wireManual(); wireUnten();
   setView("markt"); setCenter("chart"); setMode("bot");
   await Promise.all([tickHead(), loadMarket(), tickLive(), tickBook(), tickCalendar(), tickHeatmap(), tickScore(), tickPositions(), tickHistory(), loadSettings(), tickAccount()]);
   setInterval(() => { tickHead(); tickBook(); checkAlerts(); }, 1000);

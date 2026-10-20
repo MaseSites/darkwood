@@ -22,6 +22,7 @@
  */
 
 import { INDIKATOREN } from "./terminal-indikatoren.js";
+import { WERKZEUGE } from "./terminal-zeichnen.js";
 
 const PAD = { left: 56, right: 92, top: 14, bottom: 26 };
 //: Luft zwischen zwei Unterachsen. Zwei Register, nicht eins: 6 px INNERHALB
@@ -48,7 +49,16 @@ export const EBENEN = {
   volumen: "Volumenprofil",
   heatmap: "Orderbuch-Heatmap",
   positionen: "Positionen & Linien",
+  // Keine Chart-Ebenen, sondern SEITENTEILE. Sie stehen trotzdem hier, weil
+  // der Nutzer sie im selben Fenster sucht -- "was sehe ich" ist eine Frage,
+  // und nicht zwei. Der Zeichner ignoriert sie; terminal.js blendet die
+  // Kaesten aus.
+  kalender: "Wirtschaftskalender (Seitenleiste)",
+  orderbuch: "Orderbuch (Seitenleiste)",
 };
+
+//: Welche Eintraege KEINE Chart-Ebenen sind, sondern Seitenteile.
+export const SEITENTEILE = { kalender: "#panel-kalender", orderbuch: "#panel-orderbuch" };
 
 const BAND_EBENE = {
   fvg_bullish: "fvg", fvg_bearish: "fvg",
@@ -320,6 +330,47 @@ export function drawTerminalChart(canvas, view, opts = {}) {
 
   /* ---- Orderbuch-Heatmap am rechten Rand ---- */
   if (on("heatmap") && opts.book) drawHeatmap(ctx, opts.book, { pR, y, lo, hi, pH });
+
+  /* ---- Zeichnungen des Nutzers ---- */
+  // Nach den Kerzen, vor den Positionslinien: was ein Mensch von Hand
+  // eingezeichnet hat, gehoert ueber den Kurs und unter die Kontozahlen.
+  const zeitZuX = (ts, idx) => {
+    // Rechts der letzten Kerze gibt es keinen Zeitstempel mehr -- dort wird
+    // der gespeicherte Spaltenindex benutzt, sonst klebte jede Zeichnung im
+    // leeren Raum an der letzten Kerze.
+    const i = indexFuerTs(candles, ts);
+    if (i !== null && i < total) return xk(i - Math.max(0, offset));
+    return x(vorn + (idx ?? total) - Math.max(0, offset));
+  };
+  const malen = (d, stift) => {
+    const wz = WERKZEUGE[d.typ]; if (!wz?.male) return;
+    const pix = d.punkte.map((pt) => ({ x: zeitZuX(pt.ts, pt.index), y: y(pt.preis) }));
+    if (pix.some((q) => !Number.isFinite(q.x) || !Number.isFinite(q.y))) return;
+    ctx.save();
+    ctx.lineCap = "butt"; ctx.lineJoin = "miter"; ctx.setLineDash([]);
+    try { wz.male(ctx, pix, stift, { pL, pR, pT, pB, preisText: fmt }, d); } catch { /* eine kaputte Zeichnung darf den Chart nicht nehmen */ }
+    ctx.restore();
+  };
+  ctx.save();
+  ctx.beginPath(); ctx.rect(pL, pT, pR - pL, pB - pT); ctx.clip();
+  for (const d of opts.zeichnungen ?? []) malen(d, { farbe: d.farbe ?? "#f59e0b", dicke: d.dicke ?? 1.4 });
+  // Der angefangene Zug als Vorschau: halb durchsichtig, damit man sieht,
+  // dass er noch nicht sitzt.
+  if (opts.angefangen?.punkte?.length) {
+    const a = opts.angefangen;
+    const wz = WERKZEUGE[a.typ];
+    const genug = wz?.punkte === 0 ? a.punkte.length > 1 : a.punkte.length >= (wz?.punkte ?? 2);
+    ctx.globalAlpha = 0.55;
+    if (genug || wz?.punkte === 0) malen({ ...a, punkte: a.punkte }, { ...(opts.stift ?? {}), farbe: opts.stift?.farbe ?? "#f59e0b", dicke: opts.stift?.dicke ?? 1.4 });
+    // Gesetzte Punkte zeigen, auch wenn der Zug noch nicht vollstaendig ist.
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = opts.stift?.farbe ?? "#f59e0b";
+    for (const pt of a.punkte) {
+      const qx = zeitZuX(pt.ts, pt.index), qy = y(pt.preis);
+      ctx.beginPath(); ctx.arc(qx, qy, 3, 0, 7); ctx.fill();
+    }
+  }
+  ctx.restore();
 
   /* ---- Positionslinien ---- */
   const boxes = [];
