@@ -42,6 +42,7 @@ from pydantic import BaseModel, Field
 from traidingbrain.api.portfolio import account_equity, build_ledger
 from traidingbrain.config.settings import AppConfig
 from traidingbrain.journal.history import konto_schluessel
+from traidingbrain.journal.kontozusatz import etikett
 from traidingbrain.journal.record import Source
 from traidingbrain.live.paperstate import PaperStateStore
 
@@ -851,31 +852,16 @@ def position_tp_sl(pid: str, tp: float | None, sl: float | None) -> dict:
     return {"ok": True}
 
 
-#: Zerlegt einen Kontozusatz: Name, Marginanteil, Hebel, Deckel, Bremsen frei.
-#:
-#: **Von Hand zerlegt ging das schief, und zwar sofort.** Hier stand ein
-#: `rest.split("r", 1)` mit `float(deckel)`. Als der Zusatz am 20.10. abends
-#: ein `f` fuer geloeste Verlustbremsen bekam, lief das auf `float("15f")` --
-#: und das Dashboard startete nicht mehr. Ein Format, das waechst, braucht
-#: einen Parser, der das Unbekannte stehen laesst, statt eines, der annimmt,
-#: er kenne das letzte Zeichen.
-_ZUSATZ = re.compile(r"^(?P<konto>[a-z]+)(?P<anteil>\d+)x(?P<hebel>[\d.]+)"
-                     r"(?:r(?P<deckel>[\d.]+))?(?P<frei>f)?$")
-
-
 def _regel(signatur: str | None) -> str:
-    """Die Groessenregel als kurzes Etikett: `30%x7 · Deckel 1.5% · Bremsen frei`."""
-    if not signatur:
-        return "?"
-    treffer = _ZUSATZ.match(signatur.rsplit("|", 1)[-1])
-    if treffer is None:
-        return "?"
-    teile = [f"{treffer['anteil']}%x{treffer['hebel']}"]
-    if treffer["deckel"]:
-        teile.append(f"Deckel {float(treffer['deckel']) / 10:g}%")
-    if treffer["frei"]:
-        teile.append("Bremsen frei")
-    return " · ".join(teile)
+    """Die Groessenregel als kurzes Etikett: `30%x7 · Deckel 1.5% · Bremsen frei`.
+
+    Zerlegt wird in `journal/kontozusatz.py`. Hier stand bis zum 20.10.2026
+    eine eigene Handzerlegung; als der Zusatz sein `f` bekam, lief sie auf
+    `float("15f")` und das Dashboard startete nicht mehr. Dieselbe Zerlegung
+    gab es ein zweites Mal im Handelsbuch, und sie brach dort erst auf,
+    nachdem diese hier behoben war.
+    """
+    return etikett(signatur)
 
 
 def _frueheres_konto(journal_pfad: Path, aktuelle: str | None) -> list[dict]:
