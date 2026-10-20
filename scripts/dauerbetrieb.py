@@ -135,6 +135,17 @@ AUFGABEN: tuple[Aufgabe, ...] = (
         "--hours 11 --markets BTC,ETH,SOL --book-every 2.5",
         "Buchaufnahme fuer Spread und adverse Selektion (nicht fuer Standzeit).",
     ),
+    #: Der zweite Sammler, und er ersetzt den ersten NICHT. Der Strom liefert
+    #: gemessene 51 ms Median (46x feiner als die Abfrage) und im Trade-Band
+    #: mehr Felder, darunter `maker_position_size_before`. Dafuer sind seine
+    #: Buchebenen aggregiert: einzelne Order-IDs gibt es nur per Abfrage
+    #: (`order_book_orders` antwortet "Invalid Channel"). Standzeit kann nur
+    #: der Strom beantworten, Order-Identitaet nur die Abfrage.
+    Aufgabe(
+        "traidingBrain-ws", "scripts/collect_venue_ws.py",
+        "--hours 11 --markets BTC,ETH,SOL",
+        "Websocket-Aufnahme fuer die Standzeit einer Quote.",
+    ),
 )
 
 
