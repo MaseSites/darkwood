@@ -133,6 +133,41 @@ def kopf(symbol: str) -> Kopf:
     )
 
 
+BINANCE_INTERVALL = {"M1": "1m", "M5": "5m", "M15": "15m", "H1": "1h", "H4": "4h", "D1": "1d", "W1": "1w"}
+
+
+class LiveKerze(BaseModel):
+    symbol: str
+    timeframe: str
+    ts: int
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    closed: bool
+    server_ts: int
+
+
+def live_kerze(symbol: str, timeframe: str) -> LiveKerze:
+    """Die Kerze, die GERADE entsteht -- plus die zuletzt geschlossene.
+
+    Die Marktansicht des Dashboards liefert nur abgeschlossene Kerzen, weil
+    die Analyse nur auf abgeschlossenen entscheidet. Fuer das Auge heisst das:
+    bis zu fuenfzehn Minuten steht der Chart still, waehrend der Kurs oben in
+    der Kopfzeile laeuft. Diese Kerze schliesst die Luecke. Sie ist NUR fuer
+    die Zeichnung da; keine Entscheidung liest sie.
+    """
+    iv = BINANCE_INTERVALL.get(timeframe.upper(), "15m")
+    kl = _get_json(f"{BINANCE}/klines?symbol={symbol}&interval={iv}&limit=2", ttl=2)
+    k = kl[-1]
+    jetzt = int(time.time() * 1000)
+    return LiveKerze(
+        symbol=symbol, timeframe=timeframe.upper(), ts=int(k[0]), open=float(k[1]), high=float(k[2]),
+        low=float(k[3]), close=float(k[4]), volume=float(k[5]), closed=int(k[6]) < jetzt, server_ts=jetzt,
+    )
+
+
 class Orderbuch(BaseModel):
     symbol: str
     bids: list[list[float]]
@@ -771,6 +806,10 @@ def router(services: Any, konto_signatur, state_path, journal_path, followed) ->
     @r.get("/head/{symbol}", response_model=Kopf)
     def _head(symbol: str) -> Kopf:
         return kopf(symbol.upper())
+
+    @r.get("/live-candle/{symbol}", response_model=LiveKerze)
+    def _live(symbol: str, tf: str = "M15") -> LiveKerze:
+        return live_kerze(symbol.upper(), tf)
 
     @r.get("/orderbook/{symbol}", response_model=Orderbuch)
     def _ob(symbol: str, depth: int = 10) -> Orderbuch:
