@@ -289,3 +289,34 @@ def test_eine_signatur_ohne_kontozusatz_bleibt_fuer_sich(store: JournalStore) ->
         entry("live-BTCUSDT-2", run_signature=OTHER),
     ])
     assert len(account_trades(store, signature=SIG)) == 1
+
+
+def test_ein_konfigurationsfeld_ist_kein_kontoname(store: JournalStore) -> None:
+    """Die erste Fassung des Schluessels war zu locker, an echten Daten geprueft.
+
+    Sie nahm den fuehrenden Buchstabenteil des letzten Feldes. Im Live-Journal
+    las sie damit aus `...|refused-v1` das "Konto" `refused` und aus
+    `...|portfolio|cap5` das Konto `cap` -- beides Konfigurationsfelder des
+    Hauptkontos. Heute harmlos, weil jede dieser Signaturen fuer sich steht;
+    ein spaeteres `cap12` waere aber mit `cap5` in einen Topf gefallen, und
+    das ist der Fehler vom 12.10.2026 auf dem Rueckweg.
+
+    Ein Kontozusatz hat die Form, die `signatur_zusatz()` erzeugt:
+    Name, Marginanteil, "x", Hebel. Alles andere ist kein Konto.
+    """
+    kopf = "1000.0|['A', 'B']|0.08|M15|refused-v1|portfolio"
+    assert konto_schluessel(f"{kopf}|cap5") != konto_schluessel(f"{kopf}|cap12")
+    assert konto_schluessel(f"{kopf}|cap5") == konto_schluessel(f"{kopf}|cap5")
+    # Ohne Zusatz ist der Schluessel die ganze Signatur -- es gibt keine
+    # zweite Groessenregel, die man zusammenfassen koennte.
+    assert konto_schluessel(f"{kopf}|cap5")[1] == ""
+    assert konto_schluessel("1000.0|['A']|0.08|M15|refused-v1")[1] == ""
+    # Und die echte Form wird weiterhin erkannt.
+    assert konto_schluessel(f"{kopf}|plan30x7r15f")[1] == "plan"
+    assert konto_schluessel(f"{kopf}|demo50x10")[1] == "demo"
+
+    store.record([
+        entry("live-BTCUSDT-1", run_signature=f"{kopf}|cap5"),
+        entry("live-BTCUSDT-2", run_signature=f"{kopf}|cap12"),
+    ])
+    assert len(account_trades(store, signature=f"{kopf}|cap5")) == 1

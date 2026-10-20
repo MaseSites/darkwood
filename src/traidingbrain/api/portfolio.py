@@ -36,6 +36,7 @@ from traidingbrain.api.chart import Candle
 from traidingbrain.config.settings import AppConfig
 from traidingbrain.data.store import ParquetStore
 from traidingbrain.domain.enums import Side
+from traidingbrain.journal.history import konto_schluessel
 from traidingbrain.journal.era import current_era, era_count
 from traidingbrain.journal.record import JournalEntry, Source
 from traidingbrain.journal.store import JournalStore
@@ -738,10 +739,24 @@ def _nur_dieses_konto(
     `None` heisst ausdruecklich "alles": das bestehende Konto hat unter drei
     Signaturen gehandelt -- 18 Zeilen ohne (von vor der Signatur), 9 vor und 6
     nach der Portfolioumstellung -- und sie gehoeren alle ihm.
+
+    **Sechstes Mal, 20.10.2026 abends: der Name stimmte, die Rechnung nicht.**
+    Hier stand ein Vergleich auf die GANZE Signatur, deren letztes Feld die
+    Groessenregel traegt. Damit zeigte der Konto-Reiter "Trades 0" und
+    "PNL Today +0 USD" fuer ein Konto, das am selben Tag elf Trades und
+    -99 USD gemacht hatte -- waehrend der Hoechstrueckgang danebenstand und
+    -10 % sagte, weil DER aus der Kapitalkurve kommt und nicht aus dem
+    Journal. Zwei Grundgesamtheiten in einer Tafel.
+
+    Der Schluessel kommt jetzt aus `journal/history.konto_schluessel`, also
+    aus derselben Funktion, nach der seit heute Abend auch die Verlustbremsen
+    zaehlen. Eine Ansicht, die ein anderes Konto zeigt als die Bremse zaehlt,
+    waere schlimmer als beide Fehler einzeln.
     """
     if not signature:
         return entries
-    return [entry for entry in entries if entry.run_signature == signature]
+    schluessel = konto_schluessel(signature)
+    return [e for e in entries if konto_schluessel(e.run_signature) == schluessel]
 
 
 def build_ledger(

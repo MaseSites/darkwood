@@ -38,6 +38,8 @@ sind wenig; sie sind zuordenbar.
 
 from __future__ import annotations
 
+import re
+
 from traidingbrain.domain.enums import STATE_OF_EXIT, Side
 from traidingbrain.domain.proposal import ClosedTrade
 from traidingbrain.journal.record import JournalEntry, Source
@@ -78,6 +80,21 @@ def as_closed_trade(entry: JournalEntry) -> ClosedTrade | None:
     )
 
 
+#: Die Form, die `scripts/plantrade.signatur_zusatz()` erzeugt:
+#: Name, Marginanteil, "x", Hebel, optional Risikodeckel und das Zeichen fuer
+#: geloeste Verlustbremsen -- `plan30x7`, `plan30x7r15f`, `demo50x10`.
+#:
+#: **Warum eine Form und nicht "der fuehrende Buchstabenteil".** Die erste
+#: Fassung nahm einfach die Buchstaben am Anfang des letzten Feldes. An echten
+#: Journaldaten geprueft las sie aus `...|refused-v1` das "Konto" `refused`
+#: und aus `...|portfolio|cap5` das Konto `cap` -- das sind
+#: Konfigurationsfelder des Hauptkontos, keine Kontonamen. Heute harmlos, weil
+#: jede dieser Signaturen fuer sich steht; aber ein spaeteres `cap12` waere
+#: mit `cap5` in einen Topf gefallen, und das ist genau der Fehler vom
+#: 12.10.2026 (Konfigurationsepochen zusammengezaehlt) auf dem Rueckweg.
+_KONTO_ZUSATZ = re.compile(r"^([a-z]+)\d+x[\d.]+")
+
+
 def konto_schluessel(signature: str) -> tuple[str, str]:
     """Welches KONTO eine Laufsignatur bezeichnet, ohne dessen Groessenregel.
 
@@ -86,18 +103,24 @@ def konto_schluessel(signature: str) -> tuple[str, str]:
         1000.0|['A', 'B', ...]|1.0|M15|refused-v1|portfolio|cap5|crv0.01|plan30x7r15f
         <------------------ Konfiguration ------------------>|<-- Konto+Regel -->
 
-    Das letzte Feld ist der Kontozusatz. Sein fuehrender Buchstabenteil nennt
-    das KONTO (``plan``), der Rest die Groessenregel (``30x7r15f``). Dieser
-    Schluessel behaelt die Konfiguration und wirft die Groessenregel weg, so
-    dass ``plan30x7``, ``plan30x7r15`` und ``plan30x7r15f`` denselben
-    Schluessel ergeben -- und ein anderes Konto oder eine andere
-    Setup-Auswahl weiterhin einen anderen.
+    Traegt das letzte Feld die Form eines Kontozusatzes, nennt sein
+    Buchstabenteil das KONTO (``plan``) und der Rest die Groessenregel
+    (``30x7r15f``): der Schluessel behaelt die Konfiguration und wirft die
+    Groessenregel weg, so dass ``plan30x7``, ``plan30x7r15`` und
+    ``plan30x7r15f`` denselben Schluessel ergeben.
+
+    Traegt es diese Form NICHT -- wie bei jedem Konto ohne Zusatz -- dann ist
+    der Schluessel die ganze Signatur. Ohne Zusatz gibt es keine zweite
+    Groessenregel, die man zusammenfassen koennte, und eine Signatur, die man
+    nicht sicher zerlegen kann, bleibt besser fuer sich.
     """
-    prefix, _, zusatz = signature.rpartition("|")
-    i = 0
-    while i < len(zusatz) and zusatz[i].isalpha():
-        i += 1
-    return prefix, zusatz[:i]
+    prefix, trenner, zusatz = signature.rpartition("|")
+    if not trenner:
+        return signature, ""
+    treffer = _KONTO_ZUSATZ.match(zusatz)
+    if treffer is None:
+        return signature, ""
+    return prefix, treffer.group(1)
 
 
 def account_trades(
