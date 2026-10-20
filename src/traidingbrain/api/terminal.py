@@ -514,7 +514,15 @@ def bot_settings_lesen(state_path: Path, config: AppConfig, signature: str) -> B
     p = _lese_plan_yaml()
     margin_pct = float(p.get("margin_share", 0.30)) * 100
     hebel = float(p.get("leverage", 7.0))
+    # Von der PLATTE, nicht aus der zwischengespeicherten Konfiguration: nach
+    # einem Apply steht in risk.yaml schon der neue Wert, waehrend `config`
+    # bis zum Neustart den alten traegt. Das Formular soll zeigen, was gilt.
     min_rr = float(config.risk.limits.min_reward_risk)
+    if RISK_YAML.exists():
+        import re
+        m = re.search(r"^\s*min_reward_risk:\s*([0-9.]+)", RISK_YAML.read_text(encoding="utf-8"), re.M)
+        if m:
+            min_rr = float(m.group(1))
     return BotSettingsView(
         initial_margin_usd=round(kapital * margin_pct / 100, 2),
         margin_pct=round(margin_pct, 1),
@@ -572,6 +580,23 @@ def bot_settings_anwenden(s: BotSettings) -> dict:
             RISK_YAML.write_text(text2, encoding="utf-8")
 
     schritte = []
+    # Das Dashboard selbst muss AUCH neu starten: seine Konfiguration ist beim
+    # Start gelesen und zwischengespeichert, und die Laufsignatur haengt am
+    # Chance-Risiko und am Zusatz aus plan.yaml. Ohne Neustart suchte es die
+    # Trades des Haendlers ab dem ersten Apply unter dem alten Schluessel.
+    # Abgesetzt und NICHT abgewartet, damit diese Antwort noch ankommt; die
+    # Seite laedt sich nach einer halben Minute selbst nach.
+    subprocess.Popen(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+         'Start-Sleep -Seconds 4; Stop-ScheduledTask -TaskName "traidingBrain-dash-plan"; '
+         'Start-Sleep -Seconds 3; Get-CimInstance Win32_Process -Filter "Name=\'python.exe\'" | '
+         'Where-Object { $_.CommandLine -like "*run_dashboard*plan*" } | '
+         'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; '
+         'Start-Sleep -Seconds 2; Start-ScheduledTask -TaskName "traidingBrain-dash-plan"'],
+        creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        close_fds=True,
+    )
+    schritte.append("Dashboard startet in ~5 s neu")
     if s.auto_trader:
         r = _ps(f'Stop-ScheduledTask -TaskName "{PLANKONTO_AUFGABE}"; Start-Sleep -Seconds 3; '
                 f'Get-CimInstance Win32_Process -Filter "Name=\'python.exe\'" | '

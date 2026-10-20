@@ -250,7 +250,7 @@ async function tickPositions() {
     S.botPositions = bot.map((p) => ({
       id: `bot-${p.symbol}`, symbol: p.symbol, side: p.side, qty: p.qty, entry: p.entry_price ?? p.entry, leverage: p.leverage,
       margin: p.margin, tp: p.target, sl: p.stop, opened_ts: p.opened_ts, last: p.last_price ?? p.last, unrealized: p.unrealised ?? p.unrealized ?? 0,
-      position_size: (p.qty ?? 0) * (p.entry_price ?? p.entry ?? 0), source: "bot",
+      position_size: p.notional ?? (p.qty ?? 0) * (p.entry ?? 0), source: "bot",
     }));
   } catch (e) { /* alte Werte bleiben */ }
   renderBottom(); renderChart();
@@ -354,7 +354,7 @@ function wireSettings() {
       fix_crv: $("#bs-fixcrv").getAttribute("aria-checked") === "true", crv: Number($("#bs-crv").value),
       auto_trader: $("#bs-auto").getAttribute("aria-checked") === "true", min_bot_rating: Number($("#bs-rating").value),
     };
-    try { const r = await api("/api/terminal/bot-settings", { method: "POST", body: JSON.stringify(body) }); flash($("#bs-msg"), `Angewendet. ${r.schritte.join(" ")}`, "ok"); await loadSettings(); }
+    try { const r = await api("/api/terminal/bot-settings", { method: "POST", body: JSON.stringify(body) }); flash($("#bs-msg"), `Angewendet. ${r.schritte.join(" ")} -- Seite laedt in 30 s nach.`, "ok"); setTimeout(() => location.reload(), 30000); }
     catch (err) { flash($("#bs-msg"), err.message, "err"); }
     finally { btn.removeAttribute("aria-busy"); btn.textContent = "Apply"; }
   });

@@ -76,3 +76,27 @@ def test_history_karte_rechnet_treffer_und_summe() -> None:
     s = score("LTCUSDT", _score_read(), {"setups": [], "gate": {}, "events": [], "bands": []}, None, None, rows)
     h = next(k for k in s.cards if k.key == "history")
     assert h.measured and "2 Trades" in h.text and "50 % Treffer" in h.text and "+0.10 R" in h.text
+
+
+def test_dashboard_und_haendler_bilden_denselben_signaturzusatz() -> None:
+    """Der Fehler vom 20.10. mittags, mechanisch ausgeschlossen.
+
+    Das Dashboard suchte seine Trades unter `plan30x7`, waehrend der Haendler --
+    nach einem Apply im Terminal -- unter `plan50x10` schreiben kann. Beide
+    muessen denselben Zusatz aus derselben Funktion bilden, sonst ist die
+    Trade-Ansicht nach dem ersten Apply leer und die Verlustbremsen blind.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    import plantrade
+    import run_dashboard
+
+    assert plantrade.signatur_zusatz(0.30, 7.0) == "plan30x7"
+    assert plantrade.signatur_zusatz(0.50, 10.0) == "plan50x10"
+    assert plantrade.signatur_zusatz(0.25, 7.5) == "plan25x7.5"
+    speicher, zusatz, etikett, _port, _einsatz = run_dashboard.KONTEN["plan"]
+    assert speicher == plantrade.STATE_NAME
+    assert zusatz == plantrade.SIGNATUR_ZUSATZ
+    assert str(int(round(plantrade.MARGIN_ANTEIL * 100))) in etikett

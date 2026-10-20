@@ -78,9 +78,19 @@ _PLAN = _plan_yaml()
 MARGIN_ANTEIL = float(_PLAN.get("margin_share", MARGIN_ANTEIL))
 HEBEL = float(_PLAN.get("leverage", HEBEL))
 
+
+def signatur_zusatz(margin_share: float, leverage: float) -> str:
+    """`plan30x7` aus (0.30, 7.0). EINE Funktion dafuer, damit Haendler und
+    Dashboard denselben Zusatz bilden -- am 20.10. suchte das Dashboard seine
+    Trades unter einem anderen Schluessel als der Haendler sie schrieb, und die
+    Trade-Ansicht war leer. Dieselbe Funktion an beiden Stellen macht das
+    mechanisch unmoeglich statt bloss unerwuenscht."""
+    return f"plan{int(round(margin_share * 100))}x{leverage:g}"
+
+
 #: Das Etikett in der Laufsignatur. Ohne es liessen sich die Zeilen dieses
 #: Kontos mit denen des anderen mitteln, und genau das darf nicht passieren.
-SIGNATUR_ZUSATZ = f"plan{int(round(MARGIN_ANTEIL * 100))}x{HEBEL:g}"
+SIGNATUR_ZUSATZ = signatur_zusatz(MARGIN_ANTEIL, HEBEL)
 
 #: Der Risikodeckel DIESES Kontos.
 #:

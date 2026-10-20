@@ -95,7 +95,16 @@ KONTEN: dict[str, tuple[str, str, str, int, float | None]] = {
     # von Anfang an EINE Kasse mit 1.000 -- ohne die Angabe meldete das
     # Dashboard -91,67 %, weil es 12.000 als Einsatz annahm.
     "live": ("paper.sqlite", "", "", DEFAULT_PORT, None),
-    "plan": ("plan_paper.sqlite", "plan30x7", "Plankonto 30%x7", DEFAULT_PORT + 1, 1_000.0),
+    # Zusatz und Etikett kommen vom Haendler selbst (`plantrade`), nicht aus
+    # einer zweiten Abschrift: seit dem Terminal kann "Apply" Margin und Hebel
+    # aendern, und dann heisst der Zusatz `plan50x10`. Ein hier fest
+    # eingetragenes `plan30x7` haette das Dashboard ab dem ersten Apply blind
+    # gemacht -- derselbe Fehler wie am 20.10. mittags, nur neu verpackt.
+    "plan": (
+        plantrade.STATE_NAME, plantrade.SIGNATUR_ZUSATZ,
+        f"Plankonto {int(round(plantrade.MARGIN_ANTEIL * 100))}%x{plantrade.HEBEL:g}",
+        DEFAULT_PORT + 1, 1_000.0,
+    ),
 }
 
 #: Die VORWAERTSREGEL je Konto, oder None.
