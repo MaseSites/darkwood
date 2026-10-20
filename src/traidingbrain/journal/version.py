@@ -63,6 +63,10 @@ _GIT_TIMEOUT_S = 5
 #: Deckel fuer richtig oder falsch haelt, aendert `config/risk.yaml`, nicht
 #: diese Zeile.
 CAP_ANCHOR = 2
+#: Der historische Wert des Mindest-Chance-Risikos. Weicht er ab, wird er
+#: angehaengt; bei 1.5 bleibt die Signatur byte-gleich zu den Zehntausenden
+#: Zeilen, die der Speicher schon haelt.
+CRV_ANKER = 1.5
 
 
 def run_signature(config: object, *, max_bars: int | None = None, shadow: bool = False) -> str:
@@ -116,10 +120,20 @@ def run_signature(config: object, *, max_bars: int | None = None, shadow: bool =
     cap = "" if risk.limits.max_open_positions == CAP_ANCHOR else (
         f"|cap{risk.limits.max_open_positions}"
     )
+    # Das Mindest-Chance-Risiko. Es fehlte hier bis zum 20.10.2026, und das
+    # war eine Luecke derselben Art, die den Deckel oben hineingebracht hat:
+    # von den ZWEI Wirtschaftlichkeitstoren stand nur eines in der Signatur.
+    # Wer den Kostendeckel aenderte, hinterliess eine Spur; wer das
+    # Chance-Risiko aenderte, nicht. Aufgefallen beim Oeffnen beider Tore --
+    # dort faellt es nicht auf, weil der Deckel ohnehin mitwandert, und genau
+    # deshalb waere es beim naechsten Mal durchgerutscht.
+    crv = "" if risk.limits.min_reward_risk == CRV_ANKER else (
+        f"|crv{risk.limits.min_reward_risk:g}"
+    )
     return (
         f"{engine.simulation.initial_equity}|{engine.setups.enabled}|"
         f"{risk.limits.max_cost_fraction_of_risk}|{engine.timeframes.signal.value}"
-        f"|{LEDGER_SCHEMA}{basis}{cap}{bars}{shade}"
+        f"|{LEDGER_SCHEMA}{basis}{cap}{crv}{bars}{shade}"
     )
 
 

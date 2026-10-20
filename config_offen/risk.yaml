@@ -1,0 +1,369 @@
+# Risk and position sizing.
+#
+# The order of reasoning is: risk budget first, then position size, then leverage.
+#
+#   size     = risk_amount / stop_distance
+#   leverage = chosen so that liquidation sits far beyond the stop
+#
+# This is what makes "invest more when the read is strong" safe. A 5,000 CHF
+# position with a 3% stop risks 150 CHF, not 5,000. The position can be large;
+# the loss cannot.
+
+sizing:
+  # Wessen Kapital die Positionsgroesse bemisst: `account` oder `portfolio`.
+  #
+  # Umgestellt am 13.10.2026 auf `portfolio`, auf Wunsch des Nutzers und mit
+  # einer Messung dahinter.
+  #
+  # **Was vorher war.** Der Papierhandel fuehrt zwoelf Konten a 1.000 USDT,
+  # eines je Symbol. Unter `account` bemisst sich jede Position am eigenen
+  # Konto, also riskiert ein Trade 1 % von einem Zwoelftel des Kapitals:
+  # 10,06 USDT, das sind 0,0833 % des Ganzen. Das war keine
+  # Risikoentscheidung, es fiel aus der Kontostruktur -- die zwoelf Konten
+  # sind ein Messgeruest, damit jedes Symbol gegen dasselbe Startkapital
+  # groesst wie die Backtests (`live/paper.py`, Kopf).
+  #
+  # **Was jetzt gilt.** Unter `portfolio` ziehen alle zwoelf aus einer Kasse,
+  # so wie ein echtes Boersenkonto, das mehrere Maerkte haelt. 1 % Risiko
+  # sind dann 120,76 USDT statt 10,06.
+  #
+  # **Warum nicht einfach die Groesse verzwoelffachen.** Gemessen ueber die
+  # 26 bereinigten Vorwaertstrades: bei 1 % des Gesamtkapitals braucht die
+  # Position im schlimmsten Fall 1.733 USDT Margin, und ein Einzelkonto hat
+  # 1.006. Sechs von 26 waeren an `submit` gescheitert -- und zwar die mit
+  # den ENGSTEN Stops, also die Population mit den besseren Bruttozahlen.
+  # Eine Auswahl, die aus einer Verrohrungsgrenze kommt statt aus einer
+  # Entscheidung. Mit geteilter Kasse scheitert keiner von 26.
+  #
+  # **Was die Umstellung NICHT ist.** Sie schafft keinen Vorteil, sie
+  # skaliert. Die Erwartung je Trade liegt nach 7.335 Replay-Trades in
+  # [-0,0868; +0,0594] R, und R ist groessenunabhaengig: zwoelffache Groesse
+  # heisst zwoelffaches Ergebnis in BEIDE Richtungen. Sieben Verluste in
+  # Folge -- die gemessene Serie -- sind damit 7 % Rueckgang statt 0,6 %.
+  #
+  # **Die Vorbedingung, und was davon am Morgen des 13.10.2026 wirklich
+  # erfuellt war.** Hier stand: "die vier Kontogrenzen unten konnten bis
+  # dahin in keinem Prozess ausloesen", und das war zu drei Vierteln wahr.
+  # Ein Audit am selben Tag hat es nachgerechnet:
+  #
+  #   Kill-Switch          scharf
+  #   Tagesverlust         scharf
+  #   Wochenverlust        scharf
+  #   Abkuehlung           scharf
+  #   Zahl der Positionen  TOT -- live/paper.py rief
+  #                        AccountState.from_history ohne `open_positions`,
+  #                        risk/limits.py setzte eine leere Liste ein, und
+  #                        die Pruefungen rechneten `0 >= 2` und `0 >= 1`.
+  #
+  # Also drei von vier, und die Zahl stand in genau der Datei, die die
+  # Verzwoelffachung begruendet. Behoben am Nachmittag des 13.10.2026:
+  # `live/book.py` fuehrt das Buch des gepoolten Kontos, `papertrade.py`
+  # haengt alle zwoelf Symbole ein, und der Deckel unten greift jetzt.
+  #
+  # **Und ein zweiter Posten, der nicht vorhergesagt war: Margin wurde nicht
+  # reserviert.** `ledger.equity` wurde beim Pruefen gelesen und nur beim
+  # Schliessen veraendert; nichts zog beim Eroeffnen etwas ab. Bei zwoelf
+  # getrennten Kassen unsichtbar und richtig, bei einer geteilten ein
+  # Fehler: zwoelf Broker fragten nacheinander "passt mein Margin in die
+  # 12.075?", und zwoelf konnten Ja sagen. An den gemessenen Stopweiten der
+  # 26 Vorwaertstrades:
+  #
+  #   zwoelf gleichzeitig, Median-Stop   je   791  ->   9.496 von 12.076
+  #   zwoelf gleichzeitig, engster Stop  je 1.733  ->  20.796 von 12.076
+  #
+  # Die untere Zeile ist auf einem echten Boersenkonto ein Margin Call.
+  # `_Ledger.reserved` lehnt sie jetzt ab (`sim/broker.py`), und die
+  # Mutationspruefung reproduziert genau die 20.796, wenn man die
+  # Reservierung wieder entfernt.
+  #
+  # Bei 10 USDT Risiko war beides belanglos, bei 121 nicht.
+  #
+  # Rueckgaengig: hier `account` eintragen und den Haendler neu starten. Die
+  # geteilte Kasse bleibt in `data/paper.sqlite` stehen, und `run_signature`
+  # unterscheidet die beiden Epochen -- Trades vor und nach heute sind also
+  # trennbar.
+  basis: portfolio
+
+  # Fraction of equity lost if the stop is hit, by confidence band.
+  # Below min_confidence there is no trade at all.
+  min_confidence: 60
+  tiers:
+    # Severin looked at the first four trades and said the positions were too
+    # small -- "du kannst wirklich auch mit irgendwie 100 Franken mit einem
+    # Zehnerhebel reingehen". That is this number: a hundred francs of margin at
+    # ten times is a thousand of notional, which at a one percent stop is ten
+    # francs of risk, which is one percent of a thousand-franc account.
+    #
+    # It is also the ceiling. `uncalibrated_cap_risk_pct` below holds every tier
+    # at one percent until the history engine shows that higher confidence
+    # really does perform better, so the bands above are unreachable and this
+    # change moves the floor up to meet the cap rather than past it.
+    - { min_confidence: 60, risk_pct: 0.010 }
+    - { min_confidence: 70, risk_pct: 0.010 }
+    - { min_confidence: 80, risk_pct: 0.020 }
+    - { min_confidence: 90, risk_pct: 0.030 }
+
+  # Until the history engine has demonstrated that high-confidence setups actually
+  # perform better, no tier above this is reachable -- the tiers above are capped
+  # down to it. A model's confidence is not a calibrated probability on day one,
+  # and an uncalibrated number must not be allowed to size a position.
+  #
+  uncalibrated_cap_risk_pct: 0.010
+
+  # The gate. False until a reviewed measurement shows the upper confidence bands
+  # really do earn more risk, and while it is false the cap above holds no matter
+  # how much data exists.
+  #
+  # It exists because the sample count below was doing this job and could not.
+  # The count was compared against `snapshot.history.similar_situations_found` --
+  # the usable neighbours of a *single bar*, at most `history.k_neighbours` (120)
+  # and fewer after the distance filter and deduplication. Against a threshold of
+  # 200 the comparison was true at every decision, so the one percent cap that
+  # has held every trade so far held by arithmetic accident, not by decision. A
+  # safety property that holds for the wrong reason would have gone on holding
+  # silently on the day the evidence justified lifting it.
+  #
+  # It is also the wrong question: "this bar has 200 lookalikes" is a fact about
+  # locality, not evidence that a confidence number is calibrated. Answering the
+  # real question needs the confidence stored with each resolved case, which
+  # `history.Case` does not carry yet -- that is the open work, not this switch.
+  #
+  # Flipping this to true makes settings.py check that the threshold below is
+  # reachable, so the contradiction cannot come back quietly.
+  calibration_proven: false
+
+  # Necessary, not sufficient: even with calibration proven, this many cases must
+  # support it. Counted over the evidence base, which is what the caller must be
+  # changed to pass -- today it passes one bar's neighbourhood.
+  min_samples_for_uncap: 200
+
+  # Hard ceiling regardless of confidence, calibration or manual override.
+  absolute_max_risk_pct: 0.030
+
+leverage:
+  # Liquidation must sit at least this many stop-distances beyond the stop.
+  # The stop is where the plan says the trade is wrong; liquidation is where the
+  # exchange says the trade is over. The second must never arrive first.
+  min_liquidation_buffer_r: 2.5
+  max: 10.0
+  # Leverage is derived, never taken from the model. The user may lower it in the
+  # dashboard -- lowering only widens the liquidation buffer, so it is always safe.
+  allow_user_increase: false
+
+limits:
+  # Gilt fuer EIN Boersenkonto, das mehrere Symbole gleichzeitig halten kann.
+  #
+  # **Seit dem 13.10.2026 ist der Papierhandel genau so ein Konto, und damit
+  # gilt die Grenze auch dort.** Der Text, der hier bis dahin stand, war
+  # richtig, als er geschrieben wurde, und mit der Zusammenlegung der Kassen
+  # am selben Tag falsch geworden. Er sagte zweierlei:
+  #
+  #   "Im Papierhandel ist sie wirkungslos, und das ist kein Defekt" -- weil
+  #   zwoelf getrennte Konten mit je einem Einplatz-Broker keinen Wert dieser
+  #   Einstellung spueren koennen. Stimmte. Gilt nicht mehr.
+  #
+  #   "Eine Portfoliogrenze wurde geprueft und verworfen -- sie poolt Konten,
+  #   die live/paper.py absichtlich getrennt haelt." Diese Trennung gibt es
+  #   seit heute Vormittag nicht mehr; sie wurde auf Wunsch aufgegeben. Das
+  #   Argument ist mit ihr weggefallen.
+  #
+  # Das Audit vom 10.10.2026 hat die Einstellung als "toten
+  # Konfigurationstext" gelesen und Loeschen erwogen. Loeschen waere eine
+  # Sicherheitsregression gewesen und ist es weiter.
+  #
+  # **Was den Deckel ueberhaupt noetig macht.** Die Tagesgrenze unten zaehlt
+  # nur REALISIERTE Verluste. Sie kann nicht greifen, solange die Positionen
+  # offen sind. Was gleichzeitig offenes Risiko begrenzt, ist allein die Zahl
+  # der Plaetze -- ohne Deckel koennen zwoelf Positionen a 1 % gleichzeitig
+  # laufen, also 12 % des Kontos auf einmal, in einem Markt, dessen Beta zu
+  # BTC bei 1.0 gemessen wurde. Mehr als die Wochengrenze, an einem Tag.
+  #
+  # **Am 14.10.2026 von 2 auf 5 gehoben, auf Anweisung des Nutzers
+  # ("traide mehr"), und die Zahl ist hergeleitet und nicht gewaehlt.**
+  #
+  #     floor(max_daily_loss_pct / risk_pct) = floor(0.05 / 0.010) = 5
+  #
+  # Die Begruendung ist die Tagesgrenze selbst: sie zaehlt nur REALISIERTE
+  # Verluste und kann nicht greifen, solange die Positionen offen sind. Was
+  # gleichzeitig offenes Risiko begrenzt, ist allein die Zahl der Plaetze --
+  # und die passende Zahl ist die, bei der ein vollstaendig schiefgelaufener
+  # Tag genau die Tagesgrenze erreicht und nicht mehr. Fuenf Positionen zu
+  # 1 % sind 5 %, also exakt der Tagesdeckel.
+  #
+  # **Was der alte Wert war und was nicht.** 2 war nie gemessen und nie
+  # entschieden; er stand in der ausgelieferten Konfiguration und galt bis
+  # zum 13.10. fuer nichts, weil zwoelf Einplatz-Broker keinen Wert dieser
+  # Einstellung spueren konnten. Seit die Grenze portfolioweit greift, ist
+  # er der bindende Engpass: am 14.10.2026 um 15:50 UTC waren beide Plaetze
+  # von zwei Trades belegt, die 86,6 und 170,6 Stunden liefen -- gegen einen
+  # Median von 9,75 h und einen bisherigen Hoechstwert von 72,7 h. Das
+  # System konnte in diesem Zustand KEINEN einzigen neuen Trade eroeffnen.
+  #
+  # **Was 5 gegen die Vergangenheit bedeutet: nichts.** Der gemessene
+  # Hoechststand gleichzeitig offener Positionen war genau fuenf
+  # (08.10.2026 20:02 UTC, ADA/AVAX/BNB/BTC/DOT). Ein Deckel von 5 haette
+  # also keinen einzigen bisher genommenen Trade abgelehnt. Er ist scharf
+  # fuer die Zukunft und rueckwirkend wirkungslos -- das ist der Grund,
+  # warum er keine stille Strategieaenderung ist.
+  #
+  # **Was er kostet, und zwar in beide Richtungen.** Die Obergrenze des
+  # Durchsatzes steigt von 4,9 auf 12,3 Trades pro Tag (Plaetze geteilt
+  # durch die Median-Haltedauer). Das gleichzeitig offene Risiko steigt von
+  # 2 % auf 5 % des Kontos. Beides ist gewollt und beides steht hier.
+  #
+  # Nicht angetastet: `max_positions_per_symbol: 1`, der Kostendeckel, die
+  # Tages- und Wochengrenze, die Abkuehlung, der Kill-Switch. Gelockert wird
+  # genau eine Zahl, und sie ist die einzige, die ohne Messung dastand.
+  #
+  # **Was der Deckel kostet, gemessen (E13, scripts/study_concurrency.py,
+  # 7.335 Replay-Trades ueber zwoelf Maerkte, Hoechststand 12 gleichzeitig).**
+  # Auswahlregel vorab festgelegt und arithmetisch, nicht nach dem Ergebnis:
+  #
+  #   Deckel  genommen  abgelehnt  Quote   R/Trade   R TOTAL
+  #        2     3.109      4.226  57.6%   +0.0099     +30.9
+  #        5     5.694      1.641  22.4%   -0.0029     -16.8
+  #       12     7.335          0   0.0%   -0.0129     -94.8
+  #
+  # Und sofort die Einschraenkung, damit die Tabelle nicht als Edge gelesen
+  # wird: die Differenz zwischen Deckel 5 und keinem Deckel liegt bei
+  # korrigiertem Niveau (99.923 %, 65 angemeldete Vergleiche) in
+  # [-0.099; +0.125] R und enthaelt die Null. Der Deckel ist NICHT als
+  # Verbesserung der Erwartung belegt. Er ist eine Schutzregel, und nur als
+  # solche wird er gesetzt.
+  #
+  # Der gemessene Hoechststand VOR dem Deckel war fuenf gleichzeitig
+  # (08.10.2026 20:02 UTC, ADA/AVAX/BNB/BTC/DOT) -- der Vorwaertslauf wird
+  # also sichtbar weniger Trades nehmen als bisher. Das ist der Preis und er
+  # steht hier, damit die sinkende Trade-Zahl nicht spaeter als Defekt
+  # gesucht wird.
+  #
+  # NACHTRAG 16.10.2026 -- was der Deckel von 2 gekostet hat, gemessen.
+  #
+  # Die Begruendung oben war eine Beobachtung: zwei Plaetze von Trades mit
+  # 86,6 h und 170,6 h belegt, also kein neuer Trade moeglich. Der
+  # Signalspeicher sagt es genauer. Ueber 153 Live-Signale aus drei
+  # Konfigurationen:
+  #
+  #     kosten           72   47.1 %
+  #     chance_risiko    52   34.0 %
+  #     genommen         17   11.1 %
+  #     grenzen          12    7.8 %
+  #
+  # Die Pruefungen laufen NACHEINANDER: `kosten` und `chance_risiko` in
+  # `sim/plan.py:assess`, die Kontogrenzen erst danach in
+  # `live/paper.py:_blocked_by_limits`. 124 Signale scheitern an der
+  # Wirtschaftlichkeit, 29 erreichen die Grenzenpruefung -- und davon
+  # werden 12 abgelehnt, also 41 %.
+  #
+  # Alle zwoelf tragen denselben Grund, "2 positions already open
+  # (limit 2)", und alle fallen in die fuenf Stunden des 14.10. zwischen
+  # 09:00 und 14:00, bevor der Deckel gehoben wurde. Sieben verschiedene
+  # Maerkte wollten in diesem Fenster hinein. Seit `cap5`: null
+  # Grenzen-Ablehnungen.
+  #
+  # Das praezisiert die Aussage "der Deckel blockierte alles": er
+  # blockierte 41 % der Signale, die die Wirtschaftlichkeitspruefung
+  # ueberstanden hatten. Der Kostendeckel lehnt sechsmal so viele ab --
+  # und der bleibt, weil die von ihm abgelehnte Population gemessen
+  # brutto-negativ ist mit einem Intervall ohne Null.
+  max_open_positions: 5
+  max_positions_per_symbol: 1
+  max_daily_loss_pct: 0.05
+  max_weekly_loss_pct: 0.10
+  # After this many consecutive losses, stop proposing until a human resets it.
+  cooldown_after_consecutive_losses: 3
+  cooldown_hours: 24
+  min_reward_risk: 0.01
+
+  # Ceiling on what a round trip may cost, as a fraction of the amount risked.
+  #
+  # This is the rule that was missing, and its absence was the single largest
+  # drag on the first backtests. Position size is risk divided by stop distance,
+  # so a tight stop buys a large position -- and fees scale with the position,
+  # not with the risk. At a stop 0.18% from entry, a round trip costs 42% of what
+  # is being risked, and no win rate recovers that.
+  #
+  # Enforcing a ratio rather than a minimum stop distance keeps the rule tied to
+  # the thing that actually matters: 0.08 means transaction costs may consume at
+  # most eight percent of the risk budget, whatever the volatility happens to be.
+  #
+  # Lowered from 0.15 on 05.10.2026 by `scripts/study_costcap.py`, over 3,300
+  # labelled trades on four markets. Loosening this rule was already the worst
+  # group in the register (-0.2996 R); tightening it had never been measured.
+  #
+  #   cap    trades   share   R/trade   R TOTAL   vs 0.15
+  #   0.15    1652   99.3%   -0.0120     -19.7       --
+  #   0.08     786   47.2%   +0.0360     +28.3    +48.1
+  #   0.04     275   16.5%   +0.1148     +31.6    +51.3
+  #
+  # Decided on R TOTAL, not R per trade: a tighter cap takes fewer trades, so
+  # the mean can rise while the account loses the same.
+  #
+  # **What is certain and what is not, because the difference decides how much
+  # to believe this.** `net_r` is `gross - cost - funding` and the cost
+  # fraction IS the cost in R, so filtering on it raises net R partly by
+  # construction -- correlation +0.83 with the cost removed. Decomposed, cheap
+  # trades against the rest:
+  #
+  #   cost    -0.0395  [-0.041, -0.038]   certain, and arithmetic
+  #   gross   +0.0799  [-0.033, +0.195]   NOT established
+  #   net     +0.1190  [+0.005, +0.234]
+  #
+  # So a third of the gain is guaranteed and two thirds is an open question.
+  # Read conservatively -- gross difference zero, which its interval permits --
+  # this moves a trade from about -0.054 R to about -0.015 R. Still negative,
+  # 3.6 times less so, purely from paying the toll less often. It is not an
+  # edge and must not be reported as one.
+  #
+  # **The open question is answered, 07.10.2026.** The four-market measurement
+  # above had the gross difference at +0.0799 R with an interval of
+  # [-0.033, +0.195] -- straddling zero, which is why two thirds of the gain
+  # was undecided. Twelve markets and 43,727 signals later
+  # (`python scripts/study_costcap.py --with-refused --symbols <all twelve>`):
+  #
+  #   cheap vs expensive at cap 0.08, 6,525 against 20,847 signals
+  #   gross   +0.0190 vs -0.0371   difference +0.0561  [+0.017, +0.097]  EXCLUDES ZERO
+  #   cost    +0.0291 vs +0.1741   difference -0.1450  [-0.162, -0.134]
+  #   net     -0.0097 vs -0.2111   difference +0.2013  [+0.157, +0.250]
+  #
+  # So the gross difference is real: cheap trades capture more movement, not
+  # just pay less toll. The conservative reading (-0.015 R) was too
+  # pessimistic; measured, a cheap trade runs at -0.0097 R.
+  #
+  # **And it still is not an edge.** R per trade at cap 0.08 is +0.0107 with
+  # an interval of [-0.041, +0.061] -- that one straddles zero. What is
+  # established is the *difference* between the two populations, not that the
+  # cheap population is profitable. R TOTAL at 0.08 is +31.5 against -179.6
+  # at 0.15, and the sweep replicates at 1.11x in the earlier half.
+  #
+  # **Why 0.08 and not 0.04, which measured better.** 0.08 keeps 94% of the
+  # improvement with 2.9 times the trade flow. The forward journal is at seven
+  # trades and is the only evidence replay cannot produce; at 0.04 it would
+  # reach about eight by the end of October instead of about fifty. The
+  # criterion is evidence throughput, stated before the sweep was read, which
+  # is also what keeps this from being a parameter fitted to its own best cell.
+  #
+  # **Checked after the fact on 06.10.2026, because a criterion nobody verifies
+  # is just a nicer way of picking the number you wanted.** The forward counters
+  # across the twelve paper accounts: 54 setups proposed on 1,320 evaluated
+  # candles, 46 refused by the risk layer, 8 opened -- an acceptance rate of
+  # 14.8%, and 8 trades over 3.5 days is 2.3 a day. Carried to 30.10 that is
+  # roughly 60 forward trades, against the "about fifty" predicted above. The
+  # throughput argument for 0.08 over 0.04 therefore held; it was not a story
+  # told to justify the looser cap.
+  #
+  # The holdout window is untouched (0 consultations) and was NOT spent on
+  # this. It did not need to be: the certain component is arithmetic, and the
+  # uncertain one is openly undecided above.
+  max_cost_fraction_of_risk: 1.0
+
+execution:
+  # A confirmed proposal is re-priced before it is sent. Drift beyond this and the
+  # proposal is invalidated and rebuilt rather than quietly adjusted -- a trade at
+  # a different price is a different trade.
+  max_price_drift_bps: 15
+  confirmation_token_ttl_seconds: 60
+  proposal_ttl_seconds: 900
+  # Seconds after a fill within which a stop must exist on the exchange.
+  # The watchdog closes the position if it does not.
+  stop_watchdog_deadline_seconds: 2

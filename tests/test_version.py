@@ -49,6 +49,13 @@ def _stub() -> SimpleNamespace:
                 # Der Wert ist der historische Anker (`CAP_ANCHOR`), damit
                 # die eingefrorene Zeichenkette unten keinen Zusatz traegt.
                 max_open_positions=2,
+                # Seit dem 20.10. auch das Mindest-Chance-Risiko, aus
+                # demselben Grund wie die beiden darueber: von den ZWEI
+                # Wirtschaftlichkeitstoren stand nur eines in der Signatur,
+                # also hinterliess eine Aenderung des anderen keine Spur.
+                # Wieder der historische Anker (`CRV_ANKER`), damit die
+                # eingefrorene Zeichenkette keinen Zusatz traegt.
+                min_reward_risk=1.5,
             ),
             # Seit dem 13.10. liest die Signatur auch die
             # Groessenbemessung: `account` heisst "jedes Symbol gegen sein
@@ -189,3 +196,25 @@ def test_the_plain_signature_is_unchanged_by_the_new_option() -> None:
 
     assert run_signature(config, shadow=False) == run_signature(config)
     assert run_signature(config, max_bars=400, shadow=True).endswith("|400bars|shadow")
+
+
+def test_das_chance_risiko_hinterlaesst_eine_spur() -> None:
+    """Weicht `min_reward_risk` vom Anker ab, steht es in der Signatur.
+
+    Der Anlass ist konkret: am 20.10.2026 wurden auf Anweisung des Nutzers
+    BEIDE Wirtschaftlichkeitstore des Plankontos geoeffnet. Dort faellt die
+    fehlende Spur nicht auf, weil der Kostendeckel ohnehin mitwandert und die
+    Signatur dadurch verschieden ist. Genau deshalb waere sie beim naechsten
+    Mal -- wenn jemand NUR das Chance-Risiko bewegt -- durchgerutscht, und
+    die Zeilen davor und danach waeren nicht mehr trennbar gewesen.
+    """
+    from traidingbrain.journal.version import CRV_ANKER
+
+    anker = _stub()
+    assert anker.risk.limits.min_reward_risk == CRV_ANKER
+    assert "|crv" not in run_signature(anker)
+
+    geaendert = _stub()
+    geaendert.risk.limits.min_reward_risk = 0.01
+    assert "|crv0.01" in run_signature(geaendert)
+    assert run_signature(geaendert) != run_signature(anker)

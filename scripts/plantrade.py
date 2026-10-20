@@ -64,19 +64,32 @@ SIGNATUR_ZUSATZ = f"plan{int(MARGIN_ANTEIL * 100)}x{int(HEBEL)}"
 PLAN_MAX_RISIKO = 0.35
 
 
-def plan_config() -> AppConfig:
+def plan_config(config_dir: Path | None = None) -> AppConfig:
     """Die Konfiguration dieses Kontos.
 
-    **Unveraendert gegenueber der produktiven.** Der erste Entwurf setzte hier
-    `absolute_max_risk_pct` hoch -- das waere ein vorgetaeuschter Deckel
+    **Der echte Deckel sitzt im Sizer** (`forward_sizer(max_risk_share=...)`)
+    und prueft das gerechnete Risiko gegen das Konto. Der erste Entwurf setzte
+    hier `absolute_max_risk_pct` hoch -- das waere ein vorgetaeuschter Deckel
     gewesen: jener Wert begrenzt das RISIKOBUDGET, und der Vorwaerts-Sizer
-    liest kein Budget. Er haette also nichts getan und trotzdem nach Schutz
-    ausgesehen.
+    liest kein Budget.
 
-    Der echte Deckel sitzt im Sizer (`forward_sizer(max_risk_share=...)`) und
-    prueft das gerechnete Risiko gegen das Konto.
+    **`--config-dir`, und warum es ein eigenes Verzeichnis sein muss.** Am
+    20.10.2026 wurde auf Anweisung des Nutzers entschieden, die beiden
+    Wirtschaftlichkeitstore dieses Kontos zu oeffnen. Der naheliegende Weg --
+    `config/risk.yaml` aendern -- waere falsch gewesen, und zwar aus zwei
+    Gruenden, die beide nichts mit der Entscheidung selbst zu tun haben:
+
+    * Die Datei gilt GLOBAL. Sie haette auch das bestehende Papierkonto auf
+      127.0.0.1:8787 umgestellt, das niemand umstellen wollte.
+    * Der E17-Replay laeuft gerade ueber 68 Maerkte und liest dieselbe Datei.
+      Seine vier Straenge starten bei einem Absturz neu -- ein Neustart haette
+      die neue Konfiguration gelesen und die Stichprobe auf zwei Codestaende
+      verteilt. Genau das, was E17 ueberhaupt erst noetig gemacht hat.
+
+    Darum ein zweites Verzeichnis. Die Laufsignatur traegt die geaenderten
+    Werte, also bleiben die Trades davor und danach unterscheidbar.
     """
-    return load_config()
+    return load_config(config_dir)
 
 
 def main() -> int:
@@ -84,9 +97,14 @@ def main() -> int:
     parser.add_argument("--cycles", type=int, default=None)
     parser.add_argument("--status", action="store_true")
     parser.add_argument("--offline", action="store_true")
+    parser.add_argument(
+        "--config-dir", type=Path, default=None,
+        help="Eigenes Konfigurationsverzeichnis. Ohne Angabe gilt config/. "
+             "Mit config_offen/ sind die beiden Wirtschaftlichkeitstore offen.",
+    )
     args = parser.parse_args()
 
-    config = plan_config()
+    config = plan_config(args.config_dir)
     print("=" * 70)
     print("PLANKONTO -- getrennt vom bestehenden Papierkonto")
     print("=" * 70)
@@ -94,6 +112,17 @@ def main() -> int:
     print(f"  Kontospeicher   {config.engine.paths.data_dir / STATE_NAME}")
     print(f"  Signaturzusatz  {SIGNATUR_ZUSATZ}")
     print(f"  Risikodeckel    {PLAN_MAX_RISIKO:.0%} je Trade, IM SIZER geprueft")
+    # Die beiden Wirtschaftlichkeitstore in Klartext. Sie stehen hier, weil
+    # sie seit dem 20.10. nicht mehr selbstverstaendlich sind: wer das Log
+    # liest, soll ohne Nachsehen wissen, welches Konto er vor sich hat.
+    _tore_offen = (config.risk.limits.max_cost_fraction_of_risk >= 1.0
+                   or config.risk.limits.min_reward_risk <= 0.1)
+    print(f"  Kostentor       {config.risk.limits.max_cost_fraction_of_risk:.2f}"
+          f"   CRV-Tor {config.risk.limits.min_reward_risk:.2f}"
+          f"   {'<<< OFFEN' if _tore_offen else '(produktiv)'}")
+    if _tore_offen:
+        print("                  Gemessen auf 3.553 abgelehnten Signalen:")
+        print("                  -0.1464 R je Trade. Auf ausdrueckliche Anweisung.")
     print(f"                  (produktiv sind es "
           f"{config.risk.sizing.absolute_max_risk_pct:.0%} auf dem Budgetpfad,")
     print("                   den diese Regel nicht benutzt -- unberuehrt)")

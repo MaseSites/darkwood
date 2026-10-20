@@ -93,9 +93,31 @@ class Aufgabe:
 
 
 AUFGABEN: tuple[Aufgabe, ...] = (
+    #: `--config-dir config_offen` seit dem 20.10.2026, auf ausdrueckliche
+    #: Anweisung des Nutzers: beide Wirtschaftlichkeitstore offen
+    #: (Kostendeckel 1.0 statt 0.08, Chance-Risiko 0.01 statt 1.5).
+    #:
+    #: WAS DAGEGEN SPRICHT, und es ist gemessen, nicht vermutet: ueber 3.553
+    #: abgelehnte Signale eines Marktes liegt das Netto bei -0.1464 R je
+    #: Trade, gegen -0.0323 R der genommenen. Brutto sind die abgelehnten
+    #: fast gleichauf (-0.0334 gegen -0.0013) und treffen sogar OEFTER
+    #: (45 % gegen 39 %) -- sie haben nur engere Stops, und dieselbe Gebuehr
+    #: frisst dann einen groesseren Teil des Risikos. Genau das behauptet die
+    #: Kostenregel. Hochgerechnet auf den gemessenen Takt: rund -29 USD am
+    #: Tag, nach 30 Tagen 412 statt 1.000.
+    #:
+    #: WARUM ES TROTZDEM SO LAEUFT: der Nutzer hat es nach Vorlage dieser
+    #: Zahlen entschieden. Die Entscheidung ist seine; die Aufgabe hier ist,
+    #: sie sauber auszufuehren und nachlesbar zu machen.
+    #:
+    #: NICHT global geaendert, und das ist kein Detail: `config/risk.yaml`
+    #: haette auch das Konto auf 8787 umgestellt und -- schlimmer -- den
+    #: laufenden E17-Replay, dessen Straenge bei einem Absturz neu starten
+    #: und dann eine andere Konfiguration gelesen haetten.
     Aufgabe(
-        "traidingBrain-plankonto", "scripts/plantrade.py", "",
-        "Der Papierhaendler des Plankontos (30 % Margin x 7x).",
+        "traidingBrain-plankonto", "scripts/plantrade.py",
+        "--config-dir config_offen",
+        "Papierhaendler des Plankontos (30 % Margin x 7x), Tore OFFEN.",
     ),
     Aufgabe(
         "traidingBrain-dash-plan", "scripts/run_dashboard.py", "--account plan",

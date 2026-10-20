@@ -1,0 +1,45 @@
+# Weighted decision logic.
+#
+# The model scores each factor in [-1, +1]; this file decides how much each score
+# counts. Python does the arithmetic -- a model asked to output "78" will produce
+# a plausible 78 whether or not anything supports it.
+#
+# Do not tune these early. Tunable weights are an overfitting magnet: it is
+# trivial to find the set that would have worked on the data you already looked
+# at. Freeze them at these values until there is an out-of-sample period that has
+# never been examined.
+
+weights:
+  structure: 0.30
+  indicators: 0.25
+  liquidity: 0.20
+  news: 0.15
+  history: 0.10
+
+# A factor that is inactive is dropped and the remaining weights are renormalised,
+# rather than silently contributing zero.
+#
+# news is off for stage 1 on purpose. Point-in-time news history cannot be
+# sourced honestly, so a backtest that carries a news weight is measuring a factor
+# that did not exist when the trade was taken -- which guarantees the live results
+# diverge from the backtest. It returns later as a live-only modifier, evaluated
+# separately.
+active:
+  structure: true
+  indicators: true
+  liquidity: true
+  news: false
+  history: true
+
+# Confidence is mapped from the weighted score in [-1, +1] onto [0, 100].
+# A score of 0 means the factors cancel out, which is a 50 -- not a 0.
+confidence:
+  floor: 0
+  ceiling: 100
+  # Each factor's score is multiplied by the model's own confidence in that read
+  # before weighting, so a strong signal it is unsure about counts for less.
+  scale_by_factor_confidence: true
+  # Confidence is capped until the history engine holds enough non-overlapping
+  # cases to say anything. Until then the system may not claim certainty it has
+  # no evidence for.
+  cap_without_history: 75
