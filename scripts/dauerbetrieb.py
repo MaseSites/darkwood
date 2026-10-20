@@ -112,10 +112,28 @@ AUFGABEN: tuple[Aufgabe, ...] = (
     #: Begruendung, sie sei "eine einmalige Erhebung ueber elf Stunden". Genau
     #: das ist der Grund, warum sie hier hingehoert: elf Stunden sind laenger
     #: als jede Sitzung und laenger als die Zeit bis zum naechsten Standby.
+    #: 2.5 und nicht 1, und die Zahl ist gemessen, nicht geraten. Mit `1`
+    #: lief die Aufnahme am 20.10. GENAU 70 Sekunden und sammelte danach
+    #: 8.190 Fehler "HTTP Error 405" am Stueck -- die Aufgabe stand weiter
+    #: auf "Running", schrieb aber nichts mehr. Nach 45 Sekunden Ruhe
+    #: antwortete die API wieder normal: eine Drosselung, keine Sperre.
+    #:
+    #: Die Rechnung dazu: gestern erreichte derselbe Aufruf nur 2.35 s je
+    #: Buch (langsamere Antwortzeiten haben uns unbeabsichtigt gebremst),
+    #: das sind rund 100 Anfragen/Minute, und er lief 72 Minuten durch.
+    #: Heute erreichte er die bestellte 1 s, rund 178 Anfragen/Minute, und
+    #: war nach gut einer Minute draussen. Die Grenze liegt dazwischen.
+    #: 2.5 s bleibt unter dem, was nachweislich 72 Minuten getragen hat.
+    #:
+    #: Das heisst zugleich: die Frage nach der Standzeit einer Quote ist
+    #: mit ABFRAGEN nicht zu beantworten. 93 % der beobachteten Touch-Leben
+    #: dauern genau EINEN Rasterschritt, die wahre Standzeit liegt also
+    #: unter dem Raster -- und ein feineres Raster verbietet die Drosselung.
+    #: Dafuer braucht es den Websocket-Strom, nicht diesen Sammler.
     Aufgabe(
         "traidingBrain-tape", "scripts/collect_venue_tape.py",
-        "--hours 11 --markets BTC,ETH,SOL --book-every 1",
-        "Buchaufnahme in feiner Kadenz fuer die Market-Making-Frage.",
+        "--hours 11 --markets BTC,ETH,SOL --book-every 2.5",
+        "Buchaufnahme fuer Spread und adverse Selektion (nicht fuer Standzeit).",
     ),
 )
 
