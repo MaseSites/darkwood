@@ -25,6 +25,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from traidingbrain.journal.kontozusatz import regel_lang  # noqa: E402
+from traidingbrain.journal.lehren import lehre_ziehen  # noqa: E402
 
 WURZEL = Path(__file__).resolve().parent.parent
 JOURNAL = WURZEL / "data" / "journal.sqlite"
@@ -265,40 +266,6 @@ def eintrag(t: dict[str, Any], nr: int) -> str:
     if lehren:
         k += ["", "**Was ich daraus mitnehme**", ""] + [f"- {x}" for x in lehren]
     return "\n".join(k)
-
-
-def lehre_ziehen(
-    t: dict[str, Any], g: dict[str, Any], pm: dict[str, Any], griff: bool, gedeckelt: float
-) -> list[str]:
-    """Mechanische Regeln ueber den gespeicherten Zahlen -- keine Einschaetzung."""
-    usd = t.get("net_pnl") or 0.0
-    risiko = t.get("risk_amount") or 0.0
-    mfe = pm.get("max_favourable_r") or 0.0
-    aus = []
-
-    if griff:
-        gespart = (abs(usd) * (1 - gedeckelt / risiko)) if risiko > 0 else 0.0
-        wort = "gespart" if usd < 0 else "gekostet"
-        aus.append(
-            f"Der Risikodeckel von 1.5 % haette hier gegriffen: {risiko:.2f} USD Risiko statt erlaubter "
-            f"{gedeckelt:.2f} USD. Haette {gespart:.2f} USD {wort}."
-        )
-    if pm.get("never_in_profit"):
-        aus.append("War nie im Plus -- der Einstieg war von der ersten Kerze an falsch.")
-    elif usd < 0 and mfe >= 1.0:
-        aus.append(
-            f"War {mfe:.2f} R im Plus und gab alles zurueck. Das ist genau das Rueckgabe-Muster, "
-            f"das ueber zwoelf Maerkte gemessen ist -- und zwei Ausstiegsversuche (E14, E15) haben es nicht geloest."
-        )
-    elif usd < 0 and mfe >= 0.5:
-        aus.append(f"War {mfe:.2f} R im Plus, bevor es drehte.")
-    if pm.get("stopped_by_wick"):
-        aus.append("Ein Docht holte den Stop, die Kerze schloss wieder richtig -- der Stop lag im Rauschen.")
-    if usd > 0 and (pm.get("closest_to_target_r") or 0) >= 1.4:
-        aus.append("Lief sauber bis ans Ziel.")
-    if g.get("conflict", 0) >= 0.25:
-        aus.append(f"Die Familien widersprachen sich zu {g['conflict']:.0%} -- das war kein klares Bild.")
-    return aus
 
 
 def zusammenfassung(trades: list[dict[str, Any]]) -> str:
