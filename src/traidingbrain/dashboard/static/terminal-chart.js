@@ -599,14 +599,29 @@ function drawGrosseTrades(ctx, d, g) {
   const stufen = (d.stufen ?? []).filter((s) => s.preis >= g.lo && s.preis <= g.hi);
   if (!stufen.length) return;
   const max = Math.max(...stufen.map((s) => s.usd)) || 1;
-  const breite = 74, x1 = g.pR;
-  const schritt = stufen.length > 1
-    ? Math.abs(g.y(stufen[0].preis) - g.y(stufen[1].preis)) : 4;
-  const h = Math.max(2, Math.min(14, schritt - 1));
+  // Hoechstens ein Fuenftel der Chartbreite. Fest 74 px waren auf einem
+  // schmalen Fenster die halbe Zeichenflaeche, und die Kerzen verschwanden
+  // hinter der Ebene, die sie erklaeren sollte.
+  const breite = Math.min(74, (g.pR - g.pL) * 0.2), x1 = g.pR;
+  // Die Balkenhoehe aus dem PREISABSTAND zweier benachbarter Stufen.
+  //
+  // Der Server liefert die Stufen nach Betrag sortiert, nicht nach Preis.
+  // `stufen[0]` und `stufen[1]` sind also die zwei groessten, und ihr
+  // Abstand ist beliebig: lagen sie zufaellig nebeneinander, kam eine Hoehe
+  // von 2 px heraus, die Beschriftung fiel unter ihre Schwelle und die
+  // ganze Ebene zeigte keine einzige Zahl -- gemessen am 21.10.2026 mit
+  // vier Textpixeln im ganzen Streifen.
+  const preise = stufen.map((s) => s.preis).sort((a, b) => a - b);
+  let luecke = Infinity;
+  for (let i = 1; i < preise.length; i++) luecke = Math.min(luecke, preise[i] - preise[i - 1]);
+  const schritt = Number.isFinite(luecke) && luecke > 0
+    ? Math.abs(g.y(g.lo) - g.y(g.lo + luecke)) : 10;
+  const h = Math.max(2, Math.min(16, schritt - 1));
 
   ctx.save();
   ctx.font = '9px ui-monospace, Menlo, monospace';
   ctx.textBaseline = "middle";
+  let beschriftet = 0;
   for (const s of stufen) {
     const w = (s.usd / max) * breite;
     const yy = g.y(s.preis);
@@ -615,27 +630,45 @@ function drawGrosseTrades(ctx, d, g) {
     // Richtungsaussage, die die Zahl nicht hergibt.
     const anteil = s.usd > 0 ? s.kaeufer_usd / s.usd : 0.5;
     const ab = Math.abs(anteil - 0.5);
-    ctx.fillStyle = ab < 0.05 ? "rgba(148,163,184,0.45)"
-      : anteil > 0.5 ? `rgba(34,197,94,${0.30 + ab})` : `rgba(239,68,68,${0.30 + ab})`;
+    // Durchscheinend. Diese Ebene erklaert die Kerzen und darf sie nicht
+    // zudecken: bei 0.8 Deckkraft stand sie wie eine Wand davor.
+    ctx.fillStyle = ab < 0.05 ? "rgba(148,163,184,0.26)"
+      : anteil > 0.5 ? `rgba(34,197,94,${0.20 + ab * 0.4})` : `rgba(239,68,68,${0.20 + ab * 0.4})`;
     ctx.fillRect(x1 - w, yy - h / 2, w, h);
-    // Der Betrag nur dort, wo der Balken hoch genug für Text ist -- sonst
-    // überschreiben sich die Zahlen und man liest keine davon.
-    if (h >= 8 && s.usd >= max * 0.28) {
-      const txt = s.usd >= 1e9 ? `${(s.usd / 1e9).toFixed(1)} Mrd`
-        : s.usd >= 1e6 ? `${Math.round(s.usd / 1e6)} Mio`
-        : `${Math.round(s.usd / 1e3)} Tsd`;
-      ctx.fillStyle = "rgba(232,237,245,0.92)";
+    // Der Betrag INNERHALB des Balkens, rechtsbuendig. Links davon stand er
+    // mitten im Kursverlauf und las sich wie eine Beschriftung der Kerzen.
+    const txt = s.usd >= 1e9 ? `${(s.usd / 1e9).toFixed(1)} Mrd`
+      : s.usd >= 1e6 ? `${Math.round(s.usd / 1e6)} Mio`
+      : `${Math.round(s.usd / 1e3)} Tsd`;
+    // Die Beschriftung LINKS vom Balken, mit dunkler Unterlage.
+    //
+    // Nicht im Balken: die Verteilung ist langschwänzig -- die grösste Stufe
+    // war am 21.10. das Zehnfache der übrigen, also blieben für alle anderen
+    // 2 bis 10 px, und keine einzige Zahl passte hinein. Den Balken dafür
+    // logarithmisch zu stauchen hätte die Zahlen lesbar gemacht und die
+    // Längen zur Lüge: ein Balken, der zehnmal so viel Umsatz zeigt, muss
+    // zehnmal so lang sein.
+    //
+    // Nur die sechs grössten, sonst überschreiben sich die Zeilen.
+    if (h >= 7 && beschriftet < 6) {
+      beschriftet++;
+      const tw = ctx.measureText(txt).width;
+      ctx.fillStyle = "rgba(7,9,13,0.78)";
+      ctx.fillRect(x1 - w - tw - 9, yy - 6, tw + 7, 12);
+      ctx.fillStyle = "rgba(232,237,245,0.96)";
       ctx.textAlign = "right";
-      ctx.fillText(txt, x1 - w - 4, yy);
+      ctx.fillText(txt, x1 - w - 5, yy);
     }
   }
   // Kopfzeile: woher, wie viel, ab wann. Ohne sie ist eine Balkenreihe am
   // Rand eine Behauptung.
-  const kopf = `grosse Trades ${d.tag} · ab ${Math.round(d.schwelle_usd / 1e3)} Tsd USD · `
+  // UNTEN rechts, nicht oben: oben steht die Indikatorlegende, und die
+  // Kopfzeile lief quer darueber.
+  const kopf = `grosse Trades ${d.tag} · ab ${Math.round(d.schwelle_usd / 1e3)} Tsd · `
     + `${d.anzahl} Stück · ${d.anteil_umsatz.toFixed(1)} % des Umsatzes`;
   ctx.fillStyle = "rgba(154,167,187,0.9)";
-  ctx.textAlign = "right"; ctx.textBaseline = "top";
-  ctx.fillText(kopf, x1 - 2, g.pT + 2);
+  ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+  ctx.fillText(kopf, x1 - 2, g.pB - 3);
   ctx.restore();
 }
 
