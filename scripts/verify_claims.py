@@ -146,6 +146,98 @@ def _contaminated_live_signals() -> object:
         conn.close()
 
 
+
+def _maerkte_mit_kerzen() -> object:
+    """Wie viele Symbole Kursdaten auf der Platte haben.
+
+    **Der Anlass sind ZWEI Irrtümer von mir, am selben Tag.** Am 21.10.2026
+    schrieb ich erst „zwölf Märkte haben Kerzen" aus dem Gedächtnis. Dann
+    zählte ich nach und schrieb „102" — gemessen mit `find -maxdepth 2`, was
+    Dateinamen zählte statt Märkte. Beides falsch; es sind **83**.
+
+    Die Zahl steht in mehreren Berichten als Begründung dafür, warum der
+    Apparat eine Frage nicht auflöst, und eine Auflösungsgrenze, die mit einer
+    falschen Marktzahl gerechnet ist, ist die falsche Grenze. Darum steht sie
+    jetzt hier, wo sie gemessen wird statt erinnert.
+
+    Das Symbol steht im ORDNERNAMEN (`data/ohlcv/<SYM>/<TF>/<Jahr>.parquet`),
+    nicht im Dateinamen — genau daran ist die zweite Zählung gescheitert.
+
+    Beweglich: das Universum wächst, und Wachstum ist kein Fehler.
+    """
+    ordner = ROOT / "data" / "ohlcv"
+    if not ordner.exists():
+        return None
+    return sum(1 for p in ordner.iterdir() if p.is_dir())
+
+
+def _risikodeckel_plankonto() -> object:
+    """Steht der 1.5-%-Deckel noch in der Plan-Konfiguration?
+
+    **Warum das bewacht gehört.** Der Deckel ist die einzige Regel, deren
+    Wirkung auf diesem Konto gemessen ist: er senkte die Risiko-Asymmetrie
+    zwischen Gewinnern und Verlierern von 2.63x auf 1.39x, und eine Epoche mit
+    -4.612 R kostete damit 40.24 USD statt eines Vielfachen. 57 % des
+    bisherigen Verlusts gehen auf genau diese Asymmetrie zurück
+    (`scripts/verlustanalyse.py`).
+
+    Und er ist **leicht zu verlieren**: `config_offen/plan.yaml` wird vom
+    Terminal beim Druck auf „Apply" neu geschrieben. Das Formular liest ihn
+    heute mit; ein Umbau, der das vergisst, nimmt ihn still heraus, und die
+    einzige Spur wäre eine Signatur ohne `r15`.
+    """
+    import yaml
+    pfad = ROOT / "config_offen" / "plan.yaml"
+    if not pfad.exists():
+        return None
+    try:
+        return float((yaml.safe_load(pfad.read_text(encoding="utf-8")) or {})
+                     .get("risk_cap_share") or 0.0)
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _epochen_des_plankontos() -> object:
+    """Über wie viele (Signatur, Codestand)-Paare sich das Plankonto verteilt.
+
+    **Der Anlass ist der Fehler vom 21.10.2026.** `portfolio_summary` filterte
+    auf die EXAKTE Signatur statt auf den Konto-Schlüssel. Das Konto hatte
+    zwei Epochen (`plan30x7` und `plan30x7r15f`), elf von neunzehn Trades
+    fielen heraus, und zwischen Kontostand und Markttabelle klafften 99.01 USD
+    unter der Überschrift „unerklärt".
+
+    Diese Zahl wächst bei jeder bewussten Regeländerung — das ist richtig und
+    gewollt. Bewacht wird sie trotzdem, weil jeder Sprung die Frage stellt:
+    *welche Ansicht rechnet jetzt noch über das ganze Konto, und welche nur
+    über die jüngste Epoche?* Am 21.10. war die Antwort bei drei von drei
+    Ansichten verschieden.
+    """
+    if not JOURNAL.exists():
+        return None
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        from traidingbrain.journal.history import konto_schluessel
+    except ImportError:
+        return None
+    conn = sqlite3.connect(f"file:{JOURNAL}?mode=ro", uri=True)
+    try:
+        rohe = conn.execute(
+            "SELECT payload FROM trades WHERE source='live' AND payload IS NOT NULL"
+        ).fetchall()
+    finally:
+        conn.close()
+    paare = set()
+    for (payload,) in rohe:
+        try:
+            d = json.loads(payload)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        sig = str(d.get("run_signature") or "")
+        if konto_schluessel(sig)[1] != "plan":
+            continue
+        paare.add((sig, str(d.get("decision_version") or "")))
+    return len(paare)
+
 def _books_that_disagree() -> object:
     """Konten, deren Journal-Summe nicht zum Kontobuch passt.
 
@@ -268,9 +360,48 @@ FACTS: tuple[Fact, ...] = (
         _comparisons, 67, fixed=False,
     ),
     Fact(
+        # Neu gesetzt am 21.10.2026: 1 -> 20.
+        #
+        # Der Waechter hat getan, wofuer es ihn gibt. Die 1 stammte vom
+        # 11.10., als EIN Signal (XRPUSDT) knapp ueber den Kostendeckel
+        # rutschte. Seit dem 20.10. sind die Tore auf Wunsch offen, und
+        # damit nimmt das System Signale, die die Replay-Regel abgelehnt
+        # haette -- 20 von 47 genommenen, also 43 %.
+        #
+        # Das ist KEIN Fehler, sondern die gemessene Folge einer getroffenen
+        # Entscheidung. BEWEGLICH und nicht fest: solange die Tore offen
+        # sind, waechst die Zahl bei jedem Zyklus -- `fixed` haette den
+        # Waechter binnen Minuten zum Dauerfehlschlag gemacht, und ein
+        # Waechter, der immer rot ist, wird abgeschaltet statt gelesen.
+        # Was er jetzt faengt, ist ein RUECKGANG: das waere das Tor, das
+        # wieder zugeht, und das soll niemand unbemerkt tun.
+        #
+        # Dagegen steht ein Befund aus 7'335 Trades: billige Trades haben die
+        # bessere BRUTTO-Erwartung (+0.0561 R, Intervall schliesst null aus).
+        # Ob das Tor wieder zugeht, ist eine Produktentscheidung und steht
+        # offen.
         "verunreinigte Live-Signale",
-        "AUDIT 3.3 sagte 0; seit 11.10. 16:00 UTC ist es 1 (XRPUSDT)",
-        _contaminated_live_signals, 1, fixed=True,
+        "AUDIT 3.3 sagte 0; 1 ab 11.10. (XRPUSDT); 20 ab 20.10., seit die Tore offen sind",
+        _contaminated_live_signals, 20, fixed=False,
+    ),
+    Fact(
+        "Maerkte mit Kerzen",
+        "am 21.10. erst 'zwoelf' aus dem Gedaechtnis, dann '102' falsch gezaehlt; "
+        "es sind 83, und die Aufloesungsgrenze haengt an dieser Zahl",
+        _maerkte_mit_kerzen, 83, fixed=False,
+    ),
+    Fact(
+        "Risikodeckel im Plankonto",
+        "config_offen/plan.yaml; 57 % des bisherigen Verlusts gehen auf die "
+        "Groessenasymmetrie zurueck, die er deckelt -- und das Terminal "
+        "ueberschreibt diese Datei bei 'Apply'",
+        _risikodeckel_plankonto, 0.015, fixed=True,
+    ),
+    Fact(
+        "Epochen des Plankontos",
+        "zwei am 21.10. (plan30x7, plan30x7r15f); jede weitere stellt die "
+        "Frage, welche Ansicht noch ueber das GANZE Konto rechnet",
+        _epochen_des_plankontos, 2, fixed=False,
     ),
     Fact(
         "Konten, deren Buch nicht stimmt",
