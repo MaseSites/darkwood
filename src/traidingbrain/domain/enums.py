@@ -257,6 +257,16 @@ class Rule(StrEnum):
     COSTS = "kosten"
     LIQUIDATION = "liquidation"
 
+    PICTURE = "bild"
+    """Das Setup zeigte gegen das Gesamtbild (`score_direction`).
+
+    Der siebte Wert, 21.10.2026. Eine Eigenschaft des Signals wie die ersten
+    fuenf, aber nicht aus `sim/plan.py`: das Gesamtbild entsteht erst im
+    Live-Pfad, wo `reason_at` vor `assess` laeuft. Eigener Name, damit die
+    Ablehnungsstatistik eine Partition bleibt und eine spaetere Studie die
+    Regel einzeln bewerten kann.
+    """
+
     LIMITS = "grenzen"
     """Eine Kontogrenze hat abgelehnt, nicht eine Eigenschaft des Signals.
 

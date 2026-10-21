@@ -216,7 +216,10 @@ def test_every_rule_is_reachable_and_each_signal_gets_exactly_one(config: AppCon
     # Getrieben wird es von `tests/test_paper_limits.py`. Die Teilung hier
     # ist also keine Ausnahme, sondern die Grenze: `assess` partitioniert
     # fuenf Gruende, und der sechste liegt ausserhalb.
-    assert set(cases) == set(Rule) - {Rule.LIMITS}, (
+    # `Rule.PICTURE` ebenso wenig (21.10.2026): das Gesamtbild entsteht erst
+    # im Live-Pfad (`reason_at` vor `assess`), also kann `assess` diesen
+    # Grund nicht erzeugen. Getrieben von `tests/test_regeln_21okt.py`.
+    assert set(cases) == set(Rule) - {Rule.LIMITS, Rule.PICTURE}, (
         "ein assess-Grund existiert, den kein Test anfaehrt -- oder LIMITS ist "
         "in assess gewandert, was die Partition oben kaputt macht"
     )

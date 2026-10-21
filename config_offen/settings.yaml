@@ -79,6 +79,29 @@ symbols:
 # it keeps its tests, its rule card and its row in every comparison.
 setups:
   enabled: [A, B, E, F, G]
+  # Die zwei Regeln vom 21.10.2026 -- "mache das, was die Gewinner gemeinsam
+  # hatten", auf Anweisung des Eigentuemers, nachdem das Plankonto 26 Trades
+  # auf -9.34 R / -175 USD stand. Gewinner gegen Verlierer wurden ueber
+  # jedes Vor-Trade-Merkmal geschnitten und jede Differenz gegen das Replay
+  # (7'335 Trades, zwoelf Maerkte) UND gegen 39'075 Trades auf 56 ungesehenen
+  # Maerkten gehalten. Nur zwei Merkmale zeigen in allen drei Stichproben in
+  # dieselbe Richtung; der Rest (Widerspruch, Rating, Regime, Seite, Stunde,
+  # Markt) war Rauschen einer Nacht.
+  #
+  #   M15-Setup      live 33 % / -0.27 R   Replay 35 % / -0.037   ungesehen 34.6 % / -0.064
+  #   H1 und hoeher  live 48 % / +0.25 R   Replay 38 % / +0.01    ungesehen 37.9 % / +0.001
+  #   gegen das Bild live 28 % / -0.38 R   Replay 32 % / -0.054   ungesehen 32.4 % / -0.072
+  #   mit dem Bild   live 44 % / +0.07 R   Replay 38 % / -0.002   ungesehen 37.4 % / -0.019
+  #   beides (H1+ und mit Bild), ungesehen: 38.9 % Treffer, +0.0024 R, n=17'213
+  #
+  # WAS DAS IST: das Weglassen der gemessen schlechtesten Population. WAS ES
+  # NICHT IST: ein Vorteil. Die beste Zelle liegt out-of-sample bei +0.002 R,
+  # also Break-even, mit 39 % Treffern. Rund die Haelfte der bisherigen
+  # Trades faellt weg (M15 war 48 % der Trades, "gegen" 22 %).
+  # Beides steht in der Laufsignatur (|tf=D1,H4,H1|bild), Epochen bleiben
+  # trennbar. Rueckgaengig: die zwei Zeilen loeschen und neu starten.
+  timeframes: [D1, H4, H1]
+  require_agreement: true
   disabled_note: >-
     C ist am 04.10.2026 abgeschaltet worden. Gemessen ueber vier Maerkte und
     vier Jahre: mit C laeuft der Pool auf -0.0920 R und das Intervall

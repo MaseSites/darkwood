@@ -117,6 +117,14 @@ def _just_closed(analysis: MultiFrameAnalysis, timeframe: Timeframe, decision_ms
     return now is not None and now != before
 
 
+def allowed_timeframes(config: AppConfig) -> tuple[Timeframe, ...]:
+    """Die Ebenen aus der Konfiguration, in `SEARCH_ORDER`; None heisst alle."""
+    wanted = config.engine.setups.timeframes
+    if wanted is None:
+        return SEARCH_ORDER
+    return tuple(tf for tf in SEARCH_ORDER if tf in set(wanted))
+
+
 def enabled_setups(config: AppConfig) -> tuple[Setup, ...]:
     """The setups configuration allows, in `TRADEABLE` order.
 
@@ -173,11 +181,22 @@ class GuidePool:
     looks like it works for as long as nobody checks.
     """
 
+    timeframes: tuple[Timeframe, ...] = SEARCH_ORDER
+    """Welche Ebenen durchsucht werden, langsamste zuerst.
+
+    Seit dem 21.10.2026 aus `setups.timeframes` der Konfiguration, damit
+    "ohne M15" eine Einstellung mit Signaturspur ist und kein Umbau an
+    `SEARCH_ORDER`. Die Reihenfolge bleibt die von `SEARCH_ORDER`, egal in
+    welcher Reihenfolge die Liste in der Datei steht.
+    """
+
     @classmethod
     def for_config(cls, config: AppConfig, *, name: str = "guide-all") -> GuidePool:
         """The pool as configured -- what the live system and every measurement
         of "the shipped system" should use."""
-        return cls(name=name, setups=enabled_setups(config))
+        return cls(
+            name=name, setups=enabled_setups(config), timeframes=allowed_timeframes(config)
+        )
 
     def propose_at(self, analysis: MultiFrameAnalysis, index: int) -> TradeIntent | None:
         aligned = analysis.aligned_indices(index)
@@ -185,7 +204,7 @@ class GuidePool:
             return None
         decision = decision_time_ms(analysis.signal.ts_at(index), analysis.signal_timeframe)
 
-        for timeframe in SEARCH_ORDER:
+        for timeframe in self.timeframes:
             frame = analysis.analyses.get(timeframe)
             at = aligned.get(timeframe)
             if frame is None or at is None or not _just_closed(analysis, timeframe, decision):

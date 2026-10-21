@@ -130,10 +130,20 @@ def run_signature(config: object, *, max_bars: int | None = None, shadow: bool =
     crv = "" if risk.limits.min_reward_risk == CRV_ANKER else (
         f"|crv{risk.limits.min_reward_risk:g}"
     )
+    # Die beiden Regeln vom 21.10.2026, nur angehaengt, wenn sie gesetzt
+    # sind: welche Ebenen die Setups durchsuchen, und ob ein Setup gegen das
+    # Gesamtbild abgelehnt wird. Beide aendern, welche Trades entstehen, und
+    # muessen darum in der Signatur stehen (Lehre vom 16.10.: eine Aenderung,
+    # die das Verhalten aendert und keine Spur hinterlaesst, zerschneidet die
+    # Vorwaertsstichprobe unsichtbar).
+    ebenen = "" if engine.setups.timeframes is None else (
+        "|tf=" + ",".join(tf.value for tf in engine.setups.timeframes)
+    )
+    bild = "|bild" if engine.setups.require_agreement else ""
     return (
         f"{engine.simulation.initial_equity}|{engine.setups.enabled}|"
         f"{risk.limits.max_cost_fraction_of_risk}|{engine.timeframes.signal.value}"
-        f"|{LEDGER_SCHEMA}{basis}{cap}{crv}{bars}{shade}"
+        f"|{LEDGER_SCHEMA}{basis}{cap}{crv}{ebenen}{bild}{bars}{shade}"
     )
 
 

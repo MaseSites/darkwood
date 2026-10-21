@@ -96,7 +96,15 @@ def _setup_for(analysis: MultiFrameAnalysis, index: int, side: Side) -> SetupSig
         return None
     allowed = set(analysis.config.setups.enabled)
     decision = decision_time_ms(analysis.signal.ts_at(index), analysis.signal_timeframe)
-    for timeframe in SEARCH_ORDER:
+    # Nur die Ebenen, auf denen der Pool ueberhaupt sucht (seit 21.10.2026
+    # konfigurierbar): sonst bekaeme ein H1-Trade das Etikett "M15", wenn auf
+    # demselben Balken ein M15-Setup mitfeuerte, das der Pool nie ansah --
+    # derselbe Fehler wie bei Setup C, eine Ebene zu breit.
+    erlaubt = analysis.config.setups.timeframes
+    ebenen = SEARCH_ORDER if erlaubt is None else tuple(
+        tf for tf in SEARCH_ORDER if tf in set(erlaubt)
+    )
+    for timeframe in ebenen:
         frame = analysis.analyses.get(timeframe)
         at = aligned.get(timeframe)
         if frame is None or at is None or not _just_closed(analysis, timeframe, decision):

@@ -290,6 +290,29 @@ class SetupsConfig(_Frozen):
     disabled_note: str = ""
     """Why something is off, in one line, next to the fact that it is."""
 
+    timeframes: list[Timeframe] | None = None
+    """Auf welchen Ebenen die Setups feuern duerfen. None heisst: alle vier.
+
+    Eingefuehrt am 21.10.2026. Gemessen in drei unabhaengigen Stichproben --
+    59 Live-Trades, 7'335 Replay-Trades auf zwoelf Maerkten, 39'075 Trades
+    auf 56 ungesehenen Maerkten -- sind M15-Setups ueberall die schlechteste
+    Ebene (live 33 % Treffer / -0.27 R, Replay 35 % / -0.037 R, ungesehen
+    34.6 % / -0.064 R gegen 37.9 % / +0.001 R fuer H1 und hoeher). Das ist
+    kein Vorteil, es ist das Weglassen der gemessen schlechtesten Population.
+    """
+
+    require_agreement: bool = False
+    """Ob ein Setup nur handelt, wenn das Gesamtbild in seine Richtung zeigt.
+
+    Eingefuehrt am 21.10.2026. "Gegen das Bild" (die Seite des Setups
+    widerspricht `score_direction`) ist in allen drei Stichproben schlechter:
+    live 28 % Treffer / -0.38 R gegen 44 % / +0.07 R, Replay 32 % / -0.054 R
+    gegen 38 % / -0.002 R, ungesehen 32.4 % / -0.072 R gegen 37.4 % /
+    -0.019 R. Bis dahin stand im Code woertlich, dass nichts in den
+    Einstiegsregeln darauf achtet (`journal/record.py`). Jetzt achtet eine
+    Regel darauf -- als Konfiguration, die in der Signatur steht.
+    """
+
 
 class EngineConfig(_Frozen):
     exchange: ExchangeConfig

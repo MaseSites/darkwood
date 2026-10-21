@@ -104,7 +104,8 @@ meta:
   # 21.10.2026: +2 fuer E24 (Volumen-/Dollar-Takt), vorregistriert, nicht gebaut.
   # 21.10.2026 nachmittags: +1 fuer E25 (Bestaendigkeit der BTC-Maker ueber eine Woche).
   # 21.10.2026 nachmittags: +2 fuer E26 (Kalender- und Strike-Abstand, Sammler laeuft).
-  total_comparisons: 82
+  # 21.10.2026 nachmittags: +1 fuer E27 (Vorwaertstest der Epoche "H1+ und mit Bild").
+  total_comparisons: 83
   correction: >-
     Bonferroni auf `total_comparisons` Vergleiche: Schwelle 0.05/n,
     Intervall 100*(1 - 0.05/n) %. Bei 70 also 0.000714 und 99.9286 %.
@@ -2531,6 +2532,46 @@ experiments:
     was_nicht: >-
       Keine Schaltung im Entscheidungspfad vor dem Ergebnis. Keine
       nachtraegliche Wahl von Horizont, Viertel oder Quartil.
+
+  - id: E27
+    title: "Vorwaertstest: die Epoche ohne M15-Setups und ohne Trades gegen das Bild"
+    priority: 1
+    status: registriert_laeuft_ab_naechstem_neustart
+    registriert: 2026-10-21
+    cells: 1
+    comparisons: 1
+    anlass: >-
+      Auftrag des Eigentuemers: "analysiere alle gewonnenen Trades, was hast du
+      dort anders gemacht als bei den verlorenen, egal was es ist, mache es
+      wieder; keine Trades, bis du weisst, dass du bereit bist." Bericht:
+      audit/GEWINNER_GEGEN_VERLIERER_21OKT.md. Gewinner gegen Verlierer ueber
+      jedes Vor-Trade-Merkmal, jede Differenz gegen das Replay (7'335) und
+      gegen 39'075 Trades auf 56 ungesehenen Maerkten gehalten. Zwei Merkmale
+      zeigen in allen drei Stichproben dieselbe Richtung: M15-Setups sind die
+      schlechteste Ebene, Trades gegen das Gesamtbild sind schlechter. Alles
+      andere (Widerspruch, Rating, Regime, Seite, Stunde, Markt) ist Rauschen.
+    umgesetzt: >-
+      config_offen/settings.yaml: setups.timeframes [D1, H4, H1] und
+      setups.require_agreement true; Signatur |tf=D1,H4,H1|bild; neuer
+      Ablehnungsgrund Rule.PICTURE ("bild") im Live-Pfad vor assess. Dazu seit
+      dem Morgen Kostentor 0.08 und hoechstens zwei Positionen je Richtung.
+      Kill-Switch seit 11:10 UTC; Neustart beim flachen Konto, dann Freigabe.
+    erwartung_vorab: >-
+      Out-of-sample liegt die Zelle "H1 und hoeher UND mit dem Bild" bei
+      +0.0024 R und 38.9 % Treffern (n=17'213). Erwartet wird Break-even, nicht
+      Gewinnen; sechs von zehn Trades enden weiter im Stop. Rund die Haelfte
+      der bisherigen Trades entfaellt, mit dem Kostentor mehr.
+    hypothesis: >-
+      Die neue Epoche hat ein Mittel in R >= 0 und eine Trefferquote ueber
+      der vorigen Epoche (33 %, 26 Trades).
+    gates: >-
+      (a) fruehestens bei 100 Trades der neuen Epoche; (b) Mittel in R >= 0 mit
+      korrigiertem Intervall (83 Vergleiche), Wochenblock-Bootstrap; (c)
+      Trefferquote >= 37 % mit Intervall ueber 33 %. Vorher KEINE weitere
+      Anpassung an die laufende Stichprobe -- jede Aenderung nach 20 Trades
+      waere eine Optimierung auf Rauschen, genau der Fehler, den dieser
+      Bericht an neun Merkmalen vorfuehrt.
+    on_failure: "beide Regeln bleiben, weil sie dreifach belegt sind; das Ziel bleibt ohne Pfad in dieser Familie"
 
 # ---------------------------------------------------------------------------
 # Geschlossene DATENfamilien, 14.10.2026

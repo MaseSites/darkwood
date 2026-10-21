@@ -604,7 +604,7 @@ class PaperTrader:
         joined = joined.drop_duplicates(subset="ts").sort_values("ts")
         return joined.reset_index(drop=True)
 
-    def _maybe_open(self, bar_ts: int) -> None:
+    def _maybe_open(self, bar_ts: int) -> None:  # noqa: PLR0911 -- jede Rueckkehr ist ein benannter Ablehnungsgrund
         """Ask the setups about the bar that just closed, and size what they say."""
         if not self.broker.is_flat:
             return
@@ -643,6 +643,26 @@ class PaperTrader:
 
         signal_ms = timeframe_ms(self.config.engine.timeframes.signal)
         created = decision_time_ms(bar_ts, self.config.engine.timeframes.signal)
+
+        # Das Bild-Tor (21.10.2026): ein Setup, dessen Seite dem Gesamtbild
+        # widerspricht, wird abgelehnt und als Signal mit Grund festgehalten.
+        # Gemessen in drei Stichproben schlechter (siehe SetupsConfig). Vor
+        # `assess`, weil es eine Aussage ueber das Signal ist, nicht ueber das
+        # Konto; und als eigener Grund, damit die Ablehnungsstatistik eine
+        # Partition bleibt.
+        if self.config.engine.setups.require_agreement and not reason.rating_agreed_with_setup:
+            self._record_signal(
+                intent,
+                Assessment(
+                    entry=None, refused_by=Rule.PICTURE,
+                    detail=f"gegen das Bild: Setup {reason.side}, Bild {reason.score_direction}",
+                    reward_risk=intent.reward_risk, cost_fraction=0.0, risk_amount=0.0,
+                    qty=0.0, leverage=0.0,
+                ),
+                decided_ts=created,
+            )
+            self.stats.tally.refused_by_risk += 1
+            return
         # `assess` statt `plan_entry`: dieselbe Rechnung, aber mit dem Urteil
         # daneben statt nur der Order.
         #
