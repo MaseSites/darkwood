@@ -1228,9 +1228,12 @@ def router(services: Any, konto_signatur, state_path, journal_path, followed) ->
 
         reading = chart = buch = kal = None
         rows: list[dict] = []
-        if key in F.KARTE_FAMILIEN:
+        # `zonen` steht zwar in KARTE_FAMILIEN, kommt aber aus den Baendern
+        # des Charts und nicht aus dem Messwerk -- die Messung dafuer zu
+        # rechnen waere eine Sekunde fuer nichts.
+        if key in F.KARTE_FAMILIEN and key != "zonen":
             reading = _reading_for(services, symbol)
-        if key == "entry":
+        if key in ("entry", "zonen"):
             chart = _chart_dict(services, symbol)
         if key == "orderbuch":
             try:

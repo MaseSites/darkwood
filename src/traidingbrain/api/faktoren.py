@@ -965,6 +965,12 @@ def faktor(
         return aus_entry(chart or {})
     if key == "history":
         return aus_history(symbol, history_rows or [])
+    if key == "zonen":
+        # Die Lage-Familie beschreibt, WO im Bereich der Preis steht. Der
+        # Auftrag war ein anderer: jede einzelne Zone bewertet. Das sind
+        # verschiedene Dinge, und die Indikatorlesungen hier zu zeigen hiesse,
+        # eine Frage mit der Antwort auf eine andere zu beantworten.
+        return aus_zonen(chart or {})
 
     label, erklaerung = ERKLAERUNG.get(key, (key, ""))
     if reading is None:
@@ -981,3 +987,186 @@ def alle_schluessel() -> list[str]:
 
 def zeitstempel() -> int:
     return int(time.time() * 1000)
+
+
+# --------------------------------------------------------------------------- #
+# Zonen, einzeln bewertet
+# --------------------------------------------------------------------------- #
+
+#: Ab wie vielen ATR Abstand eine Zone als „nicht in Reichweite“ gilt.
+#:
+#: Dieselbe Sechs wie `market.BAND_REACH_ATR` — weiter weg wird gar nicht erst
+#: gezeichnet, also wäre eine andere Grenze hier eine zweite Vorstellung davon,
+#: was „nah“ heisst.
+ZONE_REICHWEITE_ATR = 6.0
+
+ZONE_ART: dict[str, str] = {
+    "equal_highs": "Gleiche Hochs — darüber liegen Stops von Shorts",
+    "equal_lows": "Gleiche Tiefs — darunter liegen Stops von Longs",
+    "fvg_bullish": "Fair-Value-Gap aufwärts — ein Preisbereich ohne Handel",
+    "fvg_bearish": "Fair-Value-Gap abwärts — ein Preisbereich ohne Handel",
+}
+
+
+def _pr_z(x: float) -> str:
+    """Preis lesbar, ohne wissenschaftliche Schreibweise."""
+    if x >= 1000:
+        return f"{x:,.0f}".replace(",", "’")
+    if x >= 1:
+        return f"{x:.2f}"
+    return f"{x:.5f}".rstrip("0").rstrip(".")
+
+
+def _zonen_messung(band: dict, kerzen: list[dict], preis: float, atr: float) -> dict:
+    """Was an einer Zone zählbar ist. Keine Bewertung, nur Zahlen."""
+    lo, hi = float(band["low"]), float(band["high"])
+    von = band.get("from_ts")
+
+    # Abstand zur NÄHEREN Kante, nicht zur Mitte: eine breite Zone, deren Rand
+    # der Preis berührt, ist erreicht — ihre Mitte liegt trotzdem weit weg.
+    abstand = 0.0 if lo <= preis <= hi else min(abs(preis - lo), abs(preis - hi))
+
+    nach = [k for k in kerzen if von is None or k.get("ts", 0) >= von]
+    beruehrt = 0
+    durch = 0
+    vorher_oben: bool | None = None
+    for k in nach:
+        try:
+            kl, kh, kc = float(k["low"]), float(k["high"]), float(k["close"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if kh >= lo and kl <= hi:
+            beruehrt += 1
+        # Ein Durchbruch ist ein SEITENWECHSEL der Schlusskurse, nicht ein
+        # Docht durch die Zone. Ein Docht ist eine Berührung; erst ein Schluss
+        # auf der anderen Seite heisst, dass die Zone nicht gehalten hat.
+        if kc > hi or kc < lo:
+            jetzt_oben = kc > hi
+            if vorher_oben is not None and jetzt_oben != vorher_oben:
+                durch += 1
+            vorher_oben = jetzt_oben
+
+    return {
+        "lo": lo,
+        "hi": hi,
+        "abstand_atr": abstand / atr if atr > 0 else 0.0,
+        "breite_atr": (hi - lo) / atr if atr > 0 else 0.0,
+        "alter_kerzen": len(nach),
+        "beruehrungen": beruehrt,
+        "durchbrueche": durch,
+    }
+
+
+def aus_zonen(chart: dict) -> FaktorDetail:
+    """Jede Zone im Bild einzeln, mit dem, was an ihr zählbar ist.
+
+    **Was die Sterne bedeuten, und was nicht.** Sie messen, wie RELEVANT eine
+    Zone gerade ist: wie nah der Preis steht, wie frisch sie ist, wie scharf
+    sie begrenzt ist, wie oft sie gehalten hat. Sie sind keine
+    Wahrscheinlichkeit. Dieses Projekt hat 35 Merkmale in zwei Familien gegen
+    die nächsten fünf bis zehn Stunden gemessen und eine Korrelation von 0.004
+    gefunden — also nichts. Eine Zone mit fünf Sternen ist eine Zone, die in
+    diesem Moment wichtig AUSSIEHT, und das ist alles, was belegt ist.
+    """
+    baender = chart.get("bands") or []
+    kerzen = chart.get("candles") or []
+    preis = float(chart.get("price") or 0.0)
+    atr = float(chart.get("atr") or 0.0)
+
+    if not baender:
+        return _leer(
+            "zonen", "Zonen",
+            "Pools und Lücken, an denen der Preis reagiert hat.",
+            f"Keine Zone innerhalb von {ZONE_REICHWEITE_ATR:.0f} ATR. Das ist der "
+            f"Normalfall: über zwölf Märkte gemessen haben 93 % der Kerzen keine "
+            f"Zone in Reichweite.",
+        )
+
+    unter: list[Unterfaktor] = []
+    for i, b in enumerate(baender):
+        m = _zonen_messung(b, kerzen, preis, atr)
+
+        # Nähe: an der Kante voll, bei sechs ATR nichts. Linear, weil jede
+        # andere Kurve eine Behauptung über den Verlauf wäre, die hier niemand
+        # gemessen hat.
+        naehe = max(0.0, 1.0 - m["abstand_atr"] / ZONE_REICHWEITE_ATR)
+        frische = _frische_faktor(m["alter_kerzen"])
+        # Schärfe: eine Zone über eine ganze ATR Breite ist kein Niveau mehr.
+        schaerfe = max(0.0, 1.0 - min(1.0, m["breite_atr"]))
+        halt = (1.0 if m["beruehrungen"] == 0
+                else max(0.0, 1.0 - m["durchbrueche"] / m["beruehrungen"]))
+
+        gewicht = naehe * frische * schaerfe * halt
+        art = str(b.get("kind") or "")
+        richtung = "long" if ("low" in art or "bullish" in art) else "short"
+
+        unter.append(Unterfaktor(
+            key=f"zone_{i}",
+            label=f"{b.get('label') or art} {_pr_z(m['lo'])}–{_pr_z(m['hi'])}",
+            familie="Liquidität",
+            zeitebene="Signalebene",
+            richtung=richtung,
+            staerke=round(gewicht, 4),
+            sterne=_sterne(gewicht),
+            gewicht=round(gewicht, 4),
+            teile=[
+                Gewichtsteil(name="Nähe", wert=round(naehe, 3), grund=(
+                    f"{m['abstand_atr']:.2f} ATR entfernt, gemessen zur näheren "
+                    f"Kante statt zur Mitte: eine breite Zone, deren Rand der "
+                    f"Preis berührt, ist erreicht."
+                    if m["abstand_atr"] > 0 else "Der Preis steht IN dieser Zone.")),
+                Gewichtsteil(name="Frische", wert=round(frische, 3), grund=(
+                    f"{m['alter_kerzen']} Kerzen alt, Halbwertszeit "
+                    f"{FRESHNESS_HALF_LIFE_BARS:.0f} — dieselbe wie im Score-Modell.")),
+                Gewichtsteil(name="Schärfe", wert=round(schaerfe, 3), grund=(
+                    f"{m['breite_atr']:.2f} ATR breit. Über eine ganze ATR hinaus "
+                    f"ist das kein Niveau mehr, sondern eine Gegend.")),
+                Gewichtsteil(name="Halt", wert=round(halt, 3), grund=(
+                    f"{m['beruehrungen']} Berührungen, davon {m['durchbrueche']} "
+                    f"mit einem Schluss auf der anderen Seite. Ein Docht zählt "
+                    f"als Berührung, nicht als Bruch."
+                    if m["beruehrungen"]
+                    else "Noch nie berührt — nichts, was gehalten oder gebrochen hätte.")),
+            ],
+            wert=f"{_pr_z(m['lo'])} bis {_pr_z(m['hi'])} · {m['beruehrungen']} Berührungen",
+            quelle=ZONE_ART.get(art, art),
+            schwaechen=[
+                "Vorhersagekraft nicht belegt: 35 Merkmale dieser Art erreichten "
+                "gegen die nächsten 5–10 Stunden eine Korrelation von 0.004",
+                "die Kanten hängen am Erkenner, nicht am Markt — eine andere "
+                "Schwelle ergibt andere Zonen auf denselben Kerzen",
+            ],
+            frische_kerzen=m["alter_kerzen"],
+            abstand_atr=round(m["abstand_atr"], 3),
+            zaehlt=m["abstand_atr"] <= ZONE_REICHWEITE_ATR,
+            grund_nicht=("" if m["abstand_atr"] <= ZONE_REICHWEITE_ATR
+                         else f"Mehr als {ZONE_REICHWEITE_ATR:.0f} ATR entfernt."),
+        ))
+
+    unter.sort(key=lambda u: -u.gewicht)
+    nah = sum(1 for u in unter if (u.abstand_atr or 0) < 1.0)
+    return FaktorDetail(
+        key="zonen", label="Zonen",
+        erklaerung=(
+            "Jede Zone im Bild einzeln bewertet. Die Sterne messen, wie relevant "
+            "sie gerade ist — nicht, wie wahrscheinlich sie hält. Das ist ein "
+            "Unterschied, den dieses Projekt teuer gelernt hat."
+        ),
+        rechenweg=(
+            "Gewicht = Nähe × Frische × Schärfe × Halt. Ein Produkt, keine Summe: "
+            "eine Zone, die der Preis vor hundert Kerzen zerschnitten hat, ist "
+            "nicht halb so gut, sondern erledigt — und ein Produkt bildet das ab, "
+            "weil ein Faktor nahe null alles andere mitnimmt."
+        ),
+        regime="",
+        unterfaktoren=unter,
+        familien=[],
+        kontext=[],
+        hinweis=(
+            f"{len(unter)} Zonen in Reichweite, {nah} davon näher als 1 ATR. Die "
+            f"Vorhersagekraft solcher Lagen ist gemessen und liegt bei null "
+            f"(Korrelation 0.004 über 35 Merkmale): die Sterne sagen „wichtig "
+            f"aussehend“, nicht „trifft ein“."
+        ),
+        gemessen=True,
+    )
