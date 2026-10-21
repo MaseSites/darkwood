@@ -84,7 +84,10 @@ meta:
   # Die Zahl, auf die korrigiert wird. Summe der `comparisons` aller Arme unten
   # plus die bereits gelesenen Zellen der Vorgaenger-Suche, soweit dieselbe
   # Frage betroffen ist.
-  total_comparisons: 73
+  # 21.10.2026: +4 fuer die vier Zellen des E22-Rueckgabe-Trails
+  # (G in {0.25, 0.50, 0.75, 1.00}), vorregistriert am 20.10. in
+  # audit/E22_TRAIL_VORREGISTRIERUNG.md und an diesem Tag gelaufen.
+  total_comparisons: 77
   correction: >-
     Bonferroni auf `total_comparisons` Vergleiche: Schwelle 0.05/n,
     Intervall 100*(1 - 0.05/n) %. Bei 70 also 0.000714 und 99.9286 %.

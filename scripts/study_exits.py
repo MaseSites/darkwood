@@ -125,8 +125,36 @@ TRAIL_ATR = 2.0
 ATR_FRAME = Timeframe.H1
 ATR_PERIOD = 14
 
-#: Angemeldete Vergleichszahl des Gesamtregisters.
-TOTAL_COMPARISONS = 46
+def _angemeldete_vergleiche() -> int:
+    """Die Vergleichszahl AUS DEM REGISTER, nicht aus einer zweiten Kopie.
+
+    **Gefunden am 21.10.2026:** hier stand fest `46`, waehrend
+    `audit/EXPERIMENTS_NEXT.yaml` 73 fuehrte. Eine zu KLEINE Zahl macht die
+    Bonferroni-Schwelle zu MILD -- 0.05/46 statt 0.05/73 --, und das ist die
+    gefaehrliche Richtung: ein Befund wird leichter, nicht schwerer.
+
+    Dass es den Lauf vom 21.10. nicht entwertet, ist Glueck und kein
+    Argument: dort bestand KEIN Arm, und eine strengere Schwelle haette
+    daran nichts geaendert. Waere einer knapp durchgekommen, stuende hier
+    eine zurueckgenommene Aussage.
+
+    Darum keine zweite Zahl mehr. Faellt das Register aus, bricht die
+    Rechnung ab -- eine stillschweigende Rueckfallzahl waere genau der
+    Fehler noch einmal.
+    """
+    import re as _re
+    pfad = Path(__file__).resolve().parents[1] / "audit" / "EXPERIMENTS_NEXT.yaml"
+    treffer = _re.search(r"total_comparisons:\s*(\d+)", pfad.read_text(encoding="utf-8"))
+    if treffer is None:
+        raise SystemExit(
+            "audit/EXPERIMENTS_NEXT.yaml nennt keine `total_comparisons`. "
+            "Ohne die angemeldete Vergleichszahl ist jede Korrektur eine Erzaehlung."
+        )
+    return int(treffer.group(1))
+
+
+#: Angemeldete Vergleichszahl, aus dem Register gelesen.
+TOTAL_COMPARISONS = _angemeldete_vergleiche()
 
 HOUR_MS = 3_600_000
 MIN_CASES = 200
@@ -188,6 +216,18 @@ def trail_exit(
         return None
     k = int(np.argmax(hit))
     return start + k, float(level[k])
+
+
+#: Die vier Zellen des E22-Arms, vorab und unveraenderlich.
+#:
+#: G ist der Rueckgabe-Abstand in Einheiten des Risikos: der Stop folgt dem
+#: guenstigsten erreichten Punkt im Abstand `G * risk_price` und wird nie
+#: zurueckgenommen.
+#:
+#: Vier Stueck, nicht mehr. Jede weitere Zelle verschaerft die
+#: Mehrfachkorrektur, ohne die Frage zu schaerfen -- und die Frage ist, OB
+#: ein risikobezogener Trail etwas rettet, nicht welches G optimal ist.
+E22_RUECKGABE = (0.25, 0.50, 0.75, 1.00)
 
 
 def replay(
@@ -261,11 +301,47 @@ def replay(
         barrier=barrier,
     )
 
-    return {
+    arme = {
         "E3.1 Stop und Ziel": Outcome(base.net_r, base.minutes_held, str(base.barrier)),
         "E3.2 Stop und 24h-Uhr": Outcome(timed.net_r, timed.minutes_held, str(timed.barrier)),
         "E3.3 Stop und 2.0-ATR-Trail": trailed,
     }
+
+    # E22 -- der Rueckgabe-Trail, vorregistriert am 20.10.2026.
+    #
+    # Unterschied zu E3.3 in einer Zeile: der Abstand ist `G * Risiko` statt
+    # `2.0 * ATR`. Das ist die Frage der Vorregistrierung -- ein Trail, der
+    # in der Waehrung des Trades misst und nicht in der des Marktes.
+    #
+    # **Abweichung von der Vorregistrierung, und sie steht hier statt im
+    # Nachhinein:** dort war ein neues Simulatorfeld `trail_giveback_r` in
+    # `sim/broker.py` vorgesehen. Gebaut ist es hier, im Replay-Werkzeug.
+    # Zwei Gruende, beide inhaltlich: dieselbe Population und derselbe
+    # Fill wie E3.1-E3.3, also sind die Arme direkt vergleichbar; und der
+    # Entscheidungspfad bleibt unberuehrt, womit die laufende
+    # Vorwaertsstichprobe nicht unterbrochen wird. Die gemessene GROESSE
+    # ist dieselbe.
+    for g in E22_RUECKGABE:
+        treffer = trail_exit(
+            minutes, side=side, fill_price=base.entry_price, fill_index=at,
+            stop=stop, trail=g * risk, end=end,
+        )
+        if treffer is None:
+            letzte = max(at + 1, end) - 1
+            if letzte <= at:
+                return None
+            kurs, gehalten, schranke = float(minutes.open[letzte]), letzte - at, "zeit"
+        else:
+            index, niveau = treffer
+            kurs, gehalten, schranke = niveau, index - at, "trail"
+        kosten = (base.entry_price * spec.maker_fee + kurs * spec.taker_fee) / risk
+        arme[f"E22 Rueckgabe-Trail {g:.2f} R"] = Outcome(
+            net_r=sign * (kurs - base.entry_price) / risk - kosten,
+            minutes_held=gehalten,
+            barrier=schranke,
+        )
+
+    return arme
 
 
 def build(symbols: list[str], *, signature: str) -> list[Case]:
