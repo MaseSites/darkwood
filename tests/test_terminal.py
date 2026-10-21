@@ -35,13 +35,17 @@ def test_sterne_und_richtung_sind_monoton() -> None:
     assert _richtung(50) == "long" and _richtung(-50) == "short" and _richtung(3) == "neutral"
 
 
-def test_acht_karten_und_vier_chartkarten_aus_sieben_familien() -> None:
+def test_neun_karten_und_vier_chartkarten_aus_sieben_familien() -> None:
     buch = Orderbuch(symbol="BTCUSDT", bids=[[1, 2]], asks=[[2, 1]], bid_total=2, ask_total=1,
                      bid_share_pct=66.7, spread_bp=0.5, ts=0)
     kal = Kalender(events=[], high_within_24h=0, next_high_hours=None, risk_pct=0, note="")
     s = score("BTCUSDT", _score_read(), {"setups": [], "gate": {}, "events": [], "bands": []}, buch, kal, [])
+    # Die Reihenfolge ist Teil der Zusicherung: "Indikatoren" steht zwischen
+    # Price-Action und Entry-Signal, weil es die Familien buendelt, die
+    # darueber einzeln stehen -- und VOR dem Entry-Signal, das keine
+    # Meinung ist, sondern eine Regel.
     assert [k.key for k in s.cards] == ["kalender", "orderbuch", "chart", "liquiditaet", "volumen",
-                                        "priceaction", "entry", "history"]
+                                        "priceaction", "indikatoren", "entry", "history"]
     assert [k.key for k in s.chart_cards] == ["zonen", "chartpattern", "candles", "trend"]
     # 0.85 gegen 0.40 -> 68 % long.
     assert s.long_pct == 68 and s.short_pct == 32 and s.direction == "long"
@@ -51,6 +55,14 @@ def test_acht_karten_und_vier_chartkarten_aus_sieben_familien() -> None:
     # 66.7 % Gebote -> Orderbuch positiv.
     ob = next(k for k in s.cards if k.key == "orderbuch")
     assert ob.pct > 0 and ob.direction == "long"
+    # Die Indikatorenkarte SUMMIERT nicht. Ihre Sterne zaehlen, wie viele der
+    # fuenf indikatortragenden Familien ueberhaupt eine Seite einnehmen --
+    # hier vier (structure ist still und gehoert ohnehin nicht dazu). Eine
+    # Karte, die 199 Lesungen addiert haette, staende bei jeder
+    # Familieneinigkeit am Anschlag.
+    ind = next(k for k in s.cards if k.key == "indikatoren")
+    assert ind.stars == 5, "trend, momentum, volatility, volume, location sprechen alle"
+    assert ind.measured is True
 
 
 def test_fehlende_quellen_sind_keine_null_sondern_keine_messung() -> None:
