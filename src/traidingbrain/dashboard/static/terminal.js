@@ -17,6 +17,19 @@ import { drawTerminalChart, drawEquity, drawRCurve, fmt, EBENEN, SEITENTEILE } f
 import { INDIKATOREN } from "/static/terminal-indikatoren.js";
 import { LEISTE, PUNKTE, WERKZEUGE } from "/static/terminal-zeichnen.js";
 import { faktorHtml, wireFaktor } from "/static/terminal-faktor.js";
+import {
+  BEREICHE, darstellungMarkup, fussMarkup, fussZeigen, ladeAnsicht, merkeAnsicht,
+  naechsterSchluss, screenshot, seitenZeigen, uhrTick, vollbild,
+} from "/static/terminal-ansicht.js";
+import {
+  aendere, einrasten, magnet, objektbaumKlick, objektbaumMarkup, rueckgaengig, wiederholen,
+} from "/static/terminal-objekte.js";
+import { datumAus, frage, hilfeMarkup, taste, zeigeMenu, zeitebeneAus } from "/static/terminal-tasten.js";
+import { renderWatchlist, setzeMaerkte, tickWatchlist, wireWatchlist } from "/static/terminal-watchlist.js";
+import { ladeMtf, wireMtf, zeichneMtf } from "/static/terminal-mtf.js";
+import {
+  replayEnde, replayLeisteMarkup, replaySchnitt, replaySchritt, replayStart, replayWaehle, wireReplay,
+} from "/static/terminal-replay.js";
 
 /** Was sichtbar ist, wenn noch nie etwas eingestellt wurde: EMA 20 und 200,
  *  wie bisher festverdrahtet -- nur jetzt aenderbar. */
@@ -68,7 +81,14 @@ const S = {
   faktorLaeuft: false,
   vprofil: null, vprofilFuer: null, vprofilLaeuft: false,
   stift: { farbe: "#f59e0b", dicke: 1.4 },
+  // TradingView-Bedienung (21.10.2026): letzte Geometrie des Charts (fuer
+  // Tasten, Rad und Achsen), Zeichnungen ausgeblendet, Replay, Layout,
+  // Vergleichskerzen, laufende Zuege an Preis- und Zeitachse.
+  geo: null, zeichnungenAus: false, replay: null, layout: "1",
+  vergleichKerzen: null, vergleichFuer: null, achsenZug: null, zeitZug: null,
 };
+//: Darstellung (Charttyp, Skala, Gitter ...), in localStorage gemerkt.
+const A = ladeAnsicht();
 function zoomKey() { return `${S.symbol}|${S.tf}`; }
 function zoom() { return (S.zoomBy[zoomKey()] ??= { visible: null, end: null }); }
 function zoomReset() { S.zoomBy[zoomKey()] = { visible: null, end: null }; }
@@ -126,6 +146,17 @@ function mergedCandles() {
   if (k.ts === last.ts) return [...base.slice(0, -1), live];
   return base;
 }
+
+/** Die Kerzen, die der Chart gerade zeigt -- im Replay nur bis zum Schnitt. */
+function kerzenJetzt() {
+  const alle = mergedCandles();
+  return replaySchnitt(S, alle, S.market ?? {})?.candles ?? alle;
+}
+/** Was der Chart vom Server zeigt -- im Replay ohne Zonen, Struktur, Setups. */
+function sicht() {
+  return replaySchnitt(S, mergedCandles(), S.market ?? {})?.view ?? S.market;
+}
+function zeichne(canvas, opts) { return drawTerminalChart(canvas, sicht(), opts); }
 
 /* ------------------------------------------------------------ Orderbuch -- */
 async function tickBook() {
@@ -199,36 +230,54 @@ function positionLines() {
   return lines;
 }
 function chartOpts(extra = {}) {
-  const candles = mergedCandles();
-  const forming = !!(S.live && S.live.symbol === S.symbol && S.live.timeframe === S.tf && !S.live.closed && candles.length && candles[candles.length - 1].ts === S.live.ts);
+  const alle = mergedCandles();
+  const rp = replaySchnitt(S, alle, S.market ?? {});
+  const candles = rp ? rp.candles : alle;
+  const forming = !rp && !!(S.live && S.live.symbol === S.symbol && S.live.timeframe === S.tf && !S.live.closed && candles.length && candles[candles.length - 1].ts === S.live.ts);
   const setup = S.market?.setups?.[0];
   const z = zoom();
   // Das Buch traegt sein Symbol -- wie die formende Kerze. Ein fremdes Buch
   // liefert Heatmap-Baender in einer ganz anderen Groessenordnung.
   const buch = S.heat && S.heat.symbol === S.symbol ? S.heat : null;
-  return { candles, forming, lines: positionLines(), layers: S.ebenen, book: buch,
+  const vergleich = !rp && A.vergleich && A.vergleich !== S.symbol
+    && S.vergleichFuer === `${A.vergleich}|${S.tf}` && S.vergleichKerzen?.length
+    ? { label: `vs ${A.vergleich.replace("USDT", "")}`, candles: S.vergleichKerzen } : null;
+  // Im Replay fehlt alles, was der Server mit HEUTIGEM Wissen rechnet
+  // (terminal-replay.js erklaert warum) -- und alles, was Gegenwart ist.
+  return { candles, forming, lines: rp ? [] : positionLines(), layers: S.ebenen, book: rp ? null : buch,
     indikatoren: S.indikatoren,
-    vprofil: S.vprofil && S.vprofil.symbol === S.symbol ? S.vprofil : null,
-    grosstrades: S.grosstrades && S.grosstrades.symbol === S.symbol ? S.grosstrades : null,
-    optionen: S.optionen && S.optionen.symbol === S.symbol ? S.optionen : null,
-    zeichnungen: S.zeichnungen.filter((d) => d.symbol === S.symbol),
+    vprofil: !rp && S.vprofil && S.vprofil.symbol === S.symbol ? S.vprofil : null,
+    grosstrades: !rp && S.grosstrades && S.grosstrades.symbol === S.symbol ? S.grosstrades : null,
+    optionen: !rp && S.optionen && S.optionen.symbol === S.symbol ? S.optionen : null,
+    zeichnungen: S.zeichnungenAus ? [] : S.zeichnungen.filter((d) => d.symbol === S.symbol && !d.aus),
     angefangen: S.angefangen, stift: S.stift,
-    visible: z.visible, end: z.end,
-    signalIndex: setup ? (S.market.candles.length - 1) : undefined, ...extra };
+    visible: z.visible, end: rp ? null : z.end,
+    signalIndex: !rp && setup ? (S.market.candles.length - 1) : undefined,
+    ansicht: A, skala: { ...A.skala, streckung: z.streckung ?? 1 },
+    schlussBei: rp ? null : naechsterSchluss(S.tf), vergleich, ...extra };
 }
+const menge = (v) => (v == null ? "–" : v >= 1e6 ? `${(v / 1e6).toFixed(2)} Mio` : v >= 1e3 ? `${(v / 1e3).toFixed(1)} Tsd` : v.toFixed(2));
 function renderChart() {
+  if (S.layout === "4") { zeichneMtf(T); fussZeigen(A, zoom().streckung, false); return; }
   const canvas = $("#chart");
   if (!S.market) return;
-  const g = drawTerminalChart(canvas, S.market, chartOpts({ hover: S.hover }));
+  const opts = chartOpts({ hover: S.hover });
+  const g = zeichne(canvas, opts);
   if (!g) return;
-  const candles = mergedCandles(), last = candles[candles.length - 1];
-  // Die Legende kommt jetzt aus dem, was WIRKLICH gezeichnet wurde. Vorher
-  // stand hier "EMA 200 / EMA 20" fest im Text -- wer den 50er einstellte,
-  // bekam trotzdem die alte Beschriftung.
+  S.geo = g;
+  const candles = opts.candles, last = candles[candles.length - 1];
+  // Die Legende kommt aus dem, was WIRKLICH gezeichnet wurde -- und seit dem
+  // 21.10. mit den Werten AM FADENKREUZ (TradingViews Datenfenster).
   $("#legend").innerHTML = (g.legende ?? []).map((e) =>
-    `<span><b style="color:${e.farbe}">${e.label}</b> ${Number.isFinite(e.wert) ? px(e.wert) : "–"}</span>`).join("");
-  if (!S.hover) $("#readout").textContent = `${day(last.ts)}  O ${px(last.open)}  H ${px(last.high)}  L ${px(last.low)}  C ${px(last.close)}  ATR ${S.market.atr_pct !== undefined ? (S.market.atr_pct * 100).toFixed(2) : "–"}%${zoom().end !== null ? "  · verschoben" : ""}`;
+    `<span><b style="color:${e.farbe}">${e.label}</b> ${e.text ?? (Number.isFinite(e.wert) ? px(e.wert) : "–")}</span>`).join("");
+  const k = S.hover && g.hoverKi !== null ? candles[g.offset + g.hoverKi] : null;
+  if (k) {
+    $("#readout").textContent = `${day(k.ts)}  O ${px(k.open)}  H ${px(k.high)}  L ${px(k.low)}  C ${px(k.close)}  ${pct(((k.close - k.open) / k.open) * 100)}  Vol ${menge(k.volume)}`;
+  } else if (last) {
+    $("#readout").textContent = `${day(last.ts)}  O ${px(last.open)}  H ${px(last.high)}  L ${px(last.low)}  C ${px(last.close)}  Vol ${menge(last.volume)}  ATR ${S.market.atr_pct !== undefined ? (S.market.atr_pct * 100).toFixed(2) : "–"}%${zoom().end !== null ? "  · verschoben" : ""}${S.replay ? "  · Replay" : ""}`;
+  }
   $("#lineboxes").innerHTML = g.boxes.map((b) => `<div class="linebox" style="top:${b.y}px;color:${b.colour}"><span>${b.label}</span>${b.closable ? `<button data-line="${b.id}" title="entfernen">x</button>` : ""}</div>`).join("");
+  fussZeigen(A, zoom().streckung, zoom().end !== null && !S.replay);
 }
 /* ------------------------------------------------- Ebenen-Einstellungen -- */
 const EBENEN_FARBE = {
@@ -238,7 +287,7 @@ const EBENEN_FARBE = {
   // Strich. Ein fehlender Eintrag ergab `background:undefined` -- ein
   // unsichtbares Plättchen, das wie ein Darstellungsfehler aussieht.
   vprofil: "#facc15", grosstrades: "#22c55e", optionen: "#a78bfa",
-  kalender: "#9aa7bb", orderbuch: "#9aa7bb",
+  kalender: "#9aa7bb", orderbuch: "#9aa7bb", watchlist: "#9aa7bb",
 };
 
 function ebeneAn(key) { return S.ebenen[key] !== false; }
@@ -598,8 +647,10 @@ function zeigerStelle(e, canvas, g) {
   if (!g) return null;
   const box = canvas.getBoundingClientRect();
   const x = e.clientX - box.left, y = e.clientY - box.top;
-  const preis = g.lo + ((g.pB - y) / (g.pB - g.pT)) * (g.hi - g.lo);
-  const kerzen = mergedCandles();
+  // Ueber die Skala, nicht linear nachgerechnet: unter log, Prozent und
+  // invertiert laege jeder Punkt sonst neben dem Klick.
+  const preis = g.preisBei ? g.preisBei(y) : g.lo + ((g.pB - y) / (g.pB - g.pT)) * (g.hi - g.lo);
+  const kerzen = kerzenJetzt();
   const i = Math.max(0, Math.min(kerzen.length - 1, g.offset + Math.round((x - g.pL) / g.slot - 0.5)));
   // `ts` auch fuer Punkte RECHTS der letzten Kerze: dort gibt es keine mehr,
   // also wird die Zeit fortgeschrieben. Ohne das rutschte jede Zeichnung im
@@ -610,22 +661,52 @@ function zeigerStelle(e, canvas, g) {
   return { ts, preis, index: Math.round(roh) };
 }
 
+function neueZeichnung(typ, punkte, text) {
+  const d = {
+    id: `z${Date.now().toString(36)}`, typ, symbol: S.symbol, tf: S.tf,
+    punkte, farbe: S.stift.farbe, dicke: S.stift.dicke,
+  };
+  if (text !== undefined) d.text = text;
+  aendere(S, merkeZeichnungen, () => { S.zeichnungen.push(d); });
+  zeichnungGemeldet(d);
+  return d;
+}
+
 function zeichnungFertig() {
   const a = S.angefangen; if (!a) return;
   const wz = WERKZEUGE[a.typ];
-  const d = {
-    id: `z${Date.now().toString(36)}`, typ: a.typ, symbol: S.symbol, tf: S.tf,
-    punkte: a.punkte, farbe: S.stift.farbe, dicke: S.stift.dicke,
-  };
+  let text;
   if (wz.text) {
     const eingabe = prompt(wz.name === "Text" ? "Text:" : "Beschriftung (leer = Preis):", "");
     if (eingabe === null) { S.angefangen = null; return; }   // abgebrochen
-    d.text = eingabe;
+    text = eingabe;
   }
-  S.zeichnungen.push(d);
   S.angefangen = null;
-  merkeZeichnungen();
-  zeichnungGemeldet(d);
+  neueZeichnung(a.typ, a.punkte, text);
+  // Wie TradingView: nach einer Zeichnung zurueck zum Fadenkreuz -- ausser
+  // "Werkzeug aktiv lassen" ist an (Fenster Darstellung).
+  if (!A.dauerZeichnen) waehleWerkzeug("cross");
+}
+
+function zeigeAusblenden() {
+  $('#tools [data-tool="ausblenden"]')?.setAttribute("aria-pressed", String(!!S.zeichnungenAus));
+}
+
+/** Ein Werkzeug waehlen -- auch von Tastenkuerzeln und dem Rechtsklick-Menue. */
+function waehleWerkzeug(k) {
+  const leiste = $("#tools");
+  if (k === "clear") {
+    aendere(S, merkeZeichnungen, () => { S.zeichnungen = S.zeichnungen.filter((d) => d.symbol !== S.symbol); });
+    S.angefangen = null; renderChart(); return;
+  }
+  if (k === "ausblenden") { S.zeichnungenAus = !S.zeichnungenAus; zeigeAusblenden(); renderChart(); return; }
+  if (!WERKZEUGE[k]) return;
+  S.tool = k; S.angefangen = null;
+  $$("button[data-tool]", leiste).forEach((x) => {
+    if (x.dataset.tool !== "ausblenden") x.setAttribute("aria-pressed", String(x.dataset.tool === k));
+  });
+  $("#chart").style.cursor = k === "cross" ? "crosshair" : "copy";
+  renderChart();
 }
 
 function wireWerkzeuge() {
@@ -633,21 +714,14 @@ function wireWerkzeuge() {
   leiste.innerHTML = LEISTE.map((k) => {
     if (k === null) return '<span class="tools__trenner" role="separator"></span>';
     const w = WERKZEUGE[k];
+    const an = k === "ausblenden" ? !!S.zeichnungenAus : k === S.tool;
     return `<button data-tool="${k}" title="${w.name}" aria-label="${w.name}"
-      aria-pressed="${k === S.tool}"><svg viewBox="0 0 24 24"><path d="${w.pfad}"/></svg></button>`;
+      aria-pressed="${an}"><svg viewBox="0 0 24 24"><path d="${w.pfad}"/></svg></button>`;
   }).join("");
 
   leiste.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-tool]"); if (!b) return;
-    const k = b.dataset.tool;
-    if (k === "clear") {
-      S.zeichnungen = S.zeichnungen.filter((d) => d.symbol !== S.symbol);
-      S.angefangen = null; merkeZeichnungen(); renderChart(); return;
-    }
-    S.tool = k; S.angefangen = null;
-    $$("button[data-tool]", leiste).forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-    $("#chart").style.cursor = k === "cross" ? "crosshair" : "copy";
-    renderChart();
+    waehleWerkzeug(b.dataset.tool);
   });
 
   // Freihand: Pinsel und Marker sammeln, solange die Taste unten ist.
@@ -655,14 +729,14 @@ function wireWerkzeuge() {
   let frei = null;
   canvas.addEventListener("pointerdown", (e) => {
     if (WERKZEUGE[S.tool]?.punkte !== PUNKTE.FREI || !S.market) return;
-    const g = drawTerminalChart(canvas, S.market, chartOpts());
+    const g = zeichne(canvas, chartOpts());
     frei = { typ: S.tool, punkte: [zeigerStelle(e, canvas, g)] };
     S.angefangen = frei;
-    canvas.setPointerCapture(e.pointerId);
+    fange(canvas, e);
   });
   canvas.addEventListener("pointermove", (e) => {
     if (!frei) return;
-    const g = drawTerminalChart(canvas, S.market, chartOpts());
+    const g = zeichne(canvas, chartOpts());
     const p = zeigerStelle(e, canvas, g);
     const letzter = frei.punkte[frei.punkte.length - 1];
     // Punkte ausduennen: jeder Pixel waere ein Punkt, und eine Linie aus
@@ -686,20 +760,67 @@ function wireWerkzeuge() {
   });
 }
 
+/** Zeiger binden, ohne zu werfen, wenn der Browser ihn schon losgelassen hat. */
+function fange(el, e) { try { el.setPointerCapture(e.pointerId); } catch { /* Zeiger schon weg */ } }
+
+/** Liegt der Zeiger auf der Preis- oder der Zeitachse? */
+function amAchse(g, x, y) {
+  if (!g) return null;
+  if (x > g.pR && y < g.pB) return "preis";
+  if (y > g.H - 26 && x >= g.pL && x <= g.pR) return "zeit";
+  return null;
+}
+function zeiger(achse) {
+  if (achse === "preis") return "ns-resize";
+  if (achse === "zeit") return "ew-resize";
+  if (S.replay?.phase === "waehlen") return "col-resize";
+  return S.tool === "cross" ? "crosshair" : "copy";
+}
+/** Um n Kerzen verschieben (positiv = Richtung Gegenwart). */
+function schiebe(n) {
+  const total = kerzenJetzt().length, z = zoom();
+  const vis = S.geo?.visible ?? 120;
+  const maxEnd = total + Math.floor(vis / 3);
+  const end = Math.max(20, Math.min(maxEnd, (z.end ?? total) + n));
+  z.end = end === total ? null : end;
+}
+/** Zoomen, wahlweise um einen Bildpunkt herum (Strg+Rad). */
+function zoomUm(faktor, xPix) {
+  const g = S.geo, z = zoom(), total = kerzenJetzt().length;
+  const vis = g?.visible ?? z.visible ?? 120;
+  const neu = Math.max(20, Math.min(2000, Math.round(vis * faktor)));
+  if (xPix === undefined || !g) { z.visible = neu; return; }
+  const anteil = Math.max(0, Math.min(1, (xPix - g.pL) / (g.pR - g.pL)));
+  const ende = z.end ?? total;
+  const anker = ende - vis + anteil * vis;
+  z.visible = neu;
+  const maxEnd = total + Math.floor(neu / 3);
+  const e2 = Math.max(20, Math.min(maxEnd, Math.round(anker - anteil * neu + neu)));
+  z.end = e2 === total ? null : e2;
+}
+
 function wireChart() {
   const canvas = $("#chart");
+  const stelleIm = (e) => { const b = canvas.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; };
   canvas.addEventListener("pointermove", (e) => {
-    const box = canvas.getBoundingClientRect();
-    const pos = { x: e.clientX - box.left, y: e.clientY - box.top };
+    const pos = stelleIm(e);
+    if (S.achsenZug) {
+      // Nach unten ziehen = mehr Preis im Bild (staucht), nach oben = streckt.
+      zoom().streckung = Math.max(0.15, Math.min(12, S.achsenZug.start * Math.exp((pos.y - S.achsenZug.y) / 160)));
+      renderChart(); return;
+    }
+    if (S.zeitZug) {
+      zoom().visible = Math.max(20, Math.min(2000, Math.round(S.zeitZug.start * Math.exp(-(pos.x - S.zeitZug.x) / 220))));
+      renderChart(); return;
+    }
     if (S.drag) {
-      const g = drawTerminalChart(canvas, S.market, chartOpts());
+      const g = S.geo;
       if (g) {
         const shift = Math.round((pos.x - S.drag.x) / g.slot);
         if (shift !== 0) {
-          const total = mergedCandles().length;
+          const total = kerzenJetzt().length;
           // Nach rechts ueber das Ende hinaus ist erlaubt: der Zeichner macht
-          // daraus leeren Raum, wie bei TradingView. Vorher war bei der
-          // letzten Kerze Schluss und man kam nicht an den rechten Rand.
+          // daraus leeren Raum, wie bei TradingView.
           const maxEnd = total + Math.floor((g.visible ?? g.count) / 3);
           const end = Math.max(20, Math.min(maxEnd, S.drag.end - shift));
           zoom().end = end >= total ? (end > total ? end : null) : end;
@@ -708,39 +829,61 @@ function wireChart() {
       }
       renderChart(); return;
     }
+    canvas.style.cursor = zeiger(amAchse(S.geo, pos.x, pos.y));
     S.hover = pos;
-    const g = drawTerminalChart(canvas, S.market, chartOpts({ hover: S.hover }));
-    if (g) {
-      const i = Math.max(0, Math.min(g.count - 1, Math.floor((pos.x - g.pL) / g.slot)));
-      const k = mergedCandles()[g.offset + i];
-      if (k) $("#readout").textContent = `${day(k.ts)}  O ${px(k.open)}  H ${px(k.high)}  L ${px(k.low)}  C ${px(k.close)}  ${pct(((k.close - k.open) / k.open) * 100)}`;
-    }
+    renderChart();
   });
   canvas.addEventListener("pointerdown", (e) => {
-    if (S.tool !== "cross" || !S.market) return;
-    const box = canvas.getBoundingClientRect();
-    S.drag = { x: e.clientX - box.left, end: zoom().end ?? mergedCandles().length };
-    canvas.setPointerCapture(e.pointerId);
+    if (e.button !== 0 || !S.market) return;
+    const { x, y } = stelleIm(e);
+    const achse = amAchse(S.geo, x, y);
+    if (achse === "preis") { S.achsenZug = { y, start: zoom().streckung ?? 1 }; fange(canvas, e); return; }
+    if (achse === "zeit") { S.zeitZug = { x, start: S.geo?.visible ?? 120 }; fange(canvas, e); return; }
+    if (S.tool !== "cross" || S.replay?.phase === "waehlen") return;
+    S.drag = { x, end: zoom().end ?? kerzenJetzt().length };
+    fange(canvas, e);
   });
-  const endDrag = () => { S.drag = null; };
+  const endDrag = () => { S.drag = null; S.achsenZug = null; S.zeitZug = null; };
   canvas.addEventListener("pointerup", endDrag);
   canvas.addEventListener("pointercancel", endDrag);
-  canvas.addEventListener("pointerleave", () => { S.hover = null; S.drag = null; renderChart(); });
+  canvas.addEventListener("pointerleave", () => { S.hover = null; if (!S.achsenZug && !S.zeitZug) S.drag = null; renderChart(); });
   canvas.addEventListener("wheel", (e) => {
     e.preventDefault();
-    const g = drawTerminalChart(canvas, S.market, chartOpts());
-    if (!g) return;
-    const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
-    zoom().visible = Math.max(20, Math.min(2000, Math.round((g.visible ?? g.count) * factor)));
+    if (!S.geo) return;
+    // Umschalt+Rad und waagrechtes Wischen verschieben; Strg+Rad zoomt zum
+    // Zeiger; das blanke Rad zoomt mit festem rechten Rand (TradingView).
+    if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      const d = e.deltaX || e.deltaY;
+      schiebe(Math.sign(d) * Math.max(1, Math.round((S.geo.visible ?? 120) / 25)));
+    } else {
+      zoomUm(e.deltaY > 0 ? 1.15 : 1 / 1.15, e.ctrlKey || e.metaKey ? stelleIm(e).x : undefined);
+    }
     renderChart();
   }, { passive: false });
-  canvas.addEventListener("dblclick", () => { zoomReset(); renderChart(); });
+  canvas.addEventListener("dblclick", (e) => {
+    const { x, y } = stelleIm(e);
+    const achse = amAchse(S.geo, x, y);
+    if (achse === "preis") zoom().streckung = 1;
+    else if (achse === "zeit") zoom().visible = null;
+    else zoomReset();
+    renderChart();
+  });
   canvas.addEventListener("click", (e) => {
-    if (!S.market || S.tool === "cross") return;
-    const g = drawTerminalChart(canvas, S.market, chartOpts());
-    const stelle = zeigerStelle(e, canvas, g);
+    if (!S.market) return;
+    const { x, y } = stelleIm(e);
+    if (amAchse(S.geo, x, y)) return;
+    if (S.replay?.phase === "waehlen" && S.geo) {
+      const g = S.geo;
+      const i = g.offset + Math.floor((x - g.pL) / g.slot) - g.vorn;
+      if (replayWaehle(S, Math.min(i, mergedCandles().length - 1))) nachReplay();
+      return;
+    }
+    if (S.tool === "cross") return;
+    const g = zeichne(canvas, chartOpts());
+    let stelle = zeigerStelle(e, canvas, g);
     if (!stelle) return;
-    if (S.tool === "alert") { addAlert(stelle.preis); return; }
+    if (S.tool === "alert") { addAlert(stelle.preis); if (!A.dauerZeichnen) waehleWerkzeug("cross"); return; }
+    if (A.magnet) stelle = magnet(stelle, kerzenJetzt());
     const wz = WERKZEUGE[S.tool];
     if (!wz?.punkte || wz.punkte === PUNKTE.FREI) return;
 
@@ -748,9 +891,36 @@ function wireChart() {
     // ein Klick-Klick trifft auf einem Laptop-Trackpad zuverlaessiger als ein
     // gehaltener Zug, und die Vorschau zeigt waehrenddessen, was entsteht.
     S.angefangen ??= { typ: S.tool, punkte: [] };
+    if (e.shiftKey && S.angefangen.punkte.length === 1 && wz.punkte === PUNKTE.ZWEI) {
+      const xVon = (p) => g.pL + g.slot * (p.index - g.offset + g.vorn + 0.5);
+      stelle = einrasten(S.angefangen.punkte[0], stelle, g, xVon);
+    }
     S.angefangen.punkte.push(stelle);
     if (S.angefangen.punkte.length >= wz.punkte) zeichnungFertig();
     renderChart();
+  });
+  canvas.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    if (!S.market || !S.geo) return;
+    const stelle = zeigerStelle(e, canvas, S.geo);
+    if (!stelle) return;
+    const preis = stelle.preis;
+    zeigeMenu(e.clientX, e.clientY, [
+      { label: `Alarm bei ${px(preis)}`, kuerzel: "Alt+A", aktion: () => { addAlert(preis); renderChart(); } },
+      { label: `Horizontale Linie bei ${px(preis)}`, kuerzel: "Alt+H", aktion: () => neueZeichnung("hline", [stelle]) },
+      { label: "Vertikale Linie hier", kuerzel: "Alt+V", aktion: () => neueZeichnung("vline", [stelle]) },
+      { label: `Preis kopieren (${px(preis)})`, aktion: () => navigator.clipboard?.writeText(String(+preis.toPrecision(8))) },
+      "-",
+      { label: "Chart zurücksetzen", kuerzel: "Alt+R", aktion: () => { zoomReset(); renderChart(); } },
+      { label: "Logarithmische Skala", kuerzel: "Alt+L", an: A.skala.modus === "log", aktion: () => schalteSkala("log") },
+      { label: "Prozent-Skala", kuerzel: "Alt+P", an: A.skala.modus === "prozent", aktion: () => schalteSkala("prozent") },
+      { label: "Skala umdrehen", kuerzel: "Alt+I", an: !!A.skala.invert, aktion: () => schalteSkala("invert") },
+      "-",
+      { label: "Zeichnungen ausblenden", kuerzel: "Strg+Alt+H", an: !!S.zeichnungenAus, aktion: () => T.ausblenden() },
+      { label: "Rückgängig", kuerzel: "Strg+Z", aktion: () => T.rueckgaengig() },
+      { label: "Screenshot speichern", kuerzel: "Alt+S", aktion: () => T.foto() },
+      { label: "Tastenkürzel", kuerzel: "?", aktion: () => T.hilfe() },
+    ]);
   });
   $("#lineboxes").addEventListener("click", async (e) => {
     const b = e.target.closest("button[data-line]"); if (!b) return;
@@ -768,10 +938,14 @@ function wireChart() {
   wireLayers();
   wireIndikatoren();
   document.addEventListener("keydown", (e) => {
-    if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+    // Zuerst die TradingView-Kuerzel (terminal-tasten.js); was dort nicht
+    // verbraucht wird, faellt auf die alten Tasten durch.
+    if (T && taste(e, T)) { e.preventDefault(); return; }
+    if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "1") setView("markt"); if (e.key === "2") setView("konto"); if (e.key === "3") setView("trades");
     if (e.key === "m") setMode("manual"); if (e.key === "b") setMode("bot");
-    if (S.view === "markt" && (e.key === "+" || e.key === "-")) { const z = zoom(); z.visible = Math.max(20, Math.round((z.visible ?? 120) * (e.key === "+" ? 1 / 1.15 : 1.15))); renderChart(); }
+    if (S.view === "markt" && (e.key === "+" || e.key === "-")) { zoomUm(e.key === "+" ? 1 / 1.15 : 1.15); renderChart(); }
   });
 }
 
@@ -1476,6 +1650,158 @@ function wireShell() {
   new ResizeObserver(() => { if (S.view === "konto" && S.account) drawEquity($("#a-chart"), S.account.series, S.range); if (S.view === "konto" && S.curve) drawRCurve($("#v-chart"), S.curve.points ?? []); }).observe(document.body);
 }
 
+/* ------------------------------------------------ TradingView-Bedienung -- */
+function schalteSkala(k) {
+  if (k === "auto") zoom().streckung = 1;
+  else if (k === "invert") A.skala.invert = !A.skala.invert;
+  else A.skala.modus = A.skala.modus === k ? "normal" : k;
+  merkeAnsicht(A); renderChart();
+}
+function setLayout(n) {
+  S.layout = n; A.layout = n; merkeAnsicht(A);
+  $$("#layout-seg [data-layout]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.layout === n)));
+  $("#view-chart").dataset.layout = n;
+  $("#mtf").hidden = n !== "4";
+  if (n === "4") { if (S.replay) { replayEnde(S); nachReplay(); } ladeMtf(T); } else renderChart();
+}
+function oeffneEinzeln(tf) { setLayout("1"); T.setTf(tf); }
+function nachReplay() {
+  const leiste = $("#replay-leiste");
+  leiste.hidden = !S.replay;
+  leiste.innerHTML = replayLeisteMarkup(S);
+  $("#btn-replay").setAttribute("aria-pressed", String(!!S.replay));
+  $("#chartwrap").dataset.replay = S.replay?.phase ?? "";
+  renderChart();
+}
+async function tickVergleich() {
+  const v = A.vergleich;
+  if (!v || v === S.symbol) { S.vergleichKerzen = null; S.vergleichFuer = null; return; }
+  const fuer = `${v}|${S.tf}`;
+  try {
+    const m = await api(`/api/market/${v}/chart?timeframe=${S.tf}&candles=600`);
+    if (`${A.vergleich}|${S.tf}` !== fuer) return;          // inzwischen umgestellt
+    S.vergleichKerzen = m.candles; S.vergleichFuer = fuer; renderChart();
+  } catch { /* bleibt aus */ }
+}
+async function gehezu() {
+  const kerzen = mergedCandles(); if (!kerzen.length) return;
+  const f = (ts) => new Date(ts).toLocaleString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const text = await frage({
+    titel: "Gehe zu Datum", hinweis: `z. B. 14.10.2026 09:30 · geladen ${f(kerzen[0].ts)} bis ${f(kerzen[kerzen.length - 1].ts)}`,
+    pruefe: (v) => {
+      const ts = datumAus(v);
+      if (ts === null) return "Nicht erkannt. Form: 21.10.2026 14:00";
+      if (ts < kerzen[0].ts) return `Älter als die geladenen Kerzen (ab ${f(kerzen[0].ts)}). Grössere Zeitebene wählen.`;
+      if (ts > Date.now()) return "Das liegt in der Zukunft.";
+      return null;
+    },
+  });
+  if (text === null) return;
+  const ts = datumAus(text);
+  let i = kerzen.findIndex((k) => k.ts >= ts); if (i < 0) i = kerzen.length - 1;
+  const vis = S.geo?.visible ?? 120, z = zoom();
+  const ende = Math.max(20, Math.min(kerzen.length, Math.round(i + vis / 2)));
+  z.end = ende >= kerzen.length ? null : ende;
+  renderChart();
+}
+async function zeitebeneEingeben() {
+  const text = await frage({
+    titel: "Zeitebene", hinweis: "15 · 1h · 4h · d · w",
+    pruefe: (v) => (zeitebeneAus(v) ? null : "Gibt es hier nicht. Vorhanden: 15m, 1h, 4h, D, W."),
+  });
+  if (text !== null) T.setTf(zeitebeneAus(text));
+}
+const maerkte = () => [...$("#sym").options].map((o) => o.value);
+
+let T = null;
+function wireBedienung() {
+  T = {
+    S, A, api, px, fmt,
+    ansicht: () => S.view,
+    hilfe: () => { $("#hilfe").hidden = false; $("#hilfe [data-hilfe-zu]")?.focus(); },
+    symbolsuche: () => $("#sym-knopf").click(),
+    indikatoren: () => $("#btn-indicators").click(),
+    rueckgaengig: () => { if (rueckgaengig(S, merkeZeichnungen)) renderChart(); },
+    wiederholen: () => { if (wiederholen(S, merkeZeichnungen)) renderChart(); },
+    ausblenden: () => { S.zeichnungenAus = !S.zeichnungenAus; zeigeAusblenden(); renderChart(); },
+    vollbild,
+    werkzeug: (k) => { if (S.layout === "4") setLayout("1"); waehleWerkzeug(k); },
+    zuruecksetzen: () => { zoomReset(); renderChart(); },
+    gehezu, zeitebene: zeitebeneEingeben,
+    skala: schalteSkala,
+    foto: () => screenshot($("#chart"), S.symbol, S.tf, $("#legend").textContent ?? ""),
+    schiebe: (richtung, weit) => { schiebe(richtung * (weit ? Math.max(2, Math.round((S.geo?.visible ?? 120) / 4)) : 1)); renderChart(); },
+    zoome: (f) => { zoomUm(f); renderChart(); },
+    replaySchritt: () => {
+      if (!S.replay || S.replay.cut == null) return false;
+      replaySchritt(S, mergedCandles().length); nachReplay(); return true;
+    },
+    setSymbol: (sym) => { $("#sym").value = sym; $("#sym").dispatchEvent(new Event("change")); },
+    setTf: (tf) => $(`#tf [data-tf="${tf}"]`)?.click(),
+    positionLines, gesamt: () => mergedCandles().length, nachReplay, oeffneEinzeln,
+  };
+
+  $("#fuss-inhalt").innerHTML = fussMarkup();
+  $("#fuss-inhalt").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.bereich) {
+      const r = BEREICHE[b.dataset.bereich];
+      S.zoomBy[`${S.symbol}|${r.tf}`] = { visible: r.kerzen, end: null, streckung: 1 };
+      if (S.layout === "4") setLayout("1");
+      if (S.tf === r.tf) renderChart(); else T.setTf(r.tf);
+    } else if (b.dataset.skala) schalteSkala(b.dataset.skala);
+    else if (b.id === "zur-echtzeit") { zoom().end = null; renderChart(); }
+  });
+
+  $$("#layout-seg [data-layout]").forEach((b) => b.addEventListener("click", () => setLayout(b.dataset.layout)));
+  $("#btn-replay").addEventListener("click", () => {
+    if (S.replay) replayEnde(S);
+    else { if (S.layout === "4") setLayout("1"); replayStart(S); }
+    nachReplay();
+  });
+  $("#btn-links").addEventListener("click", () => { A.links = !A.links; merkeAnsicht(A); seitenZeigen(A); });
+  $("#btn-rechts").addEventListener("click", () => { A.rechts = !A.rechts; merkeAnsicht(A); seitenZeigen(A); });
+  $("#btn-foto").addEventListener("click", () => T.foto());
+  $("#btn-vollbild").addEventListener("click", vollbild);
+  $("#btn-hilfe").addEventListener("click", () => T.hilfe());
+  $("#hilfe").innerHTML = hilfeMarkup();
+  $("#hilfe").addEventListener("click", (e) => {
+    if (e.target.id === "hilfe" || e.target.closest("[data-hilfe-zu]")) $("#hilfe").hidden = true;
+  });
+
+  wirePopover("#btn-darstellung", "#darstellung", () => { $("#darstellung").innerHTML = darstellungMarkup(A, maerkte()); });
+  $("#darstellung").addEventListener("click", (e) => {
+    const t = e.target.closest("[data-typ],[data-an]"); if (!t) return;
+    if (t.dataset.typ) A.typ = t.dataset.typ; else A[t.dataset.an] = !A[t.dataset.an];
+    merkeAnsicht(A);
+    $("#darstellung").innerHTML = darstellungMarkup(A, maerkte());
+    renderChart();
+  });
+  $("#darstellung").addEventListener("change", (e) => {
+    if (!e.target.matches("[data-vergleich]")) return;
+    A.vergleich = e.target.value; merkeAnsicht(A); tickVergleich(); renderChart();
+  });
+  wirePopover("#btn-objekte", "#objekte", () => { $("#objekte").innerHTML = objektbaumMarkup(S, px); });
+  $("#objekte").addEventListener("click", (e) => {
+    if (!objektbaumKlick(e, S, merkeZeichnungen)) return;
+    $("#objekte").innerHTML = objektbaumMarkup(S, px);
+    zeigeAusblenden(); renderChart();
+  });
+
+  wireWatchlist(T); wireMtf(T); wireReplay(T);
+  seitenZeigen(A); zeigeAusblenden();
+  $("#sym").addEventListener("change", () => {
+    renderWatchlist(T); tickVergleich();
+    if (S.replay) { replayEnde(S); nachReplay(); }
+    if (S.layout === "4") ladeMtf(T);
+  });
+  $$("#tf [data-tf]").forEach((b) => b.addEventListener("click", () => {
+    tickVergleich();
+    if (S.replay) { replayEnde(S); nachReplay(); }
+  }));
+  if (A.layout === "4") setLayout("4");
+}
+
 async function boot() {
   // Lesehaken fuer die Konsole: window.__dw.zoomBy zeigt, wie viele Kerzen je
   // Markt sichtbar sind. Nur lesen -- nichts hier drin steuert die Anzeige.
@@ -1484,17 +1810,26 @@ async function boot() {
   $("#sym").innerHTML = syms.map((s) => `<option value="${s}">${s.replace("USDT", "/USDT")}</option>`).join("");
   $("#sym").value = S.symbol;
   $("#sym-text").textContent = S.symbol.replace("USDT", "/USDT");
+  setzeMaerkte(syms);
   wireShell(); wireChart(); wireSettings(); wireManual(); wireUnten(); wireSymWahl(); wireKarten(); wireJournal();
+  wireBedienung();
   setView("markt"); setCenter("chart"); setMode("bot");
   await Promise.all([tickHead(), loadMarket(), tickLive(), tickBook(), tickCalendar(), tickHeatmap(), tickVProfil(), tickGrosseTrades(), tickOptionen(), tickScore(), tickPositions(), tickHistory(), loadSettings(), tickAccount(), tickJournal()]);
-  setInterval(() => { tickHead(); tickBook(); checkAlerts(); }, 1000);
+  setInterval(() => {
+    tickHead(); tickBook(); checkAlerts(); uhrTick();
+    // Der Countdown unter dem Preisschild braucht jede Sekunde ein Bild.
+    if (S.view === "markt" && S.center === "chart" && A.countdown && S.layout !== "4"
+        && !S.drag && !S.achsenZug && !S.zeitZug) renderChart();
+  }, 1000);
+  tickWatchlist(T); tickVergleich();
+  setInterval(() => tickWatchlist(T), 3000);
   setInterval(tickLive, 2000);
   setInterval(tickHeatmap, 5000);
   // Alle zwei Minuten nachfassen: liegt das Profil schon, kostet der
   // Aufruf nichts (S.vprofilFuer bremst ihn ab); fehlte das Archiv beim
   // ersten Versuch, kommt es so doch noch.
   setInterval(tickVProfil, 120000);
-  setInterval(() => { loadMarket(); tickPositions(); }, 15000);
+  setInterval(() => { loadMarket(); tickPositions(); if (S.layout === "4") ladeMtf(T); if (A.vergleich) tickVergleich(); }, 15000);
   setInterval(() => { tickScore(); tickHistory(); if (S.view === "konto") tickVerlauf(); }, 30000);
   // Das Journal aendert sich nur, wenn ein Trade SCHLIESST -- ein paarmal am
   // Tag. Es im 30-Sekunden-Takt neu zu rechnen hiesse, das ganze Buch

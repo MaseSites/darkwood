@@ -118,6 +118,35 @@ class Kopf(BaseModel):
     next_funding_ts: int | None
 
 
+class WatchZeile(BaseModel):
+    symbol: str
+    last: float
+    change_pct: float
+    quote_volume: float
+
+
+def watchlist(symbole: list[str]) -> list[WatchZeile]:
+    """Letzter Preis und Tagesaenderung fuer mehrere Maerkte in EINEM Aufruf.
+
+    Nur Anzeige (Layout-Ebene, 21.10.2026). `ticker/24hr` ohne Symbol liefert
+    alle Perps auf einmal; zwoelf Einzelabfragen je Sekunde waeren zwoelfmal
+    die Last fuer dieselbe Antwort. Reihenfolge wie angefragt, Unbekanntes
+    faellt weg statt eine Null zu zeigen.
+    """
+    alle = _get_json(f"{BINANCE}/ticker/24hr", ttl=4)
+    nach = {z["symbol"]: z for z in alle if isinstance(z, dict) and "symbol" in z}
+    aus: list[WatchZeile] = []
+    for s in symbole:
+        z = nach.get(s.upper())
+        if z is None:
+            continue
+        aus.append(WatchZeile(
+            symbol=z["symbol"], last=float(z["lastPrice"]),
+            change_pct=float(z["priceChangePercent"]), quote_volume=float(z["quoteVolume"]),
+        ))
+    return aus
+
+
 def kopf(symbol: str) -> Kopf:
     t = _get_json(f"{BINANCE}/ticker/24hr?symbol={symbol}", ttl=3)
     try:
@@ -1125,6 +1154,10 @@ def router(services: Any, konto_signatur, state_path, journal_path, followed) ->
     @r.get("/head/{symbol}", response_model=Kopf)
     def _head(symbol: str) -> Kopf:
         return kopf(symbol.upper())
+
+    @r.get("/watchlist", response_model=list[WatchZeile])
+    def _watchlist(symbols: str) -> list[WatchZeile]:
+        return watchlist([s for s in symbols.split(",") if s.strip()][:40])
 
     @r.get("/live-candle/{symbol}", response_model=LiveKerze)
     def _live(symbol: str, tf: str = "M15") -> LiveKerze:

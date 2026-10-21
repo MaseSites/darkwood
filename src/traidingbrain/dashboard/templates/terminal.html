@@ -7,6 +7,7 @@
     <meta name="robots" content="noindex, nofollow" />
     <title>Darkwood Terminal · {{ account_label }}</title>
     <link rel="stylesheet" href="/static/terminal.css" />
+    <link rel="stylesheet" href="/static/terminal-bedienung.css" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%2307090d'/><path d='M4 12V5M8 12V3M12 12V7' stroke='%2322c55e' stroke-width='2'/></svg>" />
   </head>
   <body data-account="{{ account_label }}">
@@ -56,6 +57,10 @@
     <!-- ================================================== Markt -->
     <div class="view term" id="view-markt">
       <aside class="term__left">
+        <section class="panel" aria-labelledby="wl-head" id="panel-watchlist">
+          <h2 class="panel__head" id="wl-head">Watchlist <span class="panel__sum" id="wl-sum"></span></h2>
+          <div class="wl" id="wl"><p class="empty">Lade Kurse&hellip;</p></div>
+        </section>
         <section class="panel" aria-labelledby="cal-head" id="panel-kalender">
           <h2 class="panel__head" id="cal-head">Wirtschaftskalender <span class="panel__sum" id="cal-sum"></span></h2>
           <div id="cal"><p class="empty">Lade Kalender&hellip;</p></div>
@@ -72,7 +77,27 @@
             <button class="seg__btn" data-center="chart" aria-pressed="true">Chart</button>
             <button class="seg__btn" data-center="bot" aria-pressed="false">Bot</button>
           </div>
-          <span class="muted" id="zoomhint">Rad = Zoom · Ziehen = Verschieben · Doppelklick = zurück</span>
+          <div class="kopfwerk" id="zoomhint" role="toolbar" aria-label="Chart-Bedienung">
+            <div class="seg" role="group" aria-label="Layout" id="layout-seg">
+              <button class="seg__btn" data-layout="1" aria-pressed="true" title="Ein Chart"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v11h-11z"/></svg></button>
+              <button class="seg__btn" data-layout="4" aria-pressed="false" title="Vier Zeitebenen: D1 · H4 · H1 · 15m, Fadenkreuz gekoppelt"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h4.8v4.8H2.5zM8.7 2.5h4.8v4.8H8.7zM2.5 8.7h4.8v4.8H2.5zM8.7 8.7h4.8v4.8H8.7z"/></svg></button>
+            </div>
+            <div class="pop">
+              <button class="kw" id="btn-darstellung" aria-expanded="false" aria-controls="darstellung" title="Charttyp, Gitter, Countdown, Vergleich">Darstellung</button>
+              <div class="pop__panel pop__panel--mittel" id="darstellung" role="group" aria-label="Darstellung des Charts" hidden></div>
+            </div>
+            <div class="pop">
+              <button class="kw" id="btn-objekte" aria-expanded="false" aria-controls="objekte" title="Zeichnungen verwalten">Objekte</button>
+              <div class="pop__panel pop__panel--mittel" id="objekte" role="group" aria-label="Objektbaum" hidden></div>
+            </div>
+            <button class="kw" id="btn-replay" aria-pressed="false" title="Bar Replay: die Vergangenheit Kerze für Kerze abspielen">Replay</button>
+            <span class="kopfwerk__luft"></span>
+            <button class="kw kw--icon" id="btn-links" aria-pressed="false" title="Linke Seitenleiste"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v11h-11zM6 2.5v11"/></svg></button>
+            <button class="kw kw--icon" id="btn-rechts" aria-pressed="false" title="Rechte Seitenleiste"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v11h-11zM10 2.5v11"/></svg></button>
+            <button class="kw kw--icon" id="btn-foto" title="Screenshot speichern (Alt+S)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5h2.5L6 3h4l1.5 2H14v8H2zM8 6.5a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2z"/></svg></button>
+            <button class="kw kw--icon" id="btn-vollbild" title="Vollbild (Umschalt+F)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg></button>
+            <button class="kw kw--icon" id="btn-hilfe" title="Tastenkürzel (?)" aria-haspopup="dialog">?</button>
+          </div>
         </div>
         <div class="center-body">
           <div class="chart" id="view-chart">
@@ -85,6 +110,11 @@
               </div>
               <div id="lineboxes"></div>
               <div class="zn" id="zeichnung-note" hidden></div>
+              <div class="mtf" id="mtf" hidden></div>
+            </div>
+            <div class="chart__fuss" id="chart-fuss">
+              <div class="fuss__inhalt" id="fuss-inhalt"></div>
+              <div class="rp" id="replay-leiste" hidden></div>
             </div>
           </div>
           <div class="bot hidden" id="view-bot">
@@ -242,6 +272,16 @@
         <div id="jr-muster"></div>
         <div id="jr-liste"><p class="empty">Lade&hellip;</p></div>
       </section>
+    </div>
+
+    <div class="ktx" id="ktx" role="menu" aria-label="Chart-Menü" hidden></div>
+    <div class="hilfe" id="hilfe" role="dialog" aria-modal="true" aria-labelledby="hilfe-titel" hidden></div>
+    <div class="eingabe" id="eingabe" role="dialog" aria-modal="true" aria-labelledby="eingabe-titel" hidden>
+      <div class="eingabe__kasten">
+        <label class="eingabe__titel" id="eingabe-titel" for="eingabe-feld"></label>
+        <input class="eingabe__feld" id="eingabe-feld" autocomplete="off" spellcheck="false" />
+        <p class="eingabe__hinweis" id="eingabe-hinweis"></p>
+      </div>
     </div>
 
     <template id="star-tpl"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.5l2.6 5.6 6.1.7-4.5 4.2 1.2 6.1L10 15.1 4.6 18.1l1.2-6.1L1.3 7.8l6.1-.7z"/></svg></template>

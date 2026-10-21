@@ -23,6 +23,10 @@
 
 import { INDIKATOREN } from "./terminal-indikatoren.js";
 import { WERKZEUGE } from "./terminal-zeichnen.js";
+import {
+  achsenText, countdownText, heikinAshi, skalaBauen, zeichneHochTief, zeichneKerzen,
+  zeichneSitzungen, zeitText,
+} from "./terminal-darstellung.js";
 
 const PAD = { left: 56, right: 92, top: 14, bottom: 26 };
 //: Luft zwischen zwei Unterachsen. Zwei Register, nicht eins: 6 px INNERHALB
@@ -58,10 +62,11 @@ export const EBENEN = {
   // Kaesten aus.
   kalender: "Wirtschaftskalender (Seitenleiste)",
   orderbuch: "Orderbuch (Seitenleiste)",
+  watchlist: "Watchlist (Seitenleiste)",
 };
 
 //: Welche Eintraege KEINE Chart-Ebenen sind, sondern Seitenteile.
-export const SEITENTEILE = { kalender: "#panel-kalender", orderbuch: "#panel-orderbuch" };
+export const SEITENTEILE = { watchlist: "#panel-watchlist", kalender: "#panel-kalender", orderbuch: "#panel-orderbuch" };
 
 const BAND_EBENE = {
   fvg_bullish: "fvg", fvg_bearish: "fvg",
@@ -111,7 +116,15 @@ export function drawTerminalChart(canvas, view, opts = {}) {
   const c = {
     rule: cssVar("--rule"), ink: cssVar("--ink"), ink3: cssVar("--ink-3"), long: cssVar("--long"),
     short: cssVar("--short"), star: cssVar("--star"), mark: cssVar("--mark"), surface: cssVar("--surface"),
+    ground: cssVar("--ground"), ink2: cssVar("--ink-2"), raised: cssVar("--raised"),
+    // `c.mono` wurde schon vor dem 21.10. benutzt (Pool-Beschriftung) und
+    // war nie gesetzt -- die Schrift fiel still auf die Vorgabe zurueck.
+    mono: 'ui-monospace, "Cascadia Mono", Menlo, monospace',
   };
+  // Ansicht und Skala aus der Bedienung (terminal-ansicht.js). Fehlt beides,
+  // ist alles wie vor dem 21.10.: Kerzen, linear, Gitter an.
+  const ansicht = opts.ansicht ?? {};
+  const skala = opts.skala ?? {};
 
   const pL = PAD.left, pR = W - PAD.right, pT = PAD.top;
   // Die Unterachsen werden VOM Preisbereich abgezogen, nicht ueber ihn gelegt.
@@ -148,8 +161,18 @@ export function drawTerminalChart(canvas, view, opts = {}) {
   }
   const padP = (hi - lo) * 0.06 || 1;
   lo -= padP; hi += padP;
+  // Von Hand gezogene Preisachse (TradingView: Achse ziehen = Auto aus).
+  // Gespeichert als Faktor um die Mitte, nicht als feste Preise -- so bleibt
+  // die Streckung beim naechsten Tick und beim Verschieben erhalten.
+  if (skala.streckung && skala.streckung !== 1) {
+    const mitte = (lo + hi) / 2, halb = ((hi - lo) / 2) * skala.streckung;
+    lo = mitte - halb; hi = mitte + halb;
+  }
+  if (skala.modus === "log" && lo <= 0) lo = Math.min(...shown.map((k) => k.low)) * 0.98;
   const span = hi - lo;
-  const y = (p) => pB - ((p - lo) / span) * pH;
+  const sk = skalaBauen({ modus: skala.modus, invert: !!skala.invert, lo, hi, pT, pB });
+  const y = sk.y;
+  const basis = shown[0]?.close;
   const slot = pW / spalten;
   const x = (i) => pL + slot * (i + 0.5);                 // i = Spaltenindex
   const xk = (ki) => x(vorn + ki);                        // ki = Index in `shown`
@@ -158,13 +181,27 @@ export function drawTerminalChart(canvas, view, opts = {}) {
   /* ---- Raster + Preisachse ---- */
   ctx.font = '11px ui-monospace, "Cascadia Mono", Menlo, monospace';
   ctx.textBaseline = "middle";
-  const step = niceStep(span, 6);
+  // Unter log rueckt das Gitter oben zusammen: Linien, die naeher als 18 px
+  // an der vorigen laegen, fallen weg, statt sich zu ueberschreiben.
+  const step = niceStep(span, sk.log ? 10 : 6);
+  let letzteY = null;
   for (let p = Math.ceil(lo / step) * step; p <= hi; p += step) {
     const py = Math.round(y(p)) + 0.5;
-    ctx.strokeStyle = c.rule; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(pL, py); ctx.lineTo(pR, py); ctx.stroke();
+    if (letzteY !== null && Math.abs(py - letzteY) < 18) continue;
+    letzteY = py;
+    if (ansicht.gitter !== false) {
+      ctx.strokeStyle = c.rule; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pL, py); ctx.lineTo(pR, py); ctx.stroke();
+    }
     ctx.fillStyle = c.ink3; ctx.textAlign = "left";
-    ctx.fillText(fmt(p), pR + 8, py);
+    ctx.fillText(achsenText(p, skala.modus, basis, fmt), pR + 8, py);
+  }
+  if (ansicht.gitter !== false && ansicht.gitterSenkrecht !== false) {
+    ctx.save(); ctx.strokeStyle = c.rule; ctx.globalAlpha = 0.55; ctx.lineWidth = 1;
+    const jede = Math.max(1, Math.round(96 / slot));
+    ctx.beginPath();
+    for (let i = 0; i < shown.length; i += jede) { const gx = Math.round(xk(i)) + 0.5; ctx.moveTo(gx, pT); ctx.lineTo(gx, pB); }
+    ctx.stroke(); ctx.restore();
   }
 
   /* ---- Zonen-Ebenen (fvg / zonen / liquiditaet) ---- */
@@ -283,29 +320,43 @@ export function drawTerminalChart(canvas, view, opts = {}) {
       if (sr.art === "flaeche") zeichneFlaeche(sr.oben, sr.unten, y, farbe);
       else zeichneSerie(sr.werte, y, { farbe, dash: sr.dash ?? [], dick: sr.dick ?? 1.2, richtung: sr.richtung ?? null });
       if (sr.label) {
-        const letzte = (sr.werte ?? sr.oben ?? []).filter((v) => v != null).pop();
-        if (letzte != null) legende.push({ label: sr.label, wert: letzte, farbe });
+        const reihe = sr.werte ?? sr.oben ?? [];
+        legende.push({ label: sr.label, reihe, wert: reihe.filter((v) => v != null).pop(), farbe });
       }
     }
   }
 
   ctx.restore();
 
-  /* ---- Kerzen ---- */
-  for (let i = 0; i < shown.length; i++) {
-    const k = shown[i];
-    const up = k.close >= k.open;
-    const col = up ? c.long : c.short;
-    const pxx = Math.round(xk(i));
-    ctx.strokeStyle = col; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(pxx + 0.5, y(k.high)); ctx.lineTo(pxx + 0.5, y(k.low)); ctx.stroke();
-    const t = y(Math.max(k.open, k.close)), bt = y(Math.min(k.open, k.close));
-    if (vorn + i === formingIndex) {
-      ctx.strokeRect(pxx - body / 2 + 0.5, t + 0.5, Math.max(1, body - 1), Math.max(1, bt - t - 1));
-    } else {
-      ctx.fillStyle = col; ctx.fillRect(pxx - body / 2, t, body, Math.max(1, bt - t));
+  /* ---- Sitzungswechsel ---- */
+  if (ansicht.sitzungen) zeichneSitzungen(ctx, shown, xk, { pT, pB, c });
+
+  /* ---- Vergleich (zweites Symbol, auf den ersten sichtbaren Schluss normiert) ---- */
+  if (opts.vergleich?.candles?.length && basis) {
+    const nachTs = new Map(opts.vergleich.candles.map((k) => [k.ts, k.close]));
+    let vBasis = null;
+    ctx.save(); ctx.strokeStyle = "#c084fc"; ctx.lineWidth = 1.3; ctx.beginPath();
+    let offen = false, letzterWert = null;
+    for (let i = 0; i < shown.length; i++) {
+      const v = nachTs.get(shown[i].ts);
+      if (v == null) { offen = false; continue; }
+      vBasis ??= v;
+      const p = basis * (v / vBasis);
+      letzterWert = (v / vBasis - 1) * 100;
+      if (!offen) { ctx.moveTo(xk(i), y(p)); offen = true; } else ctx.lineTo(xk(i), y(p));
     }
+    ctx.stroke(); ctx.restore();
+    opts.vergleich.prozent = letzterWert;
   }
+
+  /* ---- Kerzen (im gewaehlten Typ) ---- */
+  const plot = ansicht.typ === "ha"
+    ? heikinAshi(candles).slice(Math.max(0, offset), Math.min(total, end))
+    : shown;
+  zeichneKerzen(ctx, ansicht.typ ?? "kerzen", plot, shown, {
+    xk, y, body, c, formingKi: formingIndex >= 0 ? formingIndex - vorn : -1, pT, pB, pL, pR,
+  });
+  if (ansicht.hochTief) zeichneHochTief(ctx, shown, xk, y, { c, pL, pR }, fmt);
 
   /* ---- Struktur: BOS / CHoCH / Sweeps als Marken an der Kerze ---- */
   if (on("struktur") || on("liquiditaet")) {
@@ -397,22 +448,59 @@ export function drawTerminalChart(canvas, view, opts = {}) {
   }
 
   /* ---- Letzter Preis ---- */
+  // Immer der ECHTE Schluss, auch unter Heikin-Ashi oder Prozent-Skala.
   const lpy = Math.round(y(lastClose)) + 0.5;
-  ctx.fillStyle = lastClose >= shown[shown.length - 1].open ? c.long : c.short;
+  const lpFarbe = lastClose >= shown[shown.length - 1].open ? c.long : c.short;
+  ctx.fillStyle = lpFarbe;
   ctx.fillRect(pR + 2, lpy - 9, PAD.right - 6, 18);
   ctx.fillStyle = "#04120a"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
   ctx.fillText(fmt(lastClose), pR + 8, lpy);
+  // Countdown bis Kerzenschluss: der Bot entscheidet genau dann.
+  const rest = ansicht.countdown !== false && opts.schlussBei ? countdownText(opts.schlussBei - Date.now()) : null;
+  if (rest && end >= total) {
+    ctx.fillStyle = c.raised; ctx.fillRect(pR + 2, lpy + 9, PAD.right - 6, 15);
+    ctx.fillStyle = c.ink2; ctx.font = `10px ${c.mono}`;
+    ctx.fillText(rest, pR + 8, lpy + 17);
+    ctx.font = '11px ui-monospace, "Cascadia Mono", Menlo, monospace';
+  }
 
   /* ---- Fadenkreuz ---- */
+  // `hover.y === null` heisst: nur die senkrechte Linie (gekoppeltes
+  // Fadenkreuz im Mehrfach-Layout -- dort kennt der Nachbar die Zeit, nicht
+  // den Preis).
+  let hoverKi = null;
   if (opts.hover) {
     const hx = opts.hover.x, hy = opts.hover.y;
     ctx.save(); ctx.setLineDash([3, 3]); ctx.strokeStyle = c.ink3;
-    ctx.beginPath(); ctx.moveTo(hx + 0.5, pT); ctx.lineTo(hx + 0.5, pB); ctx.moveTo(pL, hy + 0.5); ctx.lineTo(pR, hy + 0.5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(hx + 0.5, pT); ctx.lineTo(hx + 0.5, H - PAD.bottom);
+    if (hy !== null && hy !== undefined) { ctx.moveTo(pL, hy + 0.5); ctx.lineTo(pR, hy + 0.5); }
+    ctx.stroke();
     ctx.restore();
-    const price = lo + ((pB - hy) / pH) * span;
-    ctx.fillStyle = c.surface; ctx.fillRect(pR + 2, hy - 9, PAD.right - 6, 18);
-    ctx.fillStyle = c.ink; ctx.fillText(fmt(price), pR + 8, hy);
+    if (hy !== null && hy !== undefined && hy >= pT && hy <= pB) {
+      const price = sk.preisBei(hy);
+      ctx.fillStyle = c.surface; ctx.fillRect(pR + 2, hy - 9, PAD.right - 6, 18);
+      ctx.fillStyle = c.ink; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.fillText(achsenText(price, skala.modus, basis, fmt), pR + 8, hy);
+    }
+    // Zeitmarke auf der Zeitachse.
+    const spalte = Math.floor((hx - pL) / slot);
+    const ki = spalte - vorn;
+    if (ki >= 0 && ki < shown.length) {
+      hoverKi = ki;
+      const takt = shown.length > 1 ? shown[1].ts - shown[0].ts : 900000;
+      const text = zeitText(shown[ki].ts, takt);
+      ctx.font = `10.5px ${c.mono}`;
+      const w = ctx.measureText(text).width + 12;
+      const bx = Math.max(pL, Math.min(pR - w, hx - w / 2));
+      ctx.fillStyle = c.surface; ctx.fillRect(bx, H - PAD.bottom + 2, w, 17);
+      ctx.fillStyle = c.ink; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(text, bx + w / 2, H - PAD.bottom + 11);
+      ctx.font = '11px ui-monospace, "Cascadia Mono", Menlo, monospace';
+    }
   }
+  // Legendenwerte am Fadenkreuz statt am Ende (TradingViews Datenfenster):
+  // `wertBei` liest denselben Index, an dem die Ablesung oben steht.
+  const hoverJ = hoverKi === null ? null : Math.max(0, offset) + hoverKi;
 
   /* ---- Unterachsen: RSI, MACD, Stochastik, ATR, Volumen ---- */
   let paneY = pB + PANE_LUFT;
@@ -479,8 +567,8 @@ export function drawTerminalChart(canvas, view, opts = {}) {
         zeichneSerie(sr.werte, yy, { farbe, dash: sr.dash ?? [], dick: sr.dick ?? 1.2 });
       }
       if (sr.label) {
-        const letzte = (sr.werte ?? []).filter((v) => v != null).pop();
-        if (letzte != null) legende.push({ label: sr.label, wert: letzte, farbe, pane: true });
+        const reihe = sr.werte ?? [];
+        legende.push({ label: sr.label, reihe, wert: reihe.filter((v) => v != null).pop(), farbe, pane: true });
       }
     }
     ctx.save();
@@ -490,8 +578,18 @@ export function drawTerminalChart(canvas, view, opts = {}) {
     ctx.restore();
   }
 
+  // Werte am Fadenkreuz einsetzen; ohne Fadenkreuz bleibt der letzte Wert.
+  for (const e of legende) {
+    if (hoverJ !== null && e.reihe) { const v = e.reihe[hoverJ]; e.wert = v ?? null; }
+    delete e.reihe;
+  }
+  if (opts.vergleich?.prozent != null) {
+    legende.push({ label: opts.vergleich.label, wert: null, text: `${opts.vergleich.prozent >= 0 ? "+" : ""}${opts.vergleich.prozent.toFixed(2)}%`, farbe: "#c084fc" });
+  }
+
   return { pL, pR, pT, pB, slot, x: xk, y, lo, hi, offset: Math.max(0, offset), vorn, end, total,
-    count: shown.length, spalten, boxes, legende, visible };
+    count: shown.length, spalten, boxes, legende, visible, preisBei: sk.preisBei, hoverKi,
+    W, H, padRechts: PAD.right };
 }
 
 function indexFuerTs(candles, ts) {

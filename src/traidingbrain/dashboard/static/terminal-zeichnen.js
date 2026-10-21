@@ -64,6 +64,26 @@ export const WERKZEUGE = {
       ctx.beginPath(); ctx.arc(p[0].x, p[0].y, 2.5, 0, 7); ctx.fill();
     },
   },
+  // Senkrechte und Kreuzlinie (21.10.2026, TradingView Alt+V / Alt+C).
+  // Die senkrechte markiert einen ZEITPUNKT -- eine Nachricht, ein Ausbruch --,
+  // darum geht sie ueber die ganze Hoehe, auch durch die Unterachsen.
+  vline: {
+    name: "Vertikale Linie", punkte: PUNKTE.EINER,
+    pfad: "M8 3v18M16 3v18",
+    male(ctx, p, s, g) {
+      ctx.lineWidth = s.dicke; ctx.strokeStyle = s.farbe;
+      pfad(ctx, [{ x: p[0].x, y: g.pT }, { x: p[0].x, y: g.pB }]); ctx.stroke();
+    },
+  },
+  kreuz: {
+    name: "Kreuzlinie", punkte: PUNKTE.EINER,
+    pfad: "M12 3v18M3 12h18M9 9l6 6",
+    male(ctx, p, s, g) {
+      ctx.lineWidth = s.dicke; ctx.strokeStyle = s.farbe;
+      pfad(ctx, [{ x: g.pL, y: p[0].y }, { x: g.pR, y: p[0].y }]); ctx.stroke();
+      pfad(ctx, [{ x: p[0].x, y: g.pT }, { x: p[0].x, y: g.pB }]); ctx.stroke();
+    },
+  },
   fib: {
     name: "Fibonacci-Retracement", punkte: PUNKTE.ZWEI,
     pfad: "M3 5h18M3 10h18M3 14h18M3 19h18",
@@ -231,6 +251,10 @@ export const WERKZEUGE = {
     name: "Preisalarm", punkte: null,
     pfad: "M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0",
   },
+  ausblenden: {
+    name: "Zeichnungen aus-/einblenden (Strg+Alt+H)", punkte: null,
+    pfad: "M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12zM12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z",
+  },
   clear: {
     name: "Zeichnungen löschen", punkte: null,
     pfad: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
@@ -269,10 +293,10 @@ function positionsKasten(ctx, p, s, g, richtung) {
 
 /** Die Reihenfolge in der Leiste. Trenner als null. */
 export const LEISTE = [
-  "cross", "trend", "hline", "hray", "fib", null,
+  "cross", "trend", "hline", "hray", "vline", "kreuz", "fib", null,
   "long", "short", null,
   "pinsel", "marker", "pfeil", null,
   "rect", "rectrot", "tag", "kreis", "ellipse", null,
   "text", "lineal", null,
-  "alert", "clear",
+  "alert", "ausblenden", "clear",
 ];
