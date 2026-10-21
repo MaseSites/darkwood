@@ -3,7 +3,7 @@ typ: produkt-teil
 projekt: TradingBrain
 bereich: projekt
 status: aktiv
-aktualisiert: 2026-10-19
+aktualisiert: 2026-10-21
 tags: [verlauf, entscheidungen]
 ---
 
@@ -62,3 +62,18 @@ tags: [verlauf, entscheidungen]
   der Grund war, dass keiner von beiden geprüft war.
 - Grenze: Dies sind Mess- und Anzeigekorrekturen. **Keine** Aussage über Profitabilität
   des Plankontos; es hat zum Zeitpunkt dieser Notiz null abgeschlossene Trades.
+
+## 2026-10-21 — Code und Gehirn im Repo MaseSites/darkwood
+
+- von: Claude
+- Projektstand: `8207355` auf `master` und `layout`
+- Entscheidung: Das ganze Projekt samt Darkwood Terminal liegt zusätzlich in
+  `https://github.com/MaseSites/darkwood` (`master` ist Standard-Branch). Das Gehirn
+  liegt dort als Ordner `gehirn/`, damit der Kollege es mit demselben `git pull` bekommt
+  wie den Code und in Obsidian als Vault öffnen kann.
+- Ablauf: Geschrieben wird weiter **nur hier im Vault**. `python scripts/sync_gehirn.py`
+  spiegelt den Vault nach `gehirn/`, committet nur diesen Ordner und pusht den aktuellen
+  Branch nach `darkwood`. Die Spiegelung läuft in eine Richtung: Änderungen in `gehirn/`
+  überschreibt der nächste Lauf.
+- Risiko: Das Repo `darkwood` war beim Push **öffentlich** — Code, Forschung und dieses
+  Gehirn sind damit für alle lesbar, bis es auf privat gestellt ist.
