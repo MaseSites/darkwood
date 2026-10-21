@@ -136,10 +136,12 @@ def run_signature(config: object, *, max_bars: int | None = None, shadow: bool =
     # muessen darum in der Signatur stehen (Lehre vom 16.10.: eine Aenderung,
     # die das Verhalten aendert und keine Spur hinterlaesst, zerschneidet die
     # Vorwaertsstichprobe unsichtbar).
-    ebenen = "" if engine.setups.timeframes is None else (
-        "|tf=" + ",".join(tf.value for tf in engine.setups.timeframes)
-    )
-    bild = "|bild" if engine.setups.require_agreement else ""
+    # `getattr`, weil tests/test_version.py die Konfiguration als
+    # SimpleNamespace nachbaut, der die zwei Felder nicht kennt -- und ein
+    # Fehlen heisst dasselbe wie die Vorgabe: aus.
+    gewaehlt = getattr(engine.setups, "timeframes", None)
+    ebenen = "" if gewaehlt is None else "|tf=" + ",".join(tf.value for tf in gewaehlt)
+    bild = "|bild" if getattr(engine.setups, "require_agreement", False) else ""
     return (
         f"{engine.simulation.initial_equity}|{engine.setups.enabled}|"
         f"{risk.limits.max_cost_fraction_of_risk}|{engine.timeframes.signal.value}"
