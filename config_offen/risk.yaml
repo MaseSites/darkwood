@@ -426,7 +426,22 @@ limits:
   # The holdout window is untouched (0 consultations) and was NOT spent on
   # this. It did not need to be: the certain component is arithmetic, and the
   # uncertain one is openly undecided above.
-  max_cost_fraction_of_risk: 1.0
+  # ZURUECK auf 0.08 am 21.10.2026 vormittags, auf Entscheidung des Nutzers.
+  #
+  # Am 20.10. stand hier 1.0 ("Tore offen": mehr Trades). Was das gekostet
+  # hat, gemessen: 21 Trades unter offenen Toren liefen auf -0.319 R je Trade,
+  # 13 davon ueber dem alten Tor. Das ist die Erwartung der teuren Population
+  # aus der Zwoelf-Markt-Messung oben (-0.2111 R netto), nicht Pech. Der
+  # Kostenanteil ist der einzige Befund dieses Projekts mit einem Intervall
+  # ohne Null, und das Plankonto handelte dagegen.
+  #
+  # Was es kostet: ~81 % der Signale der letzten 24 h lagen ueber 0.08, also
+  # 26 -> rund 5 Trades je Tag. Das ist der Preis und er steht hier.
+  #
+  # Der Wert steht in run_signature; Trades vor und nach dem Neustart bleiben
+  # trennbar. Der Neustart wartet auf ein flaches Konto, weil der Stempel beim
+  # Schliessen geschrieben wird (audit/EPOCHENSCHNITT_21OKT.md).
+  max_cost_fraction_of_risk: 0.08
 
 execution:
   # A confirmed proposal is re-priced before it is sent. Drift beyond this and the
