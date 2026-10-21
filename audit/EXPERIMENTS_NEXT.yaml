@@ -87,7 +87,8 @@ meta:
   # 21.10.2026: +4 fuer die vier Zellen des E22-Rueckgabe-Trails
   # (G in {0.25, 0.50, 0.75, 1.00}), vorregistriert am 20.10. in
   # audit/E22_TRAIL_VORREGISTRIERUNG.md und an diesem Tag gelaufen.
-  total_comparisons: 77
+  # 21.10.2026: +2 fuer E24 (Volumen-/Dollar-Takt), vorregistriert, nicht gebaut.
+  total_comparisons: 79
   correction: >-
     Bonferroni auf `total_comparisons` Vergleiche: Schwelle 0.05/n,
     Intervall 100*(1 - 0.05/n) %. Bei 70 also 0.000714 und 99.9286 %.
@@ -244,7 +245,17 @@ experiments:
   - id: E1
     title: "Meta-Labeling bestehender Signale"
     priority: 1
-    status: registriert
+    status: gelaufen_gefallen
+    ergebnis_nachgetragen_21_10_2026: >-
+      Gelaufen vor dem 15.10. (audit/E7_BUDGETVORSCHLAG.md Abschnitt 2,
+      audit/PROBLEMBERICHT_20X.md P5), der Status hier stand bis heute auf
+      "registriert". Nachgetragen, damit "alle Merkmale mit einem Modell
+      verbinden" nicht erneut als neue Idee auftaucht. 42'849 gelabelte
+      Kandidaten: E1.4 logistische Regression -0.1024 R [-0.1715; -0.0412],
+      E1.5 flaches LightGBM -0.0673 R [-0.1511; +0.0324], Zufallsfilter
+      gleicher Selektivitaet -0.1328 R. Beide schlagen den Zufall, keiner ist
+      absolut positiv: Tor (a) gefallen. Es gibt Auswahlsignal, aber es
+      verdient nichts.
     rationale: >-
       Der Satz "eine Auswahl im negativen Pool kann nichts beitragen" ist am
       07.10.2026 an den eigenen Daten widerlegt (audit/RECHERCHE_KORREKTUREN.md
@@ -1464,6 +1475,14 @@ experiments:
   - id: E13
     title: "Der Deckel auf gleichzeitig offene Positionen, auf EINEM Konto"
     priority: 1
+    status: gelaufen_kein_befund
+    ergebnis_nachgetragen_21_10_2026: >-
+      Gelaufen am 14.10. (scripts/study_concurrency.py, 7'335 Replay-Trades,
+      Ergebnis im Kommentar zu max_open_positions in config/risk.yaml). Deckel 2
+      +0.0099 R/Trade auf 3'109 Trades, Deckel 5 -0.0029 R auf 5'694, kein
+      Deckel -0.0129 R auf 7'335. Differenz Deckel 5 gegen keinen Deckel
+      [-0.099; +0.125] R, enthaelt die Null. Der Deckel ist eine Schutzregel,
+      keine belegte Verbesserung. Status hier war nie gesetzt.
     cells: 8
     comparisons: 4
     arms:
@@ -1983,6 +2002,15 @@ experiments:
   - id: E17
     title: "Die Zeitebene des Setups -- ein geordneter Verlauf, auf 47 ungesehenen Maerkten zu pruefen"
     priority: 1
+    status: gelaufen_gefallen
+    ergebnis_20_10_2026: >-
+      Gelaufen am 20.10. abends auf 56 ungesehenen Maerkten (audit/E17_ERGEBNIS.json,
+      scripts/study_e17_zeitebene.py). E17.1 (nur H4/D1): +0.0341 R auf 4'110
+      Trades, Intervall [-0.0694; +0.1377], Tor 1 gefallen; Verhaeltnis zu
+      in-sample 0.65x, Tor 2 gehalten. E17.2 (ohne M15): +0.0006 R auf 16'063,
+      beide Tore gefallen. Basis -0.0349 R auf 30'846. Schlechtester Markt
+      BANDUSDT -0.309 R, 39 % der Maerkte negativ. Der einzige positive
+      Kandidat der Familie ist damit out-of-sample tot.
     cells: 2
     comparisons: 2
     arms:
@@ -2305,6 +2333,69 @@ experiments:
 
 
 
+  - id: E24
+    title: "Der Takt der Balken -- Volumen- oder Dollar-Balken statt Zeitbalken"
+    priority: 2
+    status: registriert_nicht_gebaut
+    registriert: 2026-10-21
+    cells: 2
+    comparisons: 2
+    arms:
+      - id: E24.1
+        name: "Dieselben Setups auf Volumen-Balken (Basis-Asset-Volumen, Schwelle je Markt = Median des M15-Volumens)"
+      - id: E24.2
+        name: "Dieselben Setups auf Dollar-Balken (close * volume als Proxy, Schwelle analog)"
+    anlass: >-
+      Der Eigentuemer verlangt am 21.10. "Aufgaben, die uns viel zu overpowered
+      bringen, damit wir die Trades praktisch nur noch gewinnen". Das Register
+      ist die Antwort darauf: die Auswahl unter den Signalen (E1), die Ausgaenge
+      (E3, E14, E15, E22), die Zeitebene (E17), die Kosten (E18), der Deckel
+      (E13) und die Bewertungsschicht (21.10., 7'335 Zeilen) sind gemessen, und
+      keines davon hebt die Trefferquote um mehr als wenige Punkte. Der
+      Blindfleck-Audit vom 18.10. (audit/BLINDFLECK_AUDIT_18OKT.md, Abschnitt 3)
+      nennt GENAU EINEN Kandidaten, den keine Arithmetik unter die Zielmarke
+      begrenzt, weil er die Einstiegspopulation austauscht statt sie
+      auszuwaehlen: der Takt der Balken. Er wird hier angemeldet, bevor eine
+      Zahl existiert.
+    hypothesis: >-
+      Setups A und B, auf Volumen- oder Dollar-Balken statt auf M15/H1/H4/D1
+      berechnet, erzeugen auf zwoelf Maerkten eine Population mit einer
+      Trefferquote, die bei fester Auszahlung (1.50 / -1.01) netto positiv ist
+      und das korrigierte Intervall ohne Null haelt.
+    rechnung_vorab: >-
+      Auszahlung fest: Gewinner +1.50 R, Verlierer -1.01 R, Break-even 40.2 %.
+      Heute: Setup A 38.7 % auf M15 bis 47.1 % auf D1, B 33-36 %. "Praktisch
+      nur gewinnen" ist keine Zelle, die irgendwo gemessen wurde; die beste
+      Zelle mit n >= 100 ist A D1 mit 47.1 % (n=172). Das 20x-Ziel braucht
+      +0.4536 R je Trade, bei dieser Auszahlung 66.75 % Trefferquote, also
+      +27 bis +30 Prozentpunkte gegenueber heute. Zwei aggregationsinvariante
+      Schranken sprechen dagegen: 35 Preismerkmale mit Korrelation 0.004 bis
+      168 h (E-Outlook) und Beta 1.0 zu BTC mit negativem Residuum (E8).
+      ERWARTUNG DES PRUEFERS: Punktwert innerhalb +-0.077 R, unentschieden.
+      Dieser Arm ist eine Falsifikation, keine Rettung.
+    gates: >-
+      (a) netto R je Trade > 0 mit korrigiertem Intervall (79 Vergleiche) ohne
+      Null, Wochenblock-Bootstrap wie E17; (b) Trefferquote in beiden Armen
+      ueber 50 % auf mindestens 2'000 Trades, sonst ist "nur noch gewinnen"
+      schon widerlegt, egal wie (a) ausgeht; (c) Replikation auf den 56
+      E17-Maerkten mit Verhaeltnis >= 0.5x. Alle drei noetig.
+    abgrenzung: >-
+      Reiner Takt. Imbalance-, Tick-Run- oder Orderflow-Balken fallen unter
+      die toten Datenfamilien (audit/DATENSUCHE_14OKT_LUECKEN.md) und sind
+      hier NICHT gemeint. Keine neuen Setups, keine neuen Konstanten: dieselben
+      Detektoren, nur der Balkenbegriff wechselt.
+    was_zu_bauen_ist: >-
+      (1) Balkenerzeuger aus data/ohlcv/<markt>/M1/*.parquet mit Volumen-
+      bzw. Dollar-Schwelle, Ausgabe im OHLCV-Schema; (2) ein Timeframe-Wert,
+      der kein Zeitraster ist -- `Timeframe` ist ein StrEnum mit
+      timeframe_ms = minutes * 60_000, und mindestens analysis/, sim/ und das
+      Replay setzen ein Zeitraster voraus; (3) Replay ueber zwoelf Maerkte wie
+      replay_all_markets.py, dann ueber die 56 E17-Maerkte. Umfang: Tage, kein
+      Nachmittag. Wird erst gebaut, wenn der Eigentuemer das nach dieser
+      Erwartung noch will.
+    on_success: "erster Kandidat ausserhalb der Zeitbalken-Familie; dann Vorwaertsstichprobe"
+    on_failure: "die Familie der Preisstruktur-Setups ist auch im Takt erschoepft; Register schliesst sie endgueltig"
+
 # ---------------------------------------------------------------------------
 # Geschlossene DATENfamilien, 14.10.2026
 #
@@ -2615,3 +2706,4 @@ amendments:
       als jeden Signaltrade isoliert zu bewerten. Plausible Groessenordnung
       nach der Nullgebuehren-Obergrenze: niedrige Hundertstel R, nicht
       +0.45 R. E2 rechtfertigt keine Rettungsrunde fuer das 20x-Ziel.
+
