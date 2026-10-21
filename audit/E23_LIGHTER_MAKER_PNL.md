@@ -142,3 +142,76 @@ worden für jemanden, der neu dazukommt und keine Latenzvorteile hat.
 Woche statt einen Tag, und dabei die Konten verfolgen statt nur zu aggregieren
 — ob dieselben Konten durchgehend verdienen oder ob die Gewinner wechseln,
 unterscheidet ein Geschäftsmodell von Glück.
+
+---
+
+# E23b — Verdienen dieselben Konten durchgehend?
+
+Nachgereicht am 21.10.2026, nachdem E23 die Frage offen gelassen hatte.
+Nachrechnen: `python scripts/study_lighter_persistenz.py`
+
+## Warum das die entscheidende Frage ist
+
+E23 fand: rund **60 % der Maker-Konten sind im Plus**. Das kann zweierlei
+heissen, und die beiden sehen im Querschnitt **identisch** aus:
+
+```
+ein Geschäftsmodell   dieselben Konten verdienen, Fenster für Fenster
+Glück                 jedes Fenster hat andere Gewinner, und 60 % ist
+                      nur die Schiefe einer Verteilung
+```
+
+Unterscheiden kann sie nur, wer **dasselbe Konto über zwei Fenster verfolgt**.
+
+Gemessen wird der **realisierte Spread**, nicht das P&L: ein Konto-P&L über
+Stunden ist überwiegend die Kursbewegung auf seinem Bestand (auf ETH 83 %).
+Wer darauf Beständigkeit misst, misst, ob dasselbe Konto zweimal in dieselbe
+Richtung stand.
+
+## Das Ergebnis
+
+Zwei Hälften desselben Tages, realisierter Spread bei +60 s:
+
+| | Konten | Rangkorrelation | auflösbar ab | über Median blieben |
+|---|---|---|---|---|
+| BTC | 111 | **+0.065** ± 0.191 | \|ρ\| > 0.19 | 56 % ± 13 % |
+| ETH | 66 | **+0.098** ± 0.248 | \|ρ\| > 0.25 | 55 % ± 17 % |
+| SOL | 36 | **−0.143** ± 0.338 | \|ρ\| > 0.34 | 44 % ± 24 % |
+
+Mischprobe (dieselben Zahlen, Zuordnung zerstört): +0.002 / −0.062 / −0.017.
+
+> [!important] Auf keinem der drei Märkte ist die Beständigkeit von null zu
+> unterscheiden. Auch die Übergangsquoten liegen innerhalb ihres Fehlers.
+
+**Und was der Test nicht ausschliesst:** er löst erst ab |ρ| > 0.19 auf (BTC,
+der günstigste Fall). Eine echte, aber schwache Beständigkeit darunter bliebe
+unsichtbar. „Nicht nachweisbar" ist nicht „existiert nicht".
+
+## Warum das der wohlwollendste mögliche Test war
+
+Zwei Hälften **desselben Tages** teilen sich Marktbedingungen, Teilnehmer und
+Volatilitätsregime. Jede längere Trennung — Woche gegen Woche, Monat gegen
+Monat — hat *weniger* gemeinsame Ursachen und damit *weniger* zu erwartende
+Korrelation. Was hier schon nicht besteht, besteht dort erst recht nicht.
+
+## Was daraus für uns folgt
+
+E23 zeigte: auf BTC verdienen Maker messbar Geld (+4.47 bp auf Nominal, 79 %
+davon aus dem Handwerk). E23b zeigt: **wir könnten nicht sagen, welche.**
+
+Dazwischen stehen jetzt zwei Hürden, nicht eine:
+
+1. **Füllquote 2.880 %** [2.396, 3.444] des am Touch angebotenen Nominals (E20)
+2. **Keine nachweisbare Beständigkeit** — mitzumachen wäre ein Zug aus der
+   Verteilung, keine Nachbildung eines Modells
+
+> [!warning] Urteil
+> Market Making auf dieser Börse ist für uns **kein Kandidat**, solange nicht
+> eine der beiden Hürden fällt. Das Urteil kostete einen Tag Rechnen und
+> **keinen Rappen Risiko** — was der ganze Grund war, die Frage über fremde
+> Konten zu stellen statt über eigene.
+
+**Was es wert wäre:** dieselbe Messung über eine Woche. Wenn die Zahl der
+Konten mit 30+ Geschäften je Hälfte von 111 auf mehrere hundert steigt, sinkt
+die Auflösungsgrenze unter 0.1 — und dann ist auch eine schwache Beständigkeit
+sichtbar. Der Sammler läuft; das kostet nur Zeit.
