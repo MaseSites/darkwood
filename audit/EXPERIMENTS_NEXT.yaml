@@ -103,7 +103,8 @@ meta:
   # audit/E22_TRAIL_VORREGISTRIERUNG.md und an diesem Tag gelaufen.
   # 21.10.2026: +2 fuer E24 (Volumen-/Dollar-Takt), vorregistriert, nicht gebaut.
   # 21.10.2026 nachmittags: +1 fuer E25 (Bestaendigkeit der BTC-Maker ueber eine Woche).
-  total_comparisons: 80
+  # 21.10.2026 nachmittags: +2 fuer E26 (Kalender- und Strike-Abstand, Sammler laeuft).
+  total_comparisons: 82
   correction: >-
     Bonferroni auf `total_comparisons` Vergleiche: Schwelle 0.05/n,
     Intervall 100*(1 - 0.05/n) %. Bei 70 also 0.000714 und 99.9286 %.
@@ -2476,6 +2477,60 @@ experiments:
       Keine eigenen Orders vor E0. Keine Lesart von E23 als "wir koennen es".
       Keine Rechnung mit 4.47 bp als unserem Ertrag, bevor (a), (b) und E0
       gehalten haben.
+
+  - id: E26
+    title: "Kalender- und Strike-Abstand zur Entscheidungszeit -- trennen sie Trades?"
+    priority: 3
+    status: registriert_sammler_laeuft
+    registriert: 2026-10-21
+    cells: 2
+    comparisons: 2
+    arms:
+      - id: E26.1
+        name: "Minuten bis zum naechsten high-Termin (Kalender), Trades in Quartilen"
+      - id: E26.2
+        name: "Abstand zum naechsten grossen Options-Strike in Prozent (BTC, ETH), Trades in Quartilen"
+    anlass: >-
+      Der Eigentuemer verlangte am 21.10., dass das System "alle
+      Terminal-Ebenen anschaut". Von dreizehn Ebenen sind fuenf die Setups
+      selbst und sechs stammen aus Familien, die unter
+      geschlossene_datenfamilien als Praediktoren geschlossen sind. Zwei
+      Einzelgroessen sind nie geprueft: der Abstand zum naechsten
+      Kalendertermin (E12 prueft Wochenende und Funding-Stunde, nicht den
+      Abstand) und der Abstand zum naechsten grossen Strike (GEX hat kein
+      belegbares Vorzeichen, der reine Abstand wurde nie gemessen). Beide
+      haben keine Historie und sind nur vorwaerts messbar.
+    sammler: >-
+      scripts/record_ebenen.py als geplante Aufgabe traidingBrain-ebenen,
+      alle 15 Minuten, 20 s nach der Viertelstunde, in data/ebenen.sqlite.
+      Definitionen fest in src/traidingbrain/data/ebenen.py: Kalenderhorizont
+      7 Tage, nur zur Entscheidungszeit bekannte Termine; "grosser Strike" =
+      mindestens ein Viertel des groessten offenen Interesses (Calls + Puts),
+      naechster nach Abstand zum Spot, dazu der groesste Strike. Nur BTC und
+      ETH haben Strikes (Deribit fuehrt fuer die anderen zehn nichts).
+    hypothesis: >-
+      Trades im untersten Abstandsquartil (Termin nah / Strike nah) haben
+      eine andere Netto-Erwartung als die uebrigen, mit korrigiertem
+      Intervall ohne Null.
+    population: >-
+      Live-Trades des Plankontos UND abgelehnte Signale (Signalspeicher),
+      verknuepft ueber ts und symbol mit data/ebenen.sqlite. Auswertung
+      fruehestens nach vier Wochen Aufzeichnung (ab 21.10.2026 10:45 UTC),
+      und erst, wenn mindestens 200 Trades je Arm vorliegen -- sonst liegt
+      der Effekt unter der Aufloesung (0.077 R) und die Frage bleibt offen
+      statt "widerlegt".
+    gates: >-
+      (a) Differenz unterstes Quartil gegen Rest mit korrigiertem Intervall
+      (82 Vergleiche) ohne Null; (b) Vorzeichen in beiden Haelften des
+      Zeitraums gleich. Beide noetig.
+    erwartung_vorab: >-
+      Gering. 35 Preismerkmale ordnen die naechsten 5-10 Stunden mit
+      Korrelation 0.004, und beide Groessen sind Varianten geschlossener
+      Familien. Registriert, damit die Antwort gemessen ist und nicht
+      angenommen -- und damit niemand die Ebene vorher in den Einstieg schaltet.
+    was_nicht: >-
+      Keine Schaltung im Entscheidungspfad vor dem Ergebnis. Keine
+      nachtraegliche Wahl von Horizont, Viertel oder Quartil.
 
 # ---------------------------------------------------------------------------
 # Geschlossene DATENfamilien, 14.10.2026
