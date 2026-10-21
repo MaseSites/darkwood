@@ -59,6 +59,7 @@ const S = {
   untenTab: "positionen",
   faktor: null,            // welcher Faktor aufgeschlüsselt ist
   grosstrades: null, grosstradesFuer: null, grosstradesLaeuft: false,
+  optionen: null, optionenFuer: null, optionenLaeuft: false,
   faktorLaeuft: false,
   vprofil: null, vprofilFuer: null, vprofilLaeuft: false,
   stift: { farbe: "#f59e0b", dicke: 1.4 },
@@ -204,6 +205,7 @@ function chartOpts(extra = {}) {
     indikatoren: S.indikatoren,
     vprofil: S.vprofil && S.vprofil.symbol === S.symbol ? S.vprofil : null,
     grosstrades: S.grosstrades && S.grosstrades.symbol === S.symbol ? S.grosstrades : null,
+    optionen: S.optionen && S.optionen.symbol === S.symbol ? S.optionen : null,
     zeichnungen: S.zeichnungen.filter((d) => d.symbol === S.symbol),
     angefangen: S.angefangen, stift: S.stift,
     visible: z.visible, end: z.end,
@@ -227,6 +229,11 @@ function renderChart() {
 const EBENEN_FARBE = {
   ema: "#60a5fa", fvg: "#f59e0b", zonen: "#34d399", liquiditaet: "#f87171",
   struktur: "#9aa7bb", trend: "#22c55e", volumen: "#e8edf5", heatmap: "#facc15", positionen: "#ffffff",
+  // Die Farbe im Panel muss die im Chart sein, sonst sucht man den falschen
+  // Strich. Ein fehlender Eintrag ergab `background:undefined` -- ein
+  // unsichtbares Plättchen, das wie ein Darstellungsfehler aussieht.
+  vprofil: "#facc15", grosstrades: "#22c55e", optionen: "#a78bfa",
+  kalender: "#9aa7bb", orderbuch: "#9aa7bb",
 };
 
 function ebeneAn(key) { return S.ebenen[key] !== false; }
@@ -302,7 +309,7 @@ function wireLayers() {
         : Object.fromEntries(Object.keys(EBENEN).map((k) => [k, alle.dataset.all === "on"]));
     } else return;
     localStorage.setItem("dw-ebenen", JSON.stringify(S.ebenen));
-    renderLayers(); renderChart(); tickVProfil(); tickGrosseTrades();
+    renderLayers(); renderChart(); tickVProfil(); tickGrosseTrades(); tickOptionen();
   });
   wirePopover("#btn-settings", "#layers");
 }
@@ -499,6 +506,27 @@ async function tickGrosseTrades() {
     S.grosstrades = null; S.grosstradesFuer = schluessel;
     flash($("#m-msg"), `Grosse Trades: ${e.message}`, "err");
   } finally { S.grosstradesLaeuft = false; }
+}
+
+/**
+ * Options-Strikes mit Gamma-Last.
+ *
+ * Nur BTC und ETH haben Optionen -- gemessen am 21.10.2026 ueber alle zwoelf
+ * Maerkte. Fuer die uebrigen antwortet der Server mit `verfuegbar: false` und
+ * einem Grund, und die Ebene zeichnet nichts. Das ist Absicht: eine leere
+ * Flaeche ohne Begruendung liest sich wie "kein Gamma vorhanden".
+ */
+async function tickOptionen() {
+  if (S.ebenen.optionen === false) return;
+  const schluessel = `${S.symbol}`;
+  if (S.optionenFuer === schluessel || S.optionenLaeuft) return;
+  S.optionenLaeuft = true;
+  try {
+    const d = await fuerMarkt((sym) => api(`/api/terminal/optionen/${sym}`));
+    if (d !== VERALTET) { S.optionen = d ?? null; S.optionenFuer = schluessel; renderChart(); }
+  } catch (e) {
+    S.optionen = null; S.optionenFuer = schluessel;
+  } finally { S.optionenLaeuft = false; }
 }
 
 /* ------------------------------------------------------ Marktauswahl -- */
@@ -1288,7 +1316,7 @@ function wireShell() {
   $$("#hist-filter [data-src]").forEach((b) => b.addEventListener("click", () => { S.histSrc = b.dataset.src; $$("#hist-filter [data-src]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); renderTrades(); }));
   $$("#tf [data-tf]").forEach((b) => b.addEventListener("click", () => { S.tf = b.dataset.tf; S.live = null; $$("#tf [data-tf]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); loadMarket(); tickLive(); }));
   $$("#a-range [data-range]").forEach((b) => b.addEventListener("click", () => { S.range = b.dataset.range; $$("#a-range [data-range]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); tickAccount(); }));
-  $("#sym").addEventListener("change", (e) => { S.symbol = e.target.value; S.lastOb = null; S.live = null; S.book = null; S.heat = null; S.vprofil = null; S.vprofilFuer = null; S.grosstrades = null; S.grosstradesFuer = null; schliesseFaktor(); loadMarket(); tickLive(); tickHead(); tickBook(); tickHeatmap(); tickVProfil(); tickGrosseTrades(); tickScore(); });
+  $("#sym").addEventListener("change", (e) => { S.symbol = e.target.value; S.lastOb = null; S.live = null; S.book = null; S.heat = null; S.vprofil = null; S.vprofilFuer = null; S.grosstrades = null; S.grosstradesFuer = null; S.optionen = null; S.optionenFuer = null; schliesseFaktor(); loadMarket(); tickLive(); tickHead(); tickBook(); tickHeatmap(); tickVProfil(); tickGrosseTrades(); tickOptionen(); tickScore(); });
   new ResizeObserver(() => { if (S.view === "konto" && S.account) drawEquity($("#a-chart"), S.account.series, S.range); if (S.view === "konto" && S.curve) drawRCurve($("#v-chart"), S.curve.points ?? []); }).observe(document.body);
 }
 
@@ -1302,7 +1330,7 @@ async function boot() {
   $("#sym-text").textContent = S.symbol.replace("USDT", "/USDT");
   wireShell(); wireChart(); wireSettings(); wireManual(); wireUnten(); wireSymWahl(); wireKarten();
   setView("markt"); setCenter("chart"); setMode("bot");
-  await Promise.all([tickHead(), loadMarket(), tickLive(), tickBook(), tickCalendar(), tickHeatmap(), tickVProfil(), tickGrosseTrades(), tickScore(), tickPositions(), tickHistory(), loadSettings(), tickAccount()]);
+  await Promise.all([tickHead(), loadMarket(), tickLive(), tickBook(), tickCalendar(), tickHeatmap(), tickVProfil(), tickGrosseTrades(), tickOptionen(), tickScore(), tickPositions(), tickHistory(), loadSettings(), tickAccount()]);
   setInterval(() => { tickHead(); tickBook(); checkAlerts(); }, 1000);
   setInterval(tickLive, 2000);
   setInterval(tickHeatmap, 5000);

@@ -50,6 +50,7 @@ export const EBENEN = {
   vprofil: "Volumenprofil + VPOC (echte Trades)",
   heatmap: "Orderbuch-Heatmap",
   grosstrades: "Grosse Trades (Beträge je Preis)",
+  optionen: "Options-Strikes · Gamma-Last (BTC/ETH)",
   positionen: "Positionen & Linien",
   // Keine Chart-Ebenen, sondern SEITENTEILE. Sie stehen trotzdem hier, weil
   // der Nutzer sie im selben Fenster sucht -- "was sehe ich" ist eine Frage,
@@ -220,6 +221,7 @@ export function drawTerminalChart(canvas, view, opts = {}) {
   if (on("volumen")) drawProfile(ctx, shown, { pL, pT, pB, y, lo, hi });
   if (on("vprofil") && opts.vprofil) drawEchtesProfil(ctx, opts.vprofil, { pL, pR, pT, pB, y, lo, hi, c });
   if (on("grosstrades") && opts.grosstrades) drawGrosseTrades(ctx, opts.grosstrades, { pL, pR, pT, pB, y, lo, hi, c });
+  if (on("optionen") && opts.optionen?.verfuegbar) drawOptionen(ctx, opts.optionen, { pL, pR, pT, pB, y, lo, hi, c });
 
   /* ---- EMAs ---- */
   // Zeichnet eine Serie in einen beliebigen Bereich. `yy` bildet den Wert auf
@@ -669,6 +671,62 @@ function drawGrosseTrades(ctx, d, g) {
   ctx.fillStyle = "rgba(154,167,187,0.9)";
   ctx.textAlign = "right"; ctx.textBaseline = "bottom";
   ctx.fillText(kopf, x1 - 2, g.pB - 3);
+  ctx.restore();
+}
+
+/* Options-Strikes: waagrechte Linien dort, wo Gamma-Last hängt.
+ *
+ * Keine GEX-Linie, und das ist keine Sparmassnahme. Gamma Exposure braucht
+ * ein Vorzeichen — welche Seite die Händler halten —, und das steht in keinen
+ * öffentlichen Daten. Auf BTC macht die Konvention den Unterschied zwischen
+ * 571 und 181 Mio USD je 1 %: sie entscheidet über zwei Drittel der Zahl.
+ * Hier steht darum nur der BETRAG, und die Linien tragen keine Richtung.
+ *
+ * Gezeichnet wird Gamma, nicht offenes Interesse. Reines OI täuscht: die
+ * grössten Positionen liegen weit aus dem Geld und bewegen fast nichts — der
+ * 60'000er Put auf BTC trägt 10'955 Kontrakte und bei einem Spot von 84'500
+ * ein Gamma nahe null. Was hier oben steht, steht am Geld.
+ */
+function drawOptionen(ctx, o, g) {
+  const zeilen = (o.strikes ?? []).filter((z) => z.strike >= g.lo && z.strike <= g.hi);
+  if (!zeilen.length) return;
+  const max = Math.max(...zeilen.map((z) => z.gamma_usd)) || 1;
+
+  ctx.save();
+  ctx.font = '9px ui-monospace, Menlo, monospace';
+  ctx.textBaseline = "middle";
+  for (const z of zeilen) {
+    const anteil = z.gamma_usd / max;
+    const yy = Math.round(g.y(z.strike)) + 0.5;
+    // Violett, weil im Chart keine andere Ebene diese Farbe trägt: eine
+    // Options-Linie darf nicht wie ein Kursniveau aussehen.
+    ctx.strokeStyle = `rgba(167,139,250,${0.25 + anteil * 0.55})`;
+    ctx.lineWidth = anteil > 0.6 ? 1.6 : 1;
+    ctx.setLineDash([2, 4]);
+    ctx.beginPath(); ctx.moveTo(g.pL, yy); ctx.lineTo(g.pR, yy); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Beschriftung links, damit sie nicht mit den grossen Trades rechts
+    // kollidiert. Nur, wo die Linie kräftig genug ist, um sie zu verdienen.
+    if (anteil >= 0.45) {
+      const txt = `${Math.round(z.strike).toLocaleString("de-CH")} · `
+        + `${(z.gamma_usd / 1e6).toFixed(1)} Mio/1 %`;
+      const tw = ctx.measureText(txt).width;
+      ctx.fillStyle = "rgba(7,9,13,0.8)";
+      ctx.fillRect(g.pL + 2, yy - 6, tw + 6, 12);
+      ctx.fillStyle = "rgba(196,181,253,0.95)";
+      ctx.textAlign = "left";
+      ctx.fillText(txt, g.pL + 5, yy);
+    }
+  }
+  // UNTEN links. Oben steht die Indikatorlegende, und die Kopfzeile lief quer
+  // darueber -- derselbe Fehler wie zuvor bei den grossen Trades, zwei Stunden
+  // spaeter noch einmal gemacht.
+  ctx.fillStyle = "rgba(167,139,250,0.75)";
+  ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+  ctx.fillText(
+    `${o.waehrung}-Optionen · Gamma-Last, Betrag ohne Vorzeichen · C/P ${o.call_put_oi.toFixed(2)}`,
+    g.pL + 2, g.pB - 3);
   ctx.restore();
 }
 

@@ -1195,6 +1195,17 @@ def router(services: Any, konto_signatur, state_path, journal_path, followed) ->
         rows = [{"symbol": x.symbol, "r_multiple": x.r_multiple} for x in led.rows]
         return score(symbol, sr, ch, buch, kal, rows)
 
+    @r.get("/optionen/{symbol}")
+    def _opt(symbol: str) -> dict:
+        """Gamma-Last je Strike, als BETRAG. Keine GEX-Linie.
+
+        Gamma Exposure braucht ein Vorzeichen -- welche Seite die Haendler
+        halten --, und das steht in keinen oeffentlichen Daten. Auf BTC macht
+        die Konvention den Unterschied zwischen 571 und 181 Mio USD je 1 %.
+        """
+        from traidingbrain.api import optionen as O
+        return O.lage(symbol.upper()).model_dump()
+
     @r.get("/liquiditaet/{symbol}")
     def _liq(symbol: str, tag: str = "") -> dict:
         """Grosse Trades mit Betraegen, offenes Interesse, Positionierung.
