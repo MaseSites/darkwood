@@ -268,6 +268,36 @@ limits:
   # brutto-negativ ist mit einem Intervall ohne Null.
   max_open_positions: 5
   max_positions_per_symbol: 1
+  # Hoechstens zwei offene Positionen in DIESELBE Richtung.
+  #
+  # Gemessen am 21.10.2026 ueber die 19 geschlossenen Trades des Plankontos:
+  #
+  #   zwei Fuenfzehn-Minuten-Kerzen erzeugten ACHT Einstiege
+  #   das sind 42 % aller Trades, und sie kosteten zusammen 90.61 USD
+  #   beide Kerzen gleichgerichtet
+  #
+  # Am 20.10. starben vier Positionen in derselben Minute, alle vier LONG,
+  # mit zusammen 145.55 USD Risiko = 13.8 % des Kontos.
+  #
+  # `max_open_positions: 5` behandelt zwoelf Perps als zwoelf Wetten. Sie sind
+  # keine. E8 hat Beta 1.0 zu BTC gemessen, mit verlaesslich negativer
+  # Restrendite: fuenf gleichgerichtete Positionen sind naeherungsweise EINE
+  # Position in fuenffacher Groesse. Bei margin_share 0.30 und Hebel 7 traegt
+  # jede Position 2.1x Kapital an Nominal -- fuenf gleichgerichtete sind 10.5x
+  # Kapital auf eine einzige Wette. Mit dieser Grenze sind es 4.2x.
+  #
+  # **Zwei und nicht drei**, obwohl drei weniger Trades kosten wuerde: die
+  # Margin bindet ohnehin schon bei rund drei Positionen, eine Grenze von drei
+  # waere darum fast nie wirksam und saehe nur so aus, als taete sie etwas.
+  #
+  # Was sie KOSTET, ehrlich: in einem Ausbruch, in dem mehrere Maerkte
+  # gleichzeitig dasselbe Signal geben, wird der dritte abgelehnt. Das sind
+  # Trades, die dem gerade genommenen sehr aehnlich sind -- aber es sind
+  # Trades, und wer mehr handeln will, verliert hier welche.
+  #
+  # Was sie NICHT ist: eine Aussage darueber, ob Longs oder Shorts besser
+  # laufen. Sie begrenzt die Konzentration, nicht die Richtung.
+  max_same_direction: 2
   # GELOCKERT am 20.10.2026 auf ausdrueckliche Anweisung des Nutzers
   # ("auch wenn steht, dass jetzt nicht mehr getradet wird, weil wir zu viel
   # verloren haben, trade weiter -- dieses Limit sollte aufgehoben werden").

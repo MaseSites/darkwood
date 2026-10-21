@@ -437,6 +437,23 @@ class LimitsConfig(_Frozen):
     cooldown_hours: int = Field(ge=0)
     min_reward_risk: float = Field(gt=0)
     max_cost_fraction_of_risk: float = Field(gt=0, le=1.0)
+    max_same_direction: int | None = Field(default=None, ge=1)
+    """Wie viele offene Positionen hoechstens in DIESELBE Richtung zeigen duerfen.
+
+    `None` heisst aus, und das ist die Vorgabe: eine neue Grenze, die sich
+    still einschaltet, aendert jede bestehende Konfiguration, ohne dass es
+    jemand sieht.
+
+    Der Anlass ist gemessen. Am 20.10.2026 starben vier Positionen in
+    derselben Minute, alle vier LONG. Ueber die 19 Trades des Plankontos:
+    zwei Fuenfzehn-Minuten-Kerzen erzeugten ACHT Einstiege -- 42 % aller
+    Trades -- und kosteten zusammen 90.61 USD. Beide Kerzen gleichgerichtet.
+
+    Zwoelf Krypto-Perps sind kein Portfolio aus zwoelf Wetten. Gemessen
+    (E8): Beta 1.0 zu BTC, Restrendite verlaesslich negativ. Fuenf
+    gleichgerichtete Positionen sind darum naeherungsweise EINE Position in
+    fuenffacher Groesse -- und `max_open_positions` zaehlt sie als fuenf.
+    """
 
 
 class ExecutionConfig(_Frozen):

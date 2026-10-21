@@ -674,7 +674,7 @@ class PaperTrader:
         # Grund, und ihn mit einem Kontogrund zu ueberschreiben wuerde die
         # Ablehnungsstatistik verfaelschen. Erst ein Signal, das es durch
         # alle fuenf Signalregeln geschafft hat, kann am Konto scheitern.
-        blocked = self._blocked_by_limits(created) if entry is not None else None
+        blocked = self._blocked_by_limits(created, side=entry.side) if entry is not None else None
         self._record_signal(intent, verdict, decided_ts=created, blocked_by=blocked)
         if blocked is not None or entry is None or not self.broker.submit(entry):
             self.stats.tally.refused_by_risk += 1
@@ -778,7 +778,7 @@ class PaperTrader:
         self.journal.record([entry])
         return entry
 
-    def _blocked_by_limits(self, now_ms: int) -> str | None:
+    def _blocked_by_limits(self, now_ms: int, *, side: object | None = None) -> str | None:
         """Was die Kontogrenzen zu diesem Augenblick sagen, oder None.
 
         **Der Geltungsbereich der Verlustgrenzen ist das Einzelsymbol.** Die
@@ -845,7 +845,7 @@ class PaperTrader:
                 self.journal, signature=self.run_signature, symbol=self.symbol
             ),
         )
-        verdict = self.limits.check(state, symbol=self.symbol)
+        verdict = self.limits.check(state, symbol=self.symbol, side=side)
         return None if verdict.allowed else verdict.reason
 
     def _record_signal(

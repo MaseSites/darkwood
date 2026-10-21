@@ -198,7 +198,9 @@ class RiskLimits:
         self.config = config
         self.kill_switch = kill_switch
 
-    def check(self, state: AccountState, *, symbol: str) -> LimitVerdict:
+    def check(
+        self, state: AccountState, *, symbol: str, side: object | None = None
+    ) -> LimitVerdict:
         blockers: list[str] = []
 
         if self.kill_switch is not None and self.kill_switch.is_engaged():
@@ -212,6 +214,31 @@ class RiskLimits:
                 f"{len(state.open_positions)} positions already open "
                 f"(limit {self.config.max_open_positions})"
             )
+
+        # Gleichgerichtete Positionen zaehlen, nicht nur offene.
+        #
+        # `max_open_positions` behandelt zwoelf Perps als zwoelf Wetten. Sie
+        # sind keine: E8 hat Beta 1.0 zu BTC gemessen, mit verlaesslich
+        # negativer Restrendite. Fuenf Longs sind naeherungsweise EIN Long in
+        # fuenffacher Groesse, und genau so starben sie am 20.10.2026 -- vier
+        # in derselben Minute, alle vier long.
+        #
+        # Ohne `side` wird nicht geprueft. Die erste Fassung versuchte, die
+        # Richtung aus dem Bestand zu ERRATEN, und haette einen Short
+        # abgelehnt, weil drei Longs offen sind. Eine Grenze, die die falsche
+        # Seite trifft, ist schlimmer als keine.
+        grenze = self.config.max_same_direction
+        if grenze is not None and side is not None:
+            gesucht = str(getattr(side, "value", side)).lower()
+            gleich = sum(
+                1 for p in state.open_positions
+                if str(getattr(p.side, "value", p.side)).lower() == gesucht
+            )
+            if gleich >= grenze:
+                blockers.append(
+                    f"{gleich} Position(en) bereits {gesucht} (Grenze {grenze} je "
+                    f"Richtung) -- zwoelf Perps sind naeherungsweise eine Wette auf BTC"
+                )
 
         in_symbol = sum(1 for p in state.open_positions if p.symbol == symbol)
         if in_symbol >= self.config.max_positions_per_symbol:
