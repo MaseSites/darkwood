@@ -58,6 +58,7 @@ const S = {
   angefangen: null,            // der Zug, der gerade gesetzt wird
   untenTab: "positionen",
   faktor: null,            // welcher Faktor aufgeschlüsselt ist
+  journal: null,
   grosstrades: null, grosstradesFuer: null, grosstradesLaeuft: false,
   optionen: null, optionenFuer: null, optionenLaeuft: false,
   faktorLaeuft: false,
@@ -1056,6 +1057,96 @@ function wireUnten() {
 
 const renderStrip = renderUnten;   // alter Name, damit nichts ins Leere ruft
 
+/* ------------------------------------------------------ Handelsjournal -- */
+/**
+ * Jeder Trade mit seiner Begründung, und was je Setup daraus folgt.
+ *
+ * Die Begründung steht VOR dem Ergebnis in der Zeile, weil sie aus Feldern
+ * kommt, die beim Einstieg geschrieben wurden: Setup, Rating, ob der Trade
+ * mit dem Score ging. Ein Journal, das den Grund nach dem Ausgang formuliert,
+ * beschreibt den Ausgang und nennt ihn Grund.
+ */
+async function tickJournal() {
+  try {
+    const d = await api("/api/terminal/journal");
+    S.journal = d;
+    renderJournal();
+  } catch (e) {
+    $("#jr-liste").innerHTML = `<p class="empty">Journal nicht erreichbar: ${e.message}</p>`;
+  }
+}
+
+function musterZeile(m) {
+  const kl = m.summe_usd > 0 ? "up" : m.summe_usd < 0 ? "down" : "muted";
+  const serie = m.serie <= -3 ? `<span class="jr__serie">${Math.abs(m.serie)} Verluste in Folge</span>`
+    : m.serie >= 3 ? `<span class="jr__serie jr__serie--gut">${m.serie} Gewinne in Folge</span>` : "";
+  return `<div class="jr__muster">
+    <div class="jr__musterkopf"><b>Setup ${m.setup}</b>
+      <span class="muted">${m.trades} Trades · ${m.gewinner} gewonnen</span>
+      <span class="${kl}">${signed(m.summe_usd)} USD</span>
+      <span class="${m.mittel_r >= 0 ? "up" : "down"}">${signed(m.mittel_r, 3)} R je Trade</span>
+      ${serie}</div>
+    <p class="jr__befund">${m.befund}</p></div>`;
+}
+
+function journalZeile(e, i) {
+  const gewonnen = (e.net_pnl ?? 0) > 0;
+  const seite = String(e.side).toLowerCase().startsWith("l") ? "Long" : "Short";
+  const id = `jr-${i}`;
+  const lehren = (e.lehren ?? []).length
+    ? `<ul class="jr__lehren">${e.lehren.map((l) => `<li>${l}</li>`).join("")}</ul>`
+    : `<p class="jr__keine">Keine mechanische Regel greift auf diesen Trade — er lief, wie geplant oder wie befürchtet, ohne Auffälligkeit in den gespeicherten Feldern.</p>`;
+  return `<div class="jr__zeile">
+    <button class="jr__kopf" aria-expanded="false" aria-controls="${id}">
+      <span class="jr__wann">${day(e.closed_ts)}</span>
+      <span class="jr__sym">${e.symbol} <span class="${seite === "Long" ? "up" : "down"}">${seite}</span></span>
+      <span class="muted">Setup ${e.setup}</span>
+      <span class="${gewonnen ? "up" : "down"}">${signed(e.net_pnl ?? 0)} USD</span>
+      <span class="${gewonnen ? "up" : "down"}">${(e.r_multiple ?? 0).toFixed(2)} R</span>
+    </button>
+    <div class="jr__auf" id="${id}" hidden>
+      <div class="jr__warum"><b>Warum dieser Trade:</b> ${e.warum}</div>
+      <div class="jr__zahlen">
+        Einstieg ${px(e.entry)} · Stop ${px(e.stop)} · Ziel ${px(e.target)} · Ausstieg ${px(e.exit)}
+        · ${e.bars_held ?? 0} Kerzen gehalten
+        · best ${signed(e.max_favourable_r ?? 0, 2)} R / schlechtest ${signed(e.max_adverse_r ?? 0, 2)} R
+        · Gebühren ${(e.fees ?? 0).toFixed(2)} USD
+        · beendet durch ${e.exit_reason || "—"}${e.stopped_by_wick ? " (Docht)" : ""}
+      </div>
+      ${e.verdict ? `<div class="jr__befund">${e.verdict}</div>` : ""}
+      <div class="jr__lehrenkopf">Was daraus folgt</div>
+      ${lehren}
+    </div></div>`;
+}
+
+function renderJournal() {
+  const d = S.journal;
+  if (!d) return;
+  $("#jr-hint").textContent = d.hinweis ?? "";
+  $("#jr-muster").innerHTML = (d.muster ?? []).length
+    ? `<div class="jr__musterkopf2">Je Setup — nach Verlust sortiert</div>`
+      + d.muster.map(musterZeile).join("")
+    : "";
+  $("#jr-liste").innerHTML = (d.eintraege ?? []).length
+    ? `<div class="jr__listekopf">Jeder Trade einzeln · zum Aufklappen anklicken</div>`
+      + d.eintraege.map(journalZeile).join("")
+    : `<p class="empty">Noch kein abgeschlossener Trade auf diesem Konto.</p>`;
+}
+
+function wireJournal() {
+  // Delegiert: die Liste entsteht bei jedem Abruf neu, und ein Handler auf
+  // den Knöpfen selbst haftete danach an abgetrennten Knoten.
+  $("#jr-liste").addEventListener("click", (e) => {
+    const kopf = e.target.closest(".jr__kopf");
+    if (!kopf) return;
+    const auf = document.getElementById(kopf.getAttribute("aria-controls"));
+    if (!auf) return;
+    const offen = kopf.getAttribute("aria-expanded") === "true";
+    kopf.setAttribute("aria-expanded", String(!offen));
+    auf.hidden = offen;
+  });
+}
+
 function renderTrades() {
   if (S.view !== "trades") return;
   const all = [...S.botPositions, ...S.positions];
@@ -1065,7 +1156,7 @@ function renderTrades() {
     : `<p class="empty">Keine offene Position.</p>`;
   $$("button[data-close]", $("#tr-open")).forEach((b) => b.addEventListener("click", async () => {
     b.disabled = true; b.textContent = "…";
-    try { await api(`/api/terminal/positions/${b.dataset.close}/close`, { method: "POST" }); await tickPositions(); await tickHistory(); await tickAccount(); }
+    try { await api(`/api/terminal/positions/${b.dataset.close}/close`, { method: "POST" }); await tickPositions(); await tickHistory(); await tickAccount(); await tickJournal(); }
     catch (e) { b.disabled = false; b.textContent = "Market"; flash($("#m-msg"), e.message, "err"); }
   }));
   const al = S.alerts;
@@ -1296,7 +1387,7 @@ function setView(v) {
   document.body.dataset.view = v;
   if (v === "markt") { renderChart(); tickBook(); tickHeatmap(); }
   if (v === "konto") tickAccount();
-  if (v === "trades") { renderTrades(); tickHistory(); }
+  if (v === "trades") { renderTrades(); tickHistory(); tickJournal(); }
 }
 function setCenter(c) {
   S.center = c; $$("#center-seg [data-center]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.center === c)));
@@ -1328,9 +1419,9 @@ async function boot() {
   $("#sym").innerHTML = syms.map((s) => `<option value="${s}">${s.replace("USDT", "/USDT")}</option>`).join("");
   $("#sym").value = S.symbol;
   $("#sym-text").textContent = S.symbol.replace("USDT", "/USDT");
-  wireShell(); wireChart(); wireSettings(); wireManual(); wireUnten(); wireSymWahl(); wireKarten();
+  wireShell(); wireChart(); wireSettings(); wireManual(); wireUnten(); wireSymWahl(); wireKarten(); wireJournal();
   setView("markt"); setCenter("chart"); setMode("bot");
-  await Promise.all([tickHead(), loadMarket(), tickLive(), tickBook(), tickCalendar(), tickHeatmap(), tickVProfil(), tickGrosseTrades(), tickOptionen(), tickScore(), tickPositions(), tickHistory(), loadSettings(), tickAccount()]);
+  await Promise.all([tickHead(), loadMarket(), tickLive(), tickBook(), tickCalendar(), tickHeatmap(), tickVProfil(), tickGrosseTrades(), tickOptionen(), tickScore(), tickPositions(), tickHistory(), loadSettings(), tickAccount(), tickJournal()]);
   setInterval(() => { tickHead(); tickBook(); checkAlerts(); }, 1000);
   setInterval(tickLive, 2000);
   setInterval(tickHeatmap, 5000);
@@ -1340,6 +1431,10 @@ async function boot() {
   setInterval(tickVProfil, 120000);
   setInterval(() => { loadMarket(); tickPositions(); }, 15000);
   setInterval(() => { tickScore(); tickHistory(); if (S.view === "konto") tickVerlauf(); }, 30000);
+  // Das Journal aendert sich nur, wenn ein Trade SCHLIESST -- ein paarmal am
+  // Tag. Es im 30-Sekunden-Takt neu zu rechnen hiesse, das ganze Buch
+  // zweitausendmal taeglich fuer dieselbe Antwort zu lesen.
+  setInterval(() => { if (S.view === "trades") tickJournal(); }, 300000);
   setInterval(tickCalendar, 15 * 60 * 1000);
   setInterval(() => { if (S.view === "konto") tickAccount(); }, 60000);
 }

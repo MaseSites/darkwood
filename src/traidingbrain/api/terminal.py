@@ -21,6 +21,7 @@ Aenderung, die die Laufsignatur traegt.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 import re
@@ -1194,6 +1195,94 @@ def router(services: Any, konto_signatur, state_path, journal_path, followed) ->
         led = build_ledger(journal_path(services), source=Source.LIVE, signature=konto_signatur(services))
         rows = [{"symbol": x.symbol, "r_multiple": x.r_multiple} for x in led.rows]
         return score(symbol, sr, ch, buch, kal, rows)
+
+
+    @r.get("/journal")
+    def _journal(limit: int = 60) -> dict:
+        """Das Handelsjournal: jeder Trade mit Begruendung, plus was je Setup folgt.
+
+        Die Begruendung ist aus gespeicherten Feldern abgeleitet, nicht
+        nachtraeglich erzaehlt: Setup, Rating beim Einstieg, ob der Trade mit
+        dem Score ging, wie weit er im Plus war, woran er endete. Ein Journal,
+        das den Grund nach dem Ergebnis formuliert, beschreibt das Ergebnis.
+        """
+        from traidingbrain.journal.lehren import lehre_ziehen, muster
+        from traidingbrain.journal.store import JournalStore
+
+        pfad = journal_path(services)
+        sig = konto_signatur(services)
+        led = build_ledger(pfad, source=Source.LIVE, signature=sig)
+
+        # Die Rohzeilen dazu: `LedgerRow` traegt nicht alles, was die Lehren
+        # brauchen (`never_in_profit`, `conflict`, `risk_amount`). Einmal
+        # gelesen und ueber die trade_id zugeordnet, statt die Ansicht zu
+        # erweitern -- die Ansicht wird von der ganzen Oberflaeche benutzt.
+        roh: dict[str, Any] = {}
+        try:
+            speicher = JournalStore(Path(pfad))
+            for e in speicher.all(source=Source.LIVE):
+                roh[e.trade_id] = e
+        except (OSError, ValueError, TypeError):
+            # Ohne die Rohzeilen bleiben die Lehren leer, die Liste nicht --
+            # ein Journal ohne Begruendungen ist weniger, ein Journal ohne
+            # Trades waere ein Ausfall.
+            roh = {}
+
+        eintraege: list[dict] = []
+        fuer_muster: list[dict] = []
+        for row in led.rows[:limit]:
+            e = roh.get(row.trade_id)
+            # `post_mortem` und `reason` sind dataclasses, keine Pydantic-
+            # Modelle -- `model_dump` gibt es daran nicht, und der Versuch
+            # kostete einen 500er.
+            pm = dataclasses.asdict(e.post_mortem) if e is not None else {}
+            t = {"net_pnl": row.net_pnl,
+                 "risk_amount": getattr(e, "risk_amount", 0.0) if e else 0.0}
+            # Der Streit zwischen den Familien steht in `reason`, nicht in
+            # einem `gate` -- ein `gate`-Attribut hat der Eintrag gar nicht.
+            g = {"conflict": getattr(e.reason, "conflict", 0.0) if e else 0.0}
+            saetze = lehre_ziehen(t, g, pm)
+
+            # Warum dieser Trade ueberhaupt entstand -- aus den Feldern, die
+            # VOR dem Ergebnis geschrieben wurden.
+            warum = (
+                f"Setup {row.setup}"
+                + (f" ({row.setup_name})" if row.setup_name and row.setup_name != row.setup else "")
+                + f" auf {row.setup_timeframe or '?'}, Rating {row.rating}/100"
+                + (f" ({row.rating_band})" if row.rating_band else "")
+                + f", Score stand {row.score_direction or '?'} — "
+                + ("der Trade ging mit dem Score." if row.agreed_with_score
+                   else "der Trade ging GEGEN den Score.")
+            )
+            eintraege.append({
+                "trade_id": row.trade_id, "symbol": row.symbol, "side": row.side,
+                "setup": row.setup, "setup_name": row.setup_name,
+                "opened_ts": row.opened_ts, "closed_ts": row.closed_ts,
+                "entry": row.entry, "exit": row.exit, "stop": row.stop, "target": row.target,
+                "r_multiple": row.r_multiple, "net_pnl": row.net_pnl, "fees": row.fees,
+                "exit_reason": row.exit_reason, "bars_held": row.bars_held,
+                "max_favourable_r": row.max_favourable_r, "max_adverse_r": row.max_adverse_r,
+                "stopped_by_wick": row.stopped_by_wick, "rating": row.rating,
+                "warum": warum, "verdict": row.verdict, "lehren": saetze,
+            })
+            fuer_muster.append({
+                "setup": row.setup, "setup_name": row.setup_name,
+                "r_multiple": row.r_multiple, "net_pnl": row.net_pnl,
+                "closed_ts": row.closed_ts,
+            })
+
+        m = [x.model_dump() for x in muster(fuer_muster)]
+        return {
+            "eintraege": eintraege,
+            "muster": m,
+            "gesamt": led.total,
+            "hinweis": (
+                f"{len(eintraege)} von {led.total} Trades dieses Kontos. Die Lehren sind "
+                f"mechanisch aus gespeicherten Feldern abgeleitet; keine davon schlaegt eine "
+                f"Parameteraenderung vor. Eine Verlustserie ist kein Befund — drei in Folge "
+                f"passieren bei einer Muenze in 12.5 % der Faelle."
+            ),
+        }
 
     @r.get("/optionen/{symbol}")
     def _opt(symbol: str) -> dict:
