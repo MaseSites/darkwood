@@ -9,7 +9,8 @@ same `git pull` that brings the code. The mirror runs one way: an edit made in
 `gehirn/` is overwritten by the next sync, so notes are changed in the vault.
 
 Only `gehirn/` is staged and committed. Whatever else is changed or staged in
-the working tree stays out of the commit.
+the working tree stays out of the commit. The current branch is pushed, and
+master follows it when that is a fast-forward.
 """
 
 from __future__ import annotations
@@ -71,7 +72,19 @@ def main() -> int:
     branch = _git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     push = _git("push", args.remote, branch)
     print(push.stderr.strip() or push.stdout.strip())
-    return push.returncode
+    if push.returncode != 0 or branch == "master":
+        return push.returncode
+
+    # The colleague pulls master. Both moves are fast-forward only: git refuses
+    # either one if master holds a commit this branch does not, and then master
+    # is left alone and the reason is printed instead of being overwritten.
+    lokal = _git("fetch", ".", f"{branch}:master")
+    if lokal.returncode != 0:
+        print("master nicht nachgezogen:", lokal.stderr.strip())
+        return lokal.returncode
+    master = _git("push", args.remote, "master")
+    print(master.stderr.strip() or master.stdout.strip())
+    return master.returncode
 
 
 if __name__ == "__main__":
