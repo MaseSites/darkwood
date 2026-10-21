@@ -30,7 +30,12 @@ AUSGENOMMEN = shutil.ignore_patterns("workspace*.json", ".trash", ".git")
 
 
 def _git(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", *args], cwd=ROOT, text=True, capture_output=True)
+    # The note names carry emoji, and git's output in the console code page
+    # cannot decode them; read it as UTF-8 like git writes it.
+    return subprocess.run(
+        ["git", *args], cwd=ROOT, capture_output=True, check=False,
+        encoding="utf-8", errors="replace",
+    )
 
 
 def main() -> int:
