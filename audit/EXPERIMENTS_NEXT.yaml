@@ -2468,6 +2468,9 @@ experiments:
     registriert: 2026-10-21
     cells: 1
     comparisons: 1
+    arms:
+      - id: E25.1
+        name: "Rangkorrelation des vollen Maker-P&L je Konto, Haelfte 1 gegen Haelfte 2, BTC, 7 Tage"
     acceptance: >-
       (a) Spearman rho > 0 mit korrigiertem Intervall ohne Null UND (b) Anteil ueber Median in beiden Haelften > 55 % mit Intervall ueber 50 %. Beides noetig; sonst ist Market Making auf Lighter fuer dieses Projekt geschlossen.
     anlass: >-
@@ -2574,6 +2577,9 @@ experiments:
     registriert: 2026-10-21
     cells: 1
     comparisons: 1
+    arms:
+      - id: E27.1
+        name: "Plankonto-Epoche |tf=D1,H4,H1|bild gegen die vorige Epoche, Mittel in R und Trefferquote"
     acceptance: >-
       (a) fruehestens bei 100 Trades der neuen Epoche; (b) Mittel in R >= 0 mit korrigiertem Intervall, Wochenblock-Bootstrap; (c) Trefferquote >= 37 % mit Intervall ueber 33 %. Vorher keine Anpassung.
     anlass: >-

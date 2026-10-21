@@ -37,6 +37,7 @@ from traidingbrain.learn.overrides import (  # noqa: E402
     INVIOLABLE,
     NEEDS_A_RULE_CHANGE,
     NEVER_OVERRIDABLE,
+    OVERRIDABLE_BY_SELECTION,
     describe,
     safety_rules,
 )
@@ -102,7 +103,7 @@ def test_every_rule_is_accounted_for() -> None:
     Zufall abgehangen. Jetzt gibt es eine Stelle -- und dieser Test besteht
     darauf, dass jeder Grund dort eingeordnet ist.
     """
-    sorted_out = INVIOLABLE | {Rule.CONFIDENCE, Rule.SIZE}
+    sorted_out = INVIOLABLE | OVERRIDABLE_BY_SELECTION
     missing = [rule.value for rule in Rule if rule not in sorted_out]
     assert not missing, (
         f"diese Ablehnungsgruende sind nirgends eingeordnet: {missing}. "

@@ -65,12 +65,19 @@ NEVER_OVERRIDABLE: frozenset[str] = frozenset({Rule.LIQUIDATION, Rule.LIMITS})
 
 #: Verhandelbar, aber nur gegen eine Regeländerung. Beides sind
 #: Produktionsregeln in `sim/plan.py`, und beide sind gemessen bestätigt.
-#: Dazu seit dem 21.10.2026 das Bild-Tor (`Rule.PICTURE`): eine
-#: Konfigurationsregel im Live-Pfad (`setups.require_agreement`), in drei
-#: Stichproben gemessen. Eine Auswahlregel darf sie nur ueberstimmen, wenn die
-#: Konfiguration es tut -- dieselbe Einordnung wie die beiden Tore in
-#: `sim/plan.py`.
-NEEDS_A_RULE_CHANGE: frozenset[str] = frozenset({Rule.REWARD_RISK, Rule.COSTS, Rule.PICTURE})
+NEEDS_A_RULE_CHANGE: frozenset[str] = frozenset({Rule.REWARD_RISK, Rule.COSTS})
+
+#: Von einer Auswahlstudie überstimmbar. Zuversicht und Grösse waren das
+#: immer (eine Auswahlregel, die sie nicht überstimmen dürfte, wäre keine).
+#: Dazu seit dem 21.10.2026 das Bild-Tor (`Rule.PICTURE`,
+#: `setups.require_agreement`): es ist SELBST eine Auswahlregel -- es wählt
+#: nach `score_direction` -- und genau die Sorte Regel, die eine
+#: Meta-Label-Studie bewerten soll. Es gehört darum hierher und nicht zu den
+#: Schutzregeln: `safety_rules()` bleibt die Menge, über die E3 und E1
+#: berichtet haben, und keine schon berichtete Population verschiebt sich.
+OVERRIDABLE_BY_SELECTION: frozenset[str] = frozenset(
+    {Rule.CONFIDENCE, Rule.SIZE, Rule.PICTURE}
+)
 
 #: Die Vorgabe. Eine Studie, die hierauf filtert, liefert ein Ergebnis, das
 #: ohne Änderung einer Schutzregel umsetzbar ist.
