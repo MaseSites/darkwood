@@ -30,6 +30,20 @@ meta:
       geprueft. Der Unterschied ist nicht der Betrag, sondern die FRIST:
       17 Tage lassen bei diesem Takt rund 40 bis 60 Trades zu, und das ist
       der bindende Teil.
+    bestaetigt_21_10_2026: >-
+      Der Eigentuemer hat am 21.10.2026 nach der Analyse "Was ein Durchbruch
+      braeuchte" (Vault, 02 Strategie & Forschung) die VORGABE 20x in sechs
+      Monaten ausdruecklich bestaetigt. Sie gilt als Entscheidung, nicht als
+      Messergebnis. Rechnerisch: +1.66 % je Tag, +0.4536 R je Trade bei 3.5
+      Trades/Tag und 1 % Risiko; die gemessene Erwartung liegt in
+      [-0.087; +0.059] R. Das Register prueft ab jetzt jeden Arm gegen
+      +0.4536 R (182 Tage ab 21.10.2026 = 21.04.2027, falls der Eigentuemer
+      kein anderes Startdatum nennt). Der einzige Weg mit einer positiven
+      Messung fuer irgendjemanden ist Market Making auf BTC bei Lighter
+      (E23, +4.47 bp/Tag auf Nominal); dafuer sind E25 (Bestaendigkeit ueber
+      eine Woche) und E0 (eigene Fuellmessung, echtes Unterkonto) der Pfad.
+      Fuer die laufende Setup-Familie aendert die Bestaetigung nichts: ihre
+      Schranke ist 4.8 bis 7.1x ueber der oberen Intervallgrenze.
     urteil: >-
       **Nicht erreichbar, und das ist Zinseszins und keine Meinung.**
 
@@ -88,7 +102,8 @@ meta:
   # (G in {0.25, 0.50, 0.75, 1.00}), vorregistriert am 20.10. in
   # audit/E22_TRAIL_VORREGISTRIERUNG.md und an diesem Tag gelaufen.
   # 21.10.2026: +2 fuer E24 (Volumen-/Dollar-Takt), vorregistriert, nicht gebaut.
-  total_comparisons: 79
+  # 21.10.2026 nachmittags: +1 fuer E25 (Bestaendigkeit der BTC-Maker ueber eine Woche).
+  total_comparisons: 80
   correction: >-
     Bonferroni auf `total_comparisons` Vergleiche: Schwelle 0.05/n,
     Intervall 100*(1 - 0.05/n) %. Bei 70 also 0.000714 und 99.9286 %.
@@ -2413,6 +2428,54 @@ experiments:
       Erwartung noch will.
     on_success: "erster Kandidat ausserhalb der Zeitbalken-Familie; dann Vorwaertsstichprobe"
     on_failure: "die Familie der Preisstruktur-Setups ist auch im Takt erschoepft; Register schliesst sie endgueltig"
+
+  - id: E25
+    title: "Bleiben dieselben BTC-Maker auf Lighter ueber eine Woche gewinnend?"
+    priority: 1
+    status: registriert_sammler_laeuft
+    registriert: 2026-10-21
+    cells: 1
+    comparisons: 1
+    anlass: >-
+      Die Vorgabe 20x in sechs Monaten ist am 21.10. bestaetigt worden. Die
+      einzige Messung dieses Projekts mit einem positiven Ertrag fuer
+      irgendjemanden ist E23: BTC-Maker auf Lighter behalten +4.47 bp/Tag auf
+      Nominal, 79 % davon Handwerk. E23b konnte auf 24 h NICHT zeigen, dass
+      dieselben Konten durchgehend verdienen (Rangkorrelation +0.065 +- 0.19
+      ueber 111 Konten, Aufloesung |rho| > 0.19). Ohne Bestaendigkeit ist
+      Mitmachen ein Zug aus einer Verteilung, kein Geschaeftsmodell. Das ist
+      die billigste offene Frage des Projekts: sie kostet Wartezeit und null
+      Risiko, weil Lighter jedes Konto oeffentlich fuehrt.
+    hypothesis: >-
+      Ueber sieben Tage WS-Aufnahme (scripts/collect_venue_ws.py, BTC) ist die
+      Rangkorrelation des Maker-P&L je Konto zwischen erster und zweiter
+      Haelfte positiv mit einem Intervall ohne Null, bei mindestens 300 Konten
+      mit 30+ Geschaeften je Haelfte.
+    population: >-
+      Alle Konten, die in beiden Haelften als Maker auf BTC gefuellt wurden,
+      mit 30+ Geschaeften je Haelfte. P&L VOLL (Kasse + Bestand zum
+      Schlusskurs), nicht nur realisiert -- `every-account-pnl-is-public-on-lighter`.
+      Kein Vorab-Ausschluss von Konten nach Groesse oder Richtung.
+    metric: "Spearman-Rangkorrelation Haelfte 1 gegen Haelfte 2; Bootstrap ueber Konten"
+    gates: >-
+      (a) rho > 0 mit korrigiertem Intervall (80 Vergleiche) ohne Null;
+      (b) Anteil der Konten, die in beiden Haelften ueber dem Median liegen,
+      > 55 % mit Intervall ohne 50 %. Beide noetig. Faellt (a) oder (b), ist
+      Market Making auf Lighter fuer dieses Projekt geschlossen, und die
+      20x-Vorgabe hat keinen Pfad mit positiver Messung mehr.
+    on_success: >-
+      E0 vorregistrieren: eigene Fuellquote, adverse Selektion und
+      Storno-Latenz mit echten Kleinstorders auf einem Unterkonto, Verlustdeckel
+      100 USD, Kill-Switch. Erst danach eine Groessenordnung fuer 20x rechnen.
+    on_failure: "Market Making auf Lighter geschlossen; Vorgabe 20x ohne Pfad"
+    sammler: >-
+      traidingBrain-ws und traidingBrain-tape laufen seit 20.10. als geplante
+      Aufgaben (je 11 h je Lauf, Wrapper startet neu). Stand der Abdeckung wird
+      in der Vault-Notiz "Aktueller Stand" gefuehrt; Zielmarke 7 x 24 h BTC.
+    was_nicht: >-
+      Keine eigenen Orders vor E0. Keine Lesart von E23 als "wir koennen es".
+      Keine Rechnung mit 4.47 bp als unserem Ertrag, bevor (a), (b) und E0
+      gehalten haben.
 
 # ---------------------------------------------------------------------------
 # Geschlossene DATENfamilien, 14.10.2026
