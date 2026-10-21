@@ -260,7 +260,7 @@ def build_paper_readout(
     # Die LISTE der letzten Trades bleibt ungefiltert: sie zeigt, was
     # geschehen ist, und ein Trade aus einer aelteren Konfiguration ist
     # geschehen. Nur die Kennzahlen darueber werden eingeschraenkt.
-    current = current_era(live, config)
+    current = current_era(live, config, signature=signature)
     rs = [entry.r_multiple for entry in current]
     return PaperReadout(
         accounts=accounts,

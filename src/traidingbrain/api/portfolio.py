@@ -617,7 +617,7 @@ def build_portfolio(
     # laufende Epoche zeigt, wuerde den Kontostand nicht mehr erklaeren.
     # Nur die SCHLAGZEILE wird zusaetzlich auf eine Konfiguration
     # eingeschraenkt.
-    current = current_era(live, config)
+    current = current_era(live, config, signature=signature)
 
     closed = [entry for entry in live if entry.closed_ts]
     realised: dict[str, float] = {}

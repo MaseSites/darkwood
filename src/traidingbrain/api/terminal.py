@@ -434,6 +434,30 @@ def score(symbol: str, score_read: dict, chart: dict, buch: Orderbuch | None,
     karten.append(Karte(key="priceaction", label="Price-Action", stars=_sterne((m_ag + vo_ag) / 2),
                         pct=round(pa, 0), direction=_richtung(pa), text="Momentum und Volatilität"))
 
+    # 6b Indikatoren: die Familien, die aus registrierten Indikatoren bestehen.
+    #
+    # Die Karte summiert NICHT 199 Messwerte. Sie mittelt die fuenf Familien,
+    # die Indikatoren tragen, und ihre Sterne zaehlen, wie viele davon
+    # ueberhaupt eine Seite einnehmen -- also die Breite ueber unabhaengige
+    # Informationsfamilien, das einzige Mass, das dieses Projekt fuer
+    # Indikatoren anerkennt. Vier Momentum-Oszillatoren, die sich einig sind,
+    # bleiben EIN Beleg; eine Karte, die 199 Lesungen addiert haette, waere
+    # bei jeder Familieneinigkeit am Anschlag.
+    #
+    # Die Aufschluesselung dahinter (`/faktor/{symbol}/indikatoren`) zeigt
+    # dann jede einzelne Lesung mit ihrem Gewicht.
+    ind_familien = [fam("trend"), fam("momentum"), fam("volatility"),
+                    fam("volume"), fam("location")]
+    sprechen = [p for p, ag in ind_familien if ag > 0]
+    ind_pct = sum(sprechen) / len(sprechen) if sprechen else 0.0
+    karten.append(Karte(
+        key="indikatoren", label="Indikatoren", stars=min(5, len(sprechen)),
+        pct=round(ind_pct, 0), direction=_richtung(ind_pct),
+        text=(f"{score_read.get('readings', 0)} Messungen · "
+              f"{len(sprechen)} von 5 Familien mit Meinung"),
+        measured=bool(sprechen),
+    ))
+
     # 7 Entry-Signal: gibt es ein Setup, und wuerde das Tor fragen?
     setups = chart.get("setups") or []
     gate = chart.get("gate") or {}
@@ -1170,6 +1194,62 @@ def router(services: Any, konto_signatur, state_path, journal_path, followed) ->
         led = build_ledger(journal_path(services), source=Source.LIVE, signature=konto_signatur(services))
         rows = [{"symbol": x.symbol, "r_multiple": x.r_multiple} for x in led.rows]
         return score(symbol, sr, ch, buch, kal, rows)
+
+    @r.get("/liquiditaet/{symbol}")
+    def _liq(symbol: str, tag: str = "") -> dict:
+        """Grosse Trades mit Betraegen, offenes Interesse, Positionierung.
+
+        Nicht „institutionelle Liquiditaet": das Orderbuch ist anonym, und
+        welche Seite ein Fonds ist, steht in keinem oeffentlichen Feld. Was
+        fehlt, steht unter `fehlt` im Ergebnis -- eine leere Ebene ohne
+        Begruendung waere schlimmer als keine.
+        """
+        from traidingbrain.api import liquiditaet as L
+        return L.liquiditaet(symbol.upper(), tag or None).model_dump()
+
+    @r.get("/faktor/{symbol}/{key}")
+    def _faktor(symbol: str, key: str) -> dict:
+        """Woraus EIN Faktor besteht, mit dem Gewicht jedes Teils.
+
+        Die Gewichte kommen aus `score/engine.py`, importiert und nicht
+        abgeschrieben: eine zweite Tabelle hier wuerde nach der ersten
+        Aenderung an der Engine einen Rechenweg zeigen, der das angezeigte
+        Rating nicht mehr erklaert.
+        """
+        from traidingbrain.api import faktoren as F
+        from traidingbrain.api.app import _chart_dict, _reading_for  # spaet, gegen Zirkel
+
+        symbol = symbol.upper()
+        if key not in F.alle_schluessel():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Kein Faktor {key!r}. Es gibt: {', '.join(F.alle_schluessel())}.",
+            )
+
+        reading = chart = buch = kal = None
+        rows: list[dict] = []
+        if key in F.KARTE_FAMILIEN:
+            reading = _reading_for(services, symbol)
+        if key == "entry":
+            chart = _chart_dict(services, symbol)
+        if key == "orderbuch":
+            try:
+                buch = orderbuch(symbol, 20)
+            except HTTPException:
+                buch = None
+        if key == "kalender":
+            try:
+                kal = kalender()
+            except HTTPException:
+                kal = None
+        if key == "history":
+            led = build_ledger(journal_path(services), source=Source.LIVE,
+                               signature=konto_signatur(services))
+            rows = [{"symbol": x.symbol, "r_multiple": x.r_multiple, "setup": x.setup}
+                    for x in led.rows]
+
+        return F.faktor(key, symbol, reading=reading, chart=chart, buch=buch,
+                        kal=kal, history_rows=rows).model_dump()
 
     @r.get("/account", response_model=Konto)
     def _konto(range: str = "month") -> Konto:

@@ -16,6 +16,7 @@
 import { drawTerminalChart, drawEquity, drawRCurve, fmt, EBENEN, SEITENTEILE } from "/static/terminal-chart.js";
 import { INDIKATOREN } from "/static/terminal-indikatoren.js";
 import { LEISTE, PUNKTE, WERKZEUGE } from "/static/terminal-zeichnen.js";
+import { faktorHtml, wireFaktor } from "/static/terminal-faktor.js";
 
 /** Was sichtbar ist, wenn noch nie etwas eingestellt wurde: EMA 20 und 200,
  *  wie bisher festverdrahtet -- nur jetzt aenderbar. */
@@ -56,6 +57,9 @@ const S = {
   zeichnungen: JSON.parse(localStorage.getItem("dw-zeichnungen") || "[]"),
   angefangen: null,            // der Zug, der gerade gesetzt wird
   untenTab: "positionen",
+  faktor: null,            // welcher Faktor aufgeschlüsselt ist
+  grosstrades: null, grosstradesFuer: null, grosstradesLaeuft: false,
+  faktorLaeuft: false,
   vprofil: null, vprofilFuer: null, vprofilLaeuft: false,
   stift: { farbe: "#f59e0b", dicke: 1.4 },
 };
@@ -199,6 +203,7 @@ function chartOpts(extra = {}) {
   return { candles, forming, lines: positionLines(), layers: S.ebenen, book: buch,
     indikatoren: S.indikatoren,
     vprofil: S.vprofil && S.vprofil.symbol === S.symbol ? S.vprofil : null,
+    grosstrades: S.grosstrades && S.grosstrades.symbol === S.symbol ? S.grosstrades : null,
     zeichnungen: S.zeichnungen.filter((d) => d.symbol === S.symbol),
     angefangen: S.angefangen, stift: S.stift,
     visible: z.visible, end: z.end,
@@ -297,7 +302,7 @@ function wireLayers() {
         : Object.fromEntries(Object.keys(EBENEN).map((k) => [k, alle.dataset.all === "on"]));
     } else return;
     localStorage.setItem("dw-ebenen", JSON.stringify(S.ebenen));
-    renderLayers(); renderChart(); tickVProfil();
+    renderLayers(); renderChart(); tickVProfil(); tickGrosseTrades();
   });
   wirePopover("#btn-settings", "#layers");
 }
@@ -465,6 +470,35 @@ async function tickVProfil() {
     S.vprofil = null; S.vprofilFuer = schluessel;
     flash($("#m-msg"), `Volumenprofil: ${e.message}`, "err");
   } finally { S.vprofilLaeuft = false; }
+}
+
+/**
+ * Grosse Trades mit Beträgen.
+ *
+ * Dieselbe Tagesdatei wie das Volumenprofil, darum beim zweiten Abruf
+ * umsonst: der Server hält sie auf der Platte, und ein abgeschlossener Tag
+ * ändert sich nie wieder.
+ *
+ * Wie beim Profil KEINE Bedingung auf `S.market` -- der Abruf läuft im Start
+ * neben `loadMarket` und fände dort `null`, stiege aus und käme nie wieder.
+ */
+async function tickGrosseTrades() {
+  if (S.ebenen.grosstrades === false) return;
+  const schluessel = `${S.symbol}`;
+  if (S.grosstradesFuer === schluessel || S.grosstradesLaeuft) return;
+  S.grosstradesLaeuft = true;
+  try {
+    const d = await fuerMarkt((sym) => api(`/api/terminal/liquiditaet/${sym}`));
+    if (d !== VERALTET) {
+      S.grosstrades = d?.grosse_trades ?? null;
+      S.liquiditaet = d ?? null;
+      S.grosstradesFuer = schluessel;
+      renderChart();
+    }
+  } catch (e) {
+    S.grosstrades = null; S.grosstradesFuer = schluessel;
+    flash($("#m-msg"), `Grosse Trades: ${e.message}`, "err");
+  } finally { S.grosstradesLaeuft = false; }
 }
 
 /* ------------------------------------------------------ Marktauswahl -- */
@@ -756,8 +790,48 @@ function renderScore() {
   }
   $("#cards").innerHTML = s.cards.map(card).join("");
   $("#chart-cards").innerHTML = s.chart_cards.map(card).join("");
+  for (const el of document.querySelectorAll("#cards .card, #chart-cards .card"))
+    el.setAttribute("aria-expanded", String(el.dataset.key === S.faktor));
   const hint = $("#r-hint"); hint.textContent = s.direction === "long" ? "Buy" : s.direction === "short" ? "Sell" : "Abwarten";
   hint.className = `rating__hint ${s.direction === "long" ? "up" : s.direction === "short" ? "down" : "muted"}`;
+}
+
+/* ------------------------------------------------ Faktor-Aufschlüsselung -- */
+/* Ein Klick auf eine Karte holt, woraus dieser Faktor besteht: jede einzelne
+ * Messung mit Gewicht, Begründung und bekannten Schwächen. Die Gewichte
+ * rechnet der Server aus den Tabellen der Engine — diese Seite rechnet
+ * nichts, damit neben dem Rating keine zweite Wahrheit entsteht. */
+async function zeigeFaktor(key) {
+  const box = $("#faktor-detail");
+  if (S.faktor === key) { schliesseFaktor(); return; }
+  S.faktor = key;
+  box.classList.remove("hidden");
+  box.innerHTML = `<div class="fakt__box"><div class="fakt__laedt">${key} wird aufgeschlüsselt …</div></div>`;
+  renderScore();
+  if (S.faktorLaeuft) return;
+  S.faktorLaeuft = true;
+  try {
+    const d = await api(`/api/terminal/faktor/${S.symbol}/${key}`);
+    if (S.faktor !== key) return;        // zwischenzeitlich weitergeklickt
+    box.innerHTML = faktorHtml(d);
+  } catch (e) {
+    box.innerHTML = `<div class="fakt__box"><div class="fakt__keine">Aufschlüsselung nicht möglich: ${e.message}</div></div>`;
+  } finally { S.faktorLaeuft = false; }
+}
+function schliesseFaktor() {
+  S.faktor = null;
+  const box = $("#faktor-detail");
+  box.classList.add("hidden"); box.innerHTML = "";
+  renderScore();
+}
+function wireKarten() {
+  for (const wo of ["#cards", "#chart-cards"]) {
+    $(wo).addEventListener("click", (e) => {
+      const k = e.target.closest(".card");
+      if (k?.dataset.key) zeigeFaktor(k.dataset.key);
+    });
+  }
+  wireFaktor($("#faktor-detail"), schliesseFaktor);
 }
 
 /* ------------------------------------------------- Bot entscheidet / empfiehlt -- */
@@ -1214,7 +1288,7 @@ function wireShell() {
   $$("#hist-filter [data-src]").forEach((b) => b.addEventListener("click", () => { S.histSrc = b.dataset.src; $$("#hist-filter [data-src]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); renderTrades(); }));
   $$("#tf [data-tf]").forEach((b) => b.addEventListener("click", () => { S.tf = b.dataset.tf; S.live = null; $$("#tf [data-tf]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); loadMarket(); tickLive(); }));
   $$("#a-range [data-range]").forEach((b) => b.addEventListener("click", () => { S.range = b.dataset.range; $$("#a-range [data-range]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); tickAccount(); }));
-  $("#sym").addEventListener("change", (e) => { S.symbol = e.target.value; S.lastOb = null; S.live = null; S.book = null; S.heat = null; S.vprofil = null; S.vprofilFuer = null; loadMarket(); tickLive(); tickHead(); tickBook(); tickHeatmap(); tickVProfil(); tickScore(); });
+  $("#sym").addEventListener("change", (e) => { S.symbol = e.target.value; S.lastOb = null; S.live = null; S.book = null; S.heat = null; S.vprofil = null; S.vprofilFuer = null; S.grosstrades = null; S.grosstradesFuer = null; schliesseFaktor(); loadMarket(); tickLive(); tickHead(); tickBook(); tickHeatmap(); tickVProfil(); tickGrosseTrades(); tickScore(); });
   new ResizeObserver(() => { if (S.view === "konto" && S.account) drawEquity($("#a-chart"), S.account.series, S.range); if (S.view === "konto" && S.curve) drawRCurve($("#v-chart"), S.curve.points ?? []); }).observe(document.body);
 }
 
@@ -1226,9 +1300,9 @@ async function boot() {
   $("#sym").innerHTML = syms.map((s) => `<option value="${s}">${s.replace("USDT", "/USDT")}</option>`).join("");
   $("#sym").value = S.symbol;
   $("#sym-text").textContent = S.symbol.replace("USDT", "/USDT");
-  wireShell(); wireChart(); wireSettings(); wireManual(); wireUnten(); wireSymWahl();
+  wireShell(); wireChart(); wireSettings(); wireManual(); wireUnten(); wireSymWahl(); wireKarten();
   setView("markt"); setCenter("chart"); setMode("bot");
-  await Promise.all([tickHead(), loadMarket(), tickLive(), tickBook(), tickCalendar(), tickHeatmap(), tickVProfil(), tickScore(), tickPositions(), tickHistory(), loadSettings(), tickAccount()]);
+  await Promise.all([tickHead(), loadMarket(), tickLive(), tickBook(), tickCalendar(), tickHeatmap(), tickVProfil(), tickGrosseTrades(), tickScore(), tickPositions(), tickHistory(), loadSettings(), tickAccount()]);
   setInterval(() => { tickHead(); tickBook(); checkAlerts(); }, 1000);
   setInterval(tickLive, 2000);
   setInterval(tickHeatmap, 5000);

@@ -737,3 +737,91 @@ button:disabled { cursor: not-allowed; color: var(--ink-3); }
 .symwahl__zeile:focus-visible { outline: 2px solid var(--star); outline-offset: -2px; }
 .symwahl__name { font-weight: 600; }
 .symwahl__quote { font-size: 10.5px; color: var(--ink-3); }
+
+/* ------------------------------------------- Faktor-Aufschlüsselung -- */
+/* Eine Karte ist jetzt ein Knopf. Das muss man sehen, bevor man klickt —
+ * sonst ist die Aufschlüsselung eine Funktion, die niemand findet. */
+.card { cursor: pointer; transition: border-color 160ms var(--ease-out), background 160ms var(--ease-out); }
+.card:hover { border-color: var(--accent); }
+.card:active { transform: scale(0.985); }
+.card[aria-expanded="true"] { border-color: var(--accent); background: var(--accent-soft); }
+
+.fakt { margin-top: var(--rh-2); }
+.fakt__box {
+  border: 1px solid var(--accent); border-radius: var(--r);
+  background: var(--surface); padding: var(--rh-1);
+}
+.fakt__titel {
+  display: flex; align-items: center; gap: var(--sp-3);
+  font-size: 15px; margin-bottom: var(--sp-2);
+}
+.fakt__regime { font-size: 11.5px; color: var(--ink-3); font-family: var(--mono); }
+.fakt__zu {
+  margin-left: auto; background: none; border: 1px solid var(--rule-2);
+  color: var(--ink-2); border-radius: var(--r); width: 22px; height: 22px;
+  line-height: 1; cursor: pointer; font-size: 15px;
+}
+.fakt__zu:hover { border-color: var(--short); color: var(--short); }
+.fakt__erkl { margin: 0 0 var(--sp-2); color: var(--ink-2); max-width: 86ch; }
+.fakt__weg {
+  margin: 0 0 var(--rh-1); padding: var(--sp-2) var(--sp-3);
+  border-left: 2px solid var(--mark); background: var(--ground);
+  color: var(--ink-2); font-size: 12px; max-width: 94ch;
+}
+.fakt__laedt, .fakt__keine { color: var(--ink-3); font-family: var(--mono); font-size: 12px; }
+
+/* Familientabelle: dicht, monospaced bei Zahlen, damit Spalten stehen. */
+.fakt__fam { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: var(--rh-1); }
+.fakt__fam th {
+  text-align: left; font-weight: 400; color: var(--ink-3);
+  border-bottom: 1px solid var(--rule-2); padding: var(--sp-1) var(--sp-2);
+}
+.fakt__fam td { padding: var(--sp-1) var(--sp-2); border-bottom: 1px solid var(--rule); }
+.fakt__fam td:nth-child(n+3):nth-child(-n+8) { font-family: var(--mono); text-align: right; }
+.fakt__famgrund { color: var(--ink-3); max-width: 44ch; }
+.fakt__fam--aus td { opacity: 0.5; }
+.fakt__mod { color: var(--mark); }
+
+.fakt__listekopf, .fakt__kontextkopf, .fakt__schwachkopf {
+  font-size: 11.5px; color: var(--ink-3); margin: var(--rh-1) 0 var(--sp-2);
+}
+.fakt__liste { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.fakt__zeile { background: var(--ground); }
+.fakt__zeile--aus { opacity: 0.55; }
+.fakt__kopf {
+  width: 100%; display: grid; align-items: center; gap: var(--sp-3);
+  grid-template-columns: minmax(12ch, 2fr) minmax(14ch, 1.1fr) 6.5em 5em 5em;
+  background: none; border: 0; color: inherit; text-align: left;
+  padding: var(--sp-2) var(--sp-3); cursor: pointer; font: inherit;
+}
+.fakt__kopf:hover { background: var(--raised); }
+.fakt__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fakt__meta { font-size: 11px; color: var(--ink-3); }
+.fakt__gewicht { font-family: var(--mono); font-size: 11.5px; text-align: right; color: var(--ink-2); }
+.fakt__richtung { font-size: 11.5px; text-align: right; }
+.fakt__sterne { color: var(--star); font-size: 11px; letter-spacing: 0.5px; }
+.fakt__leer { color: var(--star-off); }
+
+.fakt__auf { padding: var(--sp-2) var(--sp-3) var(--sp-3); border-top: 1px solid var(--rule); }
+.fakt__wert { font-size: 11.5px; color: var(--ink-2); font-family: var(--mono); margin-bottom: var(--sp-2); }
+.fakt__aus { margin: 0 0 var(--sp-2); color: var(--mark); font-size: 12px; max-width: 80ch; }
+.fakt__teile { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-1); }
+.fakt__teil {
+  display: grid; gap: var(--sp-3); align-items: baseline;
+  grid-template-columns: 11ch 4.5em 1fr; font-size: 11.5px;
+}
+.fakt__teilname { color: var(--ink-3); }
+.fakt__teilwert { font-family: var(--mono); text-align: right; color: var(--ink-3); }
+.fakt__teil--wirkt .fakt__teilwert { color: var(--mark); font-weight: 600; }
+.fakt__teilgrund { color: var(--ink-2); max-width: 80ch; }
+.fakt__schwach { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.fakt__schwach li { font-size: 11.5px; color: var(--ink-3); padding-left: 1.1em; position: relative; }
+.fakt__schwach li::before { content: "!"; position: absolute; left: 0; color: var(--short); }
+.fakt__kontext { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-1); }
+.fakt__kontext li { font-size: 11.5px; color: var(--ink-3); }
+
+@media (max-width: 1100px) {
+  .fakt__kopf { grid-template-columns: 1fr 5em 4.5em; }
+  .fakt__meta, .fakt__richtung { display: none; }
+  .fakt__famgrund { display: none; }
+}

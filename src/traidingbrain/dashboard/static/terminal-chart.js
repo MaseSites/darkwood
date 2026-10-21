@@ -49,6 +49,7 @@ export const EBENEN = {
   volumen: "Volumen-Näherung (aus Kerzen)",
   vprofil: "Volumenprofil + VPOC (echte Trades)",
   heatmap: "Orderbuch-Heatmap",
+  grosstrades: "Grosse Trades (Beträge je Preis)",
   positionen: "Positionen & Linien",
   // Keine Chart-Ebenen, sondern SEITENTEILE. Sie stehen trotzdem hier, weil
   // der Nutzer sie im selben Fenster sucht -- "was sehe ich" ist eine Frage,
@@ -218,6 +219,7 @@ export function drawTerminalChart(canvas, view, opts = {}) {
   /* ---- Volumenprofil links ---- */
   if (on("volumen")) drawProfile(ctx, shown, { pL, pT, pB, y, lo, hi });
   if (on("vprofil") && opts.vprofil) drawEchtesProfil(ctx, opts.vprofil, { pL, pR, pT, pB, y, lo, hi, c });
+  if (on("grosstrades") && opts.grosstrades) drawGrosseTrades(ctx, opts.grosstrades, { pL, pR, pT, pB, y, lo, hi, c });
 
   /* ---- EMAs ---- */
   // Zeichnet eine Serie in einen beliebigen Bereich. `yy` bildet den Wert auf
@@ -575,6 +577,65 @@ function drawEchtesProfil(ctx, p, g) {
   linie(p.vah, "rgba(148,163,184,0.75)", [3, 3], "VAH");
   linie(p.val, "rgba(148,163,184,0.75)", [3, 3], "VAL");
   linie(p.poc, "#facc15", [], `VPOC ${p.tag}`);
+  ctx.restore();
+}
+
+
+/* Grosse Trades: wo viel Nominal den Besitzer gewechselt hat, mit dem Betrag.
+ *
+ * Nicht „institutionelle Liquidität". Das Orderbuch ist anonym; wer hinter
+ * einem Abschluss steht, steht in keinem öffentlichen Feld. Was hier steht,
+ * ist der Betrag — und der ist gemessen.
+ *
+ * Die Schwelle kommt vom Server und ist das oberste Promille DIESES Tages,
+ * nicht eine runde Zahl: auf BTC sind das 711'227 USD je Abschluss, auf einem
+ * kleineren Markt entsprechend weniger. Eine feste Grenze hätte auf dem einen
+ * Markt alles und auf dem anderen nichts gezeigt.
+ *
+ * Gezeichnet wird RECHTS, weil links das Volumenprofil steht. Beide gleichzeitig
+ * auf derselben Seite wären zwei Balkenreihen übereinander, und man läse eine.
+ */
+function drawGrosseTrades(ctx, d, g) {
+  const stufen = (d.stufen ?? []).filter((s) => s.preis >= g.lo && s.preis <= g.hi);
+  if (!stufen.length) return;
+  const max = Math.max(...stufen.map((s) => s.usd)) || 1;
+  const breite = 74, x1 = g.pR;
+  const schritt = stufen.length > 1
+    ? Math.abs(g.y(stufen[0].preis) - g.y(stufen[1].preis)) : 4;
+  const h = Math.max(2, Math.min(14, schritt - 1));
+
+  ctx.save();
+  ctx.font = '9px ui-monospace, Menlo, monospace';
+  ctx.textBaseline = "middle";
+  for (const s of stufen) {
+    const w = (s.usd / max) * breite;
+    const yy = g.y(s.preis);
+    // Die Aufteilung der Aggressoren färbt den Balken. Bei exakt der Hälfte
+    // grau: eine Stufe ohne Übergewicht als grün zu zeichnen wäre eine
+    // Richtungsaussage, die die Zahl nicht hergibt.
+    const anteil = s.usd > 0 ? s.kaeufer_usd / s.usd : 0.5;
+    const ab = Math.abs(anteil - 0.5);
+    ctx.fillStyle = ab < 0.05 ? "rgba(148,163,184,0.45)"
+      : anteil > 0.5 ? `rgba(34,197,94,${0.30 + ab})` : `rgba(239,68,68,${0.30 + ab})`;
+    ctx.fillRect(x1 - w, yy - h / 2, w, h);
+    // Der Betrag nur dort, wo der Balken hoch genug für Text ist -- sonst
+    // überschreiben sich die Zahlen und man liest keine davon.
+    if (h >= 8 && s.usd >= max * 0.28) {
+      const txt = s.usd >= 1e9 ? `${(s.usd / 1e9).toFixed(1)} Mrd`
+        : s.usd >= 1e6 ? `${Math.round(s.usd / 1e6)} Mio`
+        : `${Math.round(s.usd / 1e3)} Tsd`;
+      ctx.fillStyle = "rgba(232,237,245,0.92)";
+      ctx.textAlign = "right";
+      ctx.fillText(txt, x1 - w - 4, yy);
+    }
+  }
+  // Kopfzeile: woher, wie viel, ab wann. Ohne sie ist eine Balkenreihe am
+  // Rand eine Behauptung.
+  const kopf = `grosse Trades ${d.tag} · ab ${Math.round(d.schwelle_usd / 1e3)} Tsd USD · `
+    + `${d.anzahl} Stück · ${d.anteil_umsatz.toFixed(1)} % des Umsatzes`;
+  ctx.fillStyle = "rgba(154,167,187,0.9)";
+  ctx.textAlign = "right"; ctx.textBaseline = "top";
+  ctx.fillText(kopf, x1 - 2, g.pT + 2);
   ctx.restore();
 }
 

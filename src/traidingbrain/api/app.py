@@ -1193,3 +1193,29 @@ def _score_read_dict(services: Services, symbol: str) -> dict:
 def _chart_dict(services: Services, symbol: str) -> dict:
     """Die Marktansicht als Woerterbuch, fuer das Terminal."""
     return _market_for(services, symbol, None).model_dump()
+
+
+def _reading_for(services: Services, symbol: str):
+    """Die ROHE Messung an der Kerze, die der Chart zeigt.
+
+    `_score_read_dict` liefert die Ansicht: Familien mit Beitraegen, und als
+    Zahl, wie viele Einzelmessungen eingingen. Die Einzelmessungen selbst
+    bleiben darin stecken -- 199 Messwerte, von denen die API nur die 199
+    meldete. Die Faktor-Aufschluesselung braucht sie, also gibt es hier einen
+    zweiten Zugang auf dieselbe Rechnung, nicht eine zweite Rechnung.
+    """
+    from traidingbrain.score.reading import score_at
+    from traidingbrain.api.scoring import signal_index_at
+
+    if services.market is None:
+        raise HTTPException(503, "no bar source is wired, so nothing can be scored")
+    if symbol not in services.config.engine.symbols.active:
+        raise HTTPException(404, f"{symbol} is not a symbol this build follows")
+    built = services.market.latest_snapshot(symbol)
+    if built is None:
+        raise HTTPException(404, f"no analysable data for {symbol}")
+    snapshot, analysis = built
+    index = signal_index_at(analysis, snapshot.ts)
+    if index is None:
+        return None
+    return score_at(analysis, index)

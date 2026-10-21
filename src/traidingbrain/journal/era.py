@@ -56,18 +56,33 @@ from traidingbrain.journal.version import decision_version, run_signature
 
 
 def current_era(
-    entries: Iterable[JournalEntry], config: AppConfig
+    entries: Iterable[JournalEntry], config: AppConfig, *, signature: str | None = None
 ) -> list[JournalEntry]:
     """Die Trades, die unter der laufenden Konfiguration entstanden sind.
 
     Beides muss stimmen: dieselbe `run_signature` UND derselbe
     `decision_version`. Siehe das Modul-Docstring für den Grund.
+
+    **`signature` ist nötig, sobald ein Konto seine eigene Grössenbemessung
+    trägt.** Das Plankonto hängt `|plan30x7r15f` an seine Signatur;
+    `run_signature(config)` kennt diesen Zusatz nicht und kann ihn nicht
+    kennen, weil er aus `config_offen/plan.yaml` kommt und nicht aus der
+    Engine-Konfiguration. Der Vergleich traf darum **nie**: am 21.10.2026 lagen
+    acht geschlossene Trades unter genau dieser Signatur im Journal, und die
+    Schlagzeile stand auf „0 Trades", während die Markttabelle darunter aus
+    denselben Zeilen -40,24 USD auswies.
+
+    Das ist derselbe Fehlertyp wie am 16.10.: nicht eine falsche Zahl, sondern
+    zwei Zahlen aus einer Quelle, die sich widersprechen. Wer `signature`
+    übergibt, vergleicht gegen die Signatur, unter der die Zeilen auch
+    geschrieben wurden.
     """
-    signature, stamp = run_signature(config), decision_version()
+    erwartet = signature or run_signature(config)
+    stamp = decision_version()
     return [
         entry
         for entry in entries
-        if entry.run_signature == signature and entry.decision_version == stamp
+        if entry.run_signature == erwartet and entry.decision_version == stamp
     ]
 
 
