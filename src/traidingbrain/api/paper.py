@@ -24,6 +24,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from traidingbrain.api.portfolio import gleiches_konto
 from traidingbrain.config.settings import AppConfig
 from traidingbrain.journal.era import current_era, era_count
 from traidingbrain.journal.record import JournalEntry, Source
@@ -173,10 +174,14 @@ def _gehoert_dazu(signature: str | None):
     Das war ein Umweg um nichts: `JournalEntry` TRAEGT `run_signature` selbst,
     und `ClosedTrade` hat gar kein `trade_id`. Der direkte Vergleich ist
     kuerzer und hat eine Fehlerquelle weniger.
+
+    Seit dem 21.10.2026 nach `portfolio.gleiches_konto` statt auf die ganze
+    Signatur: der exakte Vergleich verlor bei jeder Regel- oder
+    Konfigurationsaenderung die ganze Geschichte des Kontos.
     """
     if signature is None:
         return lambda _entry: True
-    return lambda entry: entry.run_signature == signature
+    return lambda entry: gleiches_konto(signature, entry.run_signature)
 
 
 def build_paper_readout(

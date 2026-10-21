@@ -40,9 +40,8 @@ import yaml
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from traidingbrain.api.portfolio import account_equity, build_ledger
+from traidingbrain.api.portfolio import account_equity, build_ledger, gleiches_konto
 from traidingbrain.config.settings import AppConfig
-from traidingbrain.journal.history import konto_schluessel
 from traidingbrain.journal.kontozusatz import etikett
 from traidingbrain.journal.record import Source
 from traidingbrain.live.paperstate import PaperStateStore
@@ -1067,27 +1066,24 @@ def _regel(signatur: str | None) -> str:
     return etikett(signatur)
 
 
-def _frueheres_konto(journal_pfad: Path, aktuelle: str | None) -> list[dict]:
-    """Trades DESSELBEN Kontos unter einer frueheren Groessenregel.
+def _konto_trades(journal_pfad: Path, aktuelle: str | None) -> list[dict]:
+    """Alle abgeschlossenen Trades DIESES Kontos, jede mit ihrer eigenen Regel.
 
-    Dasselbe Konto heisst: derselbe Signaturzusatz bis auf den Regelteil --
-    `...|plan30x7` und `...|plan30x7r15` sind dasselbe Papierkonto, nur vor
-    und nach der Umstellung vom 20.10. abends. Ein anderes Konto (`live`, ohne
-    Zusatz) kommt hier NICHT herein; das war der Fehler, der dem Plankonto
-    einmal -63.81 USD auf BTCUSDT zeigte, die ein anderes Konto gemacht hatte.
+    Dasselbe Konto heisst: derselbe Kontoname im Zusatz (`plan`), ueber jede
+    Groessenregel und jede Konfiguration hinweg -- `...|plan30x7`,
+    `...|plan30x7r15f` und `...|tf=D1,H4,H1|bild|plan30x7r15f` sind ein
+    Papierkonto. Ein anderes Konto (`live`, ohne Zusatz) kommt hier NICHT
+    herein; das war der Fehler, der dem Plankonto einmal -63.81 USD auf
+    BTCUSDT zeigte, die ein anderes Konto gemacht hatte.
 
-    **Die Regel kommt aus `journal/history.konto_schluessel` und wird hier
-    nicht nachgebaut.** Vorher stand hier ein eigener Praefix-Vergleich auf
-    dem Wort "plan", der nur fuer ein so benanntes Konto funktionierte. Zwei
-    Fassungen derselben Regel driften, und dieselbe Regel entscheidet seit dem
-    20.10. abends auch, was die Verlustbremsen sehen -- eine Abweichung waere
-    dann nicht kosmetisch, sondern eine Anzeige, die ein anderes Konto zeigt
-    als die Bremse zaehlt.
+    Die Regel kommt aus `portfolio.gleiches_konto`, derselben, nach der
+    Hauptbuch und Kurve filtern. Bis zum 21.10.2026 hiess das hier
+    `_frueheres_konto` und wurde ZUSAETZLICH zum Hauptbuch angehaengt; weil
+    das Hauptbuch die frueheren Regeln da schon enthielt, standen elf Trades
+    doppelt in der Liste. Jetzt ist es die einzige Quelle der Liste, und
+    `aktuell` sagt je Zeile, ob sie unter der laufenden Signatur entstand.
     """
     if not aktuelle:
-        return []
-    schluessel = konto_schluessel(aktuelle)
-    if not schluessel[1]:  # kein Kontozusatz -- es gibt keine frueheren Regeln
         return []
     con = sqlite3.connect(f"file:{journal_pfad}?mode=ro", uri=True, timeout=20)
     raus: list[dict] = []
@@ -1098,7 +1094,7 @@ def _frueheres_konto(journal_pfad: Path, aktuelle: str | None) -> list[dict]:
             except json.JSONDecodeError:
                 continue
             sig = p.get("run_signature") or ""
-            if konto_schluessel(sig) != schluessel or sig == aktuelle:
+            if not gleiches_konto(aktuelle, sig):
                 continue
             if not p.get("closed_ts"):
                 continue
@@ -1114,7 +1110,7 @@ def _frueheres_konto(journal_pfad: Path, aktuelle: str | None) -> list[dict]:
                 "rating": rs.get("rating"), "max_favourable_r": pm.get("max_favourable_r"),
                 "stopped_by_wick": pm.get("stopped_by_wick"), "verdict": pm.get("verdict"),
                 "source": "bot", "position_size": None, "leverage": p.get("leverage"),
-                "regel": _regel(sig), "aktuell": False,
+                "regel": _regel(sig), "aktuell": sig == aktuelle,
             })
     finally:
         con.close()
@@ -1435,17 +1431,22 @@ def router(services: Any, konto_signatur, state_path, journal_path, followed) ->
         nicht.
         """
         sig = konto_signatur(services)
-        led = build_ledger(journal_path(services), source=Source.LIVE, signature=sig)
-        plan = [{
-            "closed_ts": x.closed_ts, "opened_ts": x.opened_ts, "symbol": x.symbol, "side": x.side,
-            "entry": x.entry, "exit": x.exit, "tp": x.target, "sl": x.stop, "net_pnl": x.net_pnl,
-            "fees": x.fees, "r_multiple": x.r_multiple, "exit_reason": x.exit_reason,
-            "setup": x.setup, "rating": x.rating, "max_favourable_r": x.max_favourable_r,
-            "stopped_by_wick": x.stopped_by_wick, "verdict": x.verdict, "source": "bot",
-            "position_size": None, "leverage": None, "regel": _regel(sig), "aktuell": True,
-        } for x in led.rows]
-        if alle_regeln:
-            plan += _frueheres_konto(journal_path(services), sig)
+        if sig is None:
+            # Konto ohne Zusatz: das Hauptbuch zeigt ohnehin alles, und nur
+            # es trennt Live- von Replay-Zeilen.
+            led = build_ledger(journal_path(services), source=Source.LIVE, signature=None)
+            plan = [{
+                "closed_ts": x.closed_ts, "opened_ts": x.opened_ts, "symbol": x.symbol, "side": x.side,
+                "entry": x.entry, "exit": x.exit, "tp": x.target, "sl": x.stop, "net_pnl": x.net_pnl,
+                "fees": x.fees, "r_multiple": x.r_multiple, "exit_reason": x.exit_reason,
+                "setup": x.setup, "rating": x.rating, "max_favourable_r": x.max_favourable_r,
+                "stopped_by_wick": x.stopped_by_wick, "verdict": x.verdict, "source": "bot",
+                "position_size": None, "leverage": None, "regel": _regel(sig), "aktuell": True,
+            } for x in led.rows]
+        else:
+            plan = _konto_trades(journal_path(services), sig)
+        if not alle_regeln:
+            plan = [z for z in plan if z["aktuell"]]
         alle = plan + _manuell_geschlossen()
         alle.sort(key=lambda z: z["closed_ts"] or 0, reverse=True)
         return alle[:limit]

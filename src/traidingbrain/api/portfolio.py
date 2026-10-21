@@ -763,11 +763,34 @@ def _nur_dieses_konto(
     aus derselben Funktion, nach der seit heute Abend auch die Verlustbremsen
     zaehlen. Eine Ansicht, die ein anderes Konto zeigt als die Bremse zaehlt,
     waere schlimmer als beide Fehler einzeln.
+
+    **Siebtes Mal, 21.10.2026: der Schluessel trug die Konfiguration mit.**
+    Mit den zwei neuen Regeln lief der Haendler unter
+    `...|crv0.01|tf=D1,H4,H1|bild|plan30x7r15f`, und der Schluessel aus
+    `konto_schluessel` (alles vor dem letzten `|`) war ein neuer. Das Konto
+    zeigte 0 von 26 Trades und keinen Verlauf des Tages. Eine Ansicht fragt
+    "was hat dieses KONTO getan" -- das Konto ist der Name im Zusatz
+    (`plan`), nicht die Konfiguration, die es gerade faehrt. Siehe
+    `gleiches_konto`. Die Bremse zaehlt weiter nach `konto_schluessel`; das
+    ist eine Entscheidungsregel und gehoert nicht hierher.
     """
     if not signature:
         return entries
-    schluessel = konto_schluessel(signature)
-    return [e for e in entries if konto_schluessel(e.run_signature) == schluessel]
+    return [e for e in entries if gleiches_konto(signature, e.run_signature)]
+
+
+def gleiches_konto(signatur: str, andere: str | None) -> bool:
+    """Ob `andere` Trades desselben Papierkontos bezeichnet wie `signatur`.
+
+    Mit Kontozusatz zaehlt nur dessen Name (`plan` aus `plan30x7r15f`), ueber
+    jede Konfiguration und Groessenregel hinweg. Ohne Zusatz -- das alte Konto
+    -- bleibt der ganze Schluessel, wie bisher; ein Leerstring (Replay) gehoert
+    zu keinem Konto mit Namen.
+    """
+    name = konto_schluessel(signatur)[1]
+    if name:
+        return konto_schluessel(andere or "")[1] == name
+    return konto_schluessel(andere or "") == konto_schluessel(signatur)
 
 
 def build_ledger(
