@@ -601,8 +601,19 @@ def build_portfolio(
     # Papierkonto an demselben Journal. Ungefiltert zeigte seine Seite die
     # Marktbeitraege des ANDEREN Kontos -- "BTCUSDT -63,81" auf einem Konto,
     # das noch keinen Trade hatte, und "+279,79 USDT unerklaert" als Differenz.
-    if signature:
-        live = [entry for entry in live if entry.run_signature == signature]
+    #
+    # Verglichen wird der KONTO-Schluessel, nicht die ganze Signatur. Das
+    # Plankonto hat am 20.10. seine Groessenbemessung geaendert und laeuft
+    # seither unter `...|plan30x7r15f` statt `...|plan30x7`. Ein exakter
+    # Vergleich sah darum nur die juengeren 8 von 19 Trades -- und genau das
+    # war die Zeile "-99,01 USDT unerklaert": die Markttabelle konnte den
+    # Kontostand nicht erklaeren, weil ihr elf Trades fehlten, die dasselbe
+    # Konto bezahlt hat.
+    #
+    # Die Schlagzeile schraenkt weiter auf die laufende Epoche ein; das
+    # macht `current_era` unten. Beides nebeneinander ist die Aussage:
+    # "so steht das Konto" und "so steht die laufende Konfiguration".
+    live = _nur_dieses_konto(live, signature)
 
     # Die Teilmenge, die zur LAUFENDEN Konfiguration gehoert.
     #
