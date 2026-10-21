@@ -120,7 +120,12 @@ button:disabled { cursor: not-allowed; color: var(--ink-3); }
 .term > * { background: var(--ground); min-width: 0; min-height: 0; }
 .term__left { grid-area: left; display: grid; grid-template-rows: auto 1fr; gap: 1px; background: var(--rule); overflow: hidden; }
 .term__left > * { background: var(--ground); overflow: auto; }
-.term__main { grid-area: main; position: relative; display: grid; grid-template-rows: 40px 1fr 34px; min-height: 0; }
+/* Die dritte Zeile ist `auto`, nicht 34px. Mit 34px passte genau die
+   Reiterleiste hinein, der Inhalt (Positionen, Alarme, Verlauf, Orders)
+   begann an der Unterkante des Fensters und war nie sichtbar -- die Leiste
+   liess sich "nicht oeffnen". Jetzt nimmt sie sich, was sie braucht, und der
+   Chart (minmax(0, 1fr)) gibt den Platz ab. */
+.term__main { grid-area: main; position: relative; display: grid; grid-template-rows: 40px minmax(0, 1fr) auto; min-height: 0; }
 .term__right { grid-area: right; display: grid; grid-template-rows: 48px 1fr; gap: 1px; background: var(--rule); overflow: hidden; }
 .term__right > * { background: var(--ground); }
 .center-head { display: flex; align-items: center; gap: var(--rh-1); padding: 0 var(--sp-3); border-bottom: 1px solid var(--rule); font-size: 11.5px; }
@@ -221,9 +226,14 @@ button:disabled { cursor: not-allowed; color: var(--ink-3); }
 .ob__spread { text-align: center; color: var(--ink-2); font-size: 11px; padding: var(--sp-1) 0; }
 
 /* -------------------------------------------------------------- Chart -- */
-.chart { position: absolute; inset: 0; display: grid; grid-template-columns: 44px 1fr; }
+/* `grid-template-rows: minmax(0, 1fr)` und `overflow: hidden`: ohne beides
+   wuchs die Zeile auf die Hoehe der Werkzeugleiste (17 Knoepfe, ~750 px),
+   die Leinwand mit ihr, und beide ragten ueber die Leiste darunter. */
+.chart { position: absolute; inset: 0; display: grid; grid-template-columns: 44px 1fr; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
 .bot { position: absolute; inset: 0; }
-.tools { border-right: 1px solid var(--rule); display: flex; flex-direction: column; gap: 2px; padding: var(--sp-2) 4px; }
+.tools { border-right: 1px solid var(--rule); display: flex; flex-direction: column; gap: 2px; padding: var(--sp-2) 4px; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.tools::-webkit-scrollbar { display: none; }
+.tools button { flex: none; }
 .tools button {
   width: 36px; height: 34px; border: 0; background: transparent; border-radius: var(--r); color: var(--ink-2);
   display: grid; place-items: center; transition: background 120ms var(--ease-out), transform 100ms ease-out;
@@ -607,7 +617,7 @@ button:disabled { cursor: not-allowed; color: var(--ink-3); }
 .unten__reiter button {
   background: none; border: 0; color: var(--ink-3); cursor: pointer;
   font-size: 11.5px; padding: 5px 10px; border-radius: var(--r) var(--r) 0 0;
-  border-bottom: 2px solid transparent;
+  border-bottom: 2px solid transparent; white-space: nowrap; flex: none;
   transition: color 140ms ease, background 140ms ease;
 }
 .unten__reiter button:hover { color: var(--ink-2); background: var(--raised); }
@@ -615,9 +625,32 @@ button:disabled { cursor: not-allowed; color: var(--ink-3); }
   color: var(--ink); background: var(--surface); border-bottom-color: var(--ink);
 }
 .unten__reiter button:focus-visible { outline: 2px solid var(--star); outline-offset: -2px; }
-.unten__summe { margin-left: auto; font-size: 11.5px; color: var(--ink-2); padding-right: 6px; }
+.unten__reiter button:active { transform: scale(0.97); }
+.unten__summe {
+  margin-left: auto; font-size: 11.5px; color: var(--ink-2); padding-right: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+/* Auf-/Zuklappen ohne Animation: die Leiste wird dutzende Male am Tag
+   benutzt, und eine Bewegung dabei fuehlt sich nur langsam an. */
+.unten__klappe {
+  background: none; border: 0; color: var(--ink-3); cursor: pointer;
+  width: 28px; height: 24px; border-radius: var(--r); display: grid; place-items: center;
+}
+.unten__klappe:hover { color: var(--ink); background: var(--raised); }
+.unten__klappe:focus-visible { outline: 2px solid var(--star); outline-offset: -2px; }
+.unten__klappe svg { transition: transform 160ms ease-out; }
+.unten[data-zu] .unten__klappe svg { transform: rotate(180deg); }
+.unten[data-zu] .unten__reiter { border-bottom-color: transparent; }
+.unten[data-zu] .unten__reiter button[aria-selected="true"] {
+  background: none; border-bottom-color: transparent; color: var(--ink-2);
+}
 
-.unten__inhalt { max-height: 164px; overflow-y: auto; }
+/* Hoehe am Fenster: auf einem kleinen Bildschirm drei Zeilen, auf einem
+   grossen bis zu acht -- der Chart behaelt immer den Grossteil. `height`,
+   nicht `max-height`: sonst aendert jeder Reiterwechsel die Hoehe (2
+   Positionen gegen 25 Trades), und der Chart springt bei jedem Klick. */
+.unten__inhalt { height: clamp(120px, 26vh, 280px); overflow-y: auto; }
+.unten__leer { padding: 14px 10px; font-size: 11.5px; color: var(--ink-3); }
 /* Acht Spalten wie im Vorbild: Asset, Signal, Einstieg, Margin, Groesse,
    Hebel, TP/SL, Offen. TP/SL bekommt mehr Platz, weil dort zwei Zeilen mit
    Preis, USD und Prozent stehen. */

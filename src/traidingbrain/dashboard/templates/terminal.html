@@ -102,8 +102,12 @@
             <button role="tab" data-unten="historie" aria-selected="false">Trade History</button>
             <button role="tab" data-unten="orders" aria-selected="false">Orders</button>
             <span class="unten__summe" id="unten-summe"></span>
+            <button class="unten__klappe" id="unten-klappe" type="button" aria-expanded="true"
+                    aria-controls="unten-inhalt" title="Ein-/ausklappen">
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
           </div>
-          <div class="unten__inhalt" id="unten-inhalt"></div>
+          <div class="unten__inhalt" id="unten-inhalt" role="tabpanel"></div>
         </div>
       </main>
 

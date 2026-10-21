@@ -57,6 +57,10 @@ const S = {
   zeichnungen: JSON.parse(localStorage.getItem("dw-zeichnungen") || "[]"),
   angefangen: null,            // der Zug, der gerade gesetzt wird
   untenTab: "positionen",
+  // Ob die Leiste unten schon echte Daten hat. Ein leeres Array VOR dem
+  // ersten Laden ist "unbekannt", nicht "keine Trades" -- bis zum 21.10.
+  // stand dort sekundenlang "Noch kein abgeschlossener Trade", obwohl 25 da waren.
+  untenGeladen: { positionen: false, historie: false },
   faktor: null,            // welcher Faktor aufgeschlüsselt ist
   journal: null,
   grosstrades: null, grosstradesFuer: null, grosstradesLaeuft: false,
@@ -923,12 +927,14 @@ async function tickPositions() {
     S.positions = man;
     S.botPositions = bot.map((p) => ({ id: `bot-${p.symbol}`, symbol: p.symbol, side: p.side, qty: p.qty, entry: p.entry, leverage: p.leverage, margin: p.margin,
       tp: p.target, sl: p.stop, opened_ts: p.opened_ts, last: p.last_price, unrealized: p.unrealised ?? 0, position_size: p.notional ?? (p.qty ?? 0) * (p.entry ?? 0), source: "bot", r_now: p.r_now, setup: p.setup }));
+    S.untenGeladen.positionen = true;
   } catch (e) { /* alte Werte bleiben */ }
   renderStrip(); renderTrades(); if (S.view === "markt") renderChart();
 }
 async function tickHistory() {
-  try { S.history = await api("/api/terminal/history?limit=100"); } catch (e) { /* bleibt */ }
+  try { S.history = await api("/api/terminal/history?limit=100"); S.untenGeladen.historie = true; } catch (e) { /* bleibt */ }
   renderTrades();
+  renderUnten();
 }
 function posRow(p) {
   const side = String(p.side).toLowerCase().startsWith("l") ? 1 : -1;
@@ -955,6 +961,11 @@ const UNTEN_SPALTEN = {
   historie: ["Asset", "Signal", "Einstieg", "Ausstieg", "Grund", "R", "USD", "Geschlossen"],
   orders: ["Asset", "Art", "Preis", "Größe", "Status", "", "", ""],
 };
+
+/** Ein Hinweis ueber die ganze Breite statt in die erste von acht Spalten gequetscht. */
+function untenLeer(text) {
+  return `<div class="unten__leer">${text}</div>`;
+}
 
 function untenZeile(zellen, klasse = "") {
   return `<div class="unten__zeile ${klasse}">${zellen.map((c) => `<span>${c}</span>`).join("")}</div>`;
@@ -988,7 +999,9 @@ function renderUnten() {
         `<button class="btn-link" data-ansehen="${p.symbol}">Ansehen</button>` +
         (p.source === "manuell" ? ` <button class="btn-link" data-close="${p.id}">Schliessen</button>` : ""),
       ]);
-    }).join("") : untenZeile([`<span class="muted">Keine offene Position. Der Bot entscheidet auf M15-Schluss.</span>`, "", "", "", "", "", "", ""]);
+    }).join("") : untenLeer(S.untenGeladen.positionen
+      ? "Keine offene Position. Der Bot entscheidet auf M15-Schluss."
+      : "Positionen werden geladen …");
   } else if (welche === "alarme") {
     const preis = S.head?.last ?? 0;
     zeilen = S.alerts.length ? S.alerts.map((a) => untenZeile([
@@ -997,7 +1010,7 @@ function renderUnten() {
       preis ? pct(((a.price - preis) / preis) * 100) : "–",
       a.ts ? day(a.ts) : "–", "", "",
       `<button class="btn-link" data-alarm-weg="${a.id}">entfernen</button>`,
-    ])).join("") : untenZeile([`<span class="muted">Kein Alarm. Glocke wählen und in den Chart klicken.</span>`, "", "", "", "", "", "", ""]);
+    ])).join("") : untenLeer("Kein Alarm. Glocke wählen und in den Chart klicken.");
   } else if (welche === "historie") {
     const h = S.history ?? [];
     zeilen = h.length ? h.slice(0, 25).map((z) => untenZeile([
@@ -1007,15 +1020,16 @@ function renderUnten() {
       `<span class="${(z.r_multiple ?? 0) >= 0 ? "up" : "down"}">${z.r_multiple != null ? z.r_multiple.toFixed(2) : "–"}</span>`,
       `<span class="${(z.net_pnl ?? 0) >= 0 ? "up" : "down"}">${signed(z.net_pnl ?? 0)}</span>`,
       z.closed_ts ? day(z.closed_ts) : "–",
-    ])).join("") : untenZeile([`<span class="muted">Noch kein abgeschlossener Trade in dieser Ära.</span>`, "", "", "", "", "", "", ""]);
+    ])).join("") : untenLeer(S.untenGeladen.historie
+      ? "Noch kein abgeschlossener Trade in dieser Ära."
+      : "Verlauf wird geladen …");
   } else {
     // Orders: offene Limit-Orders. Es gibt noch keine -- und das steht hier,
     // statt einer leeren Tabelle, die aussieht, als waere etwas kaputt.
-    zeilen = untenZeile([
-      `<span class="muted">Der Bot arbeitet mit Market-Einstiegen auf M15-Schluss; `
-      + `es liegen darum keine Limit-Orders im Buch. Manuelle Limit-Orders sind noch nicht gebaut.</span>`,
-      "", "", "", "", "", "", "",
-    ]);
+    zeilen = untenLeer(
+      "Der Bot arbeitet mit Market-Einstiegen auf M15-Schluss; es liegen darum keine "
+      + "Limit-Orders im Buch. Manuelle Limit-Orders sind noch nicht gebaut.",
+    );
   }
 
   $("#unten-inhalt").innerHTML =
@@ -1047,14 +1061,62 @@ function zeigeImMarkt(symbol) {
   } else renderChart();
 }
 
+/**
+ * Die Leiste unter dem Chart: vier Reiter, auf- und zuklappbar.
+ *
+ * Bis zum 21.10.2026 liess sie sich nicht oeffnen -- das Raster gab ihr fest
+ * 34 px, der Inhalt lag unter der Fensterkante. Jetzt:
+ *   - Klick auf einen anderen Reiter: wechseln UND aufklappen.
+ *   - Klick auf den aktiven Reiter oder den Pfeil: zu- bzw. aufklappen.
+ *   - Der Zustand (Reiter, offen/zu) bleibt ueber ein Neuladen erhalten.
+ * localStorage ist eine Bequemlichkeit: faellt er aus (privates Fenster),
+ * startet die Leiste offen auf "Positionen", und nichts bricht.
+ */
 function wireUnten() {
   const leiste = $("#markt-unten");
+  const inhalt = $("#unten-inhalt");
+  const klappe = $("#unten-klappe");
+  let gemerkt = {};
+  try { gemerkt = JSON.parse(localStorage.getItem("dw-unten") || "{}") || {}; } catch { gemerkt = {}; }
+  if (gemerkt.tab && leiste.querySelector(`[data-unten="${gemerkt.tab}"]`)) S.untenTab = gemerkt.tab;
+  let offen = gemerkt.offen !== false;
+
+  const merken = () => {
+    try { localStorage.setItem("dw-unten", JSON.stringify({ tab: S.untenTab, offen })); } catch { /* egal */ }
+  };
+  const zeigen = () => {
+    inhalt.hidden = !offen;
+    leiste.toggleAttribute("data-zu", !offen);
+    klappe.setAttribute("aria-expanded", String(offen));
+    klappe.title = offen ? "Einklappen" : "Ausklappen";
+    $$("[data-unten]", leiste).forEach((x) => {
+      const aktiv = x.dataset.unten === S.untenTab;
+      x.setAttribute("aria-selected", String(aktiv));
+      x.tabIndex = aktiv ? 0 : -1;
+    });
+  };
+
   leiste.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-unten]"); if (!b) return;
-    S.untenTab = b.dataset.unten;
-    $$("[data-unten]", leiste).forEach((x) => x.setAttribute("aria-selected", String(x === b)));
-    renderUnten();
+    if (e.target.closest("#unten-klappe")) {
+      offen = !offen;
+    } else {
+      const b = e.target.closest("[data-unten]"); if (!b) return;
+      if (b.dataset.unten === S.untenTab) offen = !offen;
+      else { S.untenTab = b.dataset.unten; offen = true; }
+    }
+    zeigen(); merken(); renderUnten();
   });
+  // Pfeiltasten zwischen den Reitern, wie bei jeder Tab-Leiste.
+  $(".unten__reiter", leiste).addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    const reiter = $$("[data-unten]", leiste);
+    const i = reiter.findIndex((x) => x.dataset.unten === S.untenTab);
+    const n = reiter[(i + (e.key === "ArrowRight" ? 1 : -1) + reiter.length) % reiter.length];
+    S.untenTab = n.dataset.unten; offen = true;
+    zeigen(); merken(); renderUnten(); n.focus();
+    e.preventDefault();
+  });
+  zeigen();
   renderUnten();
 }
 
