@@ -52,10 +52,10 @@ import math
 import re
 import sys
 import time
-from statistics import NormalDist
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from statistics import NormalDist
 
 import numpy as np
 
