@@ -23,7 +23,6 @@ from traidingbrain.analysis.positioning import PositioningTimeline
 from traidingbrain.analysis.sessions import SessionTimeline
 from traidingbrain.config.settings import EngineConfig
 from traidingbrain.data.calendar import MacroCalendar
-from traidingbrain.data.frames import timeframe_ms
 from traidingbrain.data.sentiment import SentimentTimeline
 from traidingbrain.domain.enums import Bias, Timeframe
 from traidingbrain.domain.snapshot import (
@@ -282,9 +281,9 @@ class SnapshotBuilder:
             atr=atr,
             frames=views,
             levels=levels,
-            news=self._scheduled(signal.ts_at(signal_index)),
+            news=self._scheduled(signal.close_ts_at(signal_index)),
             positioning=self._positioning(signal_index),
-            sentiment=self._sentiment(signal.ts_at(signal_index)),
+            sentiment=self._sentiment(signal.close_ts_at(signal_index)),
             session=self._session(signal_index),
             history=history or EMPTY_HISTORY,
         )
@@ -298,10 +297,10 @@ class SnapshotBuilder:
             position_in_range=view.position_in_range,
         )
 
-    def _sentiment(self, bar_ts: int) -> SentimentStats:
+    def _sentiment(self, decision_ts: int) -> SentimentStats:
         if self.sentiment is None:
             return SentimentStats()
-        reading = self.sentiment.at(bar_ts + timeframe_ms(self.analysis.signal_timeframe))
+        reading = self.sentiment.at(decision_ts)
         return SentimentStats(
             known=reading.known,
             value=reading.value,
@@ -328,7 +327,7 @@ class SnapshotBuilder:
             crowd_is_stretched=view.crowd_is_stretched,
         )
 
-    def _scheduled(self, bar_ts: int) -> list[NewsItem]:
+    def _scheduled(self, decision_ts: int) -> list[NewsItem]:
         """Events already on the calendar at this bar, nearest first.
 
         `minutes_until` is the only number here, and it is the one that matters:
@@ -340,7 +339,6 @@ class SnapshotBuilder:
         """
         if self.calendar is None:
             return []
-        decision_ts = bar_ts + timeframe_ms(self.analysis.signal_timeframe)
         return [
             NewsItem(
                 event=event.name,

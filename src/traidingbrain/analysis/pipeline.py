@@ -37,6 +37,21 @@ def decision_time_ms(bar_ts: int, timeframe: Timeframe) -> int:
     return bar_ts + timeframe_ms(timeframe)
 
 
+def close_times(frame: pd.DataFrame, timeframe: Timeframe) -> np.ndarray:
+    """When every bar of this frame closed, as one int64 array.
+
+    A time bar closes `timeframe_ms` after it opens. A takt bar (E24,
+    `data/takt.py`) closes whenever its volume threshold was reached, and
+    carries that moment in a `close_ts` column. Reading the column when it is
+    there and computing otherwise keeps every time-bar run byte-identical --
+    which `tests/test_backtest.py` freezes -- while letting the same engine
+    step over bars of uneven duration.
+    """
+    if "close_ts" in frame.columns:
+        return frame["close_ts"].to_numpy(dtype="int64")
+    return frame["ts"].to_numpy(dtype="int64") + timeframe_ms(timeframe)
+
+
 def index_at_or_before(frame: pd.DataFrame, timeframe: Timeframe, as_of_ms: int) -> int | None:
     """Index of the newest bar that had *closed* by `as_of_ms`.
 
@@ -48,7 +63,7 @@ def index_at_or_before(frame: pd.DataFrame, timeframe: Timeframe, as_of_ms: int)
     # Closes are sorted because the bars are, so this is a binary search rather
     # than a scan of the whole column. It is called once per frame per bar, and
     # the frames run to hundreds of thousands of rows.
-    closes = frame["ts"].to_numpy(dtype="int64") + timeframe_ms(timeframe)
+    closes = close_times(frame, timeframe)
     position = int(np.searchsorted(closes, as_of_ms, side="right")) - 1
     return position if position >= 0 else None
 
@@ -95,10 +110,18 @@ class FrameAnalysis:
         """
         if self.frame.empty:
             return None
-        if self._closes is None:
-            self._closes = self.column("ts").astype("int64") + timeframe_ms(self.timeframe)
-        position = int(np.searchsorted(self._closes, as_of_ms, side="right")) - 1
+        position = int(np.searchsorted(self.close_times(), as_of_ms, side="right")) - 1
         return position if position >= 0 else None
+
+    def close_times(self) -> np.ndarray:
+        """Every bar's close, computed once (see module-level `close_times`)."""
+        if self._closes is None:
+            self._closes = close_times(self.frame, self.timeframe)
+        return self._closes
+
+    def close_ts_at(self, index: int) -> int:
+        """When the bar at `index` closed -- the moment a decision on it is taken."""
+        return int(self.close_times()[index])
 
     def bank(self) -> dict[str, pd.Series]:
         """Every registered indicator over this frame, built on first ask.
@@ -244,7 +267,7 @@ class MultiFrameAnalysis:
         if not signal.is_ready(signal_index):
             return None
 
-        as_of = decision_time_ms(signal.ts_at(signal_index), self.signal_timeframe)
+        as_of = signal.close_ts_at(signal_index)
         indices: dict[Timeframe, int] = {}
         for timeframe, analysis in self.analyses.items():
             index = analysis.index_at_or_before(as_of)

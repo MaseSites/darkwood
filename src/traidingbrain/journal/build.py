@@ -53,6 +53,13 @@ def decision_index(multi: MultiFrameAnalysis, proposal_id: str, signal: Timefram
     _, _, tail = proposal_id.rpartition("-")
     if not tail.isdigit():
         return None
+    # The tail is the decision bar's CLOSE. On time bars the open follows by
+    # subtraction; on takt bars (E24) the close is a stored column and the
+    # bar is found by it directly.
+    frame = getattr(multi.signal, "frame", None)
+    if frame is not None and "close_ts" in frame.columns:
+        found = np.nonzero(multi.signal.close_times() == int(tail))[0]
+        return int(found[0]) if found.size else None
     opened = int(tail) - timeframe_ms(signal)
     stamps = multi.signal.column("ts")
     found = np.nonzero(stamps == opened)[0]

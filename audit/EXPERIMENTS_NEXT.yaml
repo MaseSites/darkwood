@@ -2336,15 +2336,33 @@ experiments:
   - id: E24
     title: "Der Takt der Balken -- Volumen- oder Dollar-Balken statt Zeitbalken"
     priority: 2
-    status: registriert_nicht_gebaut
+    status: gebaut_laeuft
     registriert: 2026-10-21
     cells: 2
     comparisons: 2
     arms:
       - id: E24.1
-        name: "Dieselben Setups auf Volumen-Balken (Basis-Asset-Volumen, Schwelle je Markt = Median des M15-Volumens)"
+        name: "Dieselben Setups auf Volumen-Balken (Basis-Asset-Volumen, Schwelle je Markt = Mittelwert des M15-Volumens)"
       - id: E24.2
         name: "Dieselben Setups auf Dollar-Balken (close * volume als Proxy, Schwelle analog)"
+    aenderung_vor_dem_lauf_21_10_2026: >-
+      Schwelle MITTELWERT statt Median, geaendert VOR dem ersten Messlauf und
+      vor dem Lesen einer Ergebniszahl. Grund, gemessen an BTC und ADA: das
+      M15-Volumen ist schief (BTC Mittel 1'073 gegen Median 623), mit dem
+      Median entstuenden 1,85-mal so viele Balken wie M15-Kerzen, mit dem
+      Mittelwert etwa gleich viele (BTC 165'988 Takt-Balken gegen 176'975
+      M15-Kerzen im Rauchtest). Gleiche Kadenz ist Voraussetzung dafuer, dass
+      die Tore eine Population und nicht eine Frequenz messen. Dazu bekannt
+      und hingenommen: bei Dollar-Balken schwankt der M15-Median-Umsatz je
+      Jahr bis 20x (ADA 2020 gegen 2021), eine feste Schwelle verteilt die
+      Balken also sehr ungleich ueber die Jahre. Das ist die kanonische
+      Definition und wird nicht nachjustiert.
+    gebaut: >-
+      21.10.2026 auf Anweisung des Eigentuemers nach der Erwartung "unentschieden".
+      src/traidingbrain/data/takt.py (Erzeuger), close_ts-Spalte gelesen in
+      analysis/pipeline.py, analysis/snapshot.py, sim/engine.py,
+      journal/build.py; ohne Spalte byte-gleich (tests/test_backtest.py gruen).
+      Lauf: scripts/study_e24_takt.py, Ausgabe data/replay_fills_e24/.
     anlass: >-
       Der Eigentuemer verlangt am 21.10. "Aufgaben, die uns viel zu overpowered
       bringen, damit wir die Trades praktisch nur noch gewinnen". Das Register

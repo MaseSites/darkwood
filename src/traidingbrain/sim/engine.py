@@ -201,6 +201,12 @@ class BacktestEngine:
 
         end = len(signal) - 1
         signal_ts = signal.frame["ts"].to_numpy(dtype="int64")
+        # When each bar closed. For time bars this is `ts + signal_ms`; for
+        # takt bars (E24) it is the stored `close_ts`, and the bars are of
+        # uneven length -- so every "next bar" moment below reads this array
+        # rather than adding a constant.
+        signal_closes = signal.close_times()
+        takt = "close_ts" in signal.frame.columns
 
         start, end, clamp_note = self._resolve_window(
             signal_ts, start, end, start_ts=start_ts, end_ts=end_ts, max_bars=max_bars
@@ -247,8 +253,8 @@ class BacktestEngine:
                     index,
                     reads_bars=reads_bars,
                     equity=broker.equity,
-                    created_ts=int(signal_ts[index]) + signal_ms,
-                    expires_ts=int(signal_ts[index]) + signal_ms + expiry_ms,
+                    created_ts=int(signal_closes[index]),
+                    expires_ts=self._expiry(signal_closes, index, expiry_ms, takt),
                     counts=shadow,
                 )
             if broker.is_flat and reads_bars:
@@ -273,8 +279,8 @@ class BacktestEngine:
                     intent,
                     snapshot,
                     equity=broker.equity,
-                    created_ts=int(signal_ts[index]) + signal_ms,
-                    expires_ts=int(signal_ts[index]) + signal_ms + expiry_ms,
+                    created_ts=int(signal_closes[index]),
+                    expires_ts=self._expiry(signal_closes, index, expiry_ms, takt),
                 )
                 if entry is None or not broker.submit(entry):
                     refused += 1
@@ -285,8 +291,8 @@ class BacktestEngine:
             # The decision is live from the start of the next bar, never this one.
             self._step_minutes(
                 broker,
-                from_ms=int(signal_ts[index]) + signal_ms,
-                to_ms=int(signal_ts[index + 1]) + signal_ms,
+                from_ms=int(signal_closes[index]),
+                to_ms=int(signal_closes[index + 1]),
             )
             self._commit_resolved(broker)
             broker.mark(int(signal_ts[index + 1]), float(signal_close[index + 1]))
@@ -429,6 +435,19 @@ class BacktestEngine:
             )
 
     # -- internals ---------------------------------------------------------- #
+
+    def _expiry(self, closes: np.ndarray, index: int, expiry_ms: int, takt: bool) -> int:
+        """When an entry decided on bar `index` stops waiting for a fill.
+
+        `entry_expiry_bars` is a count of bars. On time bars that is a fixed
+        span, and the old arithmetic is kept so the frozen runs stay frozen.
+        On takt bars a bar has no fixed span, so the expiry is the close of
+        the bar `entry_expiry_bars` later -- the same rule, read off the data.
+        """
+        if not takt:
+            return int(closes[index]) + expiry_ms
+        bars = self.config.engine.simulation.entry_expiry_bars
+        return int(closes[min(index + bars, closes.size - 1)])
 
     def _step_minutes(self, broker: SimBroker, from_ms: int, to_ms: int) -> None:
         """Replay one signal bar, minute by minute -- unless there is nothing to replay.
