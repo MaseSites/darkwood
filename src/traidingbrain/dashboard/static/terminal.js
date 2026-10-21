@@ -883,10 +883,13 @@ function renderDecisions() {
     ? `${s.risk_cap_pct.toFixed(2)} % des Kontos je Trade — die Position wird dafür gekürzt`
       + ` (Ablehnung erst über ${s.max_loss_pct.toFixed(0)} %)`
     : `kein Deckel; abgelehnt erst über ${s.max_loss_pct.toFixed(0)} % des Kontos je Trade`;
-  $("#dec-slots").textContent = "5 gleichzeitig (Margin bindet bei 3)";
+  $("#dec-slots").textContent = "5 gleichzeitig, davon höchstens 2 in dieselbe Richtung (Margin bindet ohnehin bei 3)";
   $("#dec-gates").textContent = (s.fix_crv ? `CRV ${s.crv}:1` : "CRV offen") + " · Kostentor offen";
   $("#dec-note").textContent = "Der Bot handelt auf M15-Schluss, zwölf Märkte, Papiergeld. Die Regeln stehen in config_offen/; Änderungen laufen über Konto → Erweiterte Einstellungen und tragen eine neue Laufsignatur.";
-  $("#dec-next").innerHTML = `<b>Geplant, sobald E17 durch ist:</b> höchstens 2 gleichgerichtete Positionen (die vier Stops um 17:13 waren vier Longs in einer Minute) und der Trail-Ausstieg E22.`;
+  // Diese Zeile stand bis zum 21.10. auf „geplant" fuer die Richtungsgrenze,
+  // die seither in config_offen steht. Ein Hinweis, der eine erledigte Sache
+  // als offen ausweist, ist nicht halb richtig -- er ist falsch.
+  $("#dec-next").innerHTML = `<b>Seit 21.10. scharf:</b> höchstens 2 gleichgerichtete Positionen. Gemessen wurden zwei Fünfzehn-Minuten-Kerzen, die 42 % aller Trades erzeugten und zusammen 90.61 USD kosteten, beide gleichgerichtet. <b>Als Nächstes:</b> der Trail-Ausstieg E22.`;
   $("#bs-auto").setAttribute("aria-checked", String(s.auto_trader));
 }
 function reco() {
