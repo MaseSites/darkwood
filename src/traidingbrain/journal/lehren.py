@@ -94,8 +94,17 @@ def lehre_ziehen(
             f"Der Risikodeckel von 1.5 % hätte hier gegriffen: {risiko:.2f} USD "
             f"Risiko statt erlaubter {gedeckelt:.2f} USD. Hätte {gespart:.2f} USD {wort}."
         )
-    if pm.get("never_in_profit"):
+    # `never_in_profit` ist auch dann wahr, wenn keine einzige Kerze zwischen
+    # Ein- und Ausstieg liegt -- dann ist nichts beobachtet, nicht "nie im Plus".
+    # Bis zum 21.10.2026 bekam jeder Zielgewinner unter einer Kerze Laenge
+    # die Lehre "der Einstieg war von der ersten Kerze an falsch".
+    if pm.get("never_in_profit") and (pm.get("bars_held") or 0) > 0:
         aus.append("War nie im Plus — der Einstieg war von der ersten Kerze an falsch.")
+    elif pm.get("never_in_profit"):
+        aus.append(
+            "Kuerzer als eine Kerze: ob der Trade je im Plus war, ist auf dieser "
+            "Zeitebene nicht beobachtbar."
+        )
     elif usd < 0 and mfe >= 1.0:
         aus.append(
             f"War {mfe:.2f} R im Plus und gab alles zurück. Das ist das Rückgabe-Muster, "
@@ -112,9 +121,19 @@ def lehre_ziehen(
         )
     if usd > 0 and (pm.get("closest_to_target_r") or 0) >= 1.4:
         aus.append("Lief sauber bis ans Ziel.")
+    # Der Widerspruch der Familien wird genannt, aber nicht als Grund: ueber
+    # 7'335 Replay-Trades (zwoelf Maerkte, 21.10.2026) laufen Trades mit
+    # Widerspruch ueber 50 % auf -0.017 R und die uebrigen auf -0.012 R --
+    # kein Unterschied. Bis dahin las sich der Satz hier wie eine Erklaerung
+    # des Verlusts, und auf dem Plankonto sah es nach 9 Trades auch so aus
+    # (1 von 9 gewonnen). Das war Rauschen; das Replay kennt das Muster nicht.
     konflikt = g.get("conflict") or 0.0
-    if konflikt >= 0.25:
-        aus.append(f"Die Familien widersprachen sich zu {konflikt:.0%} — das war kein klares Bild.")
+    if konflikt >= 0.5:
+        aus.append(
+            f"Die Familien widersprachen sich zu {konflikt:.0%}. Ueber 7'335 Replay-Trades "
+            f"sagt dieser Widerspruch nichts ueber den Ausgang (-0.017 gegen -0.012 R) -- "
+            f"er erklaert diesen Trade nicht."
+        )
     return aus
 
 

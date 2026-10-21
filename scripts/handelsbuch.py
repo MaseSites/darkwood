@@ -288,7 +288,19 @@ def zusammenfassung(trades: list[dict[str, Any]]) -> str:
 
     risiko_g, risiko_v = mittel(gewinner, "risk_amount"), mittel(verlierer, "risk_amount")
     rueckgabe = [t for t in verlierer if ((t.get("post_mortem") or {}).get("max_favourable_r") or 0) >= 1.0]
-    nie_plus = [t for t in trades if (t.get("post_mortem") or {}).get("never_in_profit")]
+    # Nur Trades mit mindestens einer beobachteten Kerze: `never_in_profit`
+    # ist auch bei Trades unter einer Kerze Laenge wahr, dort ist es aber
+    # "nicht beobachtet" und nicht "nie im Plus" (siehe journal/lehren.py).
+    nie_plus = [
+        t for t in trades
+        if (t.get("post_mortem") or {}).get("never_in_profit")
+        and ((t.get("post_mortem") or {}).get("bars_held") or 0) > 0
+    ]
+    unbeobachtet = [
+        t for t in trades
+        if (t.get("post_mortem") or {}).get("never_in_profit")
+        and ((t.get("post_mortem") or {}).get("bars_held") or 0) == 0
+    ]
     docht = [t for t in trades if (t.get("post_mortem") or {}).get("stopped_by_wick")]
     gegriffen = [t for t in trades if deckel_haette_gegriffen(t)[0]]
 
@@ -318,14 +330,29 @@ def zusammenfassung(trades: list[dict[str, Any]]) -> str:
         )
     z += [
         f"- {len(rueckgabe)} Verlierer waren vorher mindestens 1 R im Plus (Rueckgabe-Muster)",
-        f"- {len(nie_plus)} Trades waren nie im Plus",
+        f"- {len(nie_plus)} Trades waren nie im Plus; bei {len(unbeobachtet)} weiteren ist es "
+        f"nicht beobachtbar (kuerzer als eine Kerze)",
         f"- {len(docht)} Stops wurden von einem Docht geholt",
         f"- Der 1.5-%-Deckel haette bei {len(gegriffen)} von {n} Trades gegriffen",
         "",
-        "> Das Konto verliert nicht, weil die Einstiege schlecht waeren -- in R ist die Summe "
-        "positiv. Es verliert, weil die Verlierer groessere Positionen tragen als die Gewinner. "
-        "Dagegen laeuft seit heute der Risikodeckel.",
     ]
+    # Der Schlusssatz haengt vom Vorzeichen ab. Bis zum 21.10.2026 stand hier ein
+    # fester Satz ("in R ist die Summe positiv"), der am Abend des 20.10. stimmte
+    # und am naechsten Morgen bei -6.70 R weiter gedruckt wurde.
+    if sum(rs) > 0 and sum(usd) < 0:
+        z.append(
+            "> Das Konto verliert nicht, weil die Einstiege schlecht waeren -- in R ist die Summe "
+            "positiv. Es verliert, weil die Verlierer groessere Positionen tragen als die Gewinner. "
+            "Dagegen laeuft der Risikodeckel von 1.5 %."
+        )
+    elif sum(rs) < 0:
+        z.append(
+            "> Das Konto verliert in R UND in USD: die Richtung der Einstiege stimmt in dieser "
+            "Stichprobe nicht, nicht nur die Groesse. Ueber 7'335 Replay-Trades liegt die Erwartung "
+            "je Trade in [-0.087, +0.059] R; diese Stichprobe ist zu klein, um etwas anderes zu belegen."
+        )
+    else:
+        z.append("> Das Konto liegt in R und in USD im Plus. Bei dieser Stichprobengroesse ist das Rauschen.")
     return "\n".join(z)
 
 
