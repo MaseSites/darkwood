@@ -2350,6 +2350,34 @@ experiments:
 
 
 
+  - id: E22
+    title: "Der Rueckgabe-Trail -- Stop nachziehen, sobald der Trade G R vorn lag"
+    priority: 1
+    status: gelaufen_gefallen
+    registriert: 2026-10-20
+    cells: 4
+    comparisons: 4
+    arms:
+      - id: E22.1
+        name: "Rueckgabe-Trail 0.25 R"
+      - id: E22.2
+        name: "Rueckgabe-Trail 0.50 R"
+      - id: E22.3
+        name: "Rueckgabe-Trail 0.75 R"
+      - id: E22.4
+        name: "Rueckgabe-Trail 1.00 R"
+    acceptance: >-
+      (a) gepaarter Mehrwert gegen E3.1 mit korrigiertem Intervall ohne Null
+      UND (b) absolut netto positiv. Vorregistrierung in
+      audit/E22_TRAIL_VORREGISTRIERUNG.md (20.10.2026).
+    ergebnis_21_10_2026: >-
+      Gefallen, alle vier Zellen, monoton schlechter mit wachsendem G
+      (audit/E22_ERGEBNIS.md): -0.0193 bis -0.0607 R gepaart, Intervalle
+      ueber null; unter jedem Trail erreicht KEIN Trade sein Ziel (Basis 31.6 %).
+      858 Faelle, alle aus ADAUSDT. Die vier Vergleiche standen seit dem
+      20.10. in total_comparisons, der Eintrag hier fehlte -- nachgetragen am
+      21.10., weil tests/test_experiment_registry.py die Summe prueft.
+
   - id: E24
     title: "Der Takt der Balken -- Volumen- oder Dollar-Balken statt Zeitbalken"
     priority: 2
@@ -2357,6 +2385,8 @@ experiments:
     registriert: 2026-10-21
     cells: 2
     comparisons: 2
+    acceptance: >-
+      Alle drei Tore (a) netto R > 0 mit korrigiertem Intervall ohne Null, (b) Trefferquote > 50 % auf >= 2'000 Trades je Arm, (c) Replikation >= 0.5x auf den 56 E17-Maerkten. Faellt eines, ist der Arm gefallen.
     arms:
       - id: E24.1
         name: "Dieselben Setups auf Volumen-Balken (Basis-Asset-Volumen, Schwelle je Markt = Mittelwert des M15-Volumens)"
@@ -2438,6 +2468,8 @@ experiments:
     registriert: 2026-10-21
     cells: 1
     comparisons: 1
+    acceptance: >-
+      (a) Spearman rho > 0 mit korrigiertem Intervall ohne Null UND (b) Anteil ueber Median in beiden Haelften > 55 % mit Intervall ueber 50 %. Beides noetig; sonst ist Market Making auf Lighter fuer dieses Projekt geschlossen.
     anlass: >-
       Die Vorgabe 20x in sechs Monaten ist am 21.10. bestaetigt worden. Die
       einzige Messung dieses Projekts mit einem positiven Ertrag fuer
@@ -2486,6 +2518,8 @@ experiments:
     registriert: 2026-10-21
     cells: 2
     comparisons: 2
+    acceptance: >-
+      (a) Differenz unterstes Abstandsquartil gegen Rest mit korrigiertem Intervall ohne Null UND (b) gleiches Vorzeichen in beiden Haelften des Zeitraums. Fruehestens nach vier Wochen und 200 Trades je Arm.
     arms:
       - id: E26.1
         name: "Minuten bis zum naechsten high-Termin (Kalender), Trades in Quartilen"
@@ -2540,6 +2574,8 @@ experiments:
     registriert: 2026-10-21
     cells: 1
     comparisons: 1
+    acceptance: >-
+      (a) fruehestens bei 100 Trades der neuen Epoche; (b) Mittel in R >= 0 mit korrigiertem Intervall, Wochenblock-Bootstrap; (c) Trefferquote >= 37 % mit Intervall ueber 33 %. Vorher keine Anpassung.
     anlass: >-
       Auftrag des Eigentuemers: "analysiere alle gewonnenen Trades, was hast du
       dort anders gemacht als bei den verlorenen, egal was es ist, mache es

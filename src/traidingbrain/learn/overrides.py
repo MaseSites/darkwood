@@ -65,7 +65,12 @@ NEVER_OVERRIDABLE: frozenset[str] = frozenset({Rule.LIQUIDATION, Rule.LIMITS})
 
 #: Verhandelbar, aber nur gegen eine Regeländerung. Beides sind
 #: Produktionsregeln in `sim/plan.py`, und beide sind gemessen bestätigt.
-NEEDS_A_RULE_CHANGE: frozenset[str] = frozenset({Rule.REWARD_RISK, Rule.COSTS})
+#: Dazu seit dem 21.10.2026 das Bild-Tor (`Rule.PICTURE`): eine
+#: Konfigurationsregel im Live-Pfad (`setups.require_agreement`), in drei
+#: Stichproben gemessen. Eine Auswahlregel darf sie nur ueberstimmen, wenn die
+#: Konfiguration es tut -- dieselbe Einordnung wie die beiden Tore in
+#: `sim/plan.py`.
+NEEDS_A_RULE_CHANGE: frozenset[str] = frozenset({Rule.REWARD_RISK, Rule.COSTS, Rule.PICTURE})
 
 #: Die Vorgabe. Eine Studie, die hierauf filtert, liefert ein Ergebnis, das
 #: ohne Änderung einer Schutzregel umsetzbar ist.
