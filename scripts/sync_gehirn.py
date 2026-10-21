@@ -69,8 +69,12 @@ def main() -> int:
 
     if args.kein_push:
         return 0
+    return _push(args.remote)
+
+
+def _push(remote: str) -> int:
     branch = _git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    push = _git("push", args.remote, branch)
+    push = _git("push", remote, branch)
     print(push.stderr.strip() or push.stdout.strip())
     if push.returncode != 0 or branch == "master":
         return push.returncode
@@ -82,7 +86,7 @@ def main() -> int:
     if lokal.returncode != 0:
         print("master nicht nachgezogen:", lokal.stderr.strip())
         return lokal.returncode
-    master = _git("push", args.remote, "master")
+    master = _git("push", remote, "master")
     print(master.stderr.strip() or master.stdout.strip())
     return master.returncode
 
