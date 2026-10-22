@@ -813,6 +813,11 @@ def _mount_dashboard(app: FastAPI, services: Services) -> None:
         services, _konto_signatur, _state_path, _journal_path, _followed_symbols
     ))
 
+    # Der Chat des Terminals: eigener Router, liest Bot-Daten nur.
+    from traidingbrain.api.chat.router import router as chat_router
+
+    app.include_router(chat_router(services))
+
     @app.get("/terminal", include_in_schema=False)
     def terminal() -> Response:
         roh = (dashboard / "templates" / "terminal.html").read_text(encoding="utf-8")
