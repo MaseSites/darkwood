@@ -256,8 +256,10 @@ async function frageClaude(text) {
     }
     if (e.status !== 409) ladeStatus();
   } finally {
-    // Bei einer 409 laeuft eine andere Anfrage noch; sie zaehlt selbst und
-    // blendet "Claude denkt" erst mit ihrem Ende aus.
+    // Jede Anfrage zaehlt beim Senden +1 und bei ihrer Antwort -1, auch eine
+    // mit 409. "Claude denkt" bleibt also nur an, solange eine Anfrage DIESER
+    // Seite offen ist; laeuft die blockierende in einem anderen Fenster, zeigt
+    // diese Seite sie nicht an.
     denkt(-1);
   }
 }
@@ -338,6 +340,7 @@ function oeffne(an) {
   if (an) {
     ladeStatus();
     ladeVerlauf();
+    uhrenTick(); // sofort: keine abgelaufene Karte wirkt eine Sekunde lang ausfuehrbar
     if (!C.uhrTakt) C.uhrTakt = setInterval(uhrenTick, 1000);
     // visibility schaltet sofort um, darum laesst sich gleich fokussieren.
     (C.modus === "chat" ? $("#chat-text") : $("#cf-margin")).focus({ preventScroll: true });

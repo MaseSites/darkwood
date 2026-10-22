@@ -230,7 +230,10 @@
 
 /* ------------------------------------------------------- Handybreite -- */
 @media (max-width: 767.98px) {
-  #chat { top: 0; width: 100vw; border-left: 0; z-index: 80; }
+  /* Ganzer Layout-Viewport, auch wenn die Terminal-Seite breiter laeuft:
+     inset statt 100vw, sonst haengt das Feld am rechten Rand des breiteren
+     Layouts und das Terminal schaut links heraus. Ueber der Kopfzeile. */
+  #chat { inset: 0; width: auto; height: auto; max-width: none; border-left: 0; z-index: 80; }
 }
 
 @media (prefers-reduced-motion: reduce) {
