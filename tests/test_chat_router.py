@@ -21,6 +21,7 @@ from tests.factories import make_symbol_spec
 from traidingbrain.api import terminal
 from traidingbrain.api.app import Services
 from traidingbrain.api.chat import lagebild
+from traidingbrain.api.chat import router as router_modul
 from traidingbrain.api.chat.lagebild import Holer
 from traidingbrain.api.chat.modelle import Vorschlag
 from traidingbrain.api.chat.router import router
@@ -44,6 +45,7 @@ class Kurs:
 
     def __init__(self, wert: float) -> None:
         self.wert = wert
+        self.stop = 83_700.0  # Stop des H4-Setups
 
     def kopf(self, symbol: str) -> SimpleNamespace:
         return SimpleNamespace(last=self.wert, mark=self.wert, funding_rate=0.0001)
@@ -83,7 +85,7 @@ def _holer(kurs: Kurs) -> Holer:
 
     def _markt(services, symbol, timeframe):
         setups = (
-            [SimpleNamespace(side="short", entry=PREIS, stop=83_700.0, target=81_400.0)]
+            [SimpleNamespace(side="short", entry=PREIS, stop=kurs.stop, target=81_400.0)]
             if timeframe == "H4"
             else []
         )
@@ -312,13 +314,30 @@ def test_ausfuehren_neu_geprueft_und_abgelehnt(umgebung):
 
 
 def test_ausfuehren_kursdrift(umgebung):
-    c, karte_id = _karte_annehmen(umgebung)
+    # Margin und Hebel genannt und unter dem Risikodeckel: die Order haengt nicht
+    # vom Kurs ab, so dass die Neupruefung dieselbe Order liefert und nur die Drift greift.
+    fest = Vorschlag(symbol="BTCUSDT", side="short", sl=83_700.0, margin_usd=100.0, leverage=5.0)
+    c = _client(umgebung, FesterSprecher(Antwort(text="Short.", vorschlag=fest)))
+    karte = _frage(c, "short?").json()["karte"]
+    assert karte["urteil"]["angenommen"] is True
+    assert karte["urteil"]["order"]["margin_usd"] == 100.0  # nicht gekuerzt
     # -0.2 %: beim Short wird der Stop weiter, alle acht Regeln bleiben erfuellt.
     umgebung.kurs.wert = PREIS * 0.998
-    r = c.post(f"/api/terminal/chat/ausfuehren/{karte_id}")
+    r = c.post(f"/api/terminal/chat/ausfuehren/{karte['id']}")
     assert r.status_code == 200
     assert r.json()["ausgefuehrt"] is False
     assert "bp" in r.json()["grund"]
+    assert _zeilen(umgebung.manuell) == 0
+
+
+def test_ausfuehren_gekuerzte_margin_folgt_dem_kurs(umgebung):
+    """Ruling 15: die vom Risikodeckel gekuerzte Margin haengt am Kurs; schon 1 bp
+    Bewegung aendert sie um mehr als 0.01 USD, und die Karte wird nicht ausgefuehrt."""
+    c, karte_id = _karte_annehmen(umgebung)
+    umgebung.kurs.wert = PREIS * 0.9999
+    r = c.post(f"/api/terminal/chat/ausfuehren/{karte_id}")
+    assert r.json()["ausgefuehrt"] is False
+    assert r.json()["felder"] == ["margin_usd"]
     assert _zeilen(umgebung.manuell) == 0
 
 
@@ -388,3 +407,110 @@ def test_verlauf_mit_karten_und_status(umgebung):
     assert v[-1]["karte"]["id"] == karte_id
     assert v[-1]["karte"]["urteil"]["angenommen"] is True
     assert c.get("/api/terminal/chat/status").json() == {"claude": "bereit"}
+
+
+# -- Schlussreview: Karte = Order, Fehler nach der Nutzerzeile, kaputter Plan -- #
+
+OHNE_STOP = Vorschlag(symbol="BTCUSDT", side="short")  # Stop kommt vom H4-Setup
+
+
+def _karte_mit_bot_stop(u) -> tuple[TestClient, str, dict]:
+    c = _client(u, FesterSprecher(Antwort(text="Short.", vorschlag=OHNE_STOP)))
+    karte = _frage(c, "short?").json()["karte"]
+    assert karte["urteil"]["angenommen"] is True
+    assert karte["urteil"]["stop_vom_bot"] is True
+    assert karte["urteil"]["order"]["sl"] == 83_700.0
+    return c, karte["id"], karte["urteil"]["order"]
+
+
+def test_ausfuehren_setup_stop_geaendert_wird_abgelehnt(umgebung):
+    c, karte_id, _ = _karte_mit_bot_stop(umgebung)
+    umgebung.kurs.stop = 83_800.0  # z. B. nach einem H4-Schluss
+    r = c.post(f"/api/terminal/chat/ausfuehren/{karte_id}")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["ausgefuehrt"] is False
+    assert d["grund"] == "Vorschlag hat sich geaendert - bitte neu pruefen"
+    assert "sl" in d["felder"]  # der Stop; die gekuerzte Margin folgt ihm
+    assert _zeilen(umgebung.manuell) == 0
+    # Nicht beansprucht: die Karte ist weder ausgefuehrt noch mit einer Order-ID versehen.
+    karte = umgebung.speicher.karte(karte_id)
+    assert karte["ausgefuehrt_ts"] is None and karte["order_id"] is None
+
+
+def test_ausfuehren_gibt_genau_die_gespeicherte_order_auf(umgebung, monkeypatch):
+    c, karte_id, gezeigt = _karte_mit_bot_stop(umgebung)
+    # Innerhalb der Toleranz (1e-9 relativ): gleich -- aufgegeben wird der gezeigte Wert.
+    umgebung.kurs.stop = 83_700.0 * (1 + 1e-12)
+    gesehen: list = []
+    echt = terminal.order_oeffnen
+
+    def merken(w):
+        gesehen.append(w)
+        return echt(w)
+
+    monkeypatch.setattr(terminal, "order_oeffnen", merken)
+    r = c.post(f"/api/terminal/chat/ausfuehren/{karte_id}")
+    assert r.status_code == 200, r.text
+    assert r.json()["ausgefuehrt"] is True
+    assert len(gesehen) == 1
+    assert gesehen[0].model_dump(mode="json") == gezeigt
+    assert gesehen[0].sl == 83_700.0
+    assert _zeilen(umgebung.manuell) == 1
+
+
+def test_sprecher_wirft_bot_zeile_und_fehler(umgebung):
+    class Kaputt:
+        def sprich(self, nachricht, lage, verlauf):
+            raise RuntimeError("CLI abgestuerzt")
+
+    r = _frage(_client(umgebung, Kaputt()), "hallo")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["karte"] is None
+    assert "CLI abgestuerzt" in d["fehler"]
+    verlauf = umgebung.speicher.verlauf()
+    assert [z["rolle"] for z in verlauf] == ["nutzer", "bot"]
+    assert verlauf[1]["text"].startswith("Konnte nicht antworten: ")
+    assert "CLI abgestuerzt" in verlauf[1]["text"]
+
+
+def test_lage_fuer_anderen_markt_fehlt_bot_zeile_und_503(umgebung, monkeypatch):
+    echt = router_modul.baue_lage
+
+    def baue(services, symbol, *a, **k):
+        if symbol == "ETHUSDT":
+            raise lagebild.LageNichtVerfuegbar("Kontostand nicht lesbar (Test)")
+        return echt(services, symbol, *a, **k)
+
+    monkeypatch.setattr(router_modul, "baue_lage", baue)
+    eth = Vorschlag(symbol="ETHUSDT", side="short", sl=4_000.0)
+    r = _frage(_client(umgebung, FesterSprecher(Antwort(text="ETH short.", vorschlag=eth))), "eth?")
+    assert r.status_code == 503
+    assert "Kontostand nicht lesbar (Test)" in r.json()["detail"]
+    verlauf = umgebung.speicher.verlauf()
+    assert [z["rolle"] for z in verlauf] == ["nutzer", "bot"]
+    assert verlauf[1]["text"].startswith("Konnte nicht antworten: ")
+    assert verlauf[1]["karte_id"] is None
+
+
+@pytest.mark.parametrize(
+    "plan",
+    [
+        pytest.param("yaml", id="yaml-fehler"),
+        pytest.param({"margin_share": 0.3, "leverage": 7.0, "risk_cap_share": None}, id="null"),
+        pytest.param({"margin_share": "viel", "leverage": 7.0, "risk_cap_share": 0.015}, id="text"),
+    ],
+)
+def test_kaputte_plandatei_gibt_503(umgebung, monkeypatch, plan):
+    def lesen():
+        if plan == "yaml":
+            raise yaml.YAMLError("kaputt")
+        return plan
+
+    monkeypatch.setattr(terminal, "_lese_plan_yaml", lesen)
+    r = _client(umgebung, VerbotenerSprecher()).post(
+        "/api/terminal/chat/pruefen", json={"symbol": "BTCUSDT", "side": "short", "sl": 83_700.0}
+    )
+    assert r.status_code == 503
+    assert r.json()["detail"] == "config_offen/plan.yaml fehlt oder ist unvollstaendig"

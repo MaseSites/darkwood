@@ -1,6 +1,8 @@
 """Der Sprecher: liest Claudes Antwort, urteilt nie, fragt hoechstens einmal nach."""
 import json
+from pathlib import Path
 
+from traidingbrain.api.chat import sprecher as modul
 from traidingbrain.api.chat.modelle import Lage
 from traidingbrain.api.chat.sprecher import Antwort, ClaudeSprecher
 from traidingbrain.brain.subscription import SubscriptionUnavailableError, unwrap
@@ -151,7 +153,9 @@ def test_anmeldefehler_wird_zu_nicht_angemeldet():
 
 
 def test_bedenken_null_wird_leere_liste_ohne_nachfrage():
-    roh = json.dumps({"antwort": "ok", "vorschlag": {"symbol": "btc", "side": "long"}, "bedenken": None})
+    roh = json.dumps(
+        {"antwort": "ok", "vorschlag": {"symbol": "btc", "side": "long"}, "bedenken": None}
+    )
     lauf = _Lauf(roh)
     a = ClaudeSprecher(lauf=lauf).sprich("hi", _lage(), [])
     assert len(lauf.inhalte) == 1
@@ -161,10 +165,6 @@ def test_bedenken_null_wird_leere_liste_ohne_nachfrage():
 
 
 def test_cli_bekommt_systemtext_als_datei(monkeypatch):
-    from pathlib import Path
-
-    from traidingbrain.api.chat import sprecher as modul
-
     aufrufe: list[tuple[str, dict]] = []
 
     def falsches_run_cli(content, **kwargs):

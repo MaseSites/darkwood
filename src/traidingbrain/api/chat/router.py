@@ -9,15 +9,18 @@ mit frischem Lagebild. Bot-Dateien werden nur gelesen; geschrieben wird
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from collections.abc import Callable
 from typing import Any
 
+import yaml
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from traidingbrain.api import terminal
+from traidingbrain.api.terminal import OrderWunsch
 from traidingbrain.api.chat.lagebild import Holer, LageNichtVerfuegbar, baue_lage
 from traidingbrain.api.chat.modelle import Lage, Regelwerte, Urteil, Vorschlag
 from traidingbrain.api.chat.pruefung import pruefe, regelwerte_aus
@@ -36,6 +39,12 @@ _PLAN_FEHLT = "config_offen/plan.yaml fehlt oder ist unvollstaendig"
 
 #: Platzhalter, mit dem `ausfuehren` die Karte beansprucht, bevor die Order steht.
 _ORDER_AUSSTEHEND = "ausstehend"
+
+#: Gezeigte und frisch gepruefte Order gelten als gleich bis auf diese Abstaende.
+_REL_TOLERANZ = 1e-9
+_MARGIN_TOLERANZ_USD = 0.01
+
+_GEAENDERT = "Vorschlag hat sich geaendert - bitte neu pruefen"
 
 
 class NachrichtAnfrage(BaseModel):
@@ -66,6 +75,30 @@ def _grund(urteil: Urteil) -> str:
     """Die erste Regel, die nicht erfuellt ist, mit ihrem Wert."""
     r = next(r for r in urteil.regeln if r.status != "erfuellt")
     return f"{r.name}: {r.wert}"
+
+
+def _gleich(a: float | None, b: float | None) -> bool:
+    """None nur gleich None; Zahlen gleich bis auf 1e-9 relativ."""
+    if a is None or b is None:
+        return a is b
+    return math.isclose(a, b, rel_tol=_REL_TOLERANZ, abs_tol=0.0)
+
+
+def _geaenderte_felder(gezeigt: OrderWunsch, neu: OrderWunsch) -> list[str]:
+    """Worin die frisch gepruefte Order von der gezeigten abweicht.
+
+    Kam der Stop vom Setup oder die Margin aus dem Plan, kann die Neupruefung
+    andere Werte liefern (etwa nach einem H1/H4-Schluss) -- dann waere die
+    Order nicht mehr die Karte, die der Nutzer angeklickt hat.
+    """
+    felder = [
+        f for f in ("sl", "tp", "leverage") if not _gleich(getattr(gezeigt, f), getattr(neu, f))
+    ]
+    if abs(gezeigt.margin_usd - neu.margin_usd) > _MARGIN_TOLERANZ_USD:
+        felder.append("margin_usd")
+    if (gezeigt.symbol, gezeigt.side) != (neu.symbol, neu.side):
+        felder.append("symbol/side")
+    return felder
 
 
 def _order_id_setzen(speicher: ChatSpeicher, karte_id: str, order_id: str) -> None:
@@ -116,7 +149,8 @@ def router(
     def _werte() -> Regelwerte:
         try:
             return regelwerte_aus(services.config, terminal._lese_plan_yaml())
-        except KeyError:
+        except (KeyError, ValueError, TypeError, yaml.YAMLError):
+            # fehlt, kein YAML, oder ein Wert wie `risk_cap_share: null` / "viel"
             raise HTTPException(503, _PLAN_FEHLT) from None
 
     def _limits() -> RiskLimits:
@@ -152,12 +186,23 @@ def router(
             sp = _speicher()
             verlauf = [(z["rolle"], z["text"]) for z in sp.verlauf(VERLAUF_ZEILEN)]
             sp.nachricht("nutzer", a.text, ts=ts)
-            antwort = _sprecher().sprich(a.text, lage, verlauf)
+            # Ab hier steht die Nutzerzeile: jeder Fehler bekommt eine Bot-Zeile,
+            # damit keine Frage unbeantwortet im Verlauf bleibt.
+            try:
+                antwort = _sprecher().sprich(a.text, lage, verlauf)
+            except Exception as fehler:  # Anmeldefehler faengt der Sprecher selbst ab
+                grund = f"{type(fehler).__name__}: {fehler}"[:300]
+                sp.nachricht("bot", f"Konnte nicht antworten: {grund}", ts=_jetzt_ms())
+                return {"antwort": "", "bedenken": [], "karte": None, "fehler": grund}
             karte = None
             if antwort.vorschlag is not None:
                 v = antwort.vorschlag
                 # Ein Vorschlag fuer einen anderen Markt bekommt dessen Lage.
-                lage_v = lage if v.symbol == lage.symbol else _lage(v.symbol, a.timeframe, ts)
+                try:
+                    lage_v = lage if v.symbol == lage.symbol else _lage(v.symbol, a.timeframe, ts)
+                except HTTPException as fehler:
+                    sp.nachricht("bot", f"Konnte nicht antworten: {fehler.detail}", ts=_jetzt_ms())
+                    raise
                 karte = _karte(v, lage_v, werte, ts)
             sp.nachricht(
                 "bot",
@@ -188,8 +233,10 @@ def router(
         """Die einzige Stelle, die eine Order aufgibt -- hoechstens eine je Karte.
 
         Reihenfolge: 404 unbekannt, 409 schon ausgefuehrt, 410 abgelaufen, 409
-        abgelehnt; dann Lage neu und `pruefe` neu, Kursdrift gegen den Kurs der
-        Karte. Erst danach wird die Karte atomar beansprucht (`als_ausgefuehrt`)
+        abgelehnt; dann Lage neu und `pruefe` neu, die neue Order muss der Order
+        der Karte gleichen (sl, tp, Hebel; Margin bis 0.01 USD), Kursdrift gegen
+        den Kurs der Karte. Aufgegeben wird die gespeicherte Order -- die, die der
+        Nutzer gesehen hat. Erst danach wird die Karte atomar beansprucht (`als_ausgefuehrt`)
         und ERST DANN `order_oeffnen` gerufen -- so kann auch ein Doppelklick
         nur eine Order erzeugen. Scheitert die Order nach der Beanspruchung,
         bleibt die Karte markiert und es kommt 502: kein automatischer zweiter
@@ -212,6 +259,14 @@ def router(
         urteil = pruefe(v, lage, _werte(), _limits())
         if not urteil.angenommen or urteil.order is None:
             return {"ausgefuehrt": False, "grund": _grund(urteil)}
+        # Aufgegeben wird die Order der Karte, nicht die frisch berechnete -- also
+        # nur, wenn beide (bis auf Rundung) dieselbe sind.
+        gezeigt: OrderWunsch | None = karte["urteil"].order
+        if gezeigt is None:
+            return {"ausgefuehrt": False, "grund": _GEAENDERT, "felder": ["order"]}
+        felder = _geaenderte_felder(gezeigt, urteil.order)
+        if felder:
+            return {"ausgefuehrt": False, "grund": _GEAENDERT, "felder": felder}
 
         alt, neu = karte["preis"], lage.preis
         if not alt or neu is None:
@@ -223,7 +278,7 @@ def router(
         if not sp.als_ausgefuehrt(karte_id, _ORDER_AUSSTEHEND, ts=ts):
             raise HTTPException(409, "Karte wurde schon ausgefuehrt")
         try:
-            order = terminal.order_oeffnen(urteil.order)
+            order = terminal.order_oeffnen(gezeigt)
         except Exception as fehler:  # jeder Fehler: melden, nie wiederholen
             text = fehler.detail if isinstance(fehler, HTTPException) else str(fehler)
             _order_id_setzen(sp, karte_id, f"fehlgeschlagen: {text}"[:200])
