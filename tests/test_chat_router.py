@@ -330,15 +330,39 @@ def test_ausfuehren_kursdrift(umgebung):
     assert _zeilen(umgebung.manuell) == 0
 
 
-def test_ausfuehren_gekuerzte_margin_folgt_dem_kurs(umgebung):
-    """Ruling 15: die vom Risikodeckel gekuerzte Margin haengt am Kurs; schon 1 bp
-    Bewegung aendert sie um mehr als 0.01 USD, und die Karte wird nicht ausgefuehrt."""
+def test_ausfuehren_gekuerzte_margin_folgt_dem_kurs(umgebung, monkeypatch):
+    """Ruling 17: die vom Risikodeckel gekuerzte Margin haengt am Kurs, mit dem
+    Hebel Kurs / Stopabstand (hier ~75x). 0.3 bp Bewegung aendert sie um ~0.23 %
+    (weit ueber 0.01 USD, unter 2 x 15 bp = 0.30 %) -- ausgefuehrt, mit der
+    gezeigten Margin. (1 bp waere ~0.75 % und wird abgelehnt.)"""
     c, karte_id = _karte_annehmen(umgebung)
-    umgebung.kurs.wert = PREIS * 0.9999
+    gezeigt = umgebung.speicher.karte(karte_id)["urteil"].order
+    umgebung.kurs.wert = PREIS * (1 - 0.3e-4)
+    gesehen: list = []
+    echt = terminal.order_oeffnen
+    monkeypatch.setattr(terminal, "order_oeffnen", lambda w: gesehen.append(w) or echt(w))
     r = c.post(f"/api/terminal/chat/ausfuehren/{karte_id}")
+    assert r.status_code == 200, r.text
+    assert r.json()["ausgefuehrt"] is True
+    assert gesehen == [gezeigt]
+    assert _zeilen(umgebung.manuell) == 1
+
+
+def test_ausfuehren_margin_ueber_toleranz_wird_abgelehnt(umgebung):
+    """Aendert sich die Margin um mehr als 2 x max_price_drift_bps relativ (hier: der
+    Risikodeckel im Plan steigt von 1.5 % auf 2 %), wird nicht ausgefuehrt."""
+    c, karte_id = _karte_annehmen(umgebung)
+    terminal.PLAN_YAML.write_text(
+        yaml.safe_dump({"margin_share": 0.3, "leverage": 7.0, "risk_cap_share": 0.02}),
+        encoding="utf-8",
+    )
+    r = c.post(f"/api/terminal/chat/ausfuehren/{karte_id}")
+    assert r.status_code == 200, r.text
     assert r.json()["ausgefuehrt"] is False
+    assert r.json()["grund"] == "Vorschlag hat sich geaendert - bitte neu pruefen"
     assert r.json()["felder"] == ["margin_usd"]
     assert _zeilen(umgebung.manuell) == 0
+    assert umgebung.speicher.karte(karte_id)["ausgefuehrt_ts"] is None
 
 
 def test_order_fehler_nach_markierung_gibt_502_und_kein_zweiter_versuch(umgebung, monkeypatch):

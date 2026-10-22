@@ -40,9 +40,9 @@ _PLAN_FEHLT = "config_offen/plan.yaml fehlt oder ist unvollstaendig"
 #: Platzhalter, mit dem `ausfuehren` die Karte beansprucht, bevor die Order steht.
 _ORDER_AUSSTEHEND = "ausstehend"
 
-#: Gezeigte und frisch gepruefte Order gelten als gleich bis auf diese Abstaende.
+#: sl, tp und Hebel von gezeigter und frisch gepruefter Order: gleich bis auf Rundung.
+#: Die Margin hat eine eigene, groessere Toleranz (`_margin_toleranz`).
 _REL_TOLERANZ = 1e-9
-_MARGIN_TOLERANZ_USD = 0.01
 
 _GEAENDERT = "Vorschlag hat sich geaendert - bitte neu pruefen"
 
@@ -84,7 +84,18 @@ def _gleich(a: float | None, b: float | None) -> bool:
     return math.isclose(a, b, rel_tol=_REL_TOLERANZ, abs_tol=0.0)
 
 
-def _geaenderte_felder(gezeigt: OrderWunsch, neu: OrderWunsch) -> list[str]:
+def _margin_toleranz(max_drift_bps: float) -> float:
+    """Relative Toleranz der Margin: 2 x die erlaubte Kursdrift (15 bp -> 0.30 %).
+
+    Die vom Risikodeckel gekuerzte Margin haengt am Kurs; innerhalb der erlaubten
+    Drift soll sie die Ausfuehrung nicht verhindern (Ruling 17).
+    """
+    return 2 * max_drift_bps / 10_000
+
+
+def _geaenderte_felder(
+    gezeigt: OrderWunsch, neu: OrderWunsch, *, margin_rel_toleranz: float
+) -> list[str]:
     """Worin die frisch gepruefte Order von der gezeigten abweicht.
 
     Kam der Stop vom Setup oder die Margin aus dem Plan, kann die Neupruefung
@@ -94,7 +105,7 @@ def _geaenderte_felder(gezeigt: OrderWunsch, neu: OrderWunsch) -> list[str]:
     felder = [
         f for f in ("sl", "tp", "leverage") if not _gleich(getattr(gezeigt, f), getattr(neu, f))
     ]
-    if abs(gezeigt.margin_usd - neu.margin_usd) > _MARGIN_TOLERANZ_USD:
+    if abs(gezeigt.margin_usd - neu.margin_usd) > margin_rel_toleranz * abs(gezeigt.margin_usd):
         felder.append("margin_usd")
     if (gezeigt.symbol, gezeigt.side) != (neu.symbol, neu.side):
         felder.append("symbol/side")
@@ -234,7 +245,8 @@ def router(
 
         Reihenfolge: 404 unbekannt, 409 schon ausgefuehrt, 410 abgelaufen, 409
         abgelehnt; dann Lage neu und `pruefe` neu, die neue Order muss der Order
-        der Karte gleichen (sl, tp, Hebel; Margin bis 0.01 USD), Kursdrift gegen
+        der Karte gleichen (sl, tp, Hebel exakt; Margin bis 2 x max_price_drift_bps
+        relativ), Kursdrift gegen
         den Kurs der Karte. Aufgegeben wird die gespeicherte Order -- die, die der
         Nutzer gesehen hat. Erst danach wird die Karte atomar beansprucht (`als_ausgefuehrt`)
         und ERST DANN `order_oeffnen` gerufen -- so kann auch ein Doppelklick
@@ -260,11 +272,14 @@ def router(
         if not urteil.angenommen or urteil.order is None:
             return {"ausgefuehrt": False, "grund": _grund(urteil)}
         # Aufgegeben wird die Order der Karte, nicht die frisch berechnete -- also
-        # nur, wenn beide (bis auf Rundung) dieselbe sind.
+        # nur, wenn beide (bis auf Rundung, Margin bis 2 x Drift-Grenze) dieselbe sind.
         gezeigt: OrderWunsch | None = karte["urteil"].order
         if gezeigt is None:
             return {"ausgefuehrt": False, "grund": _GEAENDERT, "felder": ["order"]}
-        felder = _geaenderte_felder(gezeigt, urteil.order)
+        max_drift_bps = services.config.risk.execution.max_price_drift_bps
+        felder = _geaenderte_felder(
+            gezeigt, urteil.order, margin_rel_toleranz=_margin_toleranz(max_drift_bps)
+        )
         if felder:
             return {"ausgefuehrt": False, "grund": _GEAENDERT, "felder": felder}
 
@@ -272,7 +287,7 @@ def router(
         if not alt or neu is None:
             return {"ausgefuehrt": False, "grund": "Kurs bei Pruefung unbekannt"}
         drift_bp = abs(neu - alt) / alt * 10_000
-        if drift_bp > services.config.risk.execution.max_price_drift_bps:
+        if drift_bp > max_drift_bps:
             return {"ausgefuehrt": False, "grund": f"Kurs hat sich um {drift_bp:.1f} bp bewegt"}
 
         if not sp.als_ausgefuehrt(karte_id, _ORDER_AUSSTEHEND, ts=ts):
