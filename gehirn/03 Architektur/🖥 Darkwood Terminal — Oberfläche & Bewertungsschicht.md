@@ -1,7 +1,7 @@
 ---
 typ: architektur
 status: laufend
-aktualisiert: 2026-10-21
+aktualisiert: 2026-10-22
 naechster_schritt: Heatmap gegen die Tardis-Gratistage messen, bevor ein Dauersammler startet
 tags: [terminal, oberflaeche, bewertung, faktoren, journal, liquiditaet, optionen]
 ---
@@ -252,3 +252,48 @@ verschieben (Objektbaum + Rückgängig decken es ab). Abweichung von TV: Ziffern
 
 **Geteilter Bereich `api/`:** nur ein lesender Endpunkt
 `GET /api/terminal/watchlist`. Dashboard dafür einmal neu gestartet.
+
+## Chat mit dem Bot (seit 2026-10-22)
+
+Seitenfeld im Terminal (Branch `layout`). Der Nutzer schreibt, der Bot bewertet
+einen Trade-Vorschlag und kann eine Prüfkarte erzeugen. Spec:
+`docs/superpowers/specs/2026-10-22-darkwood-chat-design.md`.
+
+**Wer entscheidet:** die **acht festen Regeln** (`api/chat/pruefung.py`), nicht
+Claude. Claude spricht und warnt nur; es kann nichts freigeben (BELEGT: Test
+`test_claude_sagt_angenommen_regel_sagt_nein`). Der Aufruf läuft über die
+Abo-CLI **ohne Werkzeuge**, in einem leeren Temp-Verzeichnis. Fehlt ein Wert
+(Quelle ausgefallen), wird er `unbekannt` und nie zu einer Zahl erfunden.
+
+**Ausführen:** nur nach Klick auf die Karte **und** frischer Neuprüfung. Der
+Auftrag geht in `data/manual_paper.sqlite`, **nie** in das Konto des Bots.
+Manuelles Papierkonto startet mit **1'000 USD** (`konto.MANUELL_START`).
+Verlauf und Karten liegen in `data/chat.sqlite`. Live im Browser gesehen:
+echte Claude-Antwort und eine abgelehnte BTC-Long-Karte (vom Controller
+geprüft, kein automatischer Test dafür).
+
+**Endpunkte** (`/api/terminal/chat/…`): `POST /nachricht`, `POST /pruefen`,
+`POST /ausfuehren/{karte_id}`, `GET /verlauf`, `GET /status`. Fehlt
+`plan.yaml` oder ist die Lage nicht lesbar, antwortet er 503.
+
+**Dateien:** `src/traidingbrain/api/chat/` (modelle, konto, pruefung,
+lagebild, sprecher, speicher, router, `system_prompt.md`); UI
+`dashboard/static/terminal-chat.{js,css}`; Tests `tests/test_chat_*.py`.
+Berührt: `api/terminal.py` (`terminal_score` herausgezogen),
+`brain/subscription.py` (`run_cli`/`unwrap`), eine Zeile in `terminal.js`.
+Nicht angefasst: `config/`, `config_offen/`, `risk/`, `live/`.
+
+**Offene Punkte (aus dem Review, nicht behoben):**
+- plan.yaml-Fehler (ValueError/YAMLError) und Fehler beim Laden der gefolgten
+  Symbole ergeben 500 statt 503; nach 503 bleibt die Nutzernachricht ohne Antwort.
+- Ausgeführter Auftrag kann von der gezeigten Karte abweichen (Neuprüfung setzt
+  SL/Margin neu); Ablehnen bei Abweichung wäre strenger.
+- Unlesbare Claude-Antwort wird roh gespeichert und an Claude zurückgegeben;
+  nach Reload sieht sie wie eine normale Antwort aus.
+- Claude-Aufruf lädt Standard-System-Prompt, Nutzer-Hooks und globale CLAUDE.md
+  (`--setting-sources ""` prüfen); Temp-Verzeichnis wird nie gelöscht.
+- UI: Kopf zeigt das manuelle Guthaben nicht (kein Endpunkt); Quellen unter
+  Bot-Antworten werden nicht gerendert; Verlaufskarten ohne Bedenken;
+  zwischen 768 und 980 px bricht der Kopf unter das Feld um.
+- Kleinkram: Vorschlag akzeptiert leeres Symbol; `r_multiple`-Formel doppelt;
+  riesiger Stop ergibt absurd kleine Margin; 24-h-Kalenderfilter ungetestet.
