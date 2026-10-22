@@ -114,7 +114,9 @@ def test_eingabe_enthaelt_lage_ohne_konto_aber_mit_equity_und_verlauf():
     assert "1234.5" in inhalt and "ETHUSDT" in inhalt
     assert "starting_equity_today" not in inhalt
     assert "z1\n" not in inhalt and "z2" in inhalt and "z11" in inhalt  # nur die letzten 10
-    assert "meine Frage" in inhalt and "urteilst nicht" in inhalt
+    assert "meine Frage" in inhalt
+    # Der Systemtext kommt als Datei (--system-prompt-file), nicht noch einmal in der Eingabe.
+    assert "urteilst nicht" not in inhalt
 
 
 def test_status_nicht_installiert_bereit_und_nicht_angemeldet():
@@ -146,3 +148,35 @@ def test_anmeldefehler_wird_zu_nicht_angemeldet():
     a = s.sprich("hi", _lage(), [])
     assert a.vorschlag is None and a.fehler
     assert s.status() == "nicht_angemeldet"
+
+
+def test_bedenken_null_wird_leere_liste_ohne_nachfrage():
+    roh = json.dumps({"antwort": "ok", "vorschlag": {"symbol": "btc", "side": "long"}, "bedenken": None})
+    lauf = _Lauf(roh)
+    a = ClaudeSprecher(lauf=lauf).sprich("hi", _lage(), [])
+    assert len(lauf.inhalte) == 1
+    assert a.fehler is None
+    assert a.bedenken == []
+    assert a.vorschlag is not None and a.vorschlag.symbol == "BTCUSDT"
+
+
+def test_cli_bekommt_systemtext_als_datei(monkeypatch):
+    from pathlib import Path
+
+    from traidingbrain.api.chat import sprecher as modul
+
+    aufrufe: list[tuple[str, dict]] = []
+
+    def falsches_run_cli(content, **kwargs):
+        aufrufe.append((content, kwargs))
+        return GUELTIG, "sid"
+
+    monkeypatch.setattr(modul, "run_cli", falsches_run_cli)
+    a = ClaudeSprecher().sprich("hi", _lage(), [])
+    assert a.fehler is None
+    assert len(aufrufe) == 1
+    inhalt, kwargs = aufrufe[0]
+    datei = Path(kwargs["system_file"])
+    assert datei == Path(modul.__file__).with_name("system_prompt.md")
+    assert datei.is_file()
+    assert "urteilst nicht" not in inhalt and "## Lagebild" in inhalt

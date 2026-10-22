@@ -21,7 +21,7 @@ from functools import partial
 from pathlib import Path
 from typing import Literal, Protocol
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, field_validator
 
 from traidingbrain.api.chat.modelle import Lage, Vorschlag
 from traidingbrain.brain.subscription import (
@@ -40,7 +40,9 @@ STATUS_CACHE_S = 60.0
 #: Wie lange der Versions-Probeaufruf hoechstens laeuft.
 PROBE_TIMEOUT_S = 15
 
-SYSTEM_PROMPT = Path(__file__).with_name("system_prompt.md").read_text(encoding="utf-8")
+#: Der Systemtext geht als Datei an die CLI (`--system-prompt-file`): er ersetzt den
+#: Standard-Systemtext von Claude Code, statt nur neben ihm in der Eingabe zu stehen.
+SYSTEM_PROMPT_DATEI = Path(__file__).with_name("system_prompt.md")
 
 NICHT_LESBAR = "Antwort nicht lesbar"
 
@@ -65,6 +67,12 @@ class _Roh(BaseModel):
     antwort: str
     vorschlag: Vorschlag | None = None
     bedenken: list[str] = []
+
+    @field_validator("bedenken", mode="before")
+    @classmethod
+    def _null_ist_leer(cls, v: object) -> object:
+        """`"bedenken": null` heisst keine Bedenken -- kein Grund fuer eine Nachfrage."""
+        return [] if v is None else v
 
 
 def _lage_json(lage: Lage) -> str:
@@ -111,17 +119,25 @@ class ClaudeSprecher:
 
     @staticmethod
     def _cli_lauf() -> Callable[[str], tuple[str | None, str | None]]:
-        """Die echte CLI, in einem leeren Arbeitsverzeichnis (kein CLAUDE.md, keine Tools)."""
+        """Die echte CLI, in einem leeren Arbeitsverzeichnis (kein CLAUDE.md, keine Tools),
+        mit dem eigenen Systemtext statt dem von Claude Code."""
         arbeitsordner = tempfile.mkdtemp(prefix="darkwood-chat-")
         exe = shutil.which("claude") or "claude"
-        return partial(run_cli, executable=exe, workspace=arbeitsordner, env=_cli_environment())
+        return partial(
+            run_cli,
+            executable=exe,
+            system_file=str(SYSTEM_PROMPT_DATEI),
+            workspace=arbeitsordner,
+            env=_cli_environment(),
+        )
 
     # -- Eingabe ------------------------------------------------------------ #
 
     def _eingabe(self, nachricht: str, lage: Lage, verlauf: list[tuple[str, str]]) -> str:
+        """Lage, Verlauf und Nachricht; der Systemtext geht getrennt als Datei an die CLI."""
         zeilen = "\n".join(f"{rolle}: {text}" for rolle, text in verlauf[-VERLAUF_ZEILEN:])
         return (
-            f"{SYSTEM_PROMPT}\n\n## Lagebild\n{_lage_json(lage)}\n\n"
+            f"## Lagebild\n{_lage_json(lage)}\n\n"
             f"## Bisheriger Verlauf\n{zeilen or '(leer)'}\n\n"
             f"## Nachricht des Nutzers\n{nachricht}\n"
         )
