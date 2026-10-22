@@ -563,10 +563,16 @@ class Konto(BaseModel):
 
 
 def konto(state_path: Path, journal_path: Path, config: AppConfig, signature: str,
-          bereich: str) -> Konto:
+          bereich: str, *, start: float | None = None) -> Konto:
     speicher = PaperStateStore(state_path)
     kapital, _hoch, _ = account_equity(speicher, config)
-    start = config.engine.simulation.initial_equity
+    # Der Einsatz kommt vom Aufrufer, mit derselben Herleitung wie
+    # `/api/portfolio`. Hier stand `initial_equity` allein -- das ist der
+    # Einsatz EINES Marktes. Fuer das Plankonto (eine Kasse zu 1.000) stimmte
+    # es zufaellig; das Papierkonto (zwoelf Maerkte zu je 1.000) zeigte am
+    # 22.10.2026 "11'775 USD, +1077.5 % seit Start bei 1'000".
+    if start is None:
+        start = config.engine.simulation.initial_equity
     led = build_ledger(journal_path, source=Source.LIVE, signature=signature)
     rows = sorted(led.rows, key=lambda r: r.closed_ts or 0)
 
@@ -1385,8 +1391,11 @@ def router(services: Any, konto_signatur, state_path, journal_path, followed) ->
 
     @r.get("/account", response_model=Konto)
     def _konto(range: str = "month") -> Konto:
+        einsatz = services.deposit_total
+        if einsatz is None:
+            einsatz = services.config.engine.simulation.initial_equity * len(followed(services))
         return konto(state_path(services), journal_path(services), services.config,
-                     konto_signatur(services), range)
+                     konto_signatur(services), range, start=einsatz)
 
     @r.get("/bot-settings", response_model=BotSettingsView)
     def _bs() -> BotSettingsView:
