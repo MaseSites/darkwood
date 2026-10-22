@@ -3,7 +3,7 @@ typ: produkt-teil
 projekt: TradingBrain
 bereich: projekt
 status: aktiv
-aktualisiert: 2026-10-21
+aktualisiert: 2026-10-22
 tags: [verlauf, entscheidungen]
 ---
 
@@ -77,3 +77,31 @@ tags: [verlauf, entscheidungen]
   überschreibt der nächste Lauf.
 - Risiko: Das Repo `darkwood` war beim Push **öffentlich** — Code, Forschung und dieses
   Gehirn sind damit für alle lesbar, bis es auf privat gestellt ist.
+
+## 2026-10-21 — Externer Day-Trader-Skill geprüft und verworfen
+
+- von: Claude
+- Projektstand: `cb0c355` (Branch `layout`); keine Config, kein Entscheidungspfad berührt
+- Befund: ORB des Skills auf Krypto über 5 Jahre verlässlich negativ (−0,042 R brutto, NY;
+  −0,026 R, UTC) und schlechter als Zufallseinstieg; auf US-Aktien −0,014 R brutto, netto
+  negativ; seine Time Machine sortiert unsere 7 310 Replay-Trades leicht falsch herum.
+- Entscheidung: nicht einbauen. Details in [[🧾 Day-Trader-Skill (TikTok) — Prüfung 21.10.2026]].
+
+## 2026-10-22 — E-TM: Time-Machine-Filter auf 56 ungesehenen Märkten gefallen
+
+- von: Claude
+- Projektstand: `cb0c355` (Branch `layout`); Daten `data/replay_fills_0311`, vorregistriert
+- Befund: Arm „Stop-Tendenz weg“ −0,0363 R gegen Basis −0,0345 R, Differenz −0,0018 R
+  [−0,0291, +0,0255]; beide Tore gefallen, Vorzeichen auf neuen Märkten umgekehrt.
+- Entscheidung: Auch dieser letzte Teil des Skills kommt nicht ins System. Kein
+  Handelsparameter geändert. Register `total_comparisons` 83 → 86 bleibt für den Kollegen.
+
+## 2026-10-22 — Name: Darkwood Terminal statt TradingBrain
+
+- von: Claude, auf Anweisung des Eigentümers
+- Entscheidung: Das Projekt heisst **Darkwood Terminal** — gemeint ist immer das ganze
+  System (Oberfläche, Bot, Konten, Analyse, Daten, Betrieb), nicht mehr „TradingBrain“.
+- Grenze: Technische Namen (Ordner `traidingBrain`, Paket `traidingbrain`, Aufgaben
+  `traidingBrain-*`, Vault `traidingBrainGehirn`) bleiben vorerst; Umbenennen wäre ein
+  eigener Schritt, weil Pfade, Aufgabenplanung und Signaturen daran hängen.
+

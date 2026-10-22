@@ -5,11 +5,15 @@ projekt: TradingBrain
 projektordner: "C:/Users/sever/OneDrive/Desktop/traidingBrain"
 gehirn: "C:/Users/sever/OneDrive/Desktop/traidingBrainGehirn"
 naechster_schritt: Claude die neue Gehirn-Direktive senden und nach Abschluss seiner laufenden Phase den tatsächlichen Repo-Stand in den aktuellen Stand übernehmen.
-aktualisiert: 2026-10-18
-tags: [tradingbrain, zentrale, projekt]
+aktualisiert: 2026-10-22
+tags: [tradingbrain, darkwood, zentrale, projekt]
 ---
 
 # TradingBrain — Zentrale
+
+> [!important] Das Projekt heisst Darkwood Terminal (seit 2026-10-22)
+> Auf Anweisung des Eigentümers: Es geht **nicht mehr um „TradingBrain“**, sondern immer um das **Darkwood Terminal** — und zwar als Ganzes: Oberfläche, Bot (Papier-Trader), Konten, Analyse, Daten und Betrieb. Wer „Darkwood“ oder „das Terminal“ sagt, meint das ganze System, nicht nur die Seite `/terminal`.
+> „TradingBrain“ / `traidingBrain` bleibt nur als **technischer Name** stehen (Ordner, Python-Paket `traidingbrain`, Windows-Aufgaben `traidingBrain-*`, dieses Vault), bis jemand bewusst umbenennt. Neue Texte, Notizen und Antworten sprechen vom Darkwood Terminal.
 
 > [!important] Einzige aktuelle Wissensquelle
 > Dieses Vault ist seit **2026-10-18** das kanonische Gehirn für TradingBrain. Das alte MASESites-Gehirn bleibt als Herkunftsnachweis bestehen, wird für TradingBrain aber nicht mehr fortgeschrieben.
