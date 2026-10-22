@@ -209,6 +209,7 @@ async function tickCalendar() {
 
 /* ----------------------------------------------------------------- Chart -- */
 async function loadMarket() {
+  document.dispatchEvent(new CustomEvent("terminal:blick", { detail: { symbol: S.symbol, timeframe: S.tf } }));
   try {
     const m = await fuerMarkt((s, tf) => api(`/api/market/${s}/chart?timeframe=${tf}&candles=600`));
     if (m === VERALTET) return;

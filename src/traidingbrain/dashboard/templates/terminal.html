@@ -8,6 +8,7 @@
     <title>Darkwood Terminal · {{ account_label }}</title>
     <link rel="stylesheet" href="/static/terminal.css" />
     <link rel="stylesheet" href="/static/terminal-bedienung.css" />
+    <link rel="stylesheet" href="/static/terminal-chat.css" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%2307090d'/><path d='M4 12V5M8 12V3M12 12V7' stroke='%2322c55e' stroke-width='2'/></svg>" />
   </head>
   <body data-account="{{ account_label }}">
@@ -52,6 +53,7 @@
       <span class="topbar__price" id="hd-price">&mdash;</span>
       <span class="topbar__chg" id="hd-chg"></span>
       <span class="topbar__meta" id="hd-meta"></span>
+      <button type="button" class="chat-knopf" id="btn-chat" aria-expanded="false" aria-controls="chat">Bot fragen</button>
     </header>
 
     <!-- ================================================== Markt -->
@@ -274,6 +276,44 @@
       </section>
     </div>
 
+    <!-- ================================================== Chat -->
+    <!-- Seitenfeld ohne Hintergrundsperre: die Ansicht dahinter bleibt bedienbar.
+         Das Urteil auf jeder Karte kommt aus der Regelpruefung, nie aus Claudes Text. -->
+    <aside class="chat" id="chat" aria-label="Bot fragen" data-offen="false" aria-hidden="true" inert>
+      <header class="chat__kopf">
+        <div class="chat__blick" id="chat-blick">&mdash;</div>
+        <span class="chat__status" id="chat-status" data-claude="unbekannt" aria-live="polite"><span class="chat__punkt"></span><span id="chat-status-text">Status wird geprüft</span></span>
+        <button type="button" class="chat__zu" id="chat-zu" aria-label="Chat schliessen"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8"/></svg></button>
+      </header>
+      <div class="chat__hinweis" id="chat-hinweis" hidden></div>
+      <div class="seg chat__modus" role="group" aria-label="Modus des Chats" id="chat-modus">
+        <button type="button" class="seg__btn" data-modus="chat" aria-pressed="true">Claude fragen</button>
+        <button type="button" class="seg__btn" data-modus="formular" aria-pressed="false">Formular</button>
+      </div>
+      <div class="chat__verlauf" id="chat-verlauf" aria-live="polite">
+        <p class="chat__leer">Frag den Bot zur Lage oder schlag einen Trade vor. <b>Das Urteil</b> fällen die festen Regeln des Bots, nicht Claude; ein angenommener Vorschlag wird erst nach Klick auf Ausführen zur Papier-Order.</p>
+      </div>
+      <div class="chat__denkt" id="chat-denkt" role="status" hidden><span class="chat__punkt"></span>Claude denkt &hellip; das dauert meist 10 bis 30 Sekunden.</div>
+      <form class="chat__eingabe" id="chat-form" autocomplete="off">
+        <label class="visually-hidden" for="chat-text">Nachricht an den Bot</label>
+        <textarea class="chat__text" id="chat-text" name="text" rows="1" placeholder="Frage oder Vorschlag, z. B. Long BTC mit 5x" spellcheck="true"></textarea>
+        <button type="submit" class="chat__senden">Senden</button>
+      </form>
+      <form class="chat__formular" id="chat-formular" autocomplete="off" hidden>
+        <div class="ls" role="group" aria-label="Richtung">
+          <button type="button" data-cseite="long" aria-pressed="true">Long</button>
+          <button type="button" data-cseite="short" aria-pressed="false">Short</button>
+        </div>
+        <div class="field chat__voll"><label for="cf-symbol">Markt</label><input class="input" id="cf-symbol" name="symbol" spellcheck="false" autocapitalize="characters" /></div>
+        <div class="field"><label for="cf-margin">Margin USD</label><input class="input" id="cf-margin" name="margin_usd" inputmode="decimal" placeholder="vom Bot" /></div>
+        <div class="field"><label for="cf-hebel">Hebel</label><input class="input" id="cf-hebel" name="leverage" inputmode="decimal" placeholder="vom Bot" /></div>
+        <div class="field"><label for="cf-sl">Stop</label><input class="input" id="cf-sl" name="sl" inputmode="decimal" placeholder="aus dem Setup" /></div>
+        <div class="field"><label for="cf-tp">Ziel</label><input class="input" id="cf-tp" name="tp" inputmode="decimal" placeholder="optional" /></div>
+        <button type="submit" class="chat__senden chat__voll" id="cf-pruefen">Prüfen ohne Claude</button>
+        <p class="msg" id="cf-msg" aria-live="polite"></p>
+      </form>
+    </aside>
+
     <div class="ktx" id="ktx" role="menu" aria-label="Chart-Menü" hidden></div>
     <div class="hilfe" id="hilfe" role="dialog" aria-modal="true" aria-labelledby="hilfe-titel" hidden></div>
     <div class="eingabe" id="eingabe" role="dialog" aria-modal="true" aria-labelledby="eingabe-titel" hidden>
@@ -285,6 +325,7 @@
     </div>
 
     <template id="star-tpl"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.5l2.6 5.6 6.1.7-4.5 4.2 1.2 6.1L10 15.1 4.6 18.1l1.2-6.1L1.3 7.8l6.1-.7z"/></svg></template>
+    <script type="module" src="/static/terminal-chat.js"></script>
     <script type="module" src="/static/terminal.js"></script>
   </body>
 </html>

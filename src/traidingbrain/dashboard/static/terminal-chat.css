@@ -1,0 +1,244 @@
+/* ==========================================================================
+   DARKWOOD TERMINAL · CHAT -- Entscheidungsblatt, vor dem ersten Markup.
+
+   SUBJECT   Ein Seitenfeld, in dem der Eigentuemer den Bot zur Lage fragt und
+             einen Trade vorschlaegt. Der Bot antwortet in Worten (Claude) und
+             urteilt mit festen Regeln (Pruefkarte). Die Karte ist das
+             Instrument; der Text ist Kommentar. Eine Person, ein Konto
+             (manuelles Papiergeld), nie echtes Geld.
+
+   GROUND    Pruefprotokoll, Checkliste vor dem Start, Freigabe mit Frist:
+             acht Regeln, je ein Haken, ein Kreuz oder ein Fragezeichen, der
+             gemessene Wert daneben. Eine Freigabe verfaellt nach 15 Minuten.
+
+   PALETTE   Keine neue Farbe. Alles aus terminal.css:
+             ground   #07090d  Feld und Verlauf
+             surface  #0f131a  Bot-Nachricht, Karte
+             raised   #161c26  Nutzer-Nachricht (eine Tonstufe heller: wer
+                                spricht, sieht man an der Stufe, nicht an Farbe)
+             long     #22c55e  ✓ erfuellt, Urteil angenommen, Status bereit
+             short    #ef4444  ✕ verletzt, Urteil abgelehnt
+             mark     #f59e0b  ? unbekannt, Bedenken, "nicht angemeldet"
+             accent   #60a5fa  Ausfuehren (wie "Kauf" im manuellen Feld)
+             Neutral-Bias kuehl, wie das Terminal.
+
+   TYPE      Keine neue Schrift. Text in der Systemfamilie des Terminals
+             (13 px, das Terminal hat keine Lesetexte -- hier gibt es welche,
+             darum Zeilenhoehe 1.5 in Nachrichten). JEDE Zahl der Karte in
+             ui-monospace, tabular-nums. Urteil 17 px 600: das eine Wort, das
+             man von weitem lesen muss.
+
+   SPACE     intra  4 / 6 / 10 px  (Regelzeile, Symbol-zu-Name, Kartenpolster)
+             rhythm 14 / 22 px     (zwischen Nachrichten, zwischen Bereichen)
+
+   SHAPE     Radius 3 px wie ueberall. Elevation durch Tonstufe; das Feld
+             trennt sich durch eine 1-px-Linie links, KEIN Schatten -- auch
+             nicht als Overlay ueber dem Chart.
+
+   MOTION    Vier Momente: Feld oeffnen (translateX 240 ms, Schubladen-Kurve)
+             und schliessen (180 ms, schneller als oeffnen); neue Karte
+             (opacity + 6 px, 200 ms); Knopfdruck (scale .97, 100 ms); der
+             Punkt bei "Claude denkt" pulsiert in der Deckkraft. Reduzierte
+             Bewegung: Feld und Karte nur noch Deckkraft, 120 ms; kein Puls.
+             Keine Animation auf Tastenaktionen.
+
+   SIGNATURE Die Pruefkarte: das Urteil gross, darunter die acht Regeln als
+             Protokoll mit Wert und Grenze in Monospace, und ein sichtbar
+             ablaufender Countdown neben "Ausfuehren". Kein Satz von Claude
+             kann eine Zahl auf ihr setzen.
+
+   KRITIK    Der Reflex fuer "Chat mit KI" waere: Sprechblasen mit Verlauf,
+             ein Funkel-Symbol, ein violetter Akzent, Tippen-Punkte. Hier:
+             keine Blasenform (rechteckig, 3 px, Tonstufe statt Farbe), kein
+             KI-Symbol, keine neue Akzentfarbe, Status als Satz statt als
+             Glitzer. Die Karte sieht aus wie ein Pruefbericht, nicht wie
+             eine Nachricht.
+   ========================================================================== */
+
+/* ------------------------------------------------------ Kopfzeilenknopf -- */
+.chat-knopf {
+  height: 32px; padding: 0 12px; border: 1px solid var(--rule-2); border-radius: var(--r);
+  background: transparent; color: var(--ink-2);
+  transition: background 120ms var(--ease-out), color 120ms var(--ease-out), transform 100ms ease-out;
+}
+.chat-knopf:hover { color: var(--ink); background: var(--surface); }
+.chat-knopf:active { transform: scale(0.97); }
+.chat-knopf[aria-expanded="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+
+/* ---------------------------------------------------------------- Feld -- */
+#chat {
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  position: fixed; top: 48px; right: 0; bottom: 0; z-index: 50;
+  width: 380px; max-width: 100vw;
+  /* Spalte statt fester Rasterzeilen: Hinweis, "denkt" und die beiden
+     Eingaben sind je nach Zustand ausgeblendet. */
+  display: flex; flex-direction: column;
+  background: var(--ground); border-left: 1px solid var(--rule-2);
+  /* deliberate-ignore round-stat -- 100% ist die eigene Breite des Felds, kein Kennwert */
+  transform: translateX(100%); visibility: hidden;
+  transition: transform 180ms var(--ease-out), visibility 0ms linear 180ms;
+}
+#chat[data-offen="true"] {
+  transform: translateX(0); visibility: visible;
+  transition: transform 240ms var(--ease-drawer), visibility 0ms;
+}
+
+#chat > :not(.chat__verlauf) { flex: none; }
+.chat__kopf {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--rh-1); border-bottom: 1px solid var(--rule);
+}
+.chat__blick { flex: 1; min-width: 0; font-family: var(--mono); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat__blick .muted { font-family: var(--sans); }
+.chat__status { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
+.chat__punkt { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); flex: none; }
+.chat__status[data-claude="bereit"] .chat__punkt { background: var(--long); }
+.chat__status[data-claude="nicht_angemeldet"] .chat__punkt { background: var(--mark); }
+.chat__status[data-claude="nicht_installiert"] .chat__punkt,
+.chat__status[data-claude="fehler"] .chat__punkt { background: var(--short); }
+
+.chat__zu {
+  width: 30px; height: 30px; display: grid; place-items: center; flex: none;
+  background: transparent; border: 1px solid transparent; border-radius: var(--r); color: var(--ink-2);
+  transition: background 120ms var(--ease-out), color 120ms var(--ease-out), transform 100ms ease-out;
+}
+.chat__zu:hover { background: var(--surface); color: var(--ink); }
+.chat__zu:active { transform: scale(0.97); }
+.chat__zu svg { width: 12px; height: 12px; stroke: currentColor; stroke-width: 1.6; fill: none; }
+
+.chat__hinweis {
+  margin: var(--sp-3) var(--rh-1) 0; padding: var(--sp-3);
+  border: 1px solid var(--rule-2); border-left: 2px solid var(--mark); border-radius: var(--r);
+  font-size: 12px; line-height: 1.5; color: var(--ink-2);
+}
+.chat__hinweis[hidden] { display: none; }
+.chat__hinweis .btn-link { padding: 0 2px; }
+
+.chat__modus { margin: var(--sp-3) var(--rh-1) 0; align-self: flex-start; flex: none; }
+.chat__modus .seg__btn { height: 28px; padding: 0 12px; font-size: 12px; }
+
+/* ----------------------------------------------------------- Verlauf -- */
+.chat__verlauf {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: var(--rh-1); display: flex; flex-direction: column; gap: var(--rh-1);
+}
+.chat__leer { color: var(--ink-2); font-size: 12px; line-height: 1.5; margin: 0; }
+.chat__leer b { color: var(--ink); font-weight: 600; }
+
+.msg-n, .msg-b {
+  max-width: 92%; padding: var(--sp-3); border-radius: var(--r);
+  font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.msg-n { align-self: flex-end; background: var(--raised); color: var(--ink); }
+.msg-b { align-self: flex-start; background: var(--surface); color: var(--ink); border: 1px solid var(--rule); }
+.msg-b--fehler { background: transparent; border-style: dashed; border-color: var(--rule-2); color: var(--ink-2); }
+.msg-b--fehler .msg__marke { color: var(--mark); }
+.msg-s { align-self: center; font-size: 11.5px; color: var(--ink-2); text-align: center; line-height: 1.5; }
+.msg-s.err { color: var(--short); }
+.msg__marke { display: block; font-size: 11px; color: var(--ink-3); margin-bottom: var(--sp-1); white-space: normal; }
+.msg__zeit { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); margin-top: var(--sp-1); white-space: normal; }
+.msg-n .msg__zeit { text-align: right; }
+.msg-n[data-zurueck="true"] { opacity: 0.6; }
+
+.bedenken { margin: var(--sp-2) 0 0; padding: 0; list-style: none; display: grid; gap: var(--sp-1); }
+.bedenken li { font-size: 12px; line-height: 1.45; color: var(--ink-2); padding-left: 12px; position: relative; white-space: normal; }
+.bedenken li::before { content: ""; position: absolute; left: 2px; top: 0.55em; width: 5px; height: 5px; background: var(--mark); border-radius: 1px; }
+
+/* ------------------------------------------------------------- Karte -- */
+.karte {
+  align-self: stretch; border: 1px solid var(--rule-2); border-radius: var(--r); background: var(--surface);
+  padding: var(--sp-3); display: grid; gap: var(--sp-3);
+  transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out);
+}
+@starting-style { .karte { opacity: 0; transform: translateY(6px); } }
+.karte__vorschlag { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+.karte__vorschlag b { color: var(--ink); font-weight: 600; }
+.karte__vorschlag .up, .karte__vorschlag .down { font-weight: 600; }
+.karte__urteil { font-size: 17px; font-weight: 600; line-height: 1.2; display: flex; align-items: baseline; gap: var(--sp-3); }
+.karte__urteil small { font-size: 11.5px; font-weight: 400; color: var(--ink-2); }
+.karte[data-urteil="angenommen"] { border-left: 2px solid var(--long); }
+.karte[data-urteil="abgelehnt"] { border-left: 2px solid var(--short); }
+.karte[data-urteil="angenommen"] .karte__urteil span:first-child { color: var(--long); }
+.karte[data-urteil="abgelehnt"] .karte__urteil span:first-child { color: var(--short); }
+
+.regeln-c { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; border-top: 1px solid var(--rule); padding-top: var(--sp-2); }
+.regel-c { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: var(--sp-2); align-items: baseline; font-size: 12px; padding: 2px 0; }
+.regel-c__z { font-family: var(--mono); font-weight: 700; text-align: center; }
+.regel-c[data-status="erfuellt"] .regel-c__z { color: var(--long); }
+.regel-c[data-status="verletzt"] .regel-c__z { color: var(--short); }
+.regel-c[data-status="unbekannt"] .regel-c__z { color: var(--mark); }
+.regel-c__name { color: var(--ink); min-width: 0; }
+.regel-c__wert { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 11.5px; color: var(--ink-2); text-align: right; overflow-wrap: anywhere; }
+.regel-c__grenze { grid-column: 2 / -1; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+.regel-c__hinweis { grid-column: 2 / -1; font-size: 11.5px; line-height: 1.45; color: var(--ink-2); }
+
+.karte__fuss { display: flex; align-items: center; gap: var(--sp-3); }
+.karte__uhr { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--ink-2); flex: 1; }
+.karte__uhr[data-knapp="true"] { color: var(--mark); }
+.karte__ausfuehren {
+  height: 36px; padding: 0 18px; border: 0; border-radius: var(--r); font-weight: 600;
+  background: var(--accent); color: #041024;
+  transition: filter 120ms var(--ease-out), transform 100ms ease-out;
+}
+.karte__ausfuehren:hover { filter: brightness(1.08); }
+.karte__ausfuehren:active { transform: scale(0.97); }
+.karte__ausfuehren:disabled { background: var(--raised); color: var(--ink-3); filter: none; transform: none; }
+.karte__ausfuehren[aria-busy="true"] { cursor: progress; }
+.karte__ergebnis { font-size: 12px; line-height: 1.5; color: var(--ink-2); margin: 0; }
+.karte__ergebnis:empty { display: none; }
+.karte__ergebnis.ok { color: var(--long); }
+.karte__ergebnis.err { color: var(--short); }
+.karte__ergebnis .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------ Claude denkt -- */
+.chat__denkt { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--rh-1); font-size: 12px; color: var(--ink-2); border-top: 1px solid var(--rule); }
+.chat__denkt[hidden] { display: none; }
+.chat__denkt .chat__punkt { background: var(--accent); animation: chat-puls 1100ms ease-in-out infinite; }
+@keyframes chat-puls { 50% { opacity: 0.25; } }
+
+/* ----------------------------------------------------------- Eingabe -- */
+.chat__eingabe, .chat__formular { border-top: 1px solid var(--rule); padding: var(--sp-3) var(--rh-1) var(--rh-1); }
+.chat__eingabe { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2); align-items: end; }
+.chat__eingabe[hidden], .chat__formular[hidden] { display: none; }
+.chat__text {
+  width: 100%; min-height: 38px; max-height: 140px; resize: none;
+  border: 1px solid var(--rule-2); border-radius: var(--r); background: var(--surface); color: var(--ink);
+  font: 13px/1.45 var(--sans); padding: 9px var(--sp-3);
+  transition: border-color 120ms var(--ease-out);
+}
+.chat__text:hover { border-color: var(--ink-3); }
+.chat__text:focus { border-color: var(--accent); }
+#chat :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#chat .chat__text:focus-visible, #chat .input:focus-visible { outline-offset: 0; }
+.chat__text::placeholder, .chat__formular .input::placeholder { color: var(--ink-3); }
+.chat__senden {
+  height: 38px; padding: 0 14px; border: 1px solid var(--rule-2); border-radius: var(--r);
+  background: var(--raised); color: var(--ink);
+  transition: background 120ms var(--ease-out), transform 100ms ease-out;
+}
+.chat__senden:hover { background: var(--rule-2); }
+.chat__senden:active { transform: scale(0.97); }
+.chat__senden:disabled { background: transparent; color: var(--ink-3); transform: none; }
+
+.chat__formular { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3) var(--sp-2); }
+.chat__formular .field label { font-size: 12px; color: var(--ink-2); }
+.chat__formular .input { height: 34px; font-size: 13px; text-align: left; }
+.chat__formular .ls, .chat__formular .chat__voll { grid-column: 1 / -1; }
+.chat__formular .ls button { height: 32px; }
+.chat__formular .chat__senden { width: 100%; }
+.chat__formular .msg { grid-column: 1 / -1; margin: 0; }
+
+/* ------------------------------------------------------- Handybreite -- */
+@media (max-width: 767.98px) {
+  #chat { top: 0; width: 100vw; border-left: 0; z-index: 80; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Weniger Bewegung, nicht keine Rueckmeldung: das Feld blendet nur noch
+     ein und aus. Hoehere Spezifitaet als die Null-Regel in terminal.css. */
+  #chat, #chat[data-offen="true"] { transform: none !important; opacity: 0; transition: opacity 120ms ease, visibility 0ms linear 120ms !important; }
+  #chat[data-offen="true"] { opacity: 1; transition: opacity 120ms ease, visibility 0ms !important; }
+  #chat .karte { transition: opacity 120ms ease !important; }
+  @starting-style { #chat .karte { transform: none; } }
+  .chat__denkt .chat__punkt { animation: none; }
+}
