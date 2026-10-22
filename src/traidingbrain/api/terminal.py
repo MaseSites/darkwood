@@ -1143,6 +1143,29 @@ def _manuell_geschlossen() -> list[dict]:
     return raus
 
 
+def terminal_score(services: Any, symbol: str, journal_path, konto_signatur) -> Score:
+    """Der Terminal-Score eines Markts -- derselbe, den `/score/{symbol}` ausliefert.
+
+    Aus dem Endpunkt herausgezogen, damit der Chat dasselbe Objekt liest statt
+    einer zweiten Rechnung.
+    """
+    symbol = symbol.upper()
+    from traidingbrain.api.app import _score_read_dict, _chart_dict  # spaet, gegen Zirkel
+    sr = _score_read_dict(services, symbol)
+    ch = _chart_dict(services, symbol)
+    try:
+        buch = orderbuch(symbol, 10)
+    except HTTPException:
+        buch = None
+    try:
+        kal = kalender()
+    except HTTPException:
+        kal = None
+    led = build_ledger(journal_path(services), source=Source.LIVE, signature=konto_signatur(services))
+    rows = [{"symbol": x.symbol, "r_multiple": x.r_multiple} for x in led.rows]
+    return score(symbol, sr, ch, buch, kal, rows)
+
+
 # --------------------------------------------------------------------------- #
 # Router
 # --------------------------------------------------------------------------- #
@@ -1215,21 +1238,7 @@ def router(services: Any, konto_signatur, state_path, journal_path, followed) ->
 
     @r.get("/score/{symbol}", response_model=Score)
     def _score(symbol: str) -> Score:
-        symbol = symbol.upper()
-        from traidingbrain.api.app import _score_read_dict, _chart_dict  # spaet, gegen Zirkel
-        sr = _score_read_dict(services, symbol)
-        ch = _chart_dict(services, symbol)
-        try:
-            buch = orderbuch(symbol, 10)
-        except HTTPException:
-            buch = None
-        try:
-            kal = kalender()
-        except HTTPException:
-            kal = None
-        led = build_ledger(journal_path(services), source=Source.LIVE, signature=konto_signatur(services))
-        rows = [{"symbol": x.symbol, "r_multiple": x.r_multiple} for x in led.rows]
-        return score(symbol, sr, ch, buch, kal, rows)
+        return terminal_score(services, symbol, journal_path, konto_signatur)
 
 
     @r.get("/journal")
