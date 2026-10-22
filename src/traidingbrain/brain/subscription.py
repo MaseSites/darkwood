@@ -34,6 +34,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -154,103 +155,24 @@ class SubscriptionBrain(AnthropicBrain):
         return self._resolved
 
     def _run(self, content: str) -> tuple[str | None, str | None]:
-        """Invoke the CLI once, in an empty directory with no tools.
+        """Invoke the CLI once; the work lives in the module-level `run_cli`."""
+        return run_cli(
+            content,
+            executable=self._executable(),
+            model=self.model,
+            system_file=str(self._system_file),
+            workspace=self._workspace,
+            env=self._env,
+            on_error=self._count_error,
+            on_usage=self.usage.add,
+        )
 
-        Each flag removes a way for the answer to stop being a function of the
-        snapshot alone: an empty working directory so no CLAUDE.md or project
-        settings are read, no tools so nothing can be looked up, no MCP servers,
-        and no session on disk -- a long backtest would otherwise leave a
-        transcript behind for every bar.
-        """
-        command = [
-            self._executable(),
-            "--print",
-            "--output-format",
-            "json",
-            "--model",
-            self.model,
-            "--system-prompt-file",
-            str(self._system_file),
-            "--tools",
-            "",
-            "--strict-mcp-config",
-            "--mcp-config",
-            '{"mcpServers":{}}',
-            "--settings",
-            "{}",
-            "--max-turns",
-            "1",
-            "--no-session-persistence",
-        ]
-        try:
-            completed = subprocess.run(
-                command,
-                input=content,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=CALL_TIMEOUT_S,
-                cwd=self._workspace,
-                env=self._env,
-                check=False,
-            )
-        except FileNotFoundError as error:
-            raise SubscriptionUnavailableError(
-                f"{self.cli!r} is not on PATH. Install Claude Code, or pass cli=<full path>."
-            ) from error
-        except subprocess.TimeoutExpired:
-            self.usage.errors += 1
-            return None, None
-
-        if completed.returncode != 0:
-            detail = (completed.stderr or completed.stdout or "").strip()
-            if _is_auth_failure(detail):
-                raise SubscriptionUnavailableError(
-                    "the CLI is not signed in to a Claude subscription. Run "
-                    "`claude setup-token`, or `claude` and sign in, then retry.\n"
-                    f"{detail[:400]}"
-                )
-            self.usage.errors += 1
-            return None, None
-
-        return self._unwrap(completed.stdout)
+    def _count_error(self) -> None:
+        self.usage.errors += 1
 
     def _unwrap(self, stdout: str) -> tuple[str | None, str | None]:
         """Pull the answer and the token counts out of the CLI envelope."""
-        try:
-            envelope = json.loads(stdout)
-        except json.JSONDecodeError:
-            # Not the documented shape; the text may still be usable.
-            return (stdout or None), None
-        if not isinstance(envelope, dict):
-            return (stdout or None), None
-
-        usage = envelope.get("usage") or {}
-        self.usage.add(
-            _CliUsage(
-                input_tokens=int(usage.get("input_tokens") or 0),
-                output_tokens=int(usage.get("output_tokens") or 0),
-                cache_read_input_tokens=int(usage.get("cache_read_input_tokens") or 0),
-                cache_creation_input_tokens=int(usage.get("cache_creation_input_tokens") or 0),
-            )
-        )
-        session_id = envelope.get("session_id")
-        result = envelope.get("result")
-        if envelope.get("is_error"):
-            # An expired login arrives here, not on a non-zero exit code: the CLI
-            # ran fine and reports the failure inside the envelope. Without this
-            # check a lapsed subscription would turn a whole run into NO TRADE
-            # decisions that look exactly like caution.
-            detail = str(result or "")
-            if _is_auth_failure(detail):
-                raise SubscriptionUnavailableError(
-                    "the CLI is not signed in to a Claude subscription. Run "
-                    "`claude setup-token`, or `claude` and sign in, then retry.\n"
-                    f"{detail[:400]}"
-                )
-            return None, session_id
-        return (str(result) if result is not None else None), session_id
+        return unwrap(stdout, on_usage=self.usage.add)
 
     # -- prompt assembly ---------------------------------------------------- #
 
@@ -291,6 +213,123 @@ class _NoApiClient:
             f"{name!r} needs the Anthropic API. This brain runs through the CLI "
             "subscription, which has no token-counting or batch endpoint."
         )
+
+
+def run_cli(
+    content: str,
+    *,
+    executable: str,
+    model: str | None = None,
+    system_file: str | None = None,
+    workspace: str | None = None,
+    env: dict[str, str] | None = None,
+    on_error: Callable[[], None] | None = None,
+    on_usage: Callable[[_CliUsage], None] | None = None,
+) -> tuple[str | None, str | None]:
+    """Invoke the CLI once, in an empty directory with no tools.
+
+    Each flag removes a way for the answer to stop being a function of the
+    snapshot alone: an empty working directory so no CLAUDE.md or project
+    settings are read, no tools so nothing can be looked up, no MCP servers,
+    and no session on disk -- a long backtest would otherwise leave a
+    transcript behind for every bar.
+
+    `model` and `system_file` are left off the command line when None (the CLI's
+    own defaults then apply); `on_error` is told about a timeout or a non-zero
+    exit, `on_usage` about the token counts -- so a caller keeps its own tallies.
+    """
+    command = [executable, "--print", "--output-format", "json"]
+    if model is not None:
+        command += ["--model", model]
+    if system_file is not None:
+        command += ["--system-prompt-file", system_file]
+    command += [
+        "--tools",
+        "",
+        "--strict-mcp-config",
+        "--mcp-config",
+        '{"mcpServers":{}}',
+        "--settings",
+        "{}",
+        "--max-turns",
+        "1",
+        "--no-session-persistence",
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            input=content,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=CALL_TIMEOUT_S,
+            cwd=workspace,
+            env=env,
+            check=False,
+        )
+    except FileNotFoundError as error:
+        raise SubscriptionUnavailableError(
+            f"{executable!r} is not on PATH. Install Claude Code, or pass cli=<full path>."
+        ) from error
+    except subprocess.TimeoutExpired:
+        if on_error:
+            on_error()
+        return None, None
+
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip()
+        if _is_auth_failure(detail):
+            raise SubscriptionUnavailableError(
+                "the CLI is not signed in to a Claude subscription. Run "
+                "`claude setup-token`, or `claude` and sign in, then retry.\n"
+                f"{detail[:400]}"
+            )
+        if on_error:
+            on_error()
+        return None, None
+
+    return unwrap(completed.stdout, on_usage=on_usage)
+
+
+def unwrap(
+    stdout: str, *, on_usage: Callable[[_CliUsage], None] | None = None
+) -> tuple[str | None, str | None]:
+    """Pull the answer and the token counts out of the CLI envelope."""
+    try:
+        envelope = json.loads(stdout)
+    except json.JSONDecodeError:
+        # Not the documented shape; the text may still be usable.
+        return (stdout or None), None
+    if not isinstance(envelope, dict):
+        return (stdout or None), None
+
+    usage = envelope.get("usage") or {}
+    if on_usage:
+        on_usage(
+            _CliUsage(
+                input_tokens=int(usage.get("input_tokens") or 0),
+                output_tokens=int(usage.get("output_tokens") or 0),
+                cache_read_input_tokens=int(usage.get("cache_read_input_tokens") or 0),
+                cache_creation_input_tokens=int(usage.get("cache_creation_input_tokens") or 0),
+            )
+        )
+    session_id = envelope.get("session_id")
+    result = envelope.get("result")
+    if envelope.get("is_error"):
+        # An expired login arrives here, not on a non-zero exit code: the CLI
+        # ran fine and reports the failure inside the envelope. Without this
+        # check a lapsed subscription would turn a whole run into NO TRADE
+        # decisions that look exactly like caution.
+        detail = str(result or "")
+        if _is_auth_failure(detail):
+            raise SubscriptionUnavailableError(
+                "the CLI is not signed in to a Claude subscription. Run "
+                "`claude setup-token`, or `claude` and sign in, then retry.\n"
+                f"{detail[:400]}"
+            )
+        return None, session_id
+    return (str(result) if result is not None else None), session_id
 
 
 def _cli_environment() -> dict[str, str]:
