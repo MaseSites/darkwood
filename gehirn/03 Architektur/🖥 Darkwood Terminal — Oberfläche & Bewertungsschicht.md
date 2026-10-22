@@ -283,15 +283,29 @@ Berührt: `api/terminal.py` (`terminal_score` herausgezogen),
 `brain/subscription.py` (`run_cli`/`unwrap`), eine Zeile in `terminal.js`.
 Nicht angefasst: `config/`, `config_offen/`, `risk/`, `live/`.
 
+**Marktübersicht (seit 2026-10-22, Abend):** Bei jeder Chat-Nachricht bekommt
+Claude zusätzlich alle 12 beobachteten Märkte (Kurs, 24-h-Veränderung,
+Marktscore-Richtung, Rating, Regime, Setups D1/H4/H1, letzte 3 Trades;
+`api/chat/uebersicht.py`). Parallel gerechnet, Zeitlimit 45 s, 60 s
+zwischengespeichert; nicht rechtzeitig fertige Märkte stehen als `unbekannt`.
+Das Urteil liest die Übersicht nicht. Live gesehen: „analysiere jeden Markt"
+wurde über alle 12 Märkte beantwortet (vorgewärmte Scores, 25 s).
+
+**Behoben in der Schlussrunde:** Ausführen nur, wenn SL, TP und Hebel exakt der
+Karte entsprechen; die Margin wird zum aktuellen Kurs neu berechnet (Risiko
+bleibt unter dem Deckel) und angezeigt, wenn sie abweicht. Kaputte `plan.yaml`
+gibt 503; keine Nachricht bleibt ohne Bot-Zeile; Claude bekommt
+`system_prompt.md` als Systemdatei.
+
 **Offene Punkte (aus dem Review, nicht behoben):**
-- plan.yaml-Fehler (ValueError/YAMLError) und Fehler beim Laden der gefolgten
-  Symbole ergeben 500 statt 503; nach 503 bleibt die Nutzernachricht ohne Antwort.
-- Ausgeführter Auftrag kann von der gezeigten Karte abweichen (Neuprüfung setzt
-  SL/Margin neu); Ablehnen bei Abweichung wäre strenger.
-- Unlesbare Claude-Antwort wird roh gespeichert und an Claude zurückgegeben;
-  nach Reload sieht sie wie eine normale Antwort aus.
-- Claude-Aufruf lädt Standard-System-Prompt, Nutzer-Hooks und globale CLAUDE.md
-  (`--setting-sources ""` prüfen); Temp-Verzeichnis wird nie gelöscht.
+- Kalter Start: 12 Marktscores à ~14 s auf 4 Arbeitern reissen das 45-s-Limit;
+  die erste Frage nach einem Neustart sieht dann Märkte als `unbekannt`.
+- Eine angenommene Karte wurde noch nie live ausgeführt (am 22.10. gab es auf
+  keinem der 12 Märkte ein Setup); nur Tests decken den Ausführen-Weg ab.
+- Unlesbare Claude-Antwort sieht nach Reload wie eine normale Antwort aus
+  (kein Flag gespeichert).
+- Nutzer-Hooks und globale CLAUDE.md laden beim Claude-Aufruf vermutlich noch
+  mit (`--setting-sources ""` prüfen); Temp-Verzeichnis wird nie gelöscht.
 - UI: Kopf zeigt das manuelle Guthaben nicht (kein Endpunkt); Quellen unter
   Bot-Antworten werden nicht gerendert; Verlaufskarten ohne Bedenken;
   zwischen 768 und 980 px bricht der Kopf unter das Feld um.
