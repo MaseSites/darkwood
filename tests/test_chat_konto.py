@@ -58,3 +58,22 @@ def test_bot_positionen_zaehlen_mit(tmp_path):
 def test_bot_positionen_ohne_zustandsdatei_ist_leer(tmp_path):
     from traidingbrain.api.chat.konto import bot_positionen
     assert bot_positionen(tmp_path / "gibt_es_nicht.sqlite", ["BTCUSDT"]) == []
+
+
+def test_bot_positionen_liest_echten_zustand_ohne_zu_schreiben(tmp_path):
+    from traidingbrain.api.chat.konto import bot_positionen
+    from traidingbrain.domain.enums import Side
+    from traidingbrain.live.paperstate import PaperState, PaperStateStore
+    from traidingbrain.sim.broker import OpenPosition
+
+    pfad = tmp_path / "s.sqlite"
+    speicher = PaperStateStore(pfad)
+    short = OpenPosition(side=Side.SHORT, entry_price=100.0, qty=1.0, leverage=10.0,
+                         stop=101.0, target=98.0, liq_price=109.0, opened_ts=1,
+                         margin=10.0, risk_amount=1.0)
+    speicher.save(PaperState(symbol="ETHUSDT", equity=1000.0, position=short))
+    speicher.save(PaperState(symbol="BTCUSDT", equity=1000.0))
+    vorher = (pfad.read_bytes(), pfad.stat().st_mtime_ns)
+
+    assert bot_positionen(pfad, ["ETHUSDT", "BTCUSDT", "SOLUSDT"]) == [("ETHUSDT", "short")]
+    assert (pfad.read_bytes(), pfad.stat().st_mtime_ns) == vorher

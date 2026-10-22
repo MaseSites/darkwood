@@ -13,7 +13,7 @@ from pathlib import Path
 
 from traidingbrain.domain.enums import Side, TradeState
 from traidingbrain.domain.proposal import ClosedTrade, Position
-from traidingbrain.live.paperstate import PaperStateStore
+from traidingbrain.live.paperstate import _load_position
 from traidingbrain.risk.limits import AccountState
 
 #: Startkapital des manuellen Papierkontos in USD. Die Zahl steht nur hier.
@@ -77,13 +77,25 @@ def manuelles_konto(db: Path, *, jetzt_ms: int, bot_positionen: list[tuple[str, 
 
 
 def bot_positionen(state_path: Path, symbole: list[str]) -> list[tuple[str, str]]:
-    """`(symbol, side)` der offenen Positionen des Bots, aus dem Paper-Zustand."""
+    """`(symbol, side)` der offenen Positionen des Bots, aus dem Paper-Zustand.
+
+    Nur lesend und ohne `PaperStateStore`: dessen Konstruktor legt Tabellen an,
+    schaltet WAL und migriert Spalten -- ein Schreibzugriff auf die Datenbank
+    des laufenden Traders. Fehlt Datei oder Tabelle, gibt es keine Positionen;
+    jeder andere Fehler (gesperrt, kaputt) wird nicht verschluckt.
+    """
     if not state_path.exists():
         return []
-    speicher = PaperStateStore(state_path)
     raus: list[tuple[str, str]] = []
-    for s in symbole:
-        zustand = speicher.load(s)
-        if zustand is not None and zustand.position is not None:
-            raus.append((s, zustand.position.side.value))
+    with closing(sqlite3.connect(f"file:{state_path.as_posix()}?mode=ro", uri=True, timeout=10)) as con:
+        for s in symbole:
+            try:
+                zeile = con.execute("SELECT position FROM accounts WHERE symbol = ?", (s,)).fetchone()
+            except sqlite3.OperationalError as fehler:
+                if "no such table" in str(fehler):
+                    return []
+                raise
+            position = _load_position(zeile[0]) if zeile else None
+            if position is not None:
+                raus.append((s, position.side.value))
     return raus
