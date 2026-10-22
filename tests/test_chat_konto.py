@@ -77,3 +77,15 @@ def test_bot_positionen_liest_echten_zustand_ohne_zu_schreiben(tmp_path):
 
     assert bot_positionen(pfad, ["ETHUSDT", "BTCUSDT", "SOLUSDT"]) == [("ETHUSDT", "short")]
     assert (pfad.read_bytes(), pfad.stat().st_mtime_ns) == vorher
+
+
+def test_datei_ohne_tabelle_ist_leeres_konto(tmp_path):
+    """Ruling 19: `order_oeffnen` legt die Datei an, bevor die Tabelle steht; ein
+    gleichzeitiger Leser sieht dann eine leere Datei -- das ist ein leeres Konto."""
+    pfad = tmp_path / "manual_paper.sqlite"
+    with closing(sqlite3.connect(pfad)) as con:
+        con.execute("CREATE TABLE andere (x INTEGER)")
+        con.commit()
+    konto = manuelles_konto(pfad, jetzt_ms=JETZT, bot_positionen=[])
+    assert konto.equity == MANUELL_START
+    assert konto.open_positions == []

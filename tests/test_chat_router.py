@@ -314,16 +314,10 @@ def test_ausfuehren_neu_geprueft_und_abgelehnt(umgebung):
 
 
 def test_ausfuehren_kursdrift(umgebung):
-    # Margin und Hebel genannt und unter dem Risikodeckel: die Order haengt nicht
-    # vom Kurs ab, so dass die Neupruefung dieselbe Order liefert und nur die Drift greift.
-    fest = Vorschlag(symbol="BTCUSDT", side="short", sl=83_700.0, margin_usd=100.0, leverage=5.0)
-    c = _client(umgebung, FesterSprecher(Antwort(text="Short.", vorschlag=fest)))
-    karte = _frage(c, "short?").json()["karte"]
-    assert karte["urteil"]["angenommen"] is True
-    assert karte["urteil"]["order"]["margin_usd"] == 100.0  # nicht gekuerzt
+    c, karte_id = _karte_annehmen(umgebung)
     # -0.2 %: beim Short wird der Stop weiter, alle acht Regeln bleiben erfuellt.
     umgebung.kurs.wert = PREIS * 0.998
-    r = c.post(f"/api/terminal/chat/ausfuehren/{karte['id']}")
+    r = c.post(f"/api/terminal/chat/ausfuehren/{karte_id}")
     assert r.status_code == 200
     assert r.json()["ausgefuehrt"] is False
     assert "bp" in r.json()["grund"]
@@ -331,20 +325,24 @@ def test_ausfuehren_kursdrift(umgebung):
 
 
 def test_ausfuehren_gekuerzte_margin_folgt_dem_kurs(umgebung, monkeypatch):
-    """Ruling 17: die vom Risikodeckel gekuerzte Margin haengt am Kurs, mit dem
-    Hebel Kurs / Stopabstand (hier ~75x). 0.3 bp Bewegung aendert sie um ~0.23 %
-    (weit ueber 0.01 USD, unter 2 x 15 bp = 0.30 %) -- ausgefuehrt, mit der
-    gezeigten Margin. (1 bp waere ~0.75 % und wird abgelehnt.)"""
+    """Ruling 18: die vom Risikodeckel gekuerzte Margin haengt am Kurs (hier ~75x
+    die Kursbewegung). 5 bp Bewegung aendert sie um ~3.7 %, innerhalb der Grenze
+    15 bp x Kurs / Stopabstand -- ausgefuehrt, mit der FRISCHEN Margin, damit das
+    Risiko beim Ausfuehrungskurs im Deckel bleibt."""
     c, karte_id = _karte_annehmen(umgebung)
     gezeigt = umgebung.speicher.karte(karte_id)["urteil"].order
-    umgebung.kurs.wert = PREIS * (1 - 0.3e-4)
+    umgebung.kurs.wert = PREIS * (1 - 5e-4)
     gesehen: list = []
     echt = terminal.order_oeffnen
     monkeypatch.setattr(terminal, "order_oeffnen", lambda w: gesehen.append(w) or echt(w))
     r = c.post(f"/api/terminal/chat/ausfuehren/{karte_id}")
     assert r.status_code == 200, r.text
     assert r.json()["ausgefuehrt"] is True
-    assert gesehen == [gezeigt]
+    assert len(gesehen) == 1
+    frisch = gesehen[0]
+    assert (frisch.sl, frisch.tp, frisch.leverage) == (gezeigt.sl, gezeigt.tp, gezeigt.leverage)
+    assert abs(frisch.margin_usd - gezeigt.margin_usd) / gezeigt.margin_usd > 0.03
+    assert r.json()["margin_usd"] == frisch.margin_usd
     assert _zeilen(umgebung.manuell) == 1
 
 
@@ -462,9 +460,9 @@ def test_ausfuehren_setup_stop_geaendert_wird_abgelehnt(umgebung):
     assert karte["ausgefuehrt_ts"] is None and karte["order_id"] is None
 
 
-def test_ausfuehren_gibt_genau_die_gespeicherte_order_auf(umgebung, monkeypatch):
+def test_ausfuehren_stop_innerhalb_rundung_gibt_frische_order_auf(umgebung, monkeypatch):
     c, karte_id, gezeigt = _karte_mit_bot_stop(umgebung)
-    # Innerhalb der Toleranz (1e-9 relativ): gleich -- aufgegeben wird der gezeigte Wert.
+    # Innerhalb der Toleranz (1e-9 relativ): gleich -- aufgegeben wird die frische Order.
     umgebung.kurs.stop = 83_700.0 * (1 + 1e-12)
     gesehen: list = []
     echt = terminal.order_oeffnen
@@ -478,8 +476,9 @@ def test_ausfuehren_gibt_genau_die_gespeicherte_order_auf(umgebung, monkeypatch)
     assert r.status_code == 200, r.text
     assert r.json()["ausgefuehrt"] is True
     assert len(gesehen) == 1
-    assert gesehen[0].model_dump(mode="json") == gezeigt
-    assert gesehen[0].sl == 83_700.0
+    assert gesehen[0].sl == 83_700.0 * (1 + 1e-12)  # frisch, nicht der gespeicherte Wert
+    assert gesehen[0].sl == pytest.approx(gezeigt["sl"], rel=1e-9)
+    assert r.json()["margin_usd"] == gesehen[0].margin_usd
     assert _zeilen(umgebung.manuell) == 1
 
 

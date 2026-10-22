@@ -55,14 +55,23 @@ def _offene(con: sqlite3.Connection) -> list[Position]:
 
 
 def manuelles_konto(db: Path, *, jetzt_ms: int, bot_positionen: list[tuple[str, str]]) -> AccountState:
-    """Stand des manuellen Kontos. Fehlt die Datei, ist es das Startkapital."""
+    """Stand des manuellen Kontos. Fehlen Datei oder Tabelle, ist es das Startkapital.
+
+    Die Tabelle kann fehlen, weil `order_oeffnen` die Datei anlegt, bevor die
+    Tabelle steht -- ein gleichzeitiger Leser sieht dann eine leere Datei.
+    """
     historie: list[ClosedTrade] = []
     offen: list[Position] = []
     if db.exists():
         with closing(sqlite3.connect(db, timeout=10)) as con:
             con.row_factory = sqlite3.Row
-            historie = _geschlossene(con)
-            offen = _offene(con)
+            try:
+                historie = _geschlossene(con)
+                offen = _offene(con)
+            except sqlite3.OperationalError as fehler:
+                if "no such table: positions" not in str(fehler):
+                    raise
+                historie, offen = [], []
     # Die Bot-Positionen zaehlen fuer Limits wie max. gleichzeitige Positionen
     # und gleiche Richtung mit; Menge und Preis kennt dieses Konto nicht.
     jetzt_offen = offen + [

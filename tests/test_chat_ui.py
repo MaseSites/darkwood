@@ -58,3 +58,11 @@ def test_chat_dateien_werden_ausgeliefert(client: TestClient) -> None:
     assert "/api/terminal/chat" in js.text and '"/nachricht"' in js.text
     assert "terminal:blick" in js.text
     assert css.status_code == 200 and "#chat" in css.text
+
+
+def test_ausfuehren_zeigt_angepasste_margin(client: TestClient) -> None:
+    """Ruling 18: weicht die aufgegebene Margin von der Karte ab, steht sie im Ergebnis."""
+    js = client.get("/static/terminal-chat.js").text
+
+    assert "Margin angepasst" in js
+    assert "esc(money(r.margin_usd))" in js

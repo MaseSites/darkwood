@@ -41,7 +41,7 @@ _PLAN_FEHLT = "config_offen/plan.yaml fehlt oder ist unvollstaendig"
 _ORDER_AUSSTEHEND = "ausstehend"
 
 #: sl, tp und Hebel von gezeigter und frisch gepruefter Order: gleich bis auf Rundung.
-#: Die Margin hat eine eigene, groessere Toleranz (`_margin_toleranz`).
+#: Die Margin hat eine eigene, kursabhaengige Toleranz (`_margin_toleranz`).
 _REL_TOLERANZ = 1e-9
 
 _GEAENDERT = "Vorschlag hat sich geaendert - bitte neu pruefen"
@@ -84,13 +84,17 @@ def _gleich(a: float | None, b: float | None) -> bool:
     return math.isclose(a, b, rel_tol=_REL_TOLERANZ, abs_tol=0.0)
 
 
-def _margin_toleranz(max_drift_bps: float) -> float:
-    """Relative Toleranz der Margin: 2 x die erlaubte Kursdrift (15 bp -> 0.30 %).
+def _margin_toleranz(max_drift_bps: float, preis: float | None, sl: float | None) -> float:
+    """Relative Toleranz der Margin (Ruling 18): erlaubte Drift x Kurs / Stopabstand.
 
-    Die vom Risikodeckel gekuerzte Margin haengt am Kurs; innerhalb der erlaubten
-    Drift soll sie die Ausfuehrung nicht verhindern (Ruling 17).
+    Die vom Risikodeckel gekuerzte Margin ist `deckel * kurs / (hebel * |kurs - sl|)`;
+    eine Kursbewegung um d aendert sie um etwa d x kurs / |kurs - sl|. Eine reine
+    Kursbewegung innerhalb der erlaubten Drift loest also nie aus, eine Aenderung
+    von Konto oder Plan schon. Ohne Kurs oder Stop: nur Rundung.
     """
-    return 2 * max_drift_bps / 10_000
+    if preis is None or sl is None or preis == sl:
+        return _REL_TOLERANZ
+    return max_drift_bps / 10_000 * preis / abs(preis - sl) + _REL_TOLERANZ
 
 
 def _geaenderte_felder(
@@ -105,7 +109,7 @@ def _geaenderte_felder(
     felder = [
         f for f in ("sl", "tp", "leverage") if not _gleich(getattr(gezeigt, f), getattr(neu, f))
     ]
-    if abs(gezeigt.margin_usd - neu.margin_usd) > margin_rel_toleranz * abs(gezeigt.margin_usd):
+    if abs(neu.margin_usd - gezeigt.margin_usd) / gezeigt.margin_usd > margin_rel_toleranz:
         felder.append("margin_usd")
     if (gezeigt.symbol, gezeigt.side) != (neu.symbol, neu.side):
         felder.append("symbol/side")
@@ -244,11 +248,12 @@ def router(
         """Die einzige Stelle, die eine Order aufgibt -- hoechstens eine je Karte.
 
         Reihenfolge: 404 unbekannt, 409 schon ausgefuehrt, 410 abgelaufen, 409
-        abgelehnt; dann Lage neu und `pruefe` neu, die neue Order muss der Order
-        der Karte gleichen (sl, tp, Hebel exakt; Margin bis 2 x max_price_drift_bps
-        relativ), Kursdrift gegen
-        den Kurs der Karte. Aufgegeben wird die gespeicherte Order -- die, die der
-        Nutzer gesehen hat. Erst danach wird die Karte atomar beansprucht (`als_ausgefuehrt`)
+        abgelehnt; dann Lage neu und `pruefe` neu, Kursdrift gegen den Kurs der
+        Karte, und die neue Order muss der Order der Karte gleichen: sl, tp, Hebel
+        bis auf Rundung, die Margin bis auf das, was eine Kursbewegung innerhalb
+        der Drift-Grenze an ihr aendert (`_margin_toleranz`). Aufgegeben wird die
+        FRISCHE Order: ihre Margin haelt das Risiko beim Ausfuehrungskurs im
+        Deckel. Erst danach wird die Karte atomar beansprucht (`als_ausgefuehrt`)
         und ERST DANN `order_oeffnen` gerufen -- so kann auch ein Doppelklick
         nur eine Order erzeugen. Scheitert die Order nach der Beanspruchung,
         bleibt die Karte markiert und es kommt 502: kein automatischer zweiter
@@ -271,18 +276,7 @@ def router(
         urteil = pruefe(v, lage, _werte(), _limits())
         if not urteil.angenommen or urteil.order is None:
             return {"ausgefuehrt": False, "grund": _grund(urteil)}
-        # Aufgegeben wird die Order der Karte, nicht die frisch berechnete -- also
-        # nur, wenn beide (bis auf Rundung, Margin bis 2 x Drift-Grenze) dieselbe sind.
-        gezeigt: OrderWunsch | None = karte["urteil"].order
-        if gezeigt is None:
-            return {"ausgefuehrt": False, "grund": _GEAENDERT, "felder": ["order"]}
         max_drift_bps = services.config.risk.execution.max_price_drift_bps
-        felder = _geaenderte_felder(
-            gezeigt, urteil.order, margin_rel_toleranz=_margin_toleranz(max_drift_bps)
-        )
-        if felder:
-            return {"ausgefuehrt": False, "grund": _GEAENDERT, "felder": felder}
-
         alt, neu = karte["preis"], lage.preis
         if not alt or neu is None:
             return {"ausgefuehrt": False, "grund": "Kurs bei Pruefung unbekannt"}
@@ -290,16 +284,26 @@ def router(
         if drift_bp > max_drift_bps:
             return {"ausgefuehrt": False, "grund": f"Kurs hat sich um {drift_bp:.1f} bp bewegt"}
 
+        # Die frische Order muss die gezeigte sein -- bis auf die Margin, die dem
+        # Kurs folgen darf, aber nicht einer Aenderung von Konto oder Plan.
+        gezeigt: OrderWunsch | None = karte["urteil"].order
+        if gezeigt is None:
+            return {"ausgefuehrt": False, "grund": _GEAENDERT, "felder": ["order"]}
+        toleranz = _margin_toleranz(max_drift_bps, neu, gezeigt.sl)
+        felder = _geaenderte_felder(gezeigt, urteil.order, margin_rel_toleranz=toleranz)
+        if felder:
+            return {"ausgefuehrt": False, "grund": _GEAENDERT, "felder": felder}
+
         if not sp.als_ausgefuehrt(karte_id, _ORDER_AUSSTEHEND, ts=ts):
             raise HTTPException(409, "Karte wurde schon ausgefuehrt")
         try:
-            order = terminal.order_oeffnen(gezeigt)
+            order = terminal.order_oeffnen(urteil.order)
         except Exception as fehler:  # jeder Fehler: melden, nie wiederholen
             text = fehler.detail if isinstance(fehler, HTTPException) else str(fehler)
             _order_id_setzen(sp, karte_id, f"fehlgeschlagen: {text}"[:200])
             raise HTTPException(502, f"Order nicht aufgegeben: {text}") from fehler
         _order_id_setzen(sp, karte_id, order["id"])
-        return {"ausgefuehrt": True, "order": order}
+        return {"ausgefuehrt": True, "order": order, "margin_usd": urteil.order.margin_usd}
 
     @r.get("/verlauf")
     def _verlauf() -> list[dict]:

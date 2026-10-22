@@ -164,6 +164,7 @@ function karteKnoten(karte, bedenken = []) {
   </section>`);
   if (ja) {
     el.dataset.ablauf = String(karte.laeuft_ab_ts);
+    el.dataset.margin = String(u.order?.margin_usd ?? "");
     if (karte.ausgefuehrt_ts != null) {
       el.dataset.fertig = "true";
       const id = String(karte.order_id ?? "");
@@ -212,7 +213,11 @@ async function ausfuehren(el) {
     if (r.ausgefuehrt) {
       el.dataset.fertig = "true";
       const o = r.order ?? {};
-      zeigeErgebnis(el, { ok: true, html: `Ausgeführt · Order <span class="num">${esc(o.id)}</span> · Einstieg <span class="num">${px(o.entry)}</span>` });
+      // Die Margin folgt beim Ausfuehren dem Kurs (Risikodeckel); weicht sie ab, sagen wir es.
+      const karteMargin = Number(el.dataset.margin);
+      const angepasst = r.margin_usd != null && el.dataset.margin !== "" && Math.abs(r.margin_usd - karteMargin) > 0.01
+        ? ` · Margin angepasst: <span class="num">${esc(money(r.margin_usd))} USD</span>` : "";
+      zeigeErgebnis(el, { ok: true, html: `Ausgeführt · Order <span class="num">${esc(o.id)}</span> · Einstieg <span class="num">${px(o.entry)}</span>${angepasst}` });
     } else {
       zeigeErgebnis(el, { ok: false, html: `Nicht ausgeführt: ${esc(r.grund ?? "ohne Grund")}` });
     }
