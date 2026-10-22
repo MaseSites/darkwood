@@ -23,7 +23,7 @@ from traidingbrain.api.app import Services
 from traidingbrain.api.chat import lagebild
 from traidingbrain.api.chat import router as router_modul
 from traidingbrain.api.chat.lagebild import Holer
-from traidingbrain.api.chat.modelle import Vorschlag
+from traidingbrain.api.chat.modelle import MarktZeile, Vorschlag
 from traidingbrain.api.chat.router import router
 from traidingbrain.api.chat.speicher import ChatSpeicher
 from traidingbrain.api.chat.sprecher import Antwort
@@ -109,6 +109,12 @@ def _bot_dateien(data_dir: Path) -> None:
         with closing(sqlite3.connect(data_dir / "plan_paper.sqlite")) as con:
             con.execute("CREATE TABLE accounts (symbol TEXT PRIMARY KEY, position TEXT)")
             con.commit()
+
+
+@pytest.fixture(autouse=True)
+def _keine_echte_uebersicht(monkeypatch):
+    """Die Marktuebersicht ginge an Binance und an den Score; hier ist sie leer."""
+    monkeypatch.setattr(router_modul, "baue_uebersicht", lambda services: [])
 
 
 @pytest.fixture
@@ -515,6 +521,73 @@ def test_lage_fuer_anderen_markt_fehlt_bot_zeile_und_503(umgebung, monkeypatch):
     assert [z["rolle"] for z in verlauf] == ["nutzer", "bot"]
     assert verlauf[1]["text"].startswith("Konnte nicht antworten: ")
     assert verlauf[1]["karte_id"] is None
+
+
+# -- Marktuebersicht: nur in /nachricht, ihr Ausfall bricht nichts -- #
+
+
+class MerkenderSprecher(FesterSprecher):
+    def __init__(self, antwort: Antwort) -> None:
+        super().__init__(antwort)
+        self.lagen: list = []
+
+    def sprich(self, nachricht, lage, verlauf) -> Antwort:
+        self.lagen.append(lage)
+        return super().sprich(nachricht, lage, verlauf)
+
+
+def _zwoelf_zeilen(services) -> list[MarktZeile]:
+    return [
+        MarktZeile(
+            symbol=f"M{i}USDT",
+            preis=1.0,
+            veraenderung_pct=0.0,
+            richtung="neutral",
+            rating=50,
+            regime="Trend",
+            setups=[],
+            letzte_trades=[],
+            quellen={},
+        )
+        for i in range(12)
+    ]
+
+
+def test_nachricht_haengt_uebersicht_an(umgebung, monkeypatch):
+    monkeypatch.setattr(router_modul, "baue_uebersicht", _zwoelf_zeilen)
+    sprecher = MerkenderSprecher(Antwort(text="Ueberblick."))
+    r = _frage(_client(umgebung, sprecher), "wo wuerdest du traden?")
+    assert r.status_code == 200, r.text
+    assert [z.symbol for z in sprecher.lagen[0].uebersicht] == [f"M{i}USDT" for i in range(12)]
+
+
+def test_uebersicht_fehler_bricht_nachricht_nicht(umgebung, monkeypatch):
+    def kaputt(services):
+        raise RuntimeError("Uebersicht weg")
+
+    monkeypatch.setattr(router_modul, "baue_uebersicht", kaputt)
+    sprecher = MerkenderSprecher(Antwort(text="Short passt.", vorschlag=SHORT))
+    r = _frage(_client(umgebung, sprecher), "short?")
+    assert r.status_code == 200, r.text
+    assert sprecher.lagen[0].uebersicht is None
+    assert r.json()["karte"]["urteil"]["angenommen"] is True
+
+
+def test_pruefen_baut_keine_uebersicht(umgebung, monkeypatch):
+    c, karte_id = _karte_annehmen(umgebung)
+
+    def verboten(services):
+        raise AssertionError("pruefen/ausfuehren duerfen keine Uebersicht bauen")
+
+    monkeypatch.setattr(router_modul, "baue_uebersicht", verboten)
+    r = c.post(
+        "/api/terminal/chat/pruefen", json={"symbol": "BTCUSDT", "side": "short", "sl": 83_700.0}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["karte"]["urteil"]["angenommen"] is True
+    a = c.post(f"/api/terminal/chat/ausfuehren/{karte_id}")
+    assert a.status_code == 200, a.text
+    assert a.json()["ausgefuehrt"] is True
 
 
 @pytest.mark.parametrize(

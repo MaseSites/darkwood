@@ -23,7 +23,7 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, ValidationError, field_validator
 
-from traidingbrain.api.chat.modelle import Lage, Vorschlag
+from traidingbrain.api.chat.modelle import Lage, MarktZeile, Vorschlag
 from traidingbrain.brain.subscription import (
     SubscriptionUnavailableError,
     _cli_environment,
@@ -77,12 +77,22 @@ class _Roh(BaseModel):
 
 def _lage_json(lage: Lage) -> str:
     """Die Lage fuer den Prompt: ohne AccountState-Objekt, dafuer Equity und Positionen."""
-    daten = lage.model_dump(mode="json", exclude={"konto"})
+    daten = lage.model_dump(mode="json", exclude={"konto", "uebersicht"})
     daten["equity"] = lage.konto.equity
     daten["positionen"] = [
         [p.symbol, getattr(p.side, "value", p.side)] for p in lage.konto.open_positions
     ]
+    daten["uebersicht"] = (
+        None if lage.uebersicht is None else [_markt_kompakt(z) for z in lage.uebersicht]
+    )
     return json.dumps(daten, ensure_ascii=False, indent=2)
+
+
+def _markt_kompakt(z: MarktZeile) -> dict:
+    """Eine Uebersichtszeile ohne die Langtexte der Quellen -- nur ihre Namen, wenn unbekannt."""
+    daten = z.model_dump(mode="json", exclude={"quellen"})
+    daten["unbekannt"] = [name for name, text in z.quellen.items() if "unbekannt" in text]
+    return daten
 
 
 def _version_probe(pfad: str) -> bool:

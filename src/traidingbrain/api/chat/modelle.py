@@ -62,6 +62,20 @@ class Regelwerte(BaseModel):
     kosten_roundtrip: float
 
 
+class MarktZeile(BaseModel):
+    """Ein beobachteter Markt in der Uebersicht; None heisst unbekannt."""
+
+    symbol: str
+    preis: float | None
+    veraenderung_pct: float | None  # 24 h
+    richtung: Literal["long", "short", "neutral"] | None
+    rating: int | None
+    regime: str | None
+    setups: list[Setup] | None
+    letzte_trades: list[dict]
+    quellen: dict[str, str]
+
+
 class Lage(BaseModel):
     """Marktlage zum Vorschlag; None heisst unbekannt."""
 
@@ -76,3 +90,5 @@ class Lage(BaseModel):
     konto: AccountState
     quellen: dict[str, str]
     kontext: dict
+    #: Alle beobachteten Maerkte, nur fuer den Sprecher; `pruefe` liest sie nicht.
+    uebersicht: list[MarktZeile] | None = None

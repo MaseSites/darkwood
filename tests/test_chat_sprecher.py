@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from traidingbrain.api.chat import sprecher as modul
-from traidingbrain.api.chat.modelle import Lage
+from traidingbrain.api.chat.modelle import Lage, MarktZeile, Setup
 from traidingbrain.api.chat.sprecher import Antwort, ClaudeSprecher
 from traidingbrain.brain.subscription import SubscriptionUnavailableError, unwrap
 from traidingbrain.domain.enums import Side
@@ -180,3 +180,42 @@ def test_cli_bekommt_systemtext_als_datei(monkeypatch):
     assert datei == Path(modul.__file__).with_name("system_prompt.md")
     assert datei.is_file()
     assert "urteilst nicht" not in inhalt and "## Lagebild" in inhalt
+
+
+def test_lage_json_enthaelt_uebersicht_kompakt():
+    lang = "unbekannt: HTTPException: no analysable data for SOLUSDT; run scripts/backfill.py"
+    zeilen = [
+        MarktZeile(
+            symbol="ETHUSDT", preis=4_000.0, veraenderung_pct=2.5, richtung="long",
+            rating=70, regime="Trend",
+            setups=[
+                Setup(timeframe="H4", side="long", entry=4e3, stop=3.9e3, target=4.2e3)
+            ],
+            letzte_trades=[{"side": "long", "r_multiple": 1.2}], quellen={},
+        ),
+        MarktZeile(
+            symbol="SOLUSDT", preis=None, veraenderung_pct=None, richtung=None,
+            rating=None, regime=None, setups=None, letzte_trades=[],
+            quellen={"kurs": lang, "score": "unbekannt: nicht rechtzeitig berechnet"},
+        ),
+    ]  # fmt: skip
+    daten = json.loads(modul._lage_json(_lage().model_copy(update={"uebersicht": zeilen})))
+    eth, sol = daten["uebersicht"]
+    assert eth == {
+        "symbol": "ETHUSDT",
+        "preis": 4_000.0,
+        "veraenderung_pct": 2.5,
+        "richtung": "long",
+        "rating": 70,
+        "regime": "Trend",
+        "setups": [
+            {"timeframe": "H4", "side": "long", "entry": 4e3, "stop": 3.9e3, "target": 4.2e3}
+        ],
+        "letzte_trades": [{"side": "long", "r_multiple": 1.2}],
+        "unbekannt": [],
+    }
+    assert sol["unbekannt"] == ["kurs", "score"]
+    assert "quellen" not in sol
+    assert "backfill" not in json.dumps(daten["uebersicht"])
+    # Ohne Uebersicht bleibt das Feld da, als null.
+    assert json.loads(modul._lage_json(_lage()))["uebersicht"] is None

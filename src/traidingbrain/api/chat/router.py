@@ -26,6 +26,7 @@ from traidingbrain.api.chat.modelle import Lage, Regelwerte, Urteil, Vorschlag
 from traidingbrain.api.chat.pruefung import pruefe, regelwerte_aus
 from traidingbrain.api.chat.speicher import ChatSpeicher
 from traidingbrain.api.chat.sprecher import VERLAUF_ZEILEN, ClaudeSprecher, Sprecher
+from traidingbrain.api.chat.uebersicht import baue_uebersicht
 from traidingbrain.risk.limits import RiskLimits
 
 #: So viele Nachrichten liefert `/verlauf`.
@@ -198,6 +199,13 @@ def router(
             symbol = Vorschlag(symbol=a.symbol, side="long").symbol  # gleich normalisiert
             werte = _werte()
             lage = _lage(symbol, a.timeframe, ts)
+            # Alle beobachteten Maerkte, nur fuer Claude; faellt die Uebersicht als
+            # Ganzes aus, geht die Nachricht ohne sie weiter.
+            try:
+                zeilen = baue_uebersicht(services)
+            except Exception:
+                zeilen = None
+            lage = lage.model_copy(update={"uebersicht": zeilen})
             sp = _speicher()
             verlauf = [(z["rolle"], z["text"]) for z in sp.verlauf(VERLAUF_ZEILEN)]
             sp.nachricht("nutzer", a.text, ts=ts)
