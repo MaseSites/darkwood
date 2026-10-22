@@ -1161,8 +1161,14 @@ def terminal_score(services: Any, symbol: str, journal_path, konto_signatur) -> 
         kal = kalender()
     except HTTPException:
         kal = None
-    led = build_ledger(journal_path(services), source=Source.LIVE, signature=konto_signatur(services))
-    rows = [{"symbol": x.symbol, "r_multiple": x.r_multiple} for x in led.rows]
+    # `JournalStore` legt die Datei an, wenn sie fehlt -- ohne Journal gibt es
+    # keine Zeilen, und es entsteht auch keins.
+    pfad = journal_path(services)
+    if Path(pfad).exists():
+        led = build_ledger(pfad, source=Source.LIVE, signature=konto_signatur(services))
+        rows = [{"symbol": x.symbol, "r_multiple": x.r_multiple} for x in led.rows]
+    else:
+        rows = []
     return score(symbol, sr, ch, buch, kal, rows)
 
 

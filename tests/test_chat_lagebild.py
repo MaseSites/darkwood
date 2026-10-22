@@ -4,11 +4,20 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import sqlite3
+
 import pytest
+import yaml
 from fastapi import HTTPException
 
+# Beim Einsammeln importieren: der Import von `api.app` probt IPv6 per Socket
+# (urllib3), und das soll nicht mitten in einem Test den Socket-Waechter wecken.
+# Dasselbe tut tests/test_api.py in Zeile 25 -- vorbestehend, app.py bleibt unberuehrt.
+import traidingbrain.api.app  # noqa: F401
+from traidingbrain.api import terminal
+
 from traidingbrain.api.chat import lagebild
-from traidingbrain.api.chat.lagebild import Holer, baue_lage
+from traidingbrain.api.chat.lagebild import Holer, LageNichtVerfuegbar, baue_lage
 from traidingbrain.api.chat.modelle import Regelwerte, Vorschlag
 from traidingbrain.api.chat.pruefung import pruefe
 from traidingbrain.config.settings import load_config
@@ -129,3 +138,49 @@ def test_fremder_markt_folgt_nicht():
     assert regel3.status == "unbekannt"
     assert regel3.hinweis == "Markt wird nicht beobachtet"
     assert urteil.angenommen is False
+
+
+def test_kopf_mit_valueerror_wird_unbekannt():
+    def kaputt(symbol):
+        raise ValueError("kein Preis")
+
+    lage = baue_lage(_services(), "BTCUSDT", "H4", jetzt_ms=JETZT, holer=_holer(kopf=kaputt))
+    assert lage.preis is None
+    assert lage.quellen["kurs"].startswith("unbekannt")
+    assert "ValueError" in lage.quellen["kurs"]
+
+
+def test_kaputter_plan_stuerzt_nicht_ab(monkeypatch):
+    def kaputt():
+        raise yaml.YAMLError("kaputt")
+
+    monkeypatch.setattr(lagebild, "_lese_plan_yaml", kaputt)
+    lage = baue_lage(_services(), "BTCUSDT", "H4", jetzt_ms=JETZT, holer=_holer())
+    assert lage.quellen["plan"].startswith("unbekannt")
+    assert lage.kontext["plan"] is None
+
+
+def test_gesperrter_bot_zustand_ist_lage_nicht_verfuegbar(monkeypatch):
+    def gesperrt(pfad, symbole):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(lagebild, "bot_positionen", gesperrt)
+    with pytest.raises(LageNichtVerfuegbar, match="OperationalError"):
+        baue_lage(_services(), "BTCUSDT", "H4", jetzt_ms=JETZT, holer=_holer())
+
+
+def test_fehlendes_journal_wird_nicht_angelegt(tmp_path, monkeypatch):
+    journal = tmp_path / "unterordner" / "journal.sqlite"
+    services = SimpleNamespace(config=load_config(), state_name="x.sqlite")
+    import traidingbrain.api.app as app
+
+    monkeypatch.setattr(
+        app, "_score_read_dict", lambda s, sym: {"setups": [], "direction": "neutral"}
+    )
+    monkeypatch.setattr(app, "_chart_dict", lambda s, sym: {})
+    monkeypatch.setattr(terminal, "orderbuch", lambda sym, n: None)
+    monkeypatch.setattr(terminal, "kalender", lambda: None)
+    monkeypatch.setattr(terminal, "score", lambda *a: "ok")
+    assert terminal.terminal_score(services, "BTCUSDT", lambda s: journal, lambda s: None) == "ok"
+    assert not journal.exists()
+    assert not journal.parent.exists()

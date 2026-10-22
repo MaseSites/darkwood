@@ -9,7 +9,6 @@ sieht, was die Oberflaeche nicht auch zeigt.
 
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -48,6 +47,10 @@ def _markt_standard(services: Any, symbol: str, timeframe: str) -> Any:
     return _market_for(services, symbol, timeframe)
 
 
+class LageNichtVerfuegbar(Exception):
+    """Das Konto ist nicht lesbar -- dafuer gibt es keinen Ersatzwert (Router: 503)."""
+
+
 @dataclass
 class Holer:
     """Die Quellen des Lagebilds; Standard sind die echten Funktionen, Tests reichen Attrappen."""
@@ -60,7 +63,7 @@ class Holer:
 
 def _grund(fehler: Exception) -> str:
     text = fehler.detail if isinstance(fehler, HTTPException) else repr(fehler)
-    return f"unbekannt: {text}"
+    return f"unbekannt: {type(fehler).__name__}: {text}"
 
 
 def _journal_zeilen(services: Any, symbol: str) -> list[dict]:
@@ -99,14 +102,18 @@ def baue_lage(
     def hole(name: str, quelle: Callable[[], Any]) -> Any:
         try:
             return quelle()
-        except (HTTPException, KeyError) as fehler:
+        except Exception as fehler:  # noqa: BLE001 -- jede Quelle darf ausfallen, die Lage nicht
             quellen[name] = _grund(fehler)
             return None
 
-    k = hole("kurs", lambda: h.kopf(symbol))
-    preis = float(k.last) if k is not None else None
-    if k is not None:
-        kontext["kopf"] = {"last": k.last, "mark": k.mark, "funding_rate": k.funding_rate}
+    def kurs() -> tuple[float, dict]:
+        k = h.kopf(symbol)
+        return float(k.last), {"last": k.last, "mark": k.mark, "funding_rate": k.funding_rate}
+
+    gelesen = hole("kurs", kurs)
+    preis = gelesen[0] if gelesen is not None else None
+    if gelesen is not None:
+        kontext["kopf"] = gelesen[1]
 
     s = hole("bild", lambda: h.score(services, symbol))
     bild = s.direction if s is not None else None
@@ -154,22 +161,28 @@ def baue_lage(
 
     try:
         kontext["plan"] = _lese_plan_yaml()
-    except (OSError, ValueError) as fehler:
+    except Exception as fehler:  # noqa: BLE001 -- kaputte Plandatei: unbekannt, kein Absturz
         quellen["plan"] = _grund(fehler)
         kontext["plan"] = None
 
     try:
         kontext["letzte_trades"] = _journal_zeilen(services, symbol)
-    except (HTTPException, KeyError, OSError, sqlite3.Error) as fehler:
+    except Exception as fehler:  # noqa: BLE001
         quellen["journal"] = _grund(fehler)
         kontext["letzte_trades"] = None
 
     gefolgt = _followed_symbols(services)
-    konto = manuelles_konto(
-        MANUELL_DB,
-        jetzt_ms=jetzt_ms,
-        bot_positionen=bot_positionen(_state_path(services), gefolgt),
-    )
+    # Kein Ersatzwert fuer das Konto: ohne Stand waeren die Limits geraten.
+    try:
+        konto = manuelles_konto(
+            MANUELL_DB,
+            jetzt_ms=jetzt_ms,
+            bot_positionen=bot_positionen(_state_path(services), gefolgt),
+        )
+    except Exception as fehler:
+        raise LageNichtVerfuegbar(
+            f"Kontostand nicht lesbar ({type(fehler).__name__}: {fehler})"
+        ) from fehler
     return Lage(
         symbol=symbol,
         timeframe=timeframe,
