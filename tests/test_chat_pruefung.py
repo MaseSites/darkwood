@@ -222,6 +222,66 @@ def test_kill_switch_landet_in_regel_7(tmp_path):
     assert u.angenommen is False
 
 
+def test_sperre_ohne_blocker_landet_in_regel_7():
+    class _Stumm(RiskLimits):
+        def check(self, state, *, symbol, side=None):
+            return LimitVerdict(allowed=False, blockers=[])
+
+    u = pruefe(
+        Vorschlag(symbol="BTCUSDT", side="short"),
+        _lage(),
+        _werte(),
+        _Stumm(load_config().risk.limits),
+    )
+    assert _regel(u, 7).status == "verletzt"
+    assert _regel(u, 7).wert == "Sperre ohne Begruendung"
+    assert u.angenommen is False
+
+
+def _abgelehnt_ohne_ausnahme(u: Urteil) -> None:
+    assert isinstance(u, Urteil)
+    assert u.angenommen is False
+    assert u.order is None
+
+
+def test_hebel_null_wirft_nicht():
+    u = _urteil(leverage=0.0)
+    _abgelehnt_ohne_ausnahme(u)
+    assert _regel(u, 8).status == "verletzt"
+    assert _regel(u, 4).status == "unbekannt"
+    assert _regel(u, 5).status == "unbekannt"
+
+
+def test_kurs_null_wirft_nicht():
+    u = _urteil(_lage(preis=0.0))
+    _abgelehnt_ohne_ausnahme(u)
+    assert _regel(u, 1).status == "unbekannt"
+
+
+def test_negativer_kurs_wirft_nicht_und_besteht_regel_1_nicht():
+    u = _urteil(_lage(preis=-82_597.0), sl=STOP)
+    _abgelehnt_ohne_ausnahme(u)
+    assert _regel(u, 1).status == "unbekannt"
+
+
+def test_unendlicher_stop_beim_short_wirft_nicht():
+    u = _urteil(sl=float("inf"))
+    _abgelehnt_ohne_ausnahme(u)
+    assert _regel(u, 1).status == "verletzt"
+    assert _regel(u, 4).status == "verletzt"
+
+
+def test_bot_stop_nur_aus_setup_einer_handelsebene():
+    setups = [
+        Setup(timeframe="M15", side="short", entry=PREIS, stop=82_900.0, target=82_000.0),
+        Setup(timeframe="H4", side="short", entry=PREIS, stop=STOP, target=81_400.0),
+    ]
+    u = _urteil(_lage(setups=setups))
+    assert u.angenommen is True
+    assert u.stop_vom_bot is True
+    assert u.order.sl == STOP
+
+
 def test_claude_kann_nicht_freigeben():
     v = Vorschlag(symbol="BTCUSDT", side="long", sl=81_900.0)
     a = pruefe(v, _lage(), _werte(), _limits())

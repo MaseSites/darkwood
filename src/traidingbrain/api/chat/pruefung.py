@@ -8,6 +8,8 @@ wenn jede der acht Regeln `erfuellt` ist.
 
 from __future__ import annotations
 
+import math
+
 from traidingbrain.api.chat.modelle import Lage, Regel, Regelwerte, Setup, Urteil, Vorschlag
 from traidingbrain.api.terminal import KOSTEN_ROUNDTRIP, OrderWunsch
 from traidingbrain.config.settings import AppConfig
@@ -41,6 +43,11 @@ def _r(
     return Regel(nr=nr, name=name, status=status, wert=wert, grenze=grenze, hinweis=hinweis)
 
 
+def _positiv(x: float | None) -> bool:
+    """Endlich und groesser null -- `nan`, `inf` und Nullen fallen durch."""
+    return x is not None and math.isfinite(x) and x > 0
+
+
 def _usd(x: float) -> str:
     return f"{x:,.2f} USD".replace(",", "'")
 
@@ -62,8 +69,9 @@ def _regel_1(
         )
     if preis is None:
         return _r(1, "Stop und Ziel", "unbekannt", f"Stop {sl:g}", grenze, hinweis=fehlt)
-    stop_ok = sl < preis if lang else sl > preis
-    ziel_ok = tp is None or (tp > preis if lang else tp < preis)
+    # Ein Stop bei unendlich oder unter null ist kein Stop, auch wenn er "auf der Seite" liegt.
+    stop_ok = _positiv(sl) and (sl < preis if lang else sl > preis)
+    ziel_ok = tp is None or (_positiv(tp) and (tp > preis if lang else tp < preis))
     wert = f"Stop {sl:g}" + (f", Ziel {tp:g}" if tp is not None else "") + f" bei Kurs {preis:g}"
     if stop_ok and ziel_ok:
         return _r(1, "Stop und Ziel", "erfuellt", wert, grenze)
@@ -74,7 +82,7 @@ def _regel_1(
         "verletzt",
         wert,
         grenze,
-        hinweis=f"{falsch} liegt auf der falschen Seite des Kurses.",
+        hinweis=f"{falsch} liegt auf der falschen Seite des Kurses oder ist keine gueltige Zahl.",
     )
 
 
@@ -124,7 +132,7 @@ def _regel_3(
     )
 
 
-def _limits_regeln(blockers: list[str], n_offen: int) -> list[Regel]:
+def _limits_regeln(blockers: list[str], allowed: bool, n_offen: int) -> list[Regel]:
     """Regel 6 und 7 aus `RiskLimits.check`: Positions-Blocker -> 6, alles andere -> 7."""
     deckel, bremsen = [], []
     for b in blockers:
@@ -132,6 +140,9 @@ def _limits_regeln(blockers: list[str], n_offen: int) -> list[Regel]:
         (bremsen if klein.startswith("kill switch") or "position" not in klein else deckel).append(
             b
         )
+    if not allowed and not (deckel or bremsen):
+        # Eine Sperre ohne Text ist trotzdem eine Sperre.
+        bremsen.append("Sperre ohne Begruendung")
     raus = []
     for nr, name, blocker, wert, grenze, hinweis in (
         (
@@ -162,22 +173,29 @@ def pruefe(v: Vorschlag, lage: Lage, werte: Regelwerte, limits: RiskLimits) -> U
     konto = lage.konto
     # Eine Lage fuer einen anderen Markt ist keine Grundlage: alles Marktbezogene unbekannt.
     passt = lage.symbol == v.symbol
-    preis = lage.preis if passt else None
+    # Ein Kurs von null, unter null oder nan ist kein Kurs.
+    preis = lage.preis if passt and _positiv(lage.preis) else None
     bild = lage.bild if passt else None
     setups = lage.setups if (passt and lage.folgt) else None
     fehlt = "Daten fehlen" if passt else f"Lagebild gilt fuer {lage.symbol}, nicht {v.symbol}"
+    ohne_kurs = "Kein gueltiger Kurs" if passt else fehlt
 
-    # Fehlende Angaben: Planregel fuer Margin und Hebel, Stop aus dem Setup.
+    # Fehlende Angaben: Planregel fuer Margin und Hebel, Stop aus dem Setup --
+    # nur aus einem Setup, das Regel 3 auch zaehlen wuerde.
     margin = v.margin_usd if v.margin_usd is not None else werte.margin_share * konto.equity
     hebel = v.leverage if v.leverage is not None else werte.leverage
+    hebel_ok = _positiv(hebel)
     sl, stop_vom_bot = v.sl, False
     if sl is None and setups:
-        gleich = next((s for s in setups if s.side.lower() == v.side), None)
+        gleich = next(
+            (s for s in setups if s.side.lower() == v.side and s.timeframe in werte.timeframes),
+            None,
+        )
         if gleich is not None:
             sl, stop_vom_bot = gleich.stop, True
 
     regeln = [
-        _regel_1(v.side, preis, sl, v.tp, "Kein aktueller Kurs" if passt else fehlt),
+        _regel_1(v.side, preis, sl, v.tp, ohne_kurs),
         _regel_2(v.side, bild, werte),
         _regel_3(v.side, setups, lage.folgt or not passt, werte, fehlt),
     ]
@@ -186,7 +204,9 @@ def pruefe(v: Vorschlag, lage: Lage, werte: Regelwerte, limits: RiskLimits) -> U
     deckel = werte.risk_cap_share * konto.equity
     grenze = f"≤ {_usd(deckel)} ({werte.risk_cap_share:.1%})"
     risiko: float | None = None
-    if preis is None or sl is None:
+    falsch = "Margin, Kontostand und Stop-Abstand muessen endlich und positiv sein."
+    if preis is None or sl is None or not hebel_ok:
+        grund = "Ohne gueltigen Hebel kein Risiko." if hebel_ok is False else None
         regeln.append(
             _r(
                 4,
@@ -194,27 +214,25 @@ def pruefe(v: Vorschlag, lage: Lage, werte: Regelwerte, limits: RiskLimits) -> U
                 "unbekannt",
                 _LEER,
                 grenze,
-                hinweis="Ohne Kurs und Stop kein Risiko.",
+                hinweis=grund or "Ohne Kurs und Stop kein Risiko.",
             )
         )
-    elif margin <= 0 or deckel <= 0 or sl == preis:
-        regeln.append(
-            _r(
-                4,
-                "Risiko je Trade",
-                "verletzt",
-                _usd(margin),
-                grenze,
-                hinweis="Margin, Kontostand und Stop-Abstand muessen positiv sein.",
-            )
-        )
+    elif not (_positiv(margin) and _positiv(deckel) and _positiv(abs(preis - sl))):
+        regeln.append(_r(4, "Risiko je Trade", "verletzt", _usd(margin), grenze, hinweis=falsch))
     else:
         risiko = abs(preis - sl) * margin * hebel / preis
         wert = _usd(risiko)
         if risiko > deckel:
             margin, risiko = margin * deckel / risiko, deckel
             wert = f"gekürzt auf {_usd(margin)} Margin"
-        regeln.append(_r(4, "Risiko je Trade", "erfuellt", wert, grenze))
+        # Ein Stop bei unendlich kuerzt die Margin auf null -- das ist keine Order.
+        if _positiv(margin) and _positiv(risiko):
+            regeln.append(_r(4, "Risiko je Trade", "erfuellt", wert, grenze))
+        else:
+            risiko = None
+            regeln.append(
+                _r(4, "Risiko je Trade", "verletzt", _usd(margin), grenze, hinweis=falsch)
+            )
 
     # 5 -- Kosten im Verhaeltnis zum Risiko, ab hier mit der gekuerzten Margin.
     grenze = f"≤ {werte.max_cost_fraction:.0%} des Risikos"
@@ -246,11 +264,11 @@ def pruefe(v: Vorschlag, lage: Lage, werte: Regelwerte, limits: RiskLimits) -> U
         )
 
     # 6 und 7 -- dieselbe Pruefung wie beim Bot.
-    blocker = limits.check(konto, symbol=v.symbol, side=v.side).blockers
-    regeln += _limits_regeln(blocker, len(konto.open_positions))
+    verdikt = limits.check(konto, symbol=v.symbol, side=v.side)
+    regeln += _limits_regeln(verdikt.blockers, verdikt.allowed, len(konto.open_positions))
 
     # 8 -- Hebel.
-    ok = 1 <= hebel <= werte.max_leverage
+    ok = hebel_ok and 1 <= hebel <= werte.max_leverage
     regeln.append(
         _r(
             8,
