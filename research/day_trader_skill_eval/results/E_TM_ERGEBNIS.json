@@ -1,0 +1,67 @@
+{
+ "vergleiche": 86,
+ "z": 3.4401483795642767,
+ "ungesehen": {
+  "maerkte": 56,
+  "trades_basis": 30821,
+  "trades_arm": 24160,
+  "anteil_behalten": 0.7839,
+  "basis": [
+   -0.03453462574218877,
+   -0.09246245360934839,
+   0.023393202124970855
+  ],
+  "arm": [
+   -0.03633763245033112,
+   -0.0970118440672574,
+   0.02433657916659515
+  ],
+  "differenz": [
+   -0.0018030067081423531,
+   -0.02911413615588754,
+   0.02550812273960276
+  ],
+  "spearman_lean_R": -0.0784850924464338,
+  "schwanz_arm": {
+   "schlechtester_block": -0.6024131578947367,
+   "schlechtester_markt": "C98USDT",
+   "schlechtester_markt_r": -0.27399171483622353,
+   "groesster_rueckgang_R": 943.9292999999979,
+   "anteil_maerkte_negativ": 0.6964285714285714,
+   "maerkte": 56
+  }
+ },
+ "gesehen_0311": {
+  "maerkte": 12,
+  "trades_basis": 8226,
+  "trades_arm": 6351,
+  "anteil_behalten": 0.7721,
+  "basis": [
+   -0.013312594213469487,
+   -0.09768577369499291,
+   0.07106058526805394
+  ],
+  "arm": [
+   -0.009337490159030072,
+   -0.09248467369615959,
+   0.07380969337809945
+  ],
+  "differenz": [
+   0.003975104054439415,
+   -0.022789685803250324,
+   0.03073989391212928
+  ],
+  "spearman_lean_R": -0.10382403675833153,
+  "schwanz_arm": {
+   "schlechtester_block": -1.0601421052631579,
+   "schlechtester_markt": "DOTUSDT",
+   "schlechtester_markt_r": -0.09128736842105262,
+   "groesster_rueckgang_R": 143.8577999999996,
+   "anteil_maerkte_negativ": 0.5833333333333334,
+   "maerkte": 12
+  }
+ },
+ "tor1_absolut": false,
+ "tor2_verbesserung": false,
+ "urteil": "GEFALLEN"
+}
