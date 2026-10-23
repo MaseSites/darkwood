@@ -3,7 +3,7 @@ typ: produkt-teil
 projekt: TradingBrain
 bereich: projekt
 status: aktiv
-aktualisiert: 2026-10-22
+aktualisiert: 2026-10-23
 tags: [verlauf, entscheidungen]
 ---
 
@@ -104,4 +104,23 @@ tags: [verlauf, entscheidungen]
 - Grenze: Technische Namen (Ordner `traidingBrain`, Paket `traidingbrain`, Aufgaben
   `traidingBrain-*`, Vault `traidingBrainGehirn`) bleiben vorerst; Umbenennen wäre ein
   eigener Schritt, weil Pfade, Aufgabenplanung und Signaturen daran hängen.
+
+## 2026-10-23 — Einrichtungspaket für den Kollegen
+
+- von: Claude
+- Stand: Code-Commit `d1d104e` (darkwood `master`), Daten vom 23.10. etwa 08:45
+- Entscheidung: Der Kollege bekommt **einen** Download,
+  `OneDrive\Darkwood Paket\darkwood-paket-2026-10-23.zip` (3,9 GB). Darin liegt ein
+  Git-Klon von darkwood mit `.git` und dazu alles, was Git nicht trägt: `data/`
+  (Marktdaten, alle Datenbanken als SQLite-Backup-Schnappschuss), `config_offen/plan.yaml`,
+  `freqtrade/user_data/` und `.env`. Danach kommt jede Änderung nur noch mit `git pull`.
+- Einrichtung: `CLAUDE-EINRICHTEN.md` (im Zip und daneben) ist ein Prompt für Claude Code
+  beim Kollegen. Er legt venv und Pakete an, richtet den Autostart **nur** für
+  `traidingBrain-plankonto` und `traidingBrain-dash-plan` ein und prüft Terminal,
+  Bot und Claude-CLI.
+- Nicht im Paket: `data/quarantine/` (11 GB Messdaten), `data/dienst/` (enthält Pfade
+  dieses Rechners), `.venv`, Lock-Dateien.
+- Grenze: Gleich ist nur der Moment des Pakets. Der Bot des Kollegen führt danach ein
+  eigenes Papierkonto. Die Keys liegen im Zip, deshalb nur mit „Bestimmte Personen“
+  freigeben, nie über GitHub.
 
