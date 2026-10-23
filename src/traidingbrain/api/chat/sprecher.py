@@ -7,6 +7,12 @@ Lesen verworfen.
 
 Transport und Entpackung sind die der Abo-CLI aus `brain/subscription.py`
 (`run_cli`, `unwrap`), nicht nachgebaut.
+
+Mit `bild` sieht Claude zusaetzlich den Chart des Markts als PNG
+(`api/chat/bild.py`). Das Bild geht ueber `vision/frage.py`, weil die CLI ein
+Bild nur im stream-json-Format annimmt. Faellt das Zeichnen aus, geht die
+Nachricht ohne Bild weiter -- ein fehlendes Bild ist kein Grund, nicht zu
+antworten.
 """
 from __future__ import annotations
 
@@ -30,6 +36,7 @@ from traidingbrain.brain.subscription import (
     _extract_json,
     run_cli,
 )
+from traidingbrain.vision.frage import frage_mit_bild
 
 #: Wie viele Verlaufszeilen in die Eingabe gehen.
 VERLAUF_ZEILEN = 10
@@ -116,11 +123,18 @@ class ClaudeSprecher:
         self,
         lauf: Callable[[str], tuple[str | None, str | None]] | None = None,
         *,
+        bild: Callable[[Lage], bytes | None] | None = None,
+        bild_lauf: Callable[[str, list[bytes]], tuple[str | None, str | None]] | None = None,
         which: Callable[[str], str | None] = shutil.which,
         probe: Callable[[str], bool] = _version_probe,
         uhr: Callable[[], float] = time.monotonic,
     ) -> None:
-        self._lauf = lauf or self._cli_lauf()
+        if lauf is None:
+            lauf, standard_bild_lauf = self._cli_laeufe()
+            bild_lauf = bild_lauf or standard_bild_lauf
+        self._lauf = lauf
+        self._bild = bild
+        self._bild_lauf = bild_lauf
         self._which = which
         self._probe = probe
         self._uhr = uhr
@@ -128,18 +142,19 @@ class ClaudeSprecher:
         self._anmeldung_fehlt = False
 
     @staticmethod
-    def _cli_lauf() -> Callable[[str], tuple[str | None, str | None]]:
+    def _cli_laeufe() -> tuple[
+        Callable[[str], tuple[str | None, str | None]],
+        Callable[[str, list[bytes]], tuple[str | None, str | None]],
+    ]:
         """Die echte CLI, in einem leeren Arbeitsverzeichnis (kein CLAUDE.md, keine Tools),
-        mit dem eigenen Systemtext statt dem von Claude Code."""
-        arbeitsordner = tempfile.mkdtemp(prefix="darkwood-chat-")
-        exe = shutil.which("claude") or "claude"
-        return partial(
-            run_cli,
-            executable=exe,
-            system_file=str(SYSTEM_PROMPT_DATEI),
-            workspace=arbeitsordner,
-            env=_cli_environment(),
-        )
+        mit dem eigenen Systemtext statt dem von Claude Code; einmal ohne, einmal mit Bild."""
+        gemeinsam = {
+            "executable": shutil.which("claude") or "claude",
+            "system_file": str(SYSTEM_PROMPT_DATEI),
+            "workspace": tempfile.mkdtemp(prefix="darkwood-chat-"),
+            "env": _cli_environment(),
+        }
+        return partial(run_cli, **gemeinsam), partial(frage_mit_bild, **gemeinsam)
 
     # -- Eingabe ------------------------------------------------------------ #
 
@@ -154,12 +169,30 @@ class ClaudeSprecher:
 
     # -- Sprechen ----------------------------------------------------------- #
 
+    def _chart(self, lage: Lage) -> bytes | None:
+        """Das Chartbild, oder None -- ohne Bildquelle, ohne Transport oder bei einem Fehler."""
+        if self._bild is None or self._bild_lauf is None:
+            return None
+        try:
+            return self._bild(lage)
+        except Exception:  # noqa: BLE001 -- ohne Bild antworten statt gar nicht
+            return None
+
     def sprich(self, nachricht: str, lage: Lage, verlauf: list[tuple[str, str]]) -> Antwort:
         eingabe = self._eingabe(nachricht, lage, verlauf)
+        png = self._chart(lage)
+        if png is not None:
+            eingabe = (
+                f"## Chart\nDas Bild zeigt {lage.symbol} auf mehreren Zeitebenen "
+                "(geschlossene Kerzen, Setups und Positionen eingezeichnet).\n\n" + eingabe
+            )
         roh = ""
         for versuch in range(2):
             try:
-                text, _sid = self._lauf(eingabe)
+                if png is not None and self._bild_lauf is not None:
+                    text, _sid = self._bild_lauf(eingabe, [png])
+                else:
+                    text, _sid = self._lauf(eingabe)
             except SubscriptionUnavailableError as e:
                 self._anmeldung_fehlt = True
                 return Antwort(text="", fehler=f"Claude nicht erreichbar: {str(e)[:200]}")

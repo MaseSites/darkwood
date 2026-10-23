@@ -28,6 +28,10 @@ dependencies = [
     # geschuetzter Import waere die falsche Antwort gewesen: er haette den
     # Fehler versteckt statt die Abhaengigkeit benannt.
     "websockets>=13.0",
+    # Zeichnet das Chartbild, das Claude im Chat und im Schatten des Haendlers
+    # sieht (`vision/render.py`). Pillow statt matplotlib: ein Paket, keine
+    # Schriftsuche, und der Haendler braucht nur Kerzen und Linien.
+    "pillow>=10.1",
 ]
 
 [project.optional-dependencies]

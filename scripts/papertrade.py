@@ -54,6 +54,7 @@ from traidingbrain.live.paper import (
 )
 from traidingbrain.sim.plan import Sizer
 from traidingbrain.storage.singleton import AlreadyRunningError, SingleInstance
+from traidingbrain.vision.schatten import Schatten, fuer_haendler
 
 #: Damit das Alter eines Fehlschlags in Stunden statt in 300 Minuten steht.
 MINUTES_PER_HOUR = 60.0
@@ -532,7 +533,21 @@ class FailureWatch:
             )
 
 
-def run(traders: list[PaperTrader], source: MarketData | None, *, cycles: int | None) -> int:
+def run(
+    traders: list[PaperTrader],
+    source: MarketData | None,
+    *,
+    cycles: int | None,
+    schatten: Schatten | None = None,
+) -> int:
+    """Die Dauerschleife.
+
+    `schatten` ist das Chart-Urteil (`vision/schatten.py`): es sieht jede neue
+    Order als Bild und schreibt Claudes Meinung auf, OHNE etwas zu veraendern.
+    Hier und nicht in `live/paper.py`, damit es ausserhalb des
+    Entscheidungspfads bleibt -- der Stempel `decision_version()` liest nur
+    diesen, und eine Beobachtung soll ihn nicht verschieben.
+    """
     symbols = [trader.symbol for trader in traders]
 
     # Den Entscheidungsstempel JETZT einfrieren, nicht beim ersten Schluss.
@@ -557,6 +572,10 @@ def run(traders: list[PaperTrader], source: MarketData | None, *, cycles: int | 
     print(f"Entscheidungscode {stamp} ({code_version()})")
 
     print(f"Papertrading läuft: {', '.join(symbols)}")
+    print(
+        "Chart-Urteil: "
+        + (f"an, im Schatten ({schatten.modell}, ohne Wirkung auf Trades)" if schatten else "aus")
+    )
     print(
         f"Kein Konto, keine Börse, kein Geld. Takt {POLL_SECONDS}s, "
         f"Entscheidungen auf {traders[0].config.engine.timeframes.signal.value}-Schluss.\n"
@@ -590,6 +609,8 @@ def run(traders: list[PaperTrader], source: MarketData | None, *, cycles: int | 
                     announce(entry)
             for trader in traders:
                 trader.decide()
+            if schatten is not None:
+                schatten.beobachte(traders)
             done += 1
             # Ein Herzschlag je Zyklus. Vorher schrieb diese Schleife NUR beim
             # Schliessen eines Trades -- am Abend des 20.10. lief sie zwoelf
@@ -730,6 +751,11 @@ def main() -> int:
         action="store_true",
         help="no venue; works off whatever bars are already stored",
     )
+    parser.add_argument(
+        "--ohne-chart-urteil",
+        action="store_true",
+        help="Claude nicht mit dem Chartbild jeder Order fragen (Schattenbetrieb)",
+    )
     args = parser.parse_args()
 
     symbols = args.symbol or list(config.engine.symbols.active)
@@ -802,7 +828,12 @@ def main() -> int:
     # `--close-out` neben einem laufenden Händler weiter benutzbar bleiben.
     try:
         with SingleInstance("papertrade", directory=config.engine.paths.data_dir):
-            return run(traders, source, cycles=args.cycles)
+            return run(
+                traders,
+                source,
+                cycles=args.cycles,
+                schatten=None if args.ohne_chart_urteil else fuer_haendler(config),
+            )
     except AlreadyRunningError as refusal:
         print(f"\nStart abgelehnt: {refusal}", file=sys.stderr, flush=True)
         print(

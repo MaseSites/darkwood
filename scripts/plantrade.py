@@ -43,6 +43,7 @@ import papertrade
 
 from traidingbrain.config.settings import AppConfig, load_config
 from traidingbrain.risk.plansize import forward_sizer
+from traidingbrain.vision.schatten import fuer_haendler
 
 #: Der Auftrag, in Zahlen. 300 von 1.000 Franken, siebenfacher Hebel.
 MARGIN_ANTEIL, HEBEL = 0.30, 7.0
@@ -194,6 +195,10 @@ def main() -> int:
         help="Eigenes Konfigurationsverzeichnis. Ohne Angabe gilt config/. "
              "Mit config_offen/ sind die beiden Wirtschaftlichkeitstore offen.",
     )
+    parser.add_argument(
+        "--ohne-chart-urteil", action="store_true",
+        help="Claude nicht mit dem Chartbild jeder Order fragen (Schattenbetrieb).",
+    )
     args = parser.parse_args()
 
     config = plan_config(args.config_dir)
@@ -253,7 +258,8 @@ def main() -> int:
     )
     if args.status:
         return papertrade.show_status(traders)
-    return papertrade.run(traders, source, cycles=args.cycles)
+    schatten = None if args.ohne_chart_urteil else fuer_haendler(config, name="vision_shadow_plan")
+    return papertrade.run(traders, source, cycles=args.cycles, schatten=schatten)
 
 
 if __name__ == "__main__":

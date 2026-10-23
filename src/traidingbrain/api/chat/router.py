@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from traidingbrain.api import terminal
 from traidingbrain.api.terminal import OrderWunsch
+from traidingbrain.api.chat.bild import chart_bild
 from traidingbrain.api.chat.lagebild import Holer, LageNichtVerfuegbar, baue_lage
 from traidingbrain.api.chat.modelle import Lage, Regelwerte, Urteil, Vorschlag
 from traidingbrain.api.chat.pruefung import pruefe, regelwerte_aus
@@ -148,7 +149,7 @@ def router(
     def _sprecher() -> Any:
         with aufbau:
             if geteilt["sprecher"] is None:
-                geteilt["sprecher"] = ClaudeSprecher()
+                geteilt["sprecher"] = ClaudeSprecher(bild=_bild)
             return geteilt["sprecher"]
 
     def _speicher() -> ChatSpeicher:
@@ -161,6 +162,13 @@ def router(
 
     def _jetzt_ms() -> int:
         return int(jetzt() * 1000)
+
+    def _bild(lage: Lage) -> bytes | None:
+        """Das Chartbild zur Lage; ohne Kerzenquelle keines."""
+        bars = getattr(services, "bars", None)
+        if bars is None:
+            return None
+        return chart_bild(lambda sym, tf: bars.read(sym, tf), lage, jetzt_ms=_jetzt_ms())
 
     def _werte() -> Regelwerte:
         try:
