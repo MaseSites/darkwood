@@ -3,13 +3,29 @@ typ: produkt-teil
 projekt: TradingBrain
 bereich: status
 status: aktiv
-aktualisiert: 2026-10-21
-tags: [status, migration, execution, forwaertsstichprobe, plankonto]
+aktualisiert: 2026-10-23
+tags: [status, migration, execution, forwaertsstichprobe, plankonto, chartbild]
 ---
 
 # Aktueller Stand
 
-Stand dieser Notiz: **2026-10-21, 10:15.** Vor der nächsten Fortschreibung den Repo-Stand erneut prüfen.
+Stand dieser Notiz: **2026-10-21, 10:15** (Nachtrag Chartbild 23.10.). Vor der nächsten Fortschreibung den Repo-Stand erneut prüfen.
+
+> [!info] 23.10. — Chartbild für Chat und Händler (Schatten, ohne Wirkung)
+> Auf Wunsch des Eigentümers sehen beide Bots den Chart jetzt als Bild
+> (PNG, Pillow, `src/traidingbrain/vision/`).
+> - **Chat:** jede Nachricht bekommt ein Bild des Markts (Frage-Zeitebene + H4 + D1,
+>   nur geschlossene Kerzen, Setups/Positionen eingezeichnet), über die Claude-CLI
+>   im stream-json-Format (`vision/frage.py`).
+> - **Händler:** jede neue Order wird gezeichnet (M15/H1/H4, Kerzen nur bis zum
+>   Entscheidungsschluss) und Claude gefragt „nehmen/auslassen". **Nur
+>   aufgeschrieben** in `data/vision_shadow_plan.sqlite` (+ PNGs), blockiert nichts,
+>   nicht in der Signatur; Entscheidungsstempel unverändert (`0619b41ca4e4`).
+>   Abschalten: `--ohne-chart-urteil`. Auswertung: `scripts/vision_report.py`.
+> - Grund für Schatten statt Veto: das Bild enthält keine Kerze, die der Händler
+>   nicht schon als Zahl hat. Ein Veto erst, wenn der Report die Null ausschliesst
+>   (bei ~2 Trades/Tag frühestens nach Wochen).
+> - Wirksam erst nach Neustart von Händler und Dashboard (Neustart-Budget beachten).
 
 > [!info] 21.10. 12:46 UTC — Not-Aus aufgehoben, Papierhandel läuft wieder
 > Auf Anweisung des Eigentümers („papertraide den ganzen Tag") ist
